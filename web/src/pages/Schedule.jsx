@@ -4,6 +4,7 @@ import { addDays, weekStart, range, dow, prettyDate, DOW_SHORT, parseDate, MONTH
 import { hoursOf } from '../../../core/forecast.js';
 import ShiftDialog from './ShiftDialog.jsx';
 import ImportDialog from './ImportDialog.jsx';
+import { IS_DEMO } from '../api.js';
 
 export function useWeek() {
   const { today, settings } = useApp();
@@ -169,8 +170,8 @@ export default function Schedule() {
         {isMgr && <div className="row desktop-only" style={{ gap: 4 }}>
           <button className="btn sm ghost" onClick={() => setCopyOpen(true)} title="Copy another week"><Icon name="copy" />Copy week</button>
           <button className="btn sm ghost" onClick={() => setImportOpen(true)} title="Paste from Excel / CSV"><Icon name="upload" />Import</button>
-          <button className="btn sm ghost" onClick={exportCsv}><Icon name="download" />CSV</button>
-          <button className="btn sm ghost" onClick={() => window.print()}><Icon name="print" />Print</button>
+          {!IS_DEMO && <button className="btn sm ghost" onClick={exportCsv}><Icon name="download" />CSV</button>}
+          {!IS_DEMO && <button className="btn sm ghost" onClick={() => window.print()}><Icon name="print" />Print</button>}
         </div>}
       </div>
 

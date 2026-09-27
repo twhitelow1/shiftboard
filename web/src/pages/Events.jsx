@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useApp, Icon, Avatar, Field, Empty, useAction, JobDot, money, shiftTime } from '../ui.jsx';
 import { prettyDate, fmtTime, parseDate, MONTHS, DOW_SHORT, addDays } from '../../../core/time.js';
 import { SERVICE_STYLES } from '../../../core/beo.js';
+import { IS_DEMO } from '../api.js';
 
 const STATUS_BADGE = { tentative: 'warn', confirmed: 'ok', completed: '', cancelled: 'bad' };
 
@@ -84,7 +85,7 @@ function EventDetail({ id }) {
       <div className="toolbar no-print">
         <a className="btn sm ghost" href="#/events"><Icon name="left" />Events</a>
         <span className="spacer" />
-        <button className="btn sm ghost" onClick={() => window.print()}><Icon name="print" />Print BEO</button>
+        {!IS_DEMO && <button className="btn sm ghost" onClick={() => window.print()}><Icon name="print" />Print BEO</button>}
         {isEvents && <a className="btn sm" href={`#/events/${id}/edit`}><Icon name="edit" />Edit</a>}
       </div>
 
