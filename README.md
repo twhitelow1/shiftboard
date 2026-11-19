@@ -53,7 +53,7 @@ The web app is static (served from Vercel's CDN) and the API runs as one Vercel 
 3. **Add environment variables** (Settings → Environment Variables):
    - `ADMIN_EMAIL`, `ADMIN_PASSWORD` (and optionally `ADMIN_NAME`): the first admin account
    - `TIMEZONE`: the restaurant's time zone, e.g. `America/Denver`
-   - `JWT_SECRET`: a long random string (`openssl rand -hex 48`)
+   - `JWT_SECRET` (optional): a long random string (`openssl rand -hex 48`). If you skip it, the app generates one and stores it in the database.
 4. **Deploy** (or redeploy, so the new variables apply). The first request creates the tables in a `shiftboard` schema and the admin account. Then sign in.
 
 The tables have row-level security turned on with no policies, so Supabase's public REST API (the `anon` key) can't read them. The app connects as the database owner.
