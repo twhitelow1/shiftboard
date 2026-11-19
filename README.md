@@ -36,36 +36,61 @@ npm run build
 SEED_DEMO=true npm start      # http://localhost:3000 — sign in as moe@demo.shiftboard / demo1234
 ```
 
+No database setup needed: without `DATABASE_URL`, the app uses an embedded Postgres (PGlite) stored in `./data/pglite`. To develop against Supabase or another real Postgres instead, set `DATABASE_URL`.
+
 For development with hot reload: `npm run dev:demo` (the API runs on :3000, and Vite prints its own URL).
 
 Start without the demo data: `ADMIN_EMAIL=you@restaurant.com ADMIN_PASSWORD=choose-one npm start`. This creates the first admin account. Everything else is set up from the app: add job codes, add employees, then import or build the first week.
 
-Tests: `npm test`
+Tests: `npm test` (uses the embedded database). To run them against a real Postgres, point `TEST_DATABASE_URL` at a throwaway database; the tests drop and recreate its `shiftboard` schema.
 
-## Deploy
+## Deploy to Vercel + Supabase
 
-It's a single Node service with a SQLite file, so it runs anywhere with a persistent disk.
+The web app is static (served from Vercel's CDN) and the API runs as one Vercel Function (`api/index.js`). Data lives in Postgres. Supabase is the default; Neon or any Postgres 13+ works the same way.
 
-**Render**: the repo includes `render.yaml`. Create a new Blueprint from the repo, then set `ADMIN_EMAIL` and `ADMIN_PASSWORD`. The 1 GB disk at `/data` holds the database.
+1. **Import the repo in Vercel** (Add New → Project → `shiftboard`). The settings come from `vercel.json`; leave them as they are.
+2. **Add the database**: in the project, open **Storage → Connect Database → Supabase**, create a database in **East US (North Virginia)** (the same region as the function, `iad1` in `vercel.json`), and connect it to all environments. This sets `POSTGRES_URL` for you.
+3. **Add environment variables** (Settings → Environment Variables):
+   - `ADMIN_EMAIL`, `ADMIN_PASSWORD` (and optionally `ADMIN_NAME`): the first admin account
+   - `TIMEZONE`: the restaurant's time zone, e.g. `America/Denver`
+   - `JWT_SECRET`: a long random string (`openssl rand -hex 48`)
+4. **Deploy** (or redeploy, so the new variables apply). The first request creates the tables in a `shiftboard` schema and the admin account. Then sign in.
 
-**Docker / any VPS**
+The tables have row-level security turned on with no policies, so Supabase's public REST API (the `anon` key) can't read them. The app connects as the database owner.
+
+### Moving data from the old SQLite version
+
+If ShiftBoard has been running on Render or Docker with SQLite, copy its `shiftboard.db` file locally, then:
+
+```bash
+DATABASE_URL="<Supabase connection string>" npm run db:import-sqlite -- ./shiftboard.db
+```
+
+Set `JWT_SECRET` on Vercel to the old server's secret (its `JWT_SECRET`, or the contents of `DATA_DIR/.secret`) so employees' calendar links keep working.
+
+### Self-hosting with Docker
+
 ```bash
 docker build -t shiftboard .
-docker run -d -p 3000:3000 -v shiftboard-data:/data \
+docker run -d -p 3000:3000 -e DATABASE_URL=postgres://... \
   -e ADMIN_EMAIL=you@restaurant.com -e ADMIN_PASSWORD=change-me shiftboard
 ```
 Put it behind HTTPS (Caddy, Cloudflare, or the platform's TLS). Session cookies are `Secure` when `NODE_ENV=production`.
 
+### Environment variables
+
 | Env var | Default | Notes |
 |---|---|---|
-| `PORT` | 3000 | |
-| `DATA_DIR` | `./data` | SQLite DB and auto-generated secret |
-| `JWT_SECRET` | auto | Generated and saved to `DATA_DIR/.secret` if not set |
-| `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | | First-run admin account |
+| `DATABASE_URL` / `POSTGRES_URL` | | Postgres connection string. Vercel's Supabase integration sets `POSTGRES_URL` (the pooled connection, which is what you want); Neon sets `DATABASE_URL`. Without either, local runs use the embedded database. |
+| `TIMEZONE` | `America/Denver` | The restaurant's IANA time zone. Vercel runs in UTC and reserves `TZ`, so the app applies this itself. |
+| `JWT_SECRET` | auto | Signs sessions and calendar links. If unset, one is generated and stored in the database. |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | | First-run admin account (used only while there are no users) |
 | `SEED_DEMO` | | `true` loads the demo restaurant on first run |
-| `TZ` | | Set to the restaurant's time zone (e.g. `America/Denver`) |
+| `DATABASE_CA_CERT` | | Optional. Your provider's CA certificate (PEM) to verify the database's TLS certificate. Without it, the connection is encrypted per `sslmode=require` but the certificate isn't checked. |
+| `PG_POOL_MAX` | 5 | Connections per running instance |
+| `PORT` | 3000 | Standalone server only |
 
-Back up by copying `DATA_DIR/shiftboard.db` (it uses SQLite WAL, so `sqlite3 shiftboard.db ".backup backup.db"` is safest).
+Back up with `pg_dump "$DATABASE_URL" -n shiftboard > backup.sql`, or use your database provider's backups.
 
 ## Architecture
 
@@ -75,15 +100,21 @@ core/       Business logic shared by server + demo (pure JS, no I/O)
   forecast.js  covers/sales forecast, labor math, "until close" estimates
   beo.js       banquet staffing ratios
   importer.js  spreadsheet/CSV schedule parser
-  store.js     in-memory document store
+  store.js     in-memory document store + a copy-on-write overlay used per request
   seed.js      demo data (the real week of 9/28/2026)
-server/     Express API (one RPC endpoint + auth), SQLite write-through persistence, iCal feed
+server/     Express API (one RPC endpoint + auth) and iCal feed
+  app.js       routes, sessions, login rate limiting
+  db.js        Postgres persistence (see below)
+  index.js     standalone server (local, Docker)
+api/        Vercel Function entry point (wraps server/app.js)
 web/        React UI (Vite). DEMO=1 builds a self-contained single-file demo that runs core/ in the browser
-test/       node:test suites for scheduling, swaps, forecast, events, importer
+scripts/    one-off tools (SQLite → Postgres import)
+test/       node:test suites for scheduling, swaps, forecast, events, importer, store, database and API
 ```
 
 The API is `POST /api/rpc/<method>` with a JSON body. Every method enforces its own role check in `core/service.js`, so the web app, the demo, and any future mobile app or integration share one set of rules.
 
+**How data is stored.** Each record (shift, user, event…) is a JSON document in one Postgres table, `shiftboard.docs`, stamped with an ever-increasing sequence number. Each running instance keeps a cache and, before every request, pulls only the rows that changed since its last look (usually none: one indexed query). Writes run in a transaction that holds a single lock: the instance catches up, re-runs the operation on the latest data, and saves every change in one statement. That keeps check-then-act operations correct when Vercel runs several instances at once, for example two people grabbing the same open shift. The business logic stays synchronous and unchanged, and a failed request never leaves partial writes.
 ## Roadmap ideas
 - SMS/email notifications (Twilio / SendGrid) alongside the in-app ones
 - POS integration (Toast / Square) to pull daily sales automatically

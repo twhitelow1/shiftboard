@@ -64,3 +64,80 @@ export class MemoryStore {
     return fn();
   }
 }
+
+/**
+ * Copy-on-write view over a MemoryStore. Reads fall through to the base store;
+ * writes stay in the overlay until the caller persists them and applies them.
+ * The server runs each request against one of these, so a request that fails
+ * (or loses a race) leaves the shared cache untouched.
+ */
+export class OverlayStore {
+  constructor(base) {
+    this.base = base;
+    this.changes = new Map(); // col -> Map(id -> doc | null (deleted))
+  }
+
+  get dirty() {
+    return this.changes.size > 0;
+  }
+
+  /** Every pending write as { col, id, doc } (doc is null for a delete). */
+  changeList() {
+    const out = [];
+    for (const [col, m] of this.changes) for (const [id, doc] of m) out.push({ col, id, doc });
+    return out;
+  }
+
+  _pending(name) {
+    let m = this.changes.get(name);
+    if (!m) this.changes.set(name, (m = new Map()));
+    return m;
+  }
+
+  _raw(name, id) {
+    const m = this.changes.get(name);
+    if (m?.has(id)) return m.get(id);
+    return this.base.col(name).get(id) ?? null;
+  }
+
+  list(name, filter) {
+    const out = [];
+    const m = this.changes.get(name);
+    const baseCol = this.base.col(name);
+    for (const [id, v] of baseCol) {
+      const cur = m?.has(id) ? m.get(id) : v;
+      if (cur && (!filter || filter(cur))) out.push(clone(cur));
+    }
+    if (m) for (const [id, v] of m) if (v && !baseCol.has(id) && (!filter || filter(v))) out.push(clone(v));
+    return out;
+  }
+
+  get(name, id) {
+    return clone(this._raw(name, id)) || null;
+  }
+
+  insert(name, doc) {
+    const d = { ...clone(doc) };
+    if (!d.id) d.id = uid(name.slice(0, 3));
+    this._pending(name).set(d.id, d);
+    return clone(d);
+  }
+
+  update(name, id, patch) {
+    const cur = this._raw(name, id);
+    if (!cur) return null;
+    const d = { ...cur, ...clone(patch), id };
+    this._pending(name).set(id, d);
+    return clone(d);
+  }
+
+  remove(name, id) {
+    if (!this._raw(name, id)) return false;
+    this._pending(name).set(id, null);
+    return true;
+  }
+
+  transaction(fn) {
+    return fn();
+  }
+}

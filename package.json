@@ -8,17 +8,20 @@
     "build": "vite build",
     "build:demo": "DEMO=1 vite build",
     "start": "node server/index.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "db:import-sqlite": "node scripts/import-sqlite.js"
   },
   "license": "UNLICENSED",
   "dependencies": {
+    "@vercel/functions": "^3.11.3",
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^13.0.3",
     "cookie-parser": "^1.4.7",
     "express": "^5.2.1",
-    "jsonwebtoken": "^9.0.3"
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.23.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.16",
     "@vitejs/plugin-react": "^6.1.1",
     "concurrently": "^10.0.5",
     "react": "^19.3.0",
