@@ -78,7 +78,7 @@ export default function Schedule() {
 
   const sections = useMemo(() => {
     if (!data) return [];
-    const activeEmps = employees.filter((e) => e.active !== false && e.role !== 'events');
+    const activeEmps = employees.filter((e) => e.active !== false && e.onSchedule !== false);
     if (groupBy === 'emp') {
       const rows = activeEmps.filter((e) => (!mine || e.id === me.id) && (!dept || e.jobCodes?.some((j) => jobs[j.jobCodeId]?.department === dept)))
         .map((e) => ({ user: e, shifts: shifts.filter((s) => s.userId === e.id && (!dept || jobs[s.jobCodeId]?.department === dept)) }))

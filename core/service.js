@@ -4,6 +4,8 @@ import { uid } from './store.js';
 import { addDays, dow, weekStart, range, overlaps, shiftSpan, todayStr, prettyDate, fmtTime, toMin, daysBetween } from './time.js';
 import { forecastDay, effectiveShift, hoursOf, activeAt, recommend } from './forecast.js';
 import { suggestStaffing } from './beo.js';
+import { ROLE_IDS, roleOf, roleLabel, canManageSchedule, canChangeSettings, canManageEvents, canSeeContacts, canApprove,
+  offSchedule, assignableRoles, canManageUser } from './roles.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -27,6 +29,7 @@ export const DEFAULT_SETTINGS = {
   overtimeHours: 40,
   requireSwapApproval: true,
   requirePickupApproval: true,
+  supervisorsCanApprove: true,
   minSwapNoticeHours: 12,
   tags: ['LIB', 'RH', 'FR', 'BC', 'MOON', 'PATIO', 'PASSED', 'BACK HOST', 'CLOSE', 'OPEN'],
   rooms: ['Restaurant', 'Library', 'Rabbit Hole', 'Moon Rabbit', 'Patio', 'Full Buyout'],
@@ -41,6 +44,14 @@ export const DEFAULT_SETTINGS = {
 };
 
 const PUBLIC_USER = ({ passwordHash, ...u }) => u;
+function randomPassword(len = 10) {
+  const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = new Uint8Array(len);
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => chars[b % chars.length]).join('');
+}
+// What the client sees for a user: no password hash, and the role in its current form.
+const userView = (u) => ({ ...PUBLIC_USER(u), role: roleOf(u), eventsAccess: !!u.eventsAccess || u.role === 'events', onSchedule: !offSchedule(u) });
 
 export function createService(store, opts = {}) {
   const now = opts.now || (() => new Date());
@@ -49,19 +60,24 @@ export function createService(store, opts = {}) {
 
   // ---------- helpers ----------
   const settings = () => ({ ...DEFAULT_SETTINGS, ...(store.get('settings', 'settings') || {}) });
-  const isMgr = (a) => a && (a.role === 'admin' || a.role === 'manager');
-  const isEvents = (a) => isMgr(a) || a?.role === 'events';
+  const isMgr = (a) => canManageSchedule(a);
+  const isEvents = (a) => canManageEvents(a);
+  const isApprover = (a) => canApprove(a, settings());
   const needAuth = (a) => { if (!a) fail(401, 'Please sign in'); };
   const needMgr = (a) => { needAuth(a); if (!isMgr(a)) fail(403, 'Managers only'); };
+  const needApprover = (a) => { needAuth(a); if (!isApprover(a)) fail(403, 'Managers and supervisors only'); };
   const needEvents = (a) => { needAuth(a); if (!isEvents(a)) fail(403, 'Events team or managers only'); };
-  const needAdmin = (a) => { needAuth(a); if (a.role !== 'admin') fail(403, 'Admins only'); };
+  const needAdmin = (a) => { needAuth(a); if (!canChangeSettings(a)) fail(403, 'Admins only'); };
+  // Supervisors approve other people's requests, never their own.
+  const notOwnRequest = (a, ids) => { if (!isMgr(a) && ids.includes(a.id)) fail(403, 'A manager or another supervisor has to approve your own request'); };
   const users = () => store.list('users');
   const userById = (id) => store.get('users', id);
   const jobById = (id) => store.get('jobCodes', id);
   const nameOf = (id) => userById(id)?.name || 'Open shift';
   const jobName = (id) => jobById(id)?.name || 'Shift';
   const qualified = (user, jobCodeId) => !!user?.jobCodes?.some((j) => j.jobCodeId === jobCodeId);
-  const managers = () => users().filter((u) => u.active !== false && (u.role === 'admin' || u.role === 'manager'));
+  const managers = () => users().filter((u) => u.active !== false && canManageSchedule(u));
+  const approvers = () => users().filter((u) => u.active !== false && canApprove(u, settings()));
   const describe = (s) => `${jobName(s.jobCodeId)} ${prettyDate(s.date)} ${fmtTime(s.start)}${s.end ? '–' + fmtTime(s.end) : ''}`;
   const isFuture = (s) => {
     const [start] = shiftSpan(s);
@@ -253,13 +269,14 @@ export function createService(store, opts = {}) {
       const st = settings();
       const jobCodes = store.list('jobCodes').sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       const employees = users().map((u) => {
-        const pub = PUBLIC_USER(u);
+        const pub = userView(u);
         if (isMgr(actor) || u.id === actor.id) return pub;
-        return { id: u.id, name: u.name, role: u.role, active: u.active, color: u.color, jobCodes: u.jobCodes.map((j) => ({ jobCodeId: j.jobCodeId })) };
+        const basic = { id: u.id, name: u.name, role: pub.role, active: u.active, color: u.color, onSchedule: pub.onSchedule, jobCodes: (u.jobCodes || []).map((j) => ({ jobCodeId: j.jobCodeId })) };
+        return canSeeContacts(actor) ? { ...basic, email: u.email, phone: u.phone } : basic;
       }).sort((a, b) => a.name.localeCompare(b.name));
-      const me = PUBLIC_USER(userById(actor.id));
+      const me = userView(userById(actor.id));
       const unread = store.list('notifications', (n) => n.userId === actor.id && !n.read).length;
-      const pendingApprovals = isMgr(actor) ? store.list('requests', (r) => r.status === 'pending_approval').length
+      const pendingApprovals = isApprover(actor) ? store.list('requests', (r) => r.status === 'pending_approval').length
         + store.list('timeOff', (t) => t.status === 'pending').length : 0;
       const openOffers = store.list('requests', (r) => r.status === 'open' && (
         (r.type === 'swap' && r.targetUserId === actor.id) ||
@@ -271,7 +288,7 @@ export function createService(store, opts = {}) {
     'settings.update': (actor, patch) => {
       needAdmin(actor);
       const allowed = ['restaurantName', 'weekStartDow', 'closedDays', 'hours', 'openEndHours', 'overtimeHours', 'requireSwapApproval',
-        'requirePickupApproval', 'minSwapNoticeHours', 'tags', 'rooms', 'departments', 'dayparts', 'forecastWeeks', 'targetLaborPct', 'laborRules'];
+        'requirePickupApproval', 'supervisorsCanApprove', 'minSwapNoticeHours', 'tags', 'rooms', 'departments', 'dayparts', 'forecastWeeks', 'targetLaborPct', 'laborRules'];
       const clean = {};
       for (const k of allowed) if (k in patch) clean[k] = patch[k];
       const cur = store.get('settings', 'settings');
@@ -303,24 +320,50 @@ export function createService(store, opts = {}) {
       needMgr(actor);
       if (!a.name?.trim()) fail(400, 'Name is required');
       const email = (a.email || '').trim().toLowerCase();
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail(400, 'That email doesn’t look right');
       if (email && users().some((u) => u.email === email && u.id !== a.id)) fail(400, 'That email is already in use');
-      if (a.role === 'admin' && actor.role !== 'admin') fail(403, 'Only admins can create admins');
-      const doc = {
-        name: a.name.trim(), email, phone: (a.phone || '').trim(), role: a.role || 'employee',
-        jobCodes: (a.jobCodes || []).filter((j) => jobById(j.jobCodeId)).map((j) => ({ jobCodeId: j.jobCodeId, rate: j.rate === '' || j.rate == null ? null : Number(j.rate), primary: !!j.primary })),
-        active: a.active !== false, color: a.color || null, maxHours: Number(a.maxHours) || null,
-      };
-      if (a.id) {
-        const cur = userById(a.id);
-        if (!cur) fail(404, 'Employee not found');
-        if (cur.role === 'admin' && actor.role !== 'admin') fail(403, 'Only admins can edit admins');
-        const patch = { ...doc };
-        if (a.password) patch.passwordHash = hashPassword(a.password);
-        return PUBLIC_USER(store.update('users', a.id, patch));
+      const cur = a.id ? userById(a.id) : null;
+      if (a.id && !cur) fail(404, 'User not found');
+      const self = cur?.id === actor.id;
+      const role = a.role || (cur ? roleOf(cur) : 'employee');
+      if (!ROLE_IDS.includes(role)) fail(400, 'Unknown role');
+      const active = a.active !== false;
+
+      if (self) {
+        if (role !== roleOf(cur)) fail(400, 'You can’t change your own role. Ask another admin.');
+        if (!active) fail(400, 'You can’t deactivate yourself.');
+      } else {
+        if (cur && !canManageUser(actor, cur)) fail(403, `Only a higher role can edit ${/^[AEIOU]/.test(roleLabel(cur)) ? 'an' : 'a'} ${roleLabel(cur)}`);
+        const superAdminExists = users().some((u) => roleOf(u) === 'super_admin' && u.active !== false);
+        if (!assignableRoles(actor, { superAdminExists }).includes(role)) fail(403, `You can’t give someone the ${roleLabel(role)} role`);
       }
-      const tempPassword = a.password || Math.random().toString(36).slice(2, 10);
-      const u = store.insert('users', { id: uid('usr'), ...doc, availability: {}, passwordHash: hashPassword(tempPassword), createdAt: now().toISOString() });
-      return { ...PUBLIC_USER(u), tempPassword };
+      // Never leave the account without an active Super Admin.
+      if (cur && roleOf(cur) === 'super_admin' && (role !== 'super_admin' || !active)
+        && !users().some((u) => u.id !== cur.id && roleOf(u) === 'super_admin' && u.active !== false)) {
+        fail(400, 'There must always be at least one active Super Admin. Make someone else a Super Admin first.');
+      }
+      if (a.password && String(a.password).length < 6) fail(400, 'Password must be at least 6 characters');
+
+      const doc = {
+        name: a.name.trim(), email, phone: (a.phone || '').trim(), role,
+        eventsAccess: !!a.eventsAccess, onSchedule: a.onSchedule !== false,
+        jobCodes: (a.jobCodes || []).filter((j) => jobById(j.jobCodeId)).map((j) => ({ jobCodeId: j.jobCodeId, rate: j.rate === '' || j.rate == null ? null : Number(j.rate), primary: !!j.primary })),
+        active, color: a.color || null, maxHours: Number(a.maxHours) || null,
+      };
+      if (cur) {
+        const patch = { ...doc };
+        if (a.password) {
+          patch.passwordHash = hashPassword(a.password);
+          if (!self) patch.sessionVersion = (cur.sessionVersion || 0) + 1; // a reset signs them out everywhere
+        }
+        if (!active && cur.active !== false) patch.sessionVersion = (patch.sessionVersion ?? cur.sessionVersion ?? 0) + 1;
+        const u = store.update('users', cur.id, patch);
+        if (role !== roleOf(cur)) notify([cur.id], `Your role is now ${roleLabel(role)}.`, '#/my');
+        return userView(u);
+      }
+      const tempPassword = a.password || randomPassword();
+      const u = store.insert('users', { id: uid('usr'), ...doc, availability: {}, passwordHash: hashPassword(tempPassword), createdAt: now().toISOString(), createdBy: actor.id });
+      return { ...userView(u), tempPassword };
     },
     'employees.setAvailability': (actor, { userId, availability }) => {
       needAuth(actor);
@@ -443,7 +486,7 @@ export function createService(store, opts = {}) {
       const all = store.list('requests').sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
       const recentCut = addDays(today(), -30);
       const view = all.filter((r) => (r.createdAt || '').slice(0, 10) >= recentCut || ['open', 'pending_approval'].includes(r.status));
-      const approvals = isMgr(actor) ? view.filter((r) => r.status === 'pending_approval').map(requestView) : [];
+      const approvals = isApprover(actor) ? view.filter((r) => r.status === 'pending_approval').map(requestView) : [];
       const mine = view.filter((r) => r.requesterId === actor.id || r.pickupUserId === actor.id || r.targetUserId === actor.id).map(requestView);
       const offers = view.filter((r) => r.status === 'open' && r.requesterId !== actor.id && (
         (r.type === 'swap' && r.targetUserId === actor.id) ||
@@ -452,8 +495,8 @@ export function createService(store, opts = {}) {
         v.myConflicts = r.type === 'drop' ? conflictsFor(actor.id, v.shift) : conflictsFor(actor.id, v.shift, [r.targetShiftId]);
         return v;
       });
-      const history = isMgr(actor) ? view.filter((r) => !['open', 'pending_approval'].includes(r.status)).slice(0, 40).map(requestView) : [];
-      const openPending = isMgr(actor) ? view.filter((r) => r.status === 'open').map(requestView) : [];
+      const history = isApprover(actor) ? view.filter((r) => !['open', 'pending_approval'].includes(r.status)).slice(0, 40).map(requestView) : [];
+      const openPending = isApprover(actor) ? view.filter((r) => r.status === 'open').map(requestView) : [];
       return { approvals, mine, offers, history, openPending };
     },
     'swaps.create': (actor, { shiftId, type, targetShiftId, note }) => {
@@ -483,7 +526,7 @@ export function createService(store, opts = {}) {
           return { ok: true, autoApproved: true };
         }
         store.insert('requests', r);
-        notify(managers().map((m) => m.id), `${nameOf(actor.id)} wants to pick up ${describe(s)}`, '#/swaps');
+        notify(approvers().map((m) => m.id), `${nameOf(actor.id)} wants to pick up ${describe(s)}`, '#/swaps');
         return r;
       }
       if (s.userId !== actor.id) fail(403, 'You can only trade your own shifts');
@@ -533,7 +576,7 @@ export function createService(store, opts = {}) {
       }
       store.update('requests', r.id, { ...patch, status: 'pending_approval' });
       notify([r.requesterId], `${nameOf(actor.id)} accepted your ${r.type === 'swap' ? 'trade' : 'shift'} — waiting on manager approval.`, '#/swaps');
-      notify(managers().map((m) => m.id), `Approval needed: ${r.type === 'swap' ? 'trade' : 'giveaway'} of ${describe(s)} (${nameOf(r.requesterId)} → ${nameOf(actor.id)})`, '#/swaps');
+      notify(approvers().map((m) => m.id).filter((id) => ![r.requesterId, actor.id].includes(id) || isMgr(userById(id))), `Approval needed: ${r.type === 'swap' ? 'trade' : 'giveaway'} of ${describe(s)} (${nameOf(r.requesterId)} → ${nameOf(actor.id)})`, '#/swaps');
       return { ok: true };
     },
     'swaps.decline': (actor, { requestId }) => {
@@ -548,15 +591,16 @@ export function createService(store, opts = {}) {
       needAuth(actor);
       const r = store.get('requests', requestId);
       if (!r || !['open', 'pending_approval'].includes(r.status)) fail(409, 'Request is already closed');
-      if (r.requesterId !== actor.id && !isMgr(actor)) fail(403, 'Not your request');
+      if (r.requesterId !== actor.id && !isApprover(actor)) fail(403, 'Not your request');
       store.update('requests', r.id, { status: 'cancelled', resolvedAt: now().toISOString() });
       if (r.status === 'pending_approval') notify([r.pickupUserId, r.targetUserId].filter((id) => id !== r.requesterId), `${nameOf(r.requesterId)} cancelled the request.`, '#/swaps');
       return { ok: true };
     },
     'swaps.approve': (actor, { requestId, note }) => {
-      needMgr(actor);
+      needApprover(actor);
       const r = store.get('requests', requestId);
       if (!r || r.status !== 'pending_approval') fail(409, 'Request is not waiting on approval');
+      notOwnRequest(actor, [r.requesterId, r.pickupUserId, r.targetUserId]);
       const s = store.get('shifts', r.shiftId);
       store.transaction(() => {
         executeRequest(r);
@@ -567,9 +611,10 @@ export function createService(store, opts = {}) {
       return { ok: true };
     },
     'swaps.deny': (actor, { requestId, note }) => {
-      needMgr(actor);
+      needApprover(actor);
       const r = store.get('requests', requestId);
       if (!r || r.status !== 'pending_approval') fail(409, 'Request is not waiting on approval');
+      notOwnRequest(actor, [r.requesterId, r.pickupUserId, r.targetUserId]);
       store.update('requests', r.id, { status: 'denied', resolvedAt: now().toISOString(), resolvedBy: actor.id, resolution: note || '' });
       const s = store.get('shifts', r.shiftId);
       notify([r.requesterId, r.pickupUserId, r.targetUserId], `Denied: request for ${describe(s)}${note ? ` — ${note}` : ''}`, '#/swaps');
@@ -579,7 +624,7 @@ export function createService(store, opts = {}) {
     // ----- time off -----
     'timeOff.list': (actor) => {
       needAuth(actor);
-      const rows = store.list('timeOff', (t) => isMgr(actor) || t.userId === actor.id).sort((a, b) => b.startDate.localeCompare(a.startDate));
+      const rows = store.list('timeOff', (t) => isApprover(actor) || t.userId === actor.id).sort((a, b) => b.startDate.localeCompare(a.startDate));
       return rows.filter((t) => t.endDate >= addDays(today(), -60));
     },
     'timeOff.create': (actor, a) => {
@@ -589,13 +634,16 @@ export function createService(store, opts = {}) {
       const endDate = a.endDate && a.endDate >= a.startDate ? a.endDate : a.startDate;
       const status = isMgr(actor) && a.userId && a.userId !== actor.id ? 'approved' : 'pending';
       const t = store.insert('timeOff', { id: uid('tof'), userId, startDate: a.startDate, endDate, reason: (a.reason || '').trim(), status, createdAt: now().toISOString() });
-      if (status === 'pending') notify(managers().map((m) => m.id), `${nameOf(userId)} requested off ${prettyDate(t.startDate)}${endDate !== t.startDate ? ' – ' + prettyDate(endDate) : ''}`, '#/timeoff');
+      if (status === 'pending') notify(approvers().map((m) => m.id).filter((id) => id !== userId || isMgr(userById(id))), `${nameOf(userId)} requested off ${prettyDate(t.startDate)}${endDate !== t.startDate ? ' – ' + prettyDate(endDate) : ''}`, '#/timeoff');
       const clashes = store.list('shifts', (s) => s.userId === userId && s.date >= t.startDate && s.date <= endDate);
       return { ...t, clashes: clashes.length };
     },
     'timeOff.decide': (actor, { id, status, note }) => {
-      needMgr(actor);
+      needApprover(actor);
       if (!['approved', 'denied'].includes(status)) fail(400, 'Invalid status');
+      const cur = store.get('timeOff', id);
+      if (!cur) fail(404, 'Not found');
+      notOwnRequest(actor, [cur.userId]);
       const t = store.update('timeOff', id, { status, decidedBy: actor.id, decidedAt: now().toISOString(), note: note || '' });
       notify([t.userId], `Time off ${prettyDate(t.startDate)}${t.endDate !== t.startDate ? ' – ' + prettyDate(t.endDate) : ''} was ${status}.`, '#/timeoff');
       return t;
@@ -604,7 +652,7 @@ export function createService(store, opts = {}) {
       needAuth(actor);
       const t = store.get('timeOff', id);
       if (!t) fail(404, 'Not found');
-      if (t.userId !== actor.id && !isMgr(actor)) fail(403, 'Not yours');
+      if (t.userId !== actor.id && !isApprover(actor)) fail(403, 'Not yours');
       return store.update('timeOff', id, { status: 'cancelled' });
     },
 
@@ -735,7 +783,7 @@ export function createService(store, opts = {}) {
       const c = store.insert('eventComments', { id: uid('cmt'), eventId, userId: actor.id, text: text.trim(), at: now().toISOString() });
       const staff = store.list('shifts', (s) => s.eventId === eventId && s.userId && s.published).map((s) => s.userId);
       const others = store.list('eventComments', (x) => x.eventId === eventId).map((x) => x.userId);
-      const evTeam = users().filter((u) => u.role === 'events' || u.role === 'manager' || u.role === 'admin').map((u) => u.id);
+      const evTeam = users().filter((u) => u.active !== false && canManageEvents(u)).map((u) => u.id);
       notify([...new Set([...staff, ...others, ...evTeam, e.captainId])].filter((id) => id && id !== actor.id), `${nameOf(actor.id)} on ${e.name}: “${text.trim().slice(0, 80)}”`, `#/events/${eventId}`);
       return { ...c, userName: nameOf(actor.id) };
     },

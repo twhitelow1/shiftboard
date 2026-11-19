@@ -19,7 +19,7 @@ export default function ImportDialog({ ws: initialWs, onClose }) {
 
   const parsed = useMemo(() => parseSchedule(text), [text]);
   const activeJobs = jobCodes.filter((j) => !j.archived);
-  const people = employees.filter((e) => e.role !== 'events');
+  const people = employees.filter((e) => e.onSchedule !== false);
 
   const jobFor = (label) => jobMap[label] ?? matchJob(label, activeJobs)?.id ?? '';
   const empFor = (name) => empMap[name] ?? matchEmployee(name, people)?.id ?? '';
