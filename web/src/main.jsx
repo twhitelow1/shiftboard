@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { call, login, logout, IS_DEMO, demoPersonas, demoSwitch, demoCurrent, getConfig, forgotPassword, resetPassword } from './api.js';
 import { Ctx, Icon, Avatar, useToasts, Modal } from './ui.jsx';
+import { canManageSchedule, canChangeSettings, canManageEvents, canApprove, roleLabel } from '../../core/roles.js';
 import Schedule from './pages/Schedule.jsx';
 import CalendarPage from './pages/Calendar.jsx';
 import MyShifts from './pages/MyShifts.jsx';
@@ -162,8 +163,9 @@ function App() {
     if (!boot) return null;
     const jobs = Object.fromEntries(boot.jobCodes.map((j) => [j.id, j]));
     const people = Object.fromEntries(boot.employees.map((e) => [e.id, e]));
-    const isMgr = boot.me.role === 'admin' || boot.me.role === 'manager';
-    return { ...boot, jobs, people, isMgr, emailEnabled: config.email, emailFrom: config.emailFrom, isAdmin: boot.me.role === 'admin', isEvents: isMgr || boot.me.role === 'events', call, toast, refresh, version, go };
+    const isMgr = canManageSchedule(boot.me);
+    return { ...boot, jobs, people, isMgr, emailEnabled: config.email, emailFrom: config.emailFrom, isAdmin: canChangeSettings(boot.me), isEvents: canManageEvents(boot.me),
+      canApprove: canApprove(boot.me, boot.settings), call, toast, refresh, version, go };
   }, [boot, toast, refresh, version, config]);
 
   if (parts[0]?.startsWith('reset')) {
@@ -175,7 +177,7 @@ function App() {
 
   const route = parts[0] || (ctx.isMgr ? 'schedule' : 'my');
   const nav = NAV.filter((n) => (!n.mgr || ctx.isMgr) && (!n.admin || ctx.isAdmin));
-  const badges = { swaps: (ctx.isMgr ? ctx.pendingApprovals : 0) + ctx.openOffers, timeoff: 0 };
+  const badges = { swaps: (ctx.canApprove ? ctx.pendingApprovals : 0) + ctx.openOffers, timeoff: 0 };
   const current = NAV.find((n) => n.key === route) || NAV[0];
 
   const Page = {
@@ -204,7 +206,7 @@ function App() {
               <Avatar user={ctx.me} />
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ color: '#fff', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ctx.me.name}</div>
-                <div className="tiny" style={{ color: '#94a3b8', textTransform: 'capitalize' }}>{ctx.me.role}</div>
+                <div className="tiny" style={{ color: '#94a3b8' }}>{roleLabel(ctx.me)}</div>
               </div>
             </div>
             {!IS_DEMO && <button className="nav-item" onClick={signOut}><Icon name="logout" />Sign out</button>}
@@ -271,7 +273,7 @@ function DemoBar({ onSwitch }) {
       <span className="spacer" />
       <label className="row" style={{ gap: 6 }}><span className="desktop-only">View as</span><span className="mobile-only">Viewing as</span>
         <select value={cur} onChange={(e) => { demoSwitch(e.target.value); setCur(e.target.value); onSwitch(); location.hash = '#/'; }}>
-          {personas.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.role})</option>)}
+          {personas.map((p) => <option key={p.id} value={p.id}>{p.name} ({roleLabel(p.role)})</option>)}
         </select>
       </label>
     </div>

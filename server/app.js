@@ -8,7 +8,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { waitUntil } from '@vercel/functions';
-import { canChangeSettings, canManageUser } from '../core/roles.js';
+import { canChangeSettings, canManageUser, canManageSchedule } from '../core/roles.js';
 import { createMailer, deliverable, notificationEmail, inviteEmail, resetEmail, testEmail } from './email.js';
 import { uid } from '../core/store.js';
 import { createService, AppError } from '../core/service.js';
@@ -121,11 +121,21 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     if (messages.length) background(mailer.sendMany(messages, { idempotencyKey: `ntf-${notes[0].id}` }));
   }
 
-  /** Email someone a link to set their password. Returns true when the email was accepted. */
+  const stamp = (userIds, field) => userIds.length && db.run((s) => { for (const id of userIds) s.update('users', id, { [field]: new Date().toISOString() }); }, { write: true });
+
+  /**
+   * Email someone a link to set their password: a welcome invite (7 days) for someone who has
+   * never signed in, or a reset link (24 hours) for someone who has. True when Resend accepted it.
+   */
   async function sendInvite(user, invitedBy, req) {
     if (!mailer.enabled || !deliverable(user.email)) return false;
-    const token = await db.createToken(user.id, 'invite', 7 * 24 * 60);
-    await mailer.send(inviteEmail({ user, link: `${appUrl(req)}/#/reset?token=${token}`, restaurant: restaurantName(), invitedBy }));
+    const returning = !!user.lastLoginAt;
+    const token = await db.createToken(user.id, returning ? 'reset' : 'invite', returning ? 24 * 60 : 7 * 24 * 60);
+    const link = `${appUrl(req)}/#/reset?token=${token}`;
+    await mailer.send(returning
+      ? resetEmail({ user, link, restaurant: restaurantName(), hours: 24, sentBy: invitedBy })
+      : inviteEmail({ user, link, restaurant: restaurantName(), invitedBy }));
+    await stamp([user.id], 'invitedAt');
     return true;
   }
 
@@ -173,6 +183,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
       return res.status(401).json({ error: 'Wrong email or password' });
     }
     await db.clearAttempts(key);
+    await stamp([u.id], 'lastLoginAt');
     res.cookie(COOKIE, sign(u), cookieOpts).json({ ok: true });
   });
 
@@ -256,6 +267,32 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     }
   });
 
+  // Invite everyone the caller manages who hasn't signed in yet and has an email address.
+  app.post('/api/users/invite-all', async (req, res) => {
+    await db.sync();
+    const actor = userFromToken(db.store, req.cookies[COOKIE]);
+    if (!actor) return res.status(401).json({ error: 'Please sign in' });
+    if (!canManageSchedule(actor)) return res.status(403).json({ error: 'Managers only' });
+    if (!mailer.enabled) return res.status(400).json({ error: 'Email isn’t set up yet' });
+    const waiting = db.store.list('users', (u) => u.active !== false && u.id !== actor.id && !u.lastLoginAt && canManageUser(actor, u));
+    const ready = waiting.filter((u) => deliverable(u.email));
+    const restaurant = restaurantName();
+    const base = appUrl(req);
+    const messages = [];
+    for (const u of ready) {
+      const token = await db.createToken(u.id, 'invite', 7 * 24 * 60);
+      messages.push(inviteEmail({ user: u, link: `${base}/#/reset?token=${token}`, restaurant, invitedBy: actor.name }));
+    }
+    try {
+      await mailer.sendMany(messages, { idempotencyKey: `invite-all-${actor.id}-${Date.now()}` });
+    } catch (e) {
+      console.error('Invite-all failed:', e.message);
+      return res.status(502).json({ error: 'The emails could not be sent. Try again in a minute.' });
+    }
+    await stamp(ready.map((u) => u.id), 'invitedAt');
+    res.json({ result: { sent: ready.length, noEmail: waiting.length - ready.length } });
+  });
+
   app.post('/api/auth/forgot', async (req, res) => {
     const email = String(req.body?.email || '').trim().toLowerCase();
     if (!mailer.enabled) return res.status(400).json({ error: 'Password reset by email isn’t set up. Ask a manager to reset it.' });
@@ -286,7 +323,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
         return store.update('users', u.id, { passwordHash: hashPassword(password), sessionVersion: (u.sessionVersion || 0) + 1 });
       }, { write: true });
       await db.revokeTokens(user.id);
-      res.cookie(COOKIE, sign(user), cookieOpts).json({ ok: true });
+      await stamp([user.id], 'lastLoginAt');
+      res.cookie(COOKIE, sign(db.store.get('users', user.id) || user), cookieOpts).json({ ok: true });
     } catch (e) {
       sendError(res, e, 'reset');
     }

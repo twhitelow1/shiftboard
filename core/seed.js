@@ -162,15 +162,17 @@ export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password =
   const rand = mulberry(42);
   const jobId = {};
   JOBS.forEach(([key, name, short, department, color, rate, eventRole], i) => {
-    jobId[key] = store.insert('jobCodes', { id: `job_${key.toLowerCase()}`, name, short, department, color, defaultRate: rate, order: i, eventRole, archived: false }).id;
+    const defaultRole = ['MGR', 'CHEF'].includes(key) ? 'manager' : key === 'BC' ? 'supervisor' : 'employee';
+    jobId[key] = store.insert('jobCodes', { id: `job_${key.toLowerCase()}`, name, short, department, color, defaultRate: rate, order: i, eventRole, archived: false, defaultRole }).id;
   });
 
   const userId = {};
   const hash = hashPassword(password);
-  for (const [name, role, jobs] of PEOPLE) {
+  for (const [i, [name, listedRole, jobs]] of PEOPLE.entries()) {
     const slug = name.toLowerCase().replace(/[^a-z]/g, '');
+    const role = name === 'Courtney' ? 'supervisor' : listedRole; // a shift lead, to show the Supervisor role in the demo
     userId[name] = store.insert('users', {
-      id: `usr_${slug}`, name, role, email: `${slug}@demo.shiftboard`, phone: '',
+      id: `usr_${slug}`, name, role, order: i + 1, email: `${slug}@demo.shiftboard`, phone: '',
       jobCodes: jobs.map((k, i) => ({ jobCodeId: jobId[k], rate: null, primary: i === 0 })),
       active: true, availability: {}, passwordHash: hash, createdAt: new Date().toISOString(),
     }).id;

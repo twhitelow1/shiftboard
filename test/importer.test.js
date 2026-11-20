@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCell, parseSchedule, matchJob, matchEmployee, suggestJob, personName, titleCase } from '../core/importer.js';
+import { parseCell, parseSchedule, matchJob, matchEmployee, suggestJob, suggestRole, personName, titleCase } from '../core/importer.js';
 
 test('parseCell handles restaurant shorthand', () => {
   assert.deepEqual(parseCell('4PM'), { start: '16:00', end: null, tag: '' });
@@ -75,4 +75,9 @@ test('new job code names and people names from a schedule', () => {
   assert.equal(matchEmployee('MARYANN', people)?.name, 'Mary Ann');
   assert.equal(matchEmployee('LUCAS', people)?.name, 'Chef Lucas');
   assert.equal(matchEmployee('ALEX S', people), null);
+});
+
+test('role guesses for new sections', () => {
+  assert.deepEqual(['M.O.D.', 'RESTAURANT · Servers', 'EVENTS · Banquet Captain', 'BAR · Bar Lead', 'Manager'].map(suggestRole),
+    ['manager', 'employee', 'supervisor', 'supervisor', 'manager']);
 });

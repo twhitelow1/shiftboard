@@ -375,3 +375,33 @@ test('without Resend configured, email features stay off', async () => {
     assert.ok(r.body.result.tempPassword);
   } finally { await A.close(); await close(); }
 });
+
+test('sign-ins are tracked; invite everyone reaches only people who never signed in; returning people get a reset link', async () => {
+  const { dbs: [db], close } = await instances(1);
+  const A = await emailApp(db);
+  try {
+    await setEmail(db, 'usr_styves', 'styves@rabbits.co');
+    await setEmail(db, 'usr_victor', 'victor@rabbits.co');
+    await setEmail(db, 'usr_manny', 'manny@rabbits.co');
+    await client(A.base).login('victor@rabbits.co'); // Victor has signed in before
+    assert.ok(db.store.get('users', 'usr_victor').lastLoginAt);
+
+    const mgr = await client(A.base).login('moe@demo.shiftboard');
+    const before = A.resend.emails().length;
+    const all = await mgr.post('/api/users/invite-all');
+    assert.equal(all.status, 200, JSON.stringify(all.body));
+    const sent = A.resend.emails().slice(before).map((m) => m.to[0]).sort();
+    assert.deepEqual(sent, ['manny@rabbits.co', 'styves@rabbits.co'], 'not Victor (signed in), not demo addresses');
+    assert.ok(all.body.result.noEmail > 10, 'people without a real email are counted');
+    assert.ok(db.store.get('users', 'usr_styves').invitedAt);
+
+    // A returning person gets a password reset email instead of a welcome.
+    const r = await mgr.post('/api/users/usr_victor/invite');
+    assert.equal(r.status, 200);
+    assert.match(A.resend.emails().at(-1).subject, /Reset your/);
+    assert.match(A.resend.emails().at(-1).text, /Moe sent you a link .* 24 hours/);
+
+    const styves = await client(A.base).login('styves@rabbits.co');
+    assert.equal((await styves.post('/api/users/invite-all')).status, 403);
+  } finally { await A.close(); await close(); }
+});

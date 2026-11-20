@@ -243,6 +243,8 @@ table.sched { border-collapse: separate; border-spacing: 0; width: 100%; min-wid
 .sched .evt-pill { display: block; margin-top: 4px; font-size: 11px; font-weight: 600; background: var(--warn-soft); color: var(--warn); padding: 2px 6px; border-radius: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .sched tr.section td { background: var(--surface-3); font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; padding: 7px 10px; position: sticky; left: 0; }
 .sched tr.section td .row { position: sticky; left: 10px; width: max-content; }
+.sched tr.section.area td { background: var(--text); color: var(--surface, #fff); font-size: 12.5px; letter-spacing: .08em; }
+@media print { .sched tr.section.area td { background: #111 !important; color: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 .sched td.cell { padding: 4px; vertical-align: top; height: 44px; position: relative; }
 .sched td.cell.today { background: color-mix(in srgb, var(--brand-soft) 45%, transparent); }
 .sched td.cell.closed { background: repeating-linear-gradient(135deg, var(--surface-2), var(--surface-2) 6px, var(--surface-3) 6px, var(--surface-3) 12px); }

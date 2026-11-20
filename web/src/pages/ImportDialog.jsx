@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useApp, Modal, Field, Icon, useAction } from '../ui.jsx';
-import { parseSchedule, dateForDow, matchEmployee, matchJob, suggestJob, notesToEvents, personName, titleCase } from '../../../core/importer.js';
+import { parseSchedule, dateForDow, matchEmployee, matchJob, suggestJob, suggestRole, notesToEvents, personName, titleCase } from '../../../core/importer.js';
+import { ROLES, rankOf, roleLabel, assignableRoles } from '../../../core/roles.js';
 import { addDays, weekStart, prettyDate } from '../../../core/time.js';
 import { weekLabel } from './Schedule.jsx';
 
@@ -10,7 +11,7 @@ ALEX D\tOFF\t3:30PM BC\tOFF\t4PM\t4:30PM*\t3:30PM BC\tOFF
 STYVES\tOFF\t4PM LIB\t4PM\tOFF\t4PM\t4PM\tOFF`;
 
 export default function ImportDialog({ ws: initialWs, onClose }) {
-  const { employees, jobCodes, settings, call, toast } = useApp();
+  const { employees, jobCodes, settings, call, toast, me } = useApp();
   const [text, setText] = useState('');
   const [fileName, setFileName] = useState('');
   const [reading, setReading] = useState(false);
@@ -18,6 +19,7 @@ export default function ImportDialog({ ws: initialWs, onClose }) {
   const [jobMap, setJobMap] = useState({});     // section label -> job id | NEW | ''
   const [jobNames, setJobNames] = useState({}); // section label -> name for a new job code
   const [empMap, setEmpMap] = useState({});     // schedule name -> user id | NEW | ''
+  const [roleMap, setRoleMap] = useState({});   // section label -> role for new people
   const [opts, setOpts] = useState({ timeOff: true, dupes: true, events: true, covers: true });
   const [skipEvent, setSkipEvent] = useState({});
   const [run, busy] = useAction();
@@ -39,6 +41,13 @@ export default function ImportDialog({ ws: initialWs, onClose }) {
   const jobFor = (label) => jobMap[label] ?? (matchJob(label, activeJobs)?.id || NEW);
   const newJobName = (label) => jobNames[label] ?? suggestJob(label, labels).name;
   const empFor = (name) => empMap[name] ?? (matchEmployee(name, people)?.id || NEW);
+  const superAdminExists = employees.some((e) => e.role === 'super_admin' && e.active !== false);
+  const roleChoices = assignableRoles(me, { superAdminExists }).filter((r) => ['manager', 'supervisor', 'employee'].includes(r));
+  const roleFor = (label) => {
+    const v = jobFor(label);
+    const r = roleMap[label] ?? (v && v !== NEW ? jobCodes.find((j) => j.id === v)?.defaultRole : suggestRole(label)) ?? 'employee';
+    return roleChoices.includes(r) ? r : 'employee';
+  };
   const found = useMemo(() => notesToEvents(parsed.notes, settings.rooms || []), [parsed, settings.rooms]);
   const dateOf = (dow) => dateForDow(ws, settings.weekStartDow, dow);
 
@@ -48,15 +57,16 @@ export default function ImportDialog({ ws: initialWs, onClose }) {
       const v = jobFor(label);
       if (v !== NEW) return v;
       const key = `new:${label}`;
-      newJobs.set(key, { key, name: newJobName(label).trim(), department: suggestJob(label, labels).department });
+      newJobs.set(key, { key, name: newJobName(label).trim(), department: suggestJob(label, labels).department, defaultRole: roleFor(label) });
       return key;
     };
-    const personRef = (name, job) => {
+    const personRef = (name, job, role) => {
       const v = empFor(name);
       if (v !== NEW) return v;
       const key = `new:${name}`;
-      const p = newPeople.get(key) || { key, name: personName(name), jobs: [] };
+      const p = newPeople.get(key) || { key, name: personName(name), jobs: [], role: 'employee' };
       if (job && !p.jobs.includes(job)) p.jobs.push(job);
+      if (role && rankOf({ role }) > rankOf({ role: p.role })) p.role = role; // in two sections → the higher role
       newPeople.set(key, p);
       return key;
     };
@@ -65,7 +75,7 @@ export default function ImportDialog({ ws: initialWs, onClose }) {
         const job = jobFor(sec.label) ? jobRef(sec.label) : '';
         for (const row of sec.rows) {
           if (!job) { if (row.cells.length) skipped.add(sec.label); continue; }
-          const user = empFor(row.name) ? personRef(row.name, job) : '';
+          const user = empFor(row.name) ? personRef(row.name, job, roleFor(sec.label)) : '';
           for (const c of row.cells) {
             if (!user) { skipped.add(row.name); continue; }
             const date = dateOf(c.dow);
@@ -91,7 +101,7 @@ export default function ImportDialog({ ws: initialWs, onClose }) {
     for (const e of events) guests[e.date] = (guests[e.date] || 0) + e.guestCount;
     const covers = opts.covers ? parsed.covers.map((c) => ({ date: dateOf(c.dow), covers: Math.max(0, c.covers - (guests[dateOf(c.dow)] || 0)) })) : [];
     return { shifts, tos, dupes, events, covers, newJobs: [...newJobs.values()], newPeople: [...newPeople.values()], skipped: [...skipped] };
-  }, [parsed, jobMap, jobNames, empMap, ws, opts, skipEvent, found, employees, jobCodes]);
+  }, [parsed, jobMap, jobNames, empMap, roleMap, ws, opts, skipEvent, found, employees, jobCodes]);
 
   const badJobName = plan.newJobs.some((j) => !j.name);
 
@@ -123,7 +133,7 @@ export default function ImportDialog({ ws: initialWs, onClose }) {
     }), (r) => [
       `Imported ${r.shifts} draft shifts`,
       r.employees && `${r.employees} new people`, r.jobCodes && `${r.jobCodes} job codes`, r.events && `${r.events} events`,
-      r.timeOff && `${r.timeOff} requests off`, r.duplicates && `${r.duplicates} duplicates skipped`,
+      r.timeOff && `${r.timeOff} requests off`, r.duplicates && `${r.duplicates} duplicates skipped`, r.rolesLowered && `${r.rolesLowered} added as Employee (your role can't give that role)`,
     ].filter(Boolean).join(' · '));
     if (r) onClose(true);
   };
@@ -184,8 +194,17 @@ export default function ImportDialog({ ws: initialWs, onClose }) {
                       {activeJobs.map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}
                     </select>
                   </div>
-                  {v === NEW && <input className="input sm" style={{ alignSelf: 'flex-end', width: 190 }} value={newJobName(l)} placeholder="Job code name"
-                    onChange={(e) => setJobNames((m) => ({ ...m, [l]: e.target.value }))} />}
+                  {v !== '' && (
+                    <div className="row" style={{ justifyContent: 'flex-end' }}>
+                      {v === NEW && <input className="input sm" style={{ width: 190 }} value={newJobName(l)} placeholder="Job code name"
+                        onChange={(e) => setJobNames((m) => ({ ...m, [l]: e.target.value }))} />}
+                      {parsed.mode === 'grid' && (
+                        <select className="input sm" style={{ width: 130 }} title="Role for new people from this section" value={roleFor(l)} onChange={(e) => setRoleMap((m) => ({ ...m, [l]: e.target.value }))}>
+                          {ROLES.filter((r) => roleChoices.includes(r.id)).map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+                        </select>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -207,7 +226,7 @@ export default function ImportDialog({ ws: initialWs, onClose }) {
                 );
               })}
             </div>
-            {plan.newPeople.length > 0 && <div className="help">New people are added as Employees with their job codes. Add their email in Team to send a sign-in link.</div>}
+            {plan.newPeople.length > 0 && <div className="help">New people get their section's role ({[...new Set(plan.newPeople.map((p) => roleLabel(p.role)))].join(', ')}) and job codes. People already in ShiftBoard keep their role. Add emails in Team, then send sign-in links.</div>}
           </div>
         </div>
       )}

@@ -45,6 +45,7 @@ export const DEFAULT_SETTINGS = {
 };
 
 const PUBLIC_USER = ({ passwordHash, ...u }) => u;
+const JOB_ROLES = ['manager', 'supervisor', 'employee']; // roles a job code can suggest
 function randomPassword(len = 10) {
   const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const bytes = new Uint8Array(len);
@@ -52,7 +53,7 @@ function randomPassword(len = 10) {
   return Array.from(bytes, (b) => chars[b % chars.length]).join('');
 }
 // What the client sees for a user: no password hash, and the role in its current form.
-const userView = (u) => ({ ...PUBLIC_USER(u), role: roleOf(u), eventsAccess: !!u.eventsAccess || u.role === 'events', onSchedule: !offSchedule(u) });
+const userView = (u) => ({ ...PUBLIC_USER(u), role: roleOf(u), eventsAccess: !!u.eventsAccess || u.role === 'events', onSchedule: !offSchedule(u), hasPassword: !!u.passwordHash });
 
 export function createService(store, opts = {}) {
   const now = opts.now || (() => new Date());
@@ -272,7 +273,7 @@ export function createService(store, opts = {}) {
       const employees = users().map((u) => {
         const pub = userView(u);
         if (isMgr(actor) || u.id === actor.id) return pub;
-        const basic = { id: u.id, name: u.name, role: pub.role, active: u.active, color: u.color, onSchedule: pub.onSchedule, jobCodes: (u.jobCodes || []).map((j) => ({ jobCodeId: j.jobCodeId })) };
+        const basic = { id: u.id, name: u.name, role: pub.role, active: u.active, color: u.color, onSchedule: pub.onSchedule, order: u.order, jobCodes: (u.jobCodes || []).map((j) => ({ jobCodeId: j.jobCodeId })) };
         return canSeeContacts(actor) ? { ...basic, email: u.email, phone: u.phone } : basic;
       }).sort((a, b) => a.name.localeCompare(b.name));
       const me = userView(userById(actor.id));
@@ -306,7 +307,9 @@ export function createService(store, opts = {}) {
     'jobCodes.save': (actor, a) => {
       needMgr(actor);
       if (!a.name?.trim()) fail(400, 'Name is required');
-      const doc = { name: a.name.trim(), short: (a.short || a.name.slice(0, 4)).toUpperCase().trim(), department: a.department || 'Restaurant', color: a.color || '#6366f1', defaultRate: Number(a.defaultRate) || 0, order: Number(a.order) || 0, eventRole: !!a.eventRole, archived: !!a.archived };
+      const doc = { name: a.name.trim(), short: (a.short || a.name.slice(0, 4)).toUpperCase().trim(), department: a.department || 'Restaurant', color: a.color || '#6366f1', defaultRate: Number(a.defaultRate) || 0, order: Number(a.order) || 0, eventRole: !!a.eventRole, archived: !!a.archived,
+        // The role people in this job usually get (used when importing a schedule). Data, not code.
+        defaultRole: JOB_ROLES.includes(a.defaultRole) ? a.defaultRole : 'employee' };
       return a.id ? store.update('jobCodes', a.id, doc) : store.insert('jobCodes', { id: uid('job'), ...doc });
     },
     'jobCodes.delete': (actor, { id }) => {
@@ -371,6 +374,15 @@ export function createService(store, opts = {}) {
       const id = userId || actor.id;
       if (id !== actor.id && !isMgr(actor)) fail(403, 'You can only edit your own availability');
       return PUBLIC_USER(store.update('users', id, { availability }));
+    },
+    'employees.resetPassword': (actor, { userId }) => {
+      needMgr(actor);
+      const u = userById(userId);
+      if (!u) fail(404, 'User not found');
+      if (u.id !== actor.id && !canManageUser(actor, u)) fail(403, `Only a higher role can reset ${/^[AEIOU]/.test(roleLabel(u)) ? 'an' : 'a'} ${roleLabel(u)}'s password`);
+      const tempPassword = randomPassword();
+      store.update('users', u.id, { passwordHash: hashPassword(tempPassword), sessionVersion: (u.sessionVersion || 0) + 1, passwordResetAt: now().toISOString(), passwordResetBy: actor.id });
+      return { tempPassword };
     },
     'account.preferences': (actor, { emailNotifications }) => {
       needAuth(actor);
@@ -444,7 +456,7 @@ export function createService(store, opts = {}) {
       needMgr(actor);
       const PALETTE = ['#2563eb', '#16a34a', '#d97706', '#9333ea', '#dc2626', '#0891b2', '#65a30d', '#e11d48', '#475569', '#ca8a04', '#0f766e', '#a855f7', '#7c2d12', '#db2777'];
       const at = now().toISOString();
-      const out = { jobCodes: 0, employees: 0, shifts: 0, duplicates: 0, invalid: 0, jobsAdded: 0, timeOff: 0, events: 0, covers: 0 };
+      const out = { jobCodes: 0, employees: 0, rolesLowered: 0, shifts: 0, duplicates: 0, invalid: 0, jobsAdded: 0, timeOff: 0, events: 0, covers: 0 };
       const jobRef = {}, userRef = {};
       let order = store.list('jobCodes').reduce((m, j) => Math.max(m, Number(j.order) || 0), 0);
       for (const j of a.newJobCodes || []) {
@@ -456,16 +468,20 @@ export function createService(store, opts = {}) {
         const short = (words.length > 1 ? words.map((w) => w[0]).join('') : name).slice(0, 4).toUpperCase();
         order += 1;
         jobRef[j.key] = store.insert('jobCodes', { id: uid('job'), name, short, department: String(j.department || 'Restaurant').trim(), color: PALETTE[order % PALETTE.length],
-          defaultRate: Number(j.defaultRate) || 0, order, eventRole: false, archived: false }).id;
+          defaultRate: Number(j.defaultRate) || 0, order, eventRole: false, archived: false, defaultRole: JOB_ROLES.includes(j.defaultRole) ? j.defaultRole : 'employee' }).id;
         out.jobCodes++;
       }
       const job = (ref) => jobRef[ref] || (ref && jobById(ref) ? ref : null);
+      const canGive = assignableRoles(actor, { superAdminExists: users().some((u) => roleOf(u) === 'super_admin' && u.active !== false) });
+      let rowOrder = users().reduce((m, u) => Math.max(m, Number(u.order) || 0), 0);
       for (const p of a.newEmployees || []) {
         const name = String(p.name || '').trim();
         if (!name || userRef[p.key]) continue;
         const ids = [...new Set((p.jobs || []).map(job).filter(Boolean))];
+        let role = ROLE_IDS.includes(p.role) ? p.role : 'employee';
+        if (!canGive.includes(role)) { role = 'employee'; out.rolesLowered++; }
         // No password yet: a manager adds their email and sends a sign-in link from Team.
-        userRef[p.key] = store.insert('users', { id: uid('usr'), name, email: '', phone: '', role: 'employee', active: true, eventsAccess: false, onSchedule: true,
+        userRef[p.key] = store.insert('users', { id: uid('usr'), name, email: '', phone: '', role, active: true, eventsAccess: false, onSchedule: true, order: ++rowOrder,
           jobCodes: ids.map((id, i) => ({ jobCodeId: id, rate: null, primary: i === 0 })), availability: {}, passwordHash: null, createdAt: at, createdBy: actor.id }).id;
         out.employees++;
       }
@@ -521,18 +537,21 @@ export function createService(store, opts = {}) {
     'shifts.copyWeek': (actor, { fromWeek, toWeek, replace }) => {
       needMgr(actor);
       const offset = daysBetween(fromWeek, toWeek);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fromWeek || '') || !/^\d{4}-\d{2}-\d{2}$/.test(toWeek || '')) fail(400, 'Pick the weeks to copy');
+      if (fromWeek === toWeek) fail(400, 'Pick a different week to copy into');
       const src = store.list('shifts', (s) => s.date >= fromWeek && s.date <= addDays(fromWeek, 6) && !s.eventId);
-      let removed = 0;
+      let removed = 0, skipped = 0;
       store.transaction(() => {
         if (replace) {
           for (const s of store.list('shifts', (s) => s.date >= toWeek && s.date <= addDays(toWeek, 6) && !s.published && !s.eventId)) { store.remove('shifts', s.id); removed++; }
         }
         for (const s of src) {
-          const { id, published, createdAt, ...rest } = s;
+          if (s.userId && userById(s.userId)?.active === false) { skipped++; continue; }
+          const { id, published, createdAt, publishedAt, ...rest } = s;
           store.insert('shifts', { ...rest, id: uid('shf'), date: addDays(s.date, offset), published: false, createdAt: now().toISOString(), createdBy: actor.id });
         }
       });
-      return { copied: src.length, removed };
+      return { copied: src.length - skipped, removed, skipped };
     },
     'shifts.clearDrafts': (actor, { weekStart: ws }) => {
       needMgr(actor);

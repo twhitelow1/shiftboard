@@ -7,9 +7,8 @@
 const API = 'https://api.resend.com';
 const BATCH_MAX = 100; // Resend's batch limit
 
-// Addresses that can't receive mail: demo data, placeholders, reserved test domains.
-const UNDELIVERABLE = /@(demo\.shiftboard|example\.(com|org|net))$|\.(test|invalid|example|localhost)$/i;
-export const deliverable = (email) => !!email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && !UNDELIVERABLE.test(email);
+import { deliverable } from '../core/email-address.js';
+export { deliverable };
 
 export function createMailer(env = process.env, { fetchImpl = globalThis.fetch } = {}) {
   const key = env.RESEND_API_KEY || '';
@@ -104,11 +103,12 @@ export function inviteEmail({ user, link, restaurant, invitedBy }) {
   return { to: user.email, subject: `Set up your ${restaurant} schedule account`, html, text };
 }
 
-export function resetEmail({ user, link, restaurant }) {
+export function resetEmail({ user, link, restaurant, hours = 1, sentBy }) {
   const { html, text } = layout({
     restaurant,
     heading: 'Reset your password',
-    paragraphs: [`Hi ${firstName(user.name)},`, 'Someone asked to reset the password for your ShiftBoard account. This link works for 1 hour and can be used once.'],
+    paragraphs: [`Hi ${firstName(user.name)},`,
+      `${sentBy ? `${sentBy} sent you a link to reset your ShiftBoard password.` : 'Someone asked to reset the password for your ShiftBoard account.'} This link works for ${hours === 1 ? '1 hour' : `${hours} hours`} and can be used once.`],
     button: { label: 'Choose a new password', url: link },
     footer: "If you didn't ask for this, ignore this email. Your password stays the same.",
   });

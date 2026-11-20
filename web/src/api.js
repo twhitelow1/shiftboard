@@ -89,3 +89,4 @@ export const forgotPassword = (email) => post('/api/auth/forgot', { email });
 export const resetPassword = (token, password) => post('/api/auth/reset', { token, password });
 export const sendTestEmail = () => post('/api/email/test');
 export const sendSignInLink = (userId) => post(`/api/users/${encodeURIComponent(userId)}/invite`);
+export const inviteAll = () => post('/api/users/invite-all');

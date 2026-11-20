@@ -227,6 +227,17 @@ export function suggestJob(label, allLabels = []) {
   return { name: shared && banner ? `${titleCase(banner)} ${base}` : base, department };
 }
 
+/**
+ * A starting guess for the role of people in a schedule section, used only for job codes that
+ * don't exist yet (existing job codes carry their own default role). Always editable in the import.
+ */
+export function suggestRole(label) {
+  const t = String(label || '');
+  if (/\bm\.?\s*o\.?\s*d\.?\b|manager|\bgm\b|director|chef\b/i.test(t)) return 'manager';
+  if (/captain|\blead\b|supervisor|shift lead/i.test(t)) return 'supervisor';
+  return 'employee';
+}
+
 const GUESTS = /(\d{1,4})\s*(?:ppl|people|guests|pax|persons?)\b/i;
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /**
