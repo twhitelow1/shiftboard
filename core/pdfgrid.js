@@ -88,3 +88,57 @@ export function itemsToGridText(items) {
   }
   return out.map((cells) => cells.join('\t').replace(/\t+$/, '')).join('\n');
 }
+
+/**
+ * Filled rectangles (cell backgrounds) from a pdf.js operator list, in the same top-down page
+ * coordinates as the text items. `ops` is pdf.js's OPS table. Spreadsheet exports draw each cell
+ * fill as its own rectangle with no transforms, which is all this needs to handle.
+ */
+export function fillRects(fnArray, argsArray, ops, pageHeight) {
+  const out = [];
+  const stack = [];
+  let color = '#000000';
+  for (let i = 0; i < fnArray.length; i++) {
+    const fn = fnArray[i], args = argsArray[i];
+    if (fn === ops.save) stack.push(color);
+    else if (fn === ops.restore) color = stack.length ? stack.pop() : color;
+    else if (fn === ops.setFillRGBColor) color = hexColor(args);
+    else if (fn === ops.setFillGray) color = hexColor([args?.[0] * 255, args?.[0] * 255, args?.[0] * 255]);
+    else if (fn === ops.constructPath) {
+      const [paint, , box] = args || [];
+      if ((paint === ops.fill || paint === ops.eoFill) && box && Number.isFinite(box[0])) {
+        out.push({ x0: box[0], x1: box[2], top: pageHeight - box[3], bottom: pageHeight - box[1], color });
+      }
+    }
+  }
+  return out;
+}
+
+function hexColor(args) {
+  if (typeof args?.[0] === 'string') return args[0].toLowerCase();
+  const [r, g, b] = (args || []).map((v) => Math.max(0, Math.min(255, Math.round(Number(v) || 0))));
+  return `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+const PLAIN = new Set(['#ffffff', '#ffff00']); // white cells and the yellow OFF cells
+/**
+ * The background color behind each colored label (banners like RABBIT HOLE, section labels like
+ * Servers): { 'RABBIT HOLE': '#a9d08e', … }, keyed by the upper-case text. White and the yellow OFF
+ * fill are left out. The smallest rectangle under a label's center wins.
+ */
+export function labelColors(items, rects) {
+  const out = {};
+  for (const it of items) {
+    const text = String(it.str || '').replace(/\s+/g, ' ').trim().toUpperCase();
+    if (!text || out[text]) continue;
+    const cx = it.x + (it.w || 0) / 2, cy = it.y + (it.h || 0) / 2;
+    let best = null;
+    for (const r of rects) {
+      if (cx < r.x0 - 0.5 || cx > r.x1 + 0.5 || cy < r.top - 0.5 || cy > r.bottom + 0.5) continue;
+      const area = (r.x1 - r.x0) * (r.bottom - r.top);
+      if (!best || area <= best.area) best = { area, color: r.color };
+    }
+    if (best && !PLAIN.has(best.color)) out[text] = best.color;
+  }
+  return out;
+}

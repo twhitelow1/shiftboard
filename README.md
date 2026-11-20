@@ -8,7 +8,8 @@ Built by DubLow Digital.
 
 | | |
 |---|---|
-| **Weekly schedule** | Grid grouped by job code (the same layout as the house Excel sheet) or by employee. Supports "until close" shifts (`4p–CL`), section tags (LIB, RH, BC, PASSED…), area banners and the sheet's row order, draft vs. published, copy this week forward to build the next one, print, and CSV export. |
+| **Sheet view** | The week drawn just like the house schedule PDF: colored area banners (colors read from the PDF on import, editable in Settings), a header row per section with the day names, names in capitals, yellow **OFF** cells, the dates, day notes (CLOSED, MEETING…) and events with guest counts, Projected Covers, and a Notes line. Names keep the sheet's order and labels. Managers click any cell to add or edit a shift. **Print** gives one portrait page like the PDF. On phones it scrolls sideways with names pinned. |
+| **Weekly schedule** | Also as a grid grouped like the house Excel sheet: an **area** banner (Restaurant, Rabbit Hole, Moon Rabbit, Back Host Stand…), then each **position** worked there, or grouped by employee. A position and an area are separate: one Bartender can work the Restaurant bar one night and the Moon Rabbit the next. Supports "until close" shifts (`4p–CL`), section tags (LIB, RH, BC, PASSED…), the sheet's row order, draft vs. published, copy this week forward to build the next one, print, and CSV export. |
 | **Mobile first** | Phones get a day-by-day view with a bottom nav. Staff can check their schedule and the whole team's schedule, and trade shifts, from their phone. |
 | **Multiple job codes** | Each employee can hold any number of job codes, each with its own pay rate. Server + Banquet Captain, Food Runner + Barback, etc. |
 | **Calendar** | Month view for your own shifts or the whole team, plus a day timeline with bars by position. |
@@ -16,7 +17,7 @@ Built by DubLow Digital.
 | **Time off & availability** | Requests go to managers for approval. Approved time off shows as **REQUEST OFF** on the grid, and any shift that conflicts with it is flagged. |
 | **Forecasting & labor** | Forecasts covers and sales from your daily history (weighted same-weekday average with a trend), adds event guests from BEOs, and shows labor $ and labor % against your target. Labor rules like "1 server per 22 dinner covers" produce a scheduled-vs-recommended staffing grid. A one-click button fills the gaps with open shifts. |
 | **Events & BEOs** | A full Banquet Event Order: guests, room, service style, banquet captain, menu, dietary notes, beverage package, **special drinks** with recipes, timeline, setup, and **staffing needs** (how many servers, runners, bartenders, BCs). The app suggests staffing from guest count using standard banquet ratios, turns staffing lines into open shifts staff can claim, tracks fill status (e.g. 13/14), and includes a team comment thread. Staff on an event are notified whenever the BEO changes. |
-| **Import your schedule** | Upload the PDF of your weekly schedule, or paste it straight from Excel. Sections, banners (RABBIT HOLE, MOON RABBIT…), names, the dates, and cells like `4PM`, `3:30PM BC`, `1-9PM*`, and `REQUEST OFF` are read automatically. Event notes with a guest count (`CHANG/SMITH WEDDING RECEPTION FULL BUYOUT 160PPL`) become events, and projected covers feed the forecast. People and job codes that don't exist yet can be created during the import, so a new restaurant can be set up from one PDF. CSV works too. |
+| **Import your schedule** | Upload the PDF of your weekly schedule, or paste it straight from Excel. Banners (RESTAURANT, RABBIT HOLE…) become areas and section labels (Servers, Bar…) become positions; a section with no label gets its position from the same people's other sections. Names, the dates, and cells like `4PM`, `3:30PM BC`, `1-9PM*`, and `REQUEST OFF` are read automatically. Re-importing a week updates the shifts already there instead of doubling them, and **Merge** (on a job code) folds duplicate job codes together. Event notes with a guest count (`CHANG/SMITH WEDDING RECEPTION FULL BUYOUT 160PPL`) become events, and projected covers feed the forecast. People and job codes that don't exist yet can be created during the import, so a new restaurant can be set up from one PDF. CSV works too. |
 | **Calendar sync** | Each employee gets a private iCal link for Google or Apple Calendar. |
 | **Notifications** | In-app notifications for schedule posted, shift changes, swap requests and approvals, open shifts, BEO updates, and comments. |
 | **People & sign-in** | Team & Job Codes shows everyone's role and sign-in status (Active, Invited, Not invited, No email). Send an invite link to one person or to everyone who hasn't signed in, email a password reset link, or set a temporary password for someone without email. |
@@ -123,7 +124,8 @@ core/       Business logic shared by server + demo (pure JS, no I/O)
   service.js   every API method, with its permission checks
   forecast.js  covers/sales forecast, labor math, "until close" estimates
   beo.js       banquet staffing ratios
-  importer.js  schedule parser (pasted spreadsheet, CSV, or a PDF grid), job/name matching, events from notes
+  importer.js  schedule parser (pasted spreadsheet, CSV, or a PDF grid), area/position reading, name matching, events from notes
+  areas.js     schedule areas (where a shift is worked), kept apart from positions (job codes)
   pdfgrid.js   rebuilds the schedule grid from a PDF's positioned text (read in the browser with pdf.js)
   store.js     in-memory document store + a copy-on-write overlay used per request
   seed.js      demo data (the real week of 9/28/2026)

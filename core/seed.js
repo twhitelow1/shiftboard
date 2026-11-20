@@ -3,30 +3,40 @@
 import { uid } from './store.js';
 import { addDays, dow, range } from './time.js';
 import { DEFAULT_SETTINGS } from './service.js';
+import { findArea } from './areas.js';
 
 const WEEK = '2026-09-28'; // Monday
 const D = { MON: 0, TUE: 1, WED: 2, THU: 3, FRI: 4, SAT: 5, SUN: 6 };
 const day = (k) => addDays(WEEK, D[k]);
 
+// Positions (job codes). Where they're worked is the shift's area, not a separate job code.
 const JOBS = [
   // key, name, short, department, color, rate, eventRole
   ['MGR', 'Manager', 'MGR', 'Leadership', '#334155', 28, false],
   ['CHEF', 'Chef', 'CHEF', 'Leadership', '#7c2d12', 30, false],
-  ['RBAR', 'Restaurant Bar', 'RBAR', 'Restaurant', '#0891b2', 12, false],
+  ['BAR', 'Bartender', 'BAR', 'Bar', '#9333ea', 12, true],
   ['SRV', 'Server', 'SRV', 'Restaurant', '#2563eb', 12, true],
   ['FR', 'Food Runner', 'FR', 'Restaurant', '#16a34a', 14, true],
   ['BUS', 'Busser', 'BUS', 'Restaurant', '#65a30d', 14, true],
-  ['BAR', 'Bartender', 'BAR', 'Bar', '#9333ea', 12, true],
   ['BBK', 'Barback', 'BBK', 'Bar', '#a855f7', 15, false],
-  ['MRB', 'MR Bartender', 'MRB', 'Moon Rabbit', '#dc2626', 12, false],
   ['COC', 'Cocktail Server', 'COC', 'Moon Rabbit', '#e11d48', 12, false],
-  ['HOST', 'Restaurant Host', 'HOST', 'Host', '#d97706', 17, true],
-  ['BHOST', 'Back Host Stand', 'BHST', 'Host', '#ca8a04', 17, false],
+  ['HOST', 'Host', 'HOST', 'Host', '#d97706', 17, true],
   ['DOOR', 'Doorman', 'DOOR', 'Host', '#475569', 18, false],
   ['BC', 'Banquet Captain', 'BC', 'Events', '#0f766e', 20, true],
 ];
 
-// name, role, job keys
+// The schedule areas, in the house sheet's order (its banners).
+const AREAS = ['Restaurant', 'Rabbit Hole', 'Moon Rabbit', 'Host Stand', 'Back Host Stand'];
+// The house sheet's sections, as [position, area]. PEOPLE, SHIFTS and staffing below use these keys.
+const SECTION = {
+  MGR: ['MGR', ''], CHEF: ['CHEF', ''], BC: ['BC', ''],
+  RBAR: ['BAR', 'Restaurant'], SRV: ['SRV', 'Restaurant'], FR: ['FR', 'Restaurant'], BUS: ['BUS', 'Restaurant'],
+  BAR: ['BAR', 'Rabbit Hole'], BBK: ['BBK', 'Rabbit Hole'],
+  MRB: ['BAR', 'Moon Rabbit'], COC: ['COC', 'Moon Rabbit'],
+  HOST: ['HOST', 'Host Stand'], BHOST: ['HOST', 'Back Host Stand'], DOOR: ['DOOR', 'Back Host Stand'],
+};
+
+// name, role, sheet sections (see SECTION)
 const PEOPLE = [
   ['Moe', 'admin', ['MGR']], ['Chef Lucas', 'manager', ['CHEF']], ['Kelly', 'manager', ['MGR']], ['Ben', 'manager', ['MGR']],
   ['CJ', 'manager', ['MGR']], ['Courtney', 'manager', ['MGR']], ['Tatiana', 'manager', ['MGR']],
@@ -45,7 +55,7 @@ const PEOPLE = [
   ['Events Team', 'events', []],
 ];
 
-// [person, job, day, start, end|null, tag, eventKey]
+// [person, sheet section, day, start, end|null, tag, eventKey]
 const SHIFTS = [
   ['Moe', 'MGR', 'THU', '16:00'], ['Moe', 'MGR', 'FRI', '17:00'], ['Moe', 'MGR', 'SAT', '17:00'], ['Moe', 'MGR', 'SUN', '20:00'],
   ...['WED', 'THU', 'FRI', 'SAT', 'SUN'].map((d) => ['Chef Lucas', 'CHEF', d, '12:00']),
@@ -165,6 +175,18 @@ export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password =
     const defaultRole = ['MGR', 'CHEF'].includes(key) ? 'manager' : key === 'BC' ? 'supervisor' : 'employee';
     jobId[key] = store.insert('jobCodes', { id: `job_${key.toLowerCase()}`, name, short, department, color, defaultRate: rate, order: i, eventRole, archived: false, defaultRole }).id;
   });
+  const position = (section) => jobId[SECTION[section][0]];
+  const areaOf = (section) => SECTION[section][1];
+  // One job code per position, listing every area the person works it in.
+  const entriesFor = (sections) => {
+    const out = [];
+    for (const k of sections) {
+      let e = out.find((x) => x.jobCodeId === position(k));
+      if (!e) out.push(e = { jobCodeId: position(k), rate: null, primary: !out.length });
+      if (areaOf(k) && !(e.areas || []).includes(areaOf(k))) e.areas = [...(e.areas || []), areaOf(k)];
+    }
+    return out;
+  };
 
   const userId = {};
   const hash = hashPassword(password);
@@ -173,7 +195,7 @@ export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password =
     const role = name === 'Courtney' ? 'supervisor' : listedRole; // a shift lead, to show the Supervisor role in the demo
     userId[name] = store.insert('users', {
       id: `usr_${slug}`, name, role, order: i + 1, email: `${slug}@demo.shiftboard`, phone: '',
-      jobCodes: jobs.map((k, i) => ({ jobCodeId: jobId[k], rate: null, primary: i === 0 })),
+      jobCodes: entriesFor(jobs),
       active: true, availability: {}, passwordHash: hash, createdAt: new Date().toISOString(),
     }).id;
   }
@@ -185,7 +207,7 @@ export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password =
     { jobCodeId: jobId.SRV, daypart: 'Lunch', basis: 'covers', per: 25, min: 1 },
     { jobCodeId: jobId.FR, daypart: 'Dinner', basis: 'covers', per: 45, min: 1 },
     { jobCodeId: jobId.BUS, daypart: 'Dinner', basis: 'covers', per: 55, min: 1 },
-    { jobCodeId: jobId.RBAR, daypart: 'Dinner', basis: 'sales', per: 4000, min: 1 },
+    { jobCodeId: jobId.BAR, daypart: 'Dinner', basis: 'sales', per: 4000, min: 1 },
     { jobCodeId: jobId.HOST, daypart: '', basis: 'fixed', per: 1, min: 1 },
     { jobCodeId: jobId.MGR, daypart: 'Dinner', basis: 'fixed', per: 2, min: 2 },
   ].map((r) => ({ id: uid('rule'), max: 0, ...r }));
@@ -203,6 +225,7 @@ export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password =
       { name: 'Dinner', start: '16:00', end: '23:00', peak: '19:00', share: 0.85 },
     ],
     laborRules,
+    areas: AREAS,
     demo: true,
   });
 
@@ -212,21 +235,21 @@ export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password =
     const { day: d, captain, staffing = [], ...rest } = e;
     eventId[key] = store.insert('events', {
       id: `evt_${key}`, ...rest, date: day(d), captainId: captain ? userId[captain] : null,
-      staffing: staffing.map(([job, count, start], i) => ({ id: `stf_${key}_${i}`, jobCodeId: jobId[job], count, start, end: '', notes: '' })),
+      staffing: staffing.map(([section, count, start], i) => ({ id: `stf_${key}_${i}`, jobCodeId: position(section), count, start, end: '', notes: '' })),
       menu: rest.menu || [], specialDrinks: rest.specialDrinks || [], timeline: rest.timeline || [], beverage: rest.beverage || {},
       createdAt: new Date().toISOString(),
     }).id;
   }
 
   // Shifts (published — this is the posted schedule)
-  for (const [person, job, d, start, end, tag, evKey] of SHIFTS) {
+  for (const [person, section, d, start, end, tag, evKey] of SHIFTS) {
     let staffingLineId = null;
     if (evKey) {
       const ev = store.get('events', eventId[evKey]);
-      staffingLineId = ev.staffing.find((l) => l.jobCodeId === jobId[job])?.id || null;
+      staffingLineId = ev.staffing.find((l) => l.jobCodeId === position(section))?.id || null;
     }
     store.insert('shifts', {
-      id: uid('shf'), date: day(d), start, end: end || null, jobCodeId: jobId[job], userId: userId[person], tag: tag || '', notes: '', breakMin: 0,
+      id: uid('shf'), date: day(d), start, end: end || null, jobCodeId: position(section), area: areaOf(section), userId: userId[person], tag: tag || '', notes: '', breakMin: 0,
       eventId: evKey && staffingLineId ? eventId[evKey] : null, staffingLineId, published: true, createdAt: new Date().toISOString(),
     });
   }
@@ -236,7 +259,7 @@ export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password =
     for (const line of ev.staffing) {
       const have = store.list('shifts', (s) => s.staffingLineId === line.id).length;
       for (let i = have; i < line.count; i++) {
-        store.insert('shifts', { id: uid('shf'), date: ev.date, start: line.start, end: null, jobCodeId: line.jobCodeId, userId: null, tag: 'EVT', notes: ev.name, breakMin: 0, eventId: ev.id, staffingLineId: line.id, published: true, createdAt: new Date().toISOString() });
+        store.insert('shifts', { id: uid('shf'), date: ev.date, start: line.start, end: null, jobCodeId: line.jobCodeId, userId: null, area: findArea(ev.room, AREAS) || '', tag: 'EVT', notes: ev.name, breakMin: 0, eventId: ev.id, staffingLineId: line.id, published: true, createdAt: new Date().toISOString() });
       }
     }
   }

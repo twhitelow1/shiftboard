@@ -104,7 +104,7 @@ function ShiftRow({ s, onClick, right }) {
       <div className="date"><div className="m">{DOW_SHORT[d.getUTCDay()]}</div><div className="d">{d.getUTCDate()}</div></div>
       <div className="body">
         <div className="title num">{shiftTime(s)}{!s.end && <span className="faint small" style={{ fontWeight: 500 }}> until close</span>}</div>
-        <div className="small muted row" style={{ gap: 6 }}><JobDot job={j} />{j?.name}{s.tag ? ` · ${s.tag}` : ''}{s.eventId ? ' · Event' : ''}</div>
+        <div className="small muted row" style={{ gap: 6 }}><JobDot job={j} />{j?.name}{s.area ? ` · ${s.area}` : ''}{s.tag ? ` · ${s.tag}` : ''}{s.eventId ? ' · Event' : ''}</div>
       </div>
       {right}
       <Icon name="right" size={16} style={{ color: 'var(--text-3)' }} />

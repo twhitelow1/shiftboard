@@ -30,7 +30,7 @@ const IMPORT = {
 test('import.apply builds a restaurant from a schedule in one step', () => {
   const { svc, store, owner } = fresh();
   const r = svc.call(owner(), 'import.apply', IMPORT);
-  assert.deepEqual(r, { jobCodes: 2, employees: 3, rolesLowered: 0, shifts: 3, duplicates: 1, invalid: 1, jobsAdded: 1, timeOff: 1, events: 1, covers: 1 });
+  assert.deepEqual(r, { jobCodes: 2, employees: 3, rolesLowered: 0, shifts: 3, updated: 0, duplicates: 1, invalid: 1, jobsAdded: 1, areas: 0, timeOff: 1, events: 1, covers: 1, notes: 0 });
   const alex = store.list('users', (u) => u.name === 'Alex D')[0];
   assert.equal(alex.role, 'employee');
   assert.equal(alex.passwordHash, null, 'no password until they get a sign-in link');
@@ -117,4 +117,128 @@ test('copy a week forward into the next week, skipping people who left', () => {
   const next = store.list('shifts', (s) => s.date >= '2026-11-23');
   assert.deepEqual(next.map((s) => [s.date, s.start, s.published]), [['2026-11-25', '16:00', false]]);
   assert.throws(() => svc.call(owner(), 'shifts.copyWeek', { fromWeek: '2026-11-16', toWeek: '2026-11-16' }), /different week/);
+});
+
+// The sheet's banners are areas, its section labels are positions. Synthetic names only.
+test('import keeps area and position apart, and re-importing fixes an earlier import', () => {
+  const { svc, store, owner } = fresh();
+  // What the first version of the importer did: a job code named after the banner.
+  store.insert('jobCodes', { id: 'job_rest', name: 'Restaurant', short: 'REST', department: 'Restaurant', order: 1 });
+  store.insert('users', { id: 'usr_kai', name: 'Kai', role: 'employee', active: true, jobCodes: [{ jobCodeId: 'job_rest', rate: 21, primary: true }] });
+  store.insert('shifts', { id: 'shf_old', date: '2026-11-19', start: '15:30', end: null, userId: 'usr_kai', jobCodeId: 'job_rest', tag: '', published: true });
+
+  const r = svc.call(owner(), 'import.apply', {
+    newJobCodes: [{ key: 'new:bartender', name: 'Bartender', department: 'Restaurant' }],
+    newEmployees: [{ key: 'new:SAM', name: 'Sam', jobs: ['new:bartender'] }],
+    areas: ['Restaurant', 'Rabbit Hole', 'Moon Rabbit'],
+    jobOrder: ['new:bartender'], // first section on the sheet
+    assignments: [
+      { user: 'usr_kai', job: 'new:bartender', area: 'Restaurant' },
+      { user: 'new:SAM', job: 'new:bartender', area: 'Restaurant' },
+      { user: 'new:SAM', job: 'new:bartender', area: 'Rabbit Hole' },
+      { user: 'new:SAM', job: 'new:bartender', area: 'Moon Rabbit' }, // off all week there, still listed
+    ],
+    shifts: [
+      { date: '2026-11-19', user: 'usr_kai', job: 'new:bartender', area: 'Restaurant', start: '15:30', end: null, tag: '' },
+      { date: '2026-11-18', user: 'new:SAM', job: 'new:bartender', area: 'Restaurant', start: '18:30', end: null, tag: '' },
+      { date: '2026-11-18', user: 'new:SAM', job: 'new:bartender', area: 'RABBIT HOLE', start: '18:30', end: null, tag: '' }, // same shift, second section
+      { date: '2026-11-20', user: 'new:SAM', job: 'new:bartender', area: 'rabbit hole', start: '17:00', end: null, tag: 'MR' },
+    ],
+  });
+  assert.equal(r.shifts, 2);
+  assert.equal(r.updated, 1, "Kai's earlier shift now has the right position and area");
+  assert.equal(r.duplicates, 1);
+  const bartender = store.list('jobCodes', (j) => j.name === 'Bartender')[0];
+  assert.deepEqual([bartender.order, store.get('jobCodes', 'job_rest').order], [0, 1], "job codes follow the sheet's section order");
+  assert.deepEqual(store.get('shifts', 'shf_old'), { ...store.get('shifts', 'shf_old'), jobCodeId: bartender.id, area: 'Restaurant', published: true });
+  assert.equal(store.list('shifts', (s) => s.date === '2026-11-20')[0].area, 'Rabbit Hole', 'saved spelling of the area');
+  assert.deepEqual(store.get('settings', 'settings').areas, ['Restaurant', 'Rabbit Hole', 'Moon Rabbit'], "the sheet's order");
+  const sam = store.list('users', (u) => u.name === 'Sam')[0];
+  assert.deepEqual(sam.jobCodes.map((j) => [j.jobCodeId, j.areas]), [[bartender.id, ['Restaurant', 'Rabbit Hole', 'Moon Rabbit']]], 'one position, three areas');
+  const kai = store.get('users', 'usr_kai');
+  assert.deepEqual(kai.jobCodes.map((j) => [j.jobCodeId, j.rate, j.areas || null]), [['job_rest', 21, null], [bartender.id, null, ['Restaurant']]]);
+
+  // Then the old banner job code is merged away: Kai keeps the old pay rate on Bartender.
+  store.insert('events', { id: 'evt_1', name: 'Gala', date: '2026-11-21', staffing: [{ id: 'stf_1', jobCodeId: 'job_rest', count: 2 }] });
+  store.update('settings', 'settings', { laborRules: [{ id: 'rule_1', jobCodeId: 'job_rest', per: 40 }] });
+  const m = svc.call(owner(), 'jobCodes.merge', { fromId: 'job_rest', intoId: bartender.id });
+  assert.deepEqual(m, { shifts: 0, people: 1, events: 1, rules: 1 });
+  assert.equal(store.get('jobCodes', 'job_rest'), null);
+  assert.deepEqual(store.get('users', 'usr_kai').jobCodes, [{ jobCodeId: bartender.id, rate: 21, primary: true, areas: ['Restaurant'] }]);
+  assert.equal(store.get('events', 'evt_1').staffing[0].jobCodeId, bartender.id);
+  assert.equal(store.get('settings', 'settings').laborRules[0].jobCodeId, bartender.id);
+  assert.throws(() => svc.call(owner(), 'jobCodes.merge', { fromId: bartender.id, intoId: bartender.id }), /different job code/);
+  store.insert('users', { id: 'usr_e', name: 'E', role: 'employee', active: true, jobCodes: [] });
+  assert.throws(() => svc.call(store.get('users', 'usr_e'), 'jobCodes.merge', { fromId: bartender.id, intoId: 'job_x' }), /Managers only/);
+});
+
+test('shifts keep their area, and a new area joins the schedule list', () => {
+  const { svc, store, owner } = fresh();
+  store.insert('jobCodes', { id: 'job_bar', name: 'Bartender', short: 'BAR', department: 'Bar', order: 1 });
+  const { shift } = svc.call(owner(), 'shifts.save', { date: '2026-11-19', start: '16:00', jobCodeId: 'job_bar', area: '  Moon   rabbit ' });
+  assert.equal(shift.area, 'Moon Rabbit', "matched the default room's spelling");
+  assert.deepEqual(store.get('settings', 'settings').areas, ['Moon Rabbit']);
+  svc.call(owner(), 'shifts.save', { date: '2026-11-19', start: '17:00', jobCodeId: 'job_bar', area: 'Back Host Stand' });
+  assert.deepEqual(svc.call(owner(), 'app.bootstrap').settings.areas, ['Moon Rabbit', 'Back Host Stand']);
+  const plain = svc.call(owner(), 'shifts.save', { date: '2026-11-19', start: '18:00', jobCodeId: 'job_bar' }).shift;
+  assert.equal(plain.area, '', 'area is optional');
+  // Copying the week keeps each shift's area.
+  svc.call(owner(), 'shifts.copyWeek', { fromWeek: '2026-11-16', toWeek: '2026-11-23' });
+  assert.deepEqual(store.list('shifts', (s) => s.date === '2026-11-26').map((s) => s.area).sort(), ['', 'Back Host Stand', 'Moon Rabbit']);
+  // People's job codes keep their areas when saved from Team.
+  const u = svc.call(owner(), 'employees.save', { name: 'Rae', role: 'employee', jobCodes: [{ jobCodeId: 'job_bar', rate: '', areas: ['Moon Rabbit', 'moon rabbit', ''] }] });
+  assert.deepEqual(store.get('users', u.id).jobCodes[0].areas, ['Moon Rabbit']);
+});
+
+test("the sheet's day notes, the week's notes and banner colors", () => {
+  const { svc, store, owner } = fresh();
+  const r = svc.call(owner(), 'import.apply', {
+    dayNotes: [{ date: '2026-11-16', text: 'CLOSED' }, { date: '2026-11-18', text: 'MEETING' }, { date: '2026-11-18', text: 'MEETING' }, { date: 'nope', text: 'x' }],
+    areaColors: { 'moon rabbit': '#FF0000', 'M.O.D.': '#fc3ad2', Patio: 'red' },
+  });
+  assert.equal(r.notes, 2);
+  const week = { start: '2026-11-16', end: '2026-11-22' };
+  const byDate = (list) => list.map((n) => [n.kind, n.date, n.text]).sort((a, b) => (a[1] + a[0]).localeCompare(b[1] + b[0]));
+  assert.deepEqual(byDate(svc.call(owner(), 'shifts.list', week).notes), [['day', '2026-11-16', 'CLOSED'], ['day', '2026-11-18', 'MEETING']]);
+  assert.deepEqual(store.get('settings', 'settings').areaColors, { 'Moon Rabbit': '#ff0000', 'M.O.D.': '#fc3ad2' }, 'saved spelling, bad colors dropped');
+
+  // A color picked in Settings isn't overwritten by the next import.
+  svc.call(owner(), 'settings.update', { areaColors: { 'Moon Rabbit': '#123456', 'M.O.D.': '#fc3ad2', '': '#000000' } });
+  svc.call(owner(), 'import.apply', { areaColors: { 'Moon Rabbit': '#ff0000', Restaurant: '#0070c0' } });
+  assert.deepEqual(store.get('settings', 'settings').areaColors, { 'Moon Rabbit': '#123456', 'M.O.D.': '#fc3ad2', Restaurant: '#0070c0' });
+
+  // Managers write notes; everyone reads them. Empty text removes a note.
+  svc.call(owner(), 'notes.save', { kind: 'week', date: '2026-11-16', text: '  Inventory Sunday  ' });
+  svc.call(owner(), 'notes.save', { kind: 'day', date: '2026-11-16', text: '' });
+  store.insert('users', { id: 'usr_e', name: 'E', role: 'employee', active: true, jobCodes: [] });
+  const emp = store.get('users', 'usr_e');
+  assert.throws(() => svc.call(emp, 'notes.save', { kind: 'day', date: '2026-11-17', text: 'hi' }), /Managers only/);
+  assert.throws(() => svc.call(owner(), 'notes.save', { kind: 'month', date: '2026-11-17', text: 'hi' }), /Unknown note/);
+  assert.deepEqual(byDate(svc.call(emp, 'shifts.list', week).notes), [['week', '2026-11-16', 'Inventory Sunday'], ['day', '2026-11-18', 'MEETING']]);
+});
+
+test("each section keeps the sheet's heading, label and order of names, through a merge", () => {
+  const { svc, store, owner } = fresh();
+  store.insert('jobCodes', { id: 'job_old', name: 'Moon Rabbit Bartender', short: 'MRB', department: 'Moon Rabbit', order: 0 });
+  svc.call(owner(), 'import.apply', {
+    newJobCodes: [{ key: 'new:bar', name: 'Bartender' }, { key: 'new:mgr', name: 'Manager', department: 'M.O.D.' }],
+    newEmployees: ['Max', 'Sam', 'Kai', 'Pat'].map((n) => ({ key: `new:${n}`, name: n, jobs: [n === 'Pat' ? 'new:mgr' : 'new:bar'] })),
+    rosters: [
+      { area: 'Rabbit Hole', job: 'new:bar', label: 'Bar', banner: 'RABBIT HOLE', users: ['new:Max', 'new:Sam', 'new:Kai'] },
+      { area: 'Rabbit Hole', job: 'new:bar', label: 'Bar 2', banner: 'RABBIT HOLE', users: ['new:Kai', 'new:Pat'] }, // same section again: names appended
+      { area: '', job: 'new:mgr', label: '', banner: 'M.O.D.', users: ['new:Pat'] },
+      { area: 'Nowhere', job: 'nope', users: [] },
+    ],
+  });
+  const bar = store.list('jobCodes', (j) => j.name === 'Bartender')[0];
+  const id = (n) => store.list('users', (u) => u.name === n)[0].id;
+  const rosters = svc.call(owner(), 'shifts.list', { start: '2026-11-16', end: '2026-11-22' }).rosters;
+  const rh = rosters.find((r) => r.area === 'Rabbit Hole');
+  assert.deepEqual([rh.jobCodeId, rh.label, rh.banner, rh.userIds], [bar.id, 'Bar', 'RABBIT HOLE', [id('Max'), id('Sam'), id('Kai'), id('Pat')]]);
+  assert.deepEqual(rosters.filter((r) => !r.area).map((r) => [r.label, r.banner]), [['', 'M.O.D.']]);
+  // An old banner job code's section folds into Bartender's.
+  store.insert('rosters', { id: 'moon rabbit|job_old', area: 'Moon Rabbit', jobCodeId: 'job_old', label: 'Bar', banner: 'MOON RABBIT', userIds: [id('Sam')] });
+  svc.call(owner(), 'jobCodes.merge', { fromId: 'job_old', intoId: bar.id });
+  assert.equal(store.get('rosters', 'moon rabbit|job_old'), null);
+  assert.deepEqual(store.get('rosters', `moon rabbit|${bar.id}`).userIds, [id('Sam')]);
 });

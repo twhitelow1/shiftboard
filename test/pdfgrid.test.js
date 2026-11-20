@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { itemsToGridText } from '../core/pdfgrid.js';
+import { itemsToGridText, fillRects, labelColors } from '../core/pdfgrid.js';
 import { parseSchedule, notesToEvents } from '../core/importer.js';
 
 // Same geometry as the house schedule exported from Excel to PDF (letter page, 4.6pt cells,
@@ -75,4 +75,15 @@ test('a PDF schedule parses into sections, the week, notes, events and covers', 
     [5, 'Smith Birthday Party', 'Restaurant', 16, 'Party'],
   ]);
   assert.deepEqual(dayNotes.map((n) => n.text), ['CLOSED', 'CLOSED', 'OPENING DAY']);
+});
+
+test('reads cell colors behind labels from the PDF drawing', () => {
+  const OPS = { save: 1, restore: 2, setFillRGBColor: 3, constructPath: 4, fill: 5, eoFill: 6, eoClip: 7, setFillGray: 8 };
+  const fn = [OPS.save, OPS.constructPath, OPS.setFillRGBColor, OPS.constructPath, OPS.restore, OPS.setFillRGBColor, OPS.constructPath, OPS.setFillRGBColor, OPS.constructPath];
+  const args = [null, [OPS.eoClip, [], [0, 0, 600, 800]], ['#FC3AD2'], [OPS.fill, [], [50, 700, 550, 712]], null,
+    [255, 255, 0], [OPS.fill, [], [90, 680, 230, 690]], ['#a9d08e'], [OPS.fill, [], [50, 600, 550, 612]]];
+  const rects = fillRects(fn, args, OPS, 792);
+  assert.deepEqual(rects.map((r) => [r.color, r.top, r.bottom]), [['#fc3ad2', 80, 92], ['#ffff00', 102, 112], ['#a9d08e', 180, 192]], 'clip paths are not fills');
+  const words = [{ str: 'M.O.D.', x: 290, y: 82, w: 20, h: 8 }, { str: 'OFF', x: 150, y: 103, w: 10, h: 6 }, { str: 'Rabbit  Hole', x: 280, y: 182, w: 40, h: 8 }, { str: 'LUCAS', x: 60, y: 300, w: 20, h: 6 }];
+  assert.deepEqual(labelColors(words, rects), { 'M.O.D.': '#fc3ad2', 'RABBIT HOLE': '#a9d08e' }, 'yellow OFF cells and uncolored text are left out');
 });

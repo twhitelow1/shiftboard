@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useApp, Modal, Field, Icon, Avatar, Warnings, shiftTime, useAction, JobDot } from '../ui.jsx';
 import { prettyDate, addDays, fmtTime } from '../../../core/time.js';
+import { scheduleAreas, findArea } from '../../../core/areas.js';
 
 /** Opens the right dialog for the viewer: editor for managers, details + trade actions for staff. */
 export default function ShiftDialog({ shift, onClose, warnings, events = [] }) {
@@ -13,7 +14,7 @@ function ShiftEditor({ shift, onClose, warnings, events }) {
   const { jobCodes, employees, settings, jobs, call, toast } = useApp();
   const [f, setF] = useState(() => ({
     id: shift.id, date: shift.date, start: shift.start || '16:00', end: shift.end || '', jobCodeId: shift.jobCodeId || jobCodes.find((j) => !j.archived)?.id,
-    userId: shift.userId || '', tag: shift.tag || '', notes: shift.notes || '', breakMin: shift.breakMin || 0, eventId: shift.eventId || '', staffingLineId: shift.staffingLineId || null,
+    userId: shift.userId || '', area: shift.area || '', tag: shift.tag || '', notes: shift.notes || '', breakMin: shift.breakMin || 0, eventId: shift.eventId || '', staffingLineId: shift.staffingLineId || null,
     untilClose: shift.id ? !shift.end : true,
   }));
   const [run, busy] = useAction();
@@ -24,6 +25,14 @@ function ShiftEditor({ shift, onClose, warnings, events }) {
   const trained = active.filter((e) => e.jobCodes?.some((j) => j.jobCodeId === f.jobCodeId));
   const others = active.filter((e) => !trained.includes(e));
   const dayEvents = events.filter((e) => e.date === f.date);
+  const areas = scheduleAreas(settings);
+  if (f.area && !findArea(f.area, areas)) areas.push(f.area);
+  // Picking someone for a shift with no area yet uses the area they usually work this job in.
+  const pickUser = (e) => {
+    const userId = e.target.value;
+    const entry = employees.find((x) => x.id === userId)?.jobCodes?.find((j) => j.jobCodeId === f.jobCodeId);
+    setF((x) => ({ ...x, userId, area: x.area || entry?.areas?.[0] || '' }));
+  };
 
   const save = async () => {
     const payload = { ...f, end: f.untilClose ? null : f.end, userId: f.userId || null, eventId: f.eventId || null, published: shift.id ? undefined : publishNow };
@@ -51,13 +60,13 @@ function ShiftEditor({ shift, onClose, warnings, events }) {
       </>}>
       <Warnings items={warnings} />
       <div className="grid2">
-        <Field label="Job code">
+        <Field label="Position (job code)">
           <select className="input" value={f.jobCodeId} onChange={set('jobCodeId')}>
             {jobCodes.filter((j) => !j.archived || j.id === f.jobCodeId).map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}
           </select>
         </Field>
         <Field label="Employee">
-          <select className="input" value={f.userId} onChange={set('userId')}>
+          <select className="input" value={f.userId} onChange={pickUser}>
             <option value="">— Open shift (anyone can pick up) —</option>
             <optgroup label={`Trained as ${jobs[f.jobCodeId]?.name || ''}`}>
               {trained.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
@@ -78,6 +87,12 @@ function ShiftEditor({ shift, onClose, warnings, events }) {
         </Field>
       </div>
       <label className="check"><input type="checkbox" checked={f.untilClose} onChange={set('untilClose')} />Until close (no set end time)</label>
+      <Field label="Area" help={areas.length ? 'Where this shift is worked. The schedule groups shifts by area, like the banners on your sheet.' : 'Add areas (Restaurant, Rabbit Hole…) in Settings, or import a schedule.'}>
+        <select className="input" value={f.area} onChange={set('area')}>
+          <option value="">No area</option>
+          {areas.map((a) => <option key={a} value={a}>{a}</option>)}
+        </select>
+      </Field>
       <Field label="Tag / section" help="Shows on the schedule next to the time — e.g. LIB, RH, BC, PASSED">
         <input className="input" value={f.tag} onChange={set('tag')} placeholder="Optional" />
         <div className="row wrap" style={{ marginTop: 4 }}>
@@ -136,7 +151,7 @@ function ShiftDetail({ shift, onClose, events }) {
   };
 
   return (
-    <Modal title={`${job?.name || 'Shift'}${shift.tag ? ' · ' + shift.tag : ''}`} sub={`${prettyDate(shift.date)} · ${shiftTime(shift)}${!shift.end ? ' (until close)' : ''}`} onClose={() => onClose(false)}
+    <Modal title={`${job?.name || 'Shift'}${shift.tag ? ' · ' + shift.tag : ''}`} sub={`${prettyDate(shift.date)} · ${shiftTime(shift)}${!shift.end ? ' (until close)' : ''}${shift.area ? ` · ${shift.area}` : ''}`} onClose={() => onClose(false)}
       footer={mode ? <>
         <button className="btn" onClick={() => { setMode(null); setTarget(null); }}>Back</button>
         <span className="spacer" />
@@ -193,7 +208,7 @@ function ShiftDetail({ shift, onClose, events }) {
               <Avatar user={people[s.userId]} size="sm" />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 600 }}>{people[s.userId]?.name}</div>
-                <div className="small muted">{prettyDate(s.date)} · {shiftTime(s)} · {jobs[s.jobCodeId]?.name}{s.tag ? ' · ' + s.tag : ''}</div>
+                <div className="small muted">{prettyDate(s.date)} · {shiftTime(s)} · {jobs[s.jobCodeId]?.name}{s.area ? ' · ' + s.area : ''}{s.tag ? ' · ' + s.tag : ''}</div>
               </div>
             </label>
           ))}
