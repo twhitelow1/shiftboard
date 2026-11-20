@@ -30,6 +30,7 @@ export const DEFAULT_SETTINGS = {
   requireSwapApproval: true,
   requirePickupApproval: true,
   supervisorsCanApprove: true,
+  emailNotifications: true,
   minSwapNoticeHours: 12,
   tags: ['LIB', 'RH', 'FR', 'BC', 'MOON', 'PATIO', 'PASSED', 'BACK HOST', 'CLOSE', 'OPEN'],
   rooms: ['Restaurant', 'Library', 'Rabbit Hole', 'Moon Rabbit', 'Patio', 'Full Buyout'],
@@ -288,7 +289,7 @@ export function createService(store, opts = {}) {
     'settings.update': (actor, patch) => {
       needAdmin(actor);
       const allowed = ['restaurantName', 'weekStartDow', 'closedDays', 'hours', 'openEndHours', 'overtimeHours', 'requireSwapApproval',
-        'requirePickupApproval', 'supervisorsCanApprove', 'minSwapNoticeHours', 'tags', 'rooms', 'departments', 'dayparts', 'forecastWeeks', 'targetLaborPct', 'laborRules'];
+        'requirePickupApproval', 'supervisorsCanApprove', 'emailNotifications', 'minSwapNoticeHours', 'tags', 'rooms', 'departments', 'dayparts', 'forecastWeeks', 'targetLaborPct', 'laborRules'];
       const clean = {};
       for (const k of allowed) if (k in patch) clean[k] = patch[k];
       const cur = store.get('settings', 'settings');
@@ -370,6 +371,10 @@ export function createService(store, opts = {}) {
       const id = userId || actor.id;
       if (id !== actor.id && !isMgr(actor)) fail(403, 'You can only edit your own availability');
       return PUBLIC_USER(store.update('users', id, { availability }));
+    },
+    'account.preferences': (actor, { emailNotifications }) => {
+      needAuth(actor);
+      return userView(store.update('users', actor.id, { emailNotifications: emailNotifications !== false }));
     },
     'employees.changePassword': (actor, { password }) => {
       needAuth(actor);

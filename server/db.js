@@ -18,12 +18,13 @@
 // The request runs against an OverlayStore, so a failed request never touches the cache.
 
 import pg from 'pg';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { attachDatabasePool } from '@vercel/functions';
 import { MemoryStore, OverlayStore } from '../core/store.js';
 
 export const SCHEMA = 'shiftboard';
-const SCHEMA_VERSION = '1';
+const SCHEMA_VERSION = '2';
 const LOCK_KEY = 5_810_442_771; // any constant; identifies ShiftBoard's write lock
 
 // The tables live in their own schema with row-level security on and no policies.
@@ -45,7 +46,17 @@ const MIGRATIONS = [
   `CREATE TABLE IF NOT EXISTS ${SCHEMA}.meta (key text PRIMARY KEY, value text NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS ${SCHEMA}.login_attempts (key text NOT NULL, at timestamptz NOT NULL DEFAULT now())`,
   `CREATE INDEX IF NOT EXISTS login_attempts_key_at_idx ON ${SCHEMA}.login_attempts (key, at)`,
+  // One-time links for setting/resetting a password. Only a hash of the token is stored.
+  `CREATE TABLE IF NOT EXISTS ${SCHEMA}.auth_tokens (
+     token_hash text        PRIMARY KEY,
+     user_id    text        NOT NULL,
+     purpose    text        NOT NULL,
+     expires_at timestamptz NOT NULL,
+     used_at    timestamptz,
+     created_at timestamptz NOT NULL DEFAULT now()
+   )`,
   `ALTER TABLE ${SCHEMA}.docs ENABLE ROW LEVEL SECURITY`,
+  `ALTER TABLE ${SCHEMA}.auth_tokens ENABLE ROW LEVEL SECURITY`,
   `ALTER TABLE ${SCHEMA}.meta ENABLE ROW LEVEL SECURITY`,
   `ALTER TABLE ${SCHEMA}.login_attempts ENABLE ROW LEVEL SECURITY`,
 ];
@@ -163,9 +174,11 @@ export class DocDb {
    *  write: false  -> try it without the lock first; if it turns out to write, redo it under the lock.
    *  write: true   -> go straight to the lock.
    *  synced: true  -> the caller already synced this request; skip the first sync.
+   *  onCommit(changes) -> called once after a successful commit with every change
+   *                       ({ col, id, doc, isNew }); use it for side effects such as email.
    * fn must be synchronous and free of side effects outside the store (it may run twice).
    */
-  async run(fn, { write = false, synced = false } = {}) {
+  async run(fn, { write = false, synced = false, onCommit } = {}) {
     if (!write) {
       if (!synced) await this.sync();
       const view = new OverlayStore(this.store);
@@ -178,7 +191,8 @@ export class DocDb {
       await this.sync(client);
       const view = new OverlayStore(this.store);
       const out = fn(view);
-      changes = view.changeList();
+      // isNew is decided here, while the cache still shows the state before this write.
+      changes = view.changeList().map((c) => ({ ...c, isNew: !!c.doc && !this.store.col(c.col).has(c.id) }));
       written = await this.writeDocs(client, changes);
       return out;
     });
@@ -193,7 +207,38 @@ export class DocDb {
       if (seq > max) max = seq;
     }
     if (max > this.lastSeq) this.lastSeq = max;
+    if (onCommit && changes.length) {
+      try { onCommit(changes); } catch (e) { console.error('onCommit failed:', e); }
+    }
     return result;
+  }
+
+  // ----- one-time password links (invite / reset) -----
+  /** Create a link token for a user. Returns the raw token (only its hash is stored). */
+  async createToken(userId, purpose, minutes) {
+    const token = crypto.randomBytes(32).toString('base64url');
+    const hash = crypto.createHash('sha256').update(token).digest('hex');
+    await this.query(
+      `INSERT INTO ${SCHEMA}.auth_tokens (token_hash, user_id, purpose, expires_at) VALUES ($1, $2, $3, now() + make_interval(mins => $4::int))`,
+      [hash, userId, purpose, minutes],
+    );
+    await this.query(`DELETE FROM ${SCHEMA}.auth_tokens WHERE expires_at < now() - interval '7 days'`);
+    return token;
+  }
+
+  /** Use a token once. Returns { userId, purpose } or null if it's unknown, used or expired. */
+  async consumeToken(token) {
+    const hash = crypto.createHash('sha256').update(String(token || '')).digest('hex');
+    const { rows } = await this.query(
+      `UPDATE ${SCHEMA}.auth_tokens SET used_at = now() WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now() RETURNING user_id, purpose`,
+      [hash],
+    );
+    return rows[0] ? { userId: rows[0].user_id, purpose: rows[0].purpose } : null;
+  }
+
+  /** Cancel a user's outstanding links (after a password change). */
+  async revokeTokens(userId) {
+    await this.query(`UPDATE ${SCHEMA}.auth_tokens SET used_at = now() WHERE user_id = $1 AND used_at IS NULL`, [userId]);
   }
 
   // ----- login rate limiting (shared across instances) -----

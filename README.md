@@ -58,6 +58,20 @@ The web app is static (served from Vercel's CDN) and the API runs as one Vercel 
 
 The tables have row-level security turned on with no policies, so Supabase's public REST API (the `anon` key) can't read them. The app connects as the database owner.
 
+### Email (Resend)
+
+Email is optional. Without it, everything still works in the app. With it:
+- staff get an email copy of their notifications (new schedule, shift changes, trades, time off, event updates). The restaurant can turn this off in Settings, and each person can turn it off in My Shifts.
+- new people added with an email get a link to set their password.
+- anyone can reset a forgotten password from the sign-in page (a one-time link that expires after 1 hour).
+
+Setup:
+1. In Resend, verify the domain you'll send from (e.g. `mail.yourrestaurant.com`), and create an API key with **sending access** for that domain.
+2. In Vercel, add `RESEND_API_KEY` (mark it **Sensitive**) and `EMAIL_FROM`, e.g. `Chasing Rabbits Schedule <schedule@mail.yourrestaurant.com>`. Optionally add `EMAIL_REPLY_TO` (where replies go) and `APP_URL` (the link in emails, e.g. `https://schedule.yourrestaurant.com`).
+3. Redeploy, then use **Settings → Email → Send me a test email**. If something is wrong, the error from Resend is shown there.
+
+Emails are sent after the change is saved, so a failed request never emails anyone. Batches go through Resend's batch API with idempotency keys.
+
 ### Moving data from the old SQLite version
 
 If ShiftBoard has been running on Render or Docker with SQLite, copy its `shiftboard.db` file locally, then:
@@ -86,6 +100,10 @@ Put it behind HTTPS (Caddy, Cloudflare, or the platform's TLS). Session cookies 
 | `JWT_SECRET` | auto | Signs sessions and calendar links. If unset, one is generated and stored in the database. |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | | First-run admin account (used only while there are no users) |
 | `SEED_DEMO` | | `true` loads the demo restaurant on first run |
+| `RESEND_API_KEY` | | Optional. Resend API key (sending access). Email is off without it |
+| `EMAIL_FROM` | | Sender, e.g. `Chasing Rabbits Schedule <schedule@mail.yourrestaurant.com>`. The domain must be verified in Resend |
+| `EMAIL_REPLY_TO` | | Optional reply-to address |
+| `APP_URL` | production URL | Base URL for links in emails. Defaults to Vercel's production domain |
 | `DATABASE_CA_CERT` | | Optional. Your provider's CA certificate (PEM) to verify the database's TLS certificate. Without it, the connection is encrypted per `sslmode=require` but the certificate isn't checked. |
 | `PG_POOL_MAX` | 5 | Connections per running instance |
 | `PORT` | 3000 | Standalone server only |
@@ -105,6 +123,7 @@ core/       Business logic shared by server + demo (pure JS, no I/O)
 server/     Express API (one RPC endpoint + auth) and iCal feed
   app.js       routes, sessions, login rate limiting
   db.js        Postgres persistence (see below)
+  email.js     Resend email sender and email templates
   index.js     standalone server (local, Docker)
 api/        Vercel Function entry point (wraps server/app.js)
 web/        React UI (Vite). DEMO=1 builds a self-contained single-file demo that runs core/ in the browser

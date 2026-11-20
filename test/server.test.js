@@ -9,6 +9,8 @@ import { DocDb, openConnection, pgOptions } from '../server/db.js';
 import { openPglite } from '../server/pglite.js';
 import { createApp } from '../server/app.js';
 import { addDays, todayStr } from '../core/time.js';
+import { createMailer } from '../server/email.js';
+import { fakeResend } from './helpers/fake-resend.js';
 
 const URL = process.env.TEST_DATABASE_URL;
 
@@ -40,7 +42,7 @@ test('migrate is idempotent and keeps tables away from Supabase API roles', asyn
     const { rows } = await db.query(
       `SELECT c.relname, c.relrowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = 'shiftboard' AND c.relkind = 'r' ORDER BY 1`);
-    assert.deepEqual(rows.map((r) => r.relname), ['docs', 'login_attempts', 'meta']);
+    assert.deepEqual(rows.map((r) => r.relname), ['auth_tokens', 'docs', 'login_attempts', 'meta']);
     assert.ok(rows.every((r) => r.relrowsecurity), 'row level security enabled on every table');
   } finally { await close(); }
 });
@@ -118,13 +120,13 @@ test('sslmode follows libpq meaning', () => {
 
 // ---------- HTTP API ----------
 
-async function startApp(db, env) {
-  const app = createApp({ db, env });
+async function startApp(db, env, extra = {}) {
+  const app = createApp({ db, env, ...extra });
   await app.locals.ready();
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
-  return { base, close: () => { server.closeAllConnections(); return new Promise((r) => server.close(r)); } };
+  return { app, base, close: () => { server.closeAllConnections(); return new Promise((r) => server.close(r)); } };
 }
 
 function client(base) {
@@ -263,4 +265,113 @@ test('API answers unknown routes and bad JSON with JSON errors', async () => {
     assert.equal(bad.status, 400);
     assert.deepEqual(await bad.json(), { error: 'Invalid JSON' });
   } finally { await app.close(); await close(); }
+});
+
+// ---------- email (Resend) ----------
+
+async function emailApp(db) {
+  const resend = fakeResend();
+  const mailer = createMailer({ RESEND_API_KEY: 're_test', EMAIL_FROM: 'ShiftBoard <schedule@rabbits.co>' }, { fetchImpl: resend.fetchImpl });
+  const started = await startApp(db, { ...DEMO, APP_URL: 'https://schedule.rabbits.co' }, { mailer });
+  return { ...started, resend };
+}
+const setEmail = (db, id, email) => db.run((s) => s.update('users', id, { email }), { write: true });
+const linkToken = (mail) => mail.text.match(/#\/reset\?token=([\w-]+)/)[1];
+
+test('new notifications are emailed after the commit, respecting opt-outs', async () => {
+  const { dbs: [db], close } = await instances(1);
+  const A = await emailApp(db);
+  try {
+    await setEmail(db, 'usr_styves', 'styves@rabbits.co');
+    await setEmail(db, 'usr_victor', 'victor@rabbits.co');
+    const victor = await client(A.base).login('victor@rabbits.co');
+    assert.equal((await victor.rpc('account.preferences', { emailNotifications: false })).status, 200);
+    const mgr = await client(A.base).login('moe@demo.shiftboard');
+    const date = addDays(todayStr(), 20);
+    for (const userId of ['usr_styves', 'usr_victor']) {
+      const r = await mgr.rpc('shifts.save', { date, start: '16:00', end: '22:00', jobCodeId: 'job_srv', userId, published: true });
+      assert.equal(r.status, 200, JSON.stringify(r.body));
+    }
+    await A.app.locals.settled();
+    const sent = A.resend.emails();
+    assert.deepEqual(sent.map((m) => m.to[0]), ['styves@rabbits.co'], 'Victor opted out');
+    assert.match(sent[0].subject, /New shift/);
+    assert.ok(sent[0].html.includes('https://schedule.rabbits.co/#/my'));
+
+    // Reads never email.
+    const before = A.resend.calls.length;
+    await mgr.rpc('app.bootstrap');
+    await mgr.rpc('notifications.list');
+    // A failed request never emails.
+    assert.equal((await mgr.rpc('shifts.save', { date, start: 'nope', jobCodeId: 'job_srv', userId: 'usr_styves', published: true })).status, 400);
+    // The restaurant-wide switch turns email off.
+    await mgr.rpc('settings.update', { emailNotifications: false });
+    await mgr.rpc('shifts.save', { date: addDays(date, 1), start: '16:00', end: '22:00', jobCodeId: 'job_srv', userId: 'usr_styves', published: true });
+    await A.app.locals.settled();
+    assert.equal(A.resend.calls.length, before);
+  } finally { await A.close(); await close(); }
+});
+
+test('forgot password emails a one-time link that resets the password and signs in', async () => {
+  const { dbs: [db], close } = await instances(1);
+  const A = await emailApp(db);
+  try {
+    await setEmail(db, 'usr_styves', 'styves@rabbits.co');
+    const anon = client(A.base);
+    assert.deepEqual((await anon.post('/api/auth/forgot', { email: 'nobody@rabbits.co' })).body, { ok: true });
+    assert.deepEqual((await anon.post('/api/auth/forgot', { email: 'Styves@Rabbits.co' })).body, { ok: true });
+    await A.app.locals.settled();
+    const mails = A.resend.emails();
+    assert.equal(mails.length, 1, 'only the real account gets an email');
+    assert.match(mails[0].subject, /Reset your/);
+    const token = linkToken(mails[0]);
+
+    assert.equal((await anon.post('/api/auth/reset', { token, password: '123' })).status, 400); // too short; link still good
+    assert.equal((await anon.post('/api/auth/reset', { token, password: 'fresh-password-9' })).status, 200);
+    assert.equal((await anon.rpc('app.bootstrap')).status, 200, 'the reset signs you in');
+    assert.equal((await client(A.base).post('/api/auth/reset', { token, password: 'again-again' })).status, 400, 'single use');
+    assert.equal((await client(A.base).post('/api/auth/login', { email: 'styves@rabbits.co', password: 'demo1234' })).status, 401);
+    await client(A.base).login('styves@rabbits.co', 'fresh-password-9');
+  } finally { await A.close(); await close(); }
+});
+
+test('new people get an invite link; sign-in links and the test email are permission-checked', async () => {
+  const { dbs: [db], close } = await instances(1);
+  const A = await emailApp(db);
+  try {
+    const mgr = await client(A.base).login('moe@demo.shiftboard');
+    const r = await mgr.rpc('employees.save', { name: 'New Server', email: 'newbie@rabbits.co', role: 'employee', jobCodes: [{ jobCodeId: 'job_srv' }] });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.result.invited, true);
+    const invite = A.resend.emails().find((m) => m.to[0] === 'newbie@rabbits.co');
+    assert.match(invite.subject, /Set up your/);
+    const newbie = client(A.base);
+    assert.equal((await newbie.post('/api/auth/reset', { token: linkToken(invite), password: 'my-own-pass' })).status, 200);
+    assert.equal((await newbie.rpc('app.bootstrap')).body.result.me.name, 'New Server');
+
+    assert.equal((await mgr.post(`/api/users/${r.body.result.id}/invite`)).status, 200, 'resend a sign-in link');
+    await setEmail(db, 'usr_styves', 'styves@rabbits.co');
+    const styves = await client(A.base).login('styves@rabbits.co');
+    assert.equal((await styves.post(`/api/users/${r.body.result.id}/invite`)).status, 403);
+
+    assert.equal((await styves.post('/api/email/test')).status, 403);
+    assert.equal((await mgr.post('/api/email/test')).status, 400, 'demo address can’t receive mail');
+    await setEmail(db, 'usr_moe', 'moe@rabbits.co');
+    const t = await mgr.post('/api/email/test');
+    assert.equal(t.status, 200);
+    assert.equal(t.body.result.to, 'moe@rabbits.co');
+  } finally { await A.close(); await close(); }
+});
+
+test('without Resend configured, email features stay off', async () => {
+  const { dbs: [db], close } = await instances(1);
+  const A = await startApp(db, DEMO);
+  try {
+    assert.deepEqual(await (await fetch(`${A.base}/api/config`)).json(), { email: false, emailFrom: null });
+    assert.equal((await client(A.base).post('/api/auth/forgot', { email: 'moe@demo.shiftboard' })).status, 400);
+    const mgr = await client(A.base).login('moe@demo.shiftboard');
+    const r = await mgr.rpc('employees.save', { name: 'No Mail', email: 'nomail@rabbits.co', role: 'employee' });
+    assert.equal(r.body.result.invited, false);
+    assert.ok(r.body.result.tempPassword);
+  } finally { await A.close(); await close(); }
 });

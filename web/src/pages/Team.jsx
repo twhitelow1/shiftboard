@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp, Icon, Avatar, Modal, Field, useAction, JobDot, money, Empty } from '../ui.jsx';
+import { sendSignInLink } from '../api.js';
 
 const ROLES = { admin: 'Admin', manager: 'Manager', events: 'Events team', employee: 'Employee' };
 const COLORS = ['#2563eb', '#16a34a', '#65a30d', '#0891b2', '#9333ea', '#a855f7', '#dc2626', '#e11d48', '#d97706', '#ca8a04', '#475569', '#0f766e', '#334155', '#7c2d12', '#db2777'];
@@ -82,7 +83,7 @@ export default function Team() {
 }
 
 function EmployeeDialog({ emp, onClose }) {
-  const { call, jobCodes, isAdmin, toast } = useApp();
+  const { call, jobCodes, isAdmin, toast, emailEnabled } = useApp();
   const [f, setF] = useState({ ...emp, jobCodes: emp.jobCodes || [] });
   const [pw, setPw] = useState('');
   const [created, setCreated] = useState(null);
@@ -101,15 +102,21 @@ function EmployeeDialog({ emp, onClose }) {
 
   if (created) return (
     <Modal title="Employee added" onClose={onClose} footer={<button className="btn primary" onClick={onClose}>Done</button>}>
-      <div className="alert ok"><Icon name="check" size={16} />{created.name} can now sign in.</div>
-      <div className="kv"><dt>Email</dt><dd>{created.email || '(add an email so they can sign in)'}</dd><dt>Temp password</dt><dd><code style={{ fontSize: 15 }}>{created.tempPassword}</code></dd></div>
-      <div className="help">Share this privately. They can change it after signing in.</div>
+      {created.invited
+        ? <div className="alert ok"><Icon name="send" size={16} />We emailed {created.email} a link to set their password.</div>
+        : <div className="alert ok"><Icon name="check" size={16} />{created.name} can now sign in.</div>}
+      {created.inviteError && <div className="alert warn"><Icon name="alert" size={16} />{created.inviteError}</div>}
+      <div className="kv"><dt>Email</dt><dd>{created.email || '(add an email so they can sign in)'}</dd><dt>{created.invited ? 'Backup password' : 'Temp password'}</dt><dd><code style={{ fontSize: 15 }}>{created.tempPassword}</code></dd></div>
+      <div className="help">{created.invited ? 'Only needed if the email doesn’t arrive. Share it privately.' : 'Share this privately. They can change it after signing in.'}</div>
     </Modal>
   );
 
   return (
     <Modal wide title={emp.id ? emp.name : 'Add employee'} onClose={onClose}
-      footer={<><span className="spacer" /><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy || !f.name} onClick={save}>{emp.id ? 'Save' : 'Add employee'}</button></>}>
+      footer={<>
+        {emp.id && emailEnabled && emp.email && <button className="btn" disabled={busy} title="Email them a link to set a new password"
+          onClick={() => run(() => sendSignInLink(emp.id), (r) => `Sign-in link sent to ${r.to}`)}><Icon name="send" />Email sign-in link</button>}
+        <span className="spacer" /><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy || !f.name} onClick={save}>{emp.id ? 'Save' : 'Add employee'}</button></>}>
       <div className="grid2">
         <Field label="Name"><input className="input" value={f.name || ''} onChange={set('name')} autoFocus /></Field>
         <Field label="Role">

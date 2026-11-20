@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
-import { call, login, logout, IS_DEMO, demoPersonas, demoSwitch, demoCurrent } from './api.js';
+import { call, login, logout, IS_DEMO, demoPersonas, demoSwitch, demoCurrent, getConfig, forgotPassword, resetPassword } from './api.js';
 import { Ctx, Icon, Avatar, useToasts, Modal } from './ui.jsx';
 import Schedule from './pages/Schedule.jsx';
 import CalendarPage from './pages/Calendar.jsx';
@@ -38,7 +38,22 @@ const NAV = [
   { key: 'settings', label: 'Settings', icon: 'settings', admin: true },
 ];
 
-function Login({ onDone }) {
+function AuthCard({ children, onSubmit }) {
+  return (
+    <div className="login">
+      <form className="card card-pad col" style={{ gap: 14, padding: 26 }} onSubmit={onSubmit}>
+        <div className="brand" style={{ color: 'var(--text)', padding: 0 }}>
+          <div className="brand-mark">S</div>
+          <div><div className="brand-name">ShiftBoard</div><div className="small muted">Restaurant scheduling</div></div>
+        </div>
+        {children}
+      </form>
+    </div>
+  );
+}
+
+function Login({ onDone, emailEnabled }) {
+  const [mode, setMode] = useState('login'); // login | forgot | sent
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [err, setErr] = useState('');
@@ -46,22 +61,52 @@ function Login({ onDone }) {
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true); setErr('');
-    try { await login(email, password); onDone(); } catch (x) { setErr(x.message); } finally { setBusy(false); }
+    try {
+      if (mode === 'forgot') { await forgotPassword(email); setMode('sent'); }
+      else { await login(email, password); onDone(); }
+    } catch (x) { setErr(x.message); } finally { setBusy(false); }
+  };
+  if (mode === 'sent') return (
+    <AuthCard onSubmit={(e) => { e.preventDefault(); setMode('login'); }}>
+      <div className="alert ok"><Icon name="send" size={16} />If {email} has an account, we just emailed a link to reset the password. It works for 1 hour.</div>
+      <button className="btn block">Back to sign in</button>
+    </AuthCard>
+  );
+  return (
+    <AuthCard onSubmit={submit}>
+      {mode === 'forgot' && <div className="small muted">Enter your sign-in email and we'll send you a link to choose a new password.</div>}
+      <label className="field"><span>Email</span><input className="input" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus /></label>
+      {mode === 'login' && <label className="field"><span>Password</span><input className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>}
+      {err && <div className="alert bad">{err}</div>}
+      <button className="btn primary block" disabled={busy}>{mode === 'forgot' ? (busy ? 'Sending…' : 'Email me a reset link') : (busy ? 'Signing in…' : 'Sign in')}</button>
+      {emailEnabled
+        ? <button type="button" className="btn ghost sm" onClick={() => { setErr(''); setMode(mode === 'login' ? 'forgot' : 'login'); }}>{mode === 'login' ? 'Forgot your password?' : 'Back to sign in'}</button>
+        : <div className="help">Forgot your password? Ask a manager to reset it.</div>}
+    </AuthCard>
+  );
+}
+
+// Opened from an email link (#/reset?token=…): set a password for a new account or reset a forgotten one.
+function ResetPassword({ token, onDone }) {
+  const [pw, setPw] = useState('');
+  const [pw2, setPw2] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const submit = async (e) => {
+    e.preventDefault();
+    if (pw !== pw2) return setErr('The two passwords don’t match');
+    setBusy(true); setErr('');
+    try { await resetPassword(token, pw); onDone(); } catch (x) { setErr(x.message); } finally { setBusy(false); }
   };
   return (
-    <div className="login">
-      <form className="card card-pad col" style={{ gap: 14, padding: 26 }} onSubmit={submit}>
-        <div className="brand" style={{ color: 'var(--text)', padding: 0 }}>
-          <div className="brand-mark">S</div>
-          <div><div className="brand-name">ShiftBoard</div><div className="small muted">Restaurant scheduling</div></div>
-        </div>
-        <label className="field"><span>Email</span><input className="input" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
-        <label className="field"><span>Password</span><input className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
-        {err && <div className="alert bad">{err}</div>}
-        <button className="btn primary block" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
-        <div className="help">Forgot your password? Ask a manager to reset it.</div>
-      </form>
-    </div>
+    <AuthCard onSubmit={submit}>
+      <div><b>Choose your password</b><div className="small muted">At least 6 characters. You'll be signed in right after.</div></div>
+      <label className="field"><span>New password</span><input className="input" type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} required minLength={6} autoFocus /></label>
+      <label className="field"><span>Repeat it</span><input className="input" type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} required minLength={6} /></label>
+      {err && <div className="alert bad">{err}</div>}
+      <button className="btn primary block" disabled={busy}>{busy ? 'Saving…' : 'Save and sign in'}</button>
+      <a className="btn ghost sm" href="#/">Back to sign in</a>
+    </AuthCard>
   );
 }
 
@@ -97,6 +142,8 @@ function App() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [toast, toasts] = useToasts();
   const parts = useHashRoute();
+  const [config, setConfig] = useState({ email: false, emailFrom: null });
+  useEffect(() => { getConfig().then(setConfig); }, []);
 
   const load = useCallback(async () => {
     try {
@@ -116,10 +163,14 @@ function App() {
     const jobs = Object.fromEntries(boot.jobCodes.map((j) => [j.id, j]));
     const people = Object.fromEntries(boot.employees.map((e) => [e.id, e]));
     const isMgr = boot.me.role === 'admin' || boot.me.role === 'manager';
-    return { ...boot, jobs, people, isMgr, isAdmin: boot.me.role === 'admin', isEvents: isMgr || boot.me.role === 'events', call, toast, refresh, version, go };
-  }, [boot, toast, refresh, version]);
+    return { ...boot, jobs, people, isMgr, emailEnabled: config.email, emailFrom: config.emailFrom, isAdmin: boot.me.role === 'admin', isEvents: isMgr || boot.me.role === 'events', call, toast, refresh, version, go };
+  }, [boot, toast, refresh, version, config]);
 
-  if (authed === false) return <Login onDone={() => { setAuthed(true); refresh(); }} />;
+  if (parts[0]?.startsWith('reset')) {
+    const token = new URLSearchParams(location.hash.split('?')[1] || '').get('token') || '';
+    return <ResetPassword token={token} onDone={() => { location.hash = '#/'; setAuthed(true); refresh(); }} />;
+  }
+  if (authed === false) return <Login emailEnabled={config.email} onDone={() => { setAuthed(true); refresh(); }} />;
   if (!ctx) return <div className="empty" style={{ paddingTop: 120 }}>Loading…</div>;
 
   const route = parts[0] || (ctx.isMgr ? 'schedule' : 'my');
