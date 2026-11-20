@@ -409,7 +409,8 @@ export function createService(store, opts = {}) {
       if (!a.name?.trim()) fail(400, 'Name is required');
       const email = (a.email || '').trim().toLowerCase();
       if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail(400, 'That email doesn’t look right');
-      if (email && users().some((u) => u.email === email && u.id !== a.id)) fail(400, 'That email is already in use');
+      const emailOwner = email && users().find((u) => u.email === email && u.id !== a.id);
+      if (emailOwner) fail(400, `That email is already ${emailOwner.name}'s sign-in. If they're the same person, connect the two instead.`);
       const cur = a.id ? userById(a.id) : null;
       if (a.id && !cur) fail(404, 'User not found');
       const self = cur?.id === actor.id;
@@ -501,6 +502,7 @@ export function createService(store, opts = {}) {
       if (!into.email && from.email) patch.email = from.email;
       if (!into.phone && from.phone) patch.phone = from.phone;
       if (into.order == null && from.order != null) patch.order = from.order;
+      if (from.onSchedule !== false && into.onSchedule === false) patch.onSchedule = true; // they work shifts
       store.remove('users', from.id);
       store.update('users', into.id, patch);
       return { ...out, into: userView(userById(into.id)) };

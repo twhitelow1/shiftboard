@@ -163,6 +163,17 @@ function EmployeeDialog({ emp, onClose }) {
   const { call, jobCodes, me, employees, emailEnabled, settings } = useApp();
   const [f, setF] = useState({ onSchedule: true, ...emp, role: roleOf(emp), jobCodes: emp.jobCodes || [] });
   const allAreas = uniqueAreas([...scheduleAreas(settings), ...f.jobCodes.flatMap((j) => j.areas || [])]);
+  // The email typed is already someone's sign-in (e.g. an admin who also works shifts): offer to connect.
+  const typed = String(f.email || '').trim().toLowerCase();
+  const emailOwner = typed ? employees.find((x) => x.id !== emp.id && String(x.email || '').toLowerCase() === typed) : null;
+  const canConnect = !!(emailOwner && emp.id && emp.id !== me.id && roleOf(emp) !== 'super_admin' && canManageUser(me, emp)
+    && (emailOwner.id === me.id || canManageUser(me, emailOwner)));
+  const [connecting, setConnecting] = useState(false);
+  const connect = async () => {
+    const r = await run(() => call('employees.merge', { fromId: emp.id, intoId: emailOwner.id }),
+      `Connected: ${emp.name}'s shifts and positions are now on ${emailOwner.id === me.id ? 'your account' : `${emailOwner.name}'s account`}`);
+    if (r) onClose(true);
+  };
   const [pw, setPw] = useState('');
   const [created, setCreated] = useState(null);
   const [temp, setTemp] = useState(null);
@@ -201,7 +212,7 @@ function EmployeeDialog({ emp, onClose }) {
   return (
     <Modal wide title={emp.id ? emp.name : 'Add person'} sub={emp.id ? roleLabel(emp) : undefined} onClose={() => onClose(false)}
       footer={<><span className="spacer" /><button className="btn" onClick={() => onClose(false)}>{editable ? 'Cancel' : 'Close'}</button>
-        {editable && <button className="btn primary" disabled={busy || !f.name} onClick={save}>{emp.id ? 'Save' : 'Add person'}</button>}</>}>
+        {editable && <button className="btn primary" disabled={busy || !f.name || !!emailOwner} onClick={save}>{emp.id ? 'Save' : 'Add person'}</button>}</>}>
       {!editable && <div className="alert info"><Icon name="alert" size={16} />Only a higher role can edit {/^[AEIOU]/.test(roleLabel(emp)) ? 'an' : 'a'} {roleLabel(emp)}.</div>}
       <fieldset disabled={!editable} style={{ border: 0, padding: 0, margin: 0, display: 'contents' }}>
         <div className="grid2">
@@ -209,10 +220,31 @@ function EmployeeDialog({ emp, onClose }) {
           <Field label="Name on the schedule" help="How the schedule sheet writes their name, if it's different (e.g. MOE). Imports match it, and the Sheet view shows it.">
             <input className="input" value={f.sheetName || ''} onChange={set('sheetName')} placeholder={f.name ? String(f.name).split(' ')[0].toUpperCase() : 'e.g. MOE'} maxLength={40} />
           </Field>
-          <Field label="Email (sign-in)"><input className="input" type="email" value={f.email || ''} onChange={set('email')} placeholder="name@example.com" /></Field>
+          <Field label="Email (sign-in)"><input className="input" type="email" value={f.email || ''} onChange={(e) => { setConnecting(false); set('email')(e); }} placeholder="name@example.com" /></Field>
           <Field label="Phone"><input className="input" type="tel" value={f.phone || ''} onChange={set('phone')} /></Field>
           <Field label="Status"><label className="check" style={{ height: 38 }}><input type="checkbox" checked={f.active !== false} onChange={set('active')} disabled={self} />Active (can sign in and be scheduled)</label></Field>
         </div>
+        {emailOwner && (
+          <div className="alert warn col" style={{ alignItems: 'stretch', gap: 8 }}>
+            <div className="row" style={{ gap: 8 }}><Icon name="alert" size={16} />
+              <span><b>{typed}</b> is already how <b>{emailOwner.id === me.id ? 'you' : emailOwner.name}</b> sign{emailOwner.id === me.id ? '' : 's'} in ({roleLabel(emailOwner)}).
+                {canConnect ? ' Is this the same person?' : emp.id ? '' : ` Open ${emailOwner.name}'s profile to give them positions instead.`}</span>
+            </div>
+            {canConnect && !connecting && (
+              <div className="row wrap"><button type="button" className="btn sm primary" onClick={() => setConnecting(true)}><Icon name="user" />Yes, connect {emp.name} to {emailOwner.id === me.id ? 'my account' : `${emailOwner.name}'s account`}</button></div>
+            )}
+            {canConnect && connecting && (
+              <div className="col" style={{ gap: 8 }}>
+                <div className="small">Are you sure? <b>{emp.name}</b>'s shifts, positions, pay rates, areas, time off and trades move to <b>{emailOwner.id === me.id ? 'your account' : `${emailOwner.name}'s account`}</b>, which keeps its sign-in and its {roleLabel(emailOwner)} role. The separate {emp.name} record is removed{emailOwner.sheetName ? '' : `, and "${emp.sheetName || emp.name}" becomes the name on the schedule`}.</div>
+                <div className="row wrap">
+                  <button type="button" className="btn sm danger solid" disabled={busy} onClick={connect}>Connect accounts</button>
+                  <button type="button" className="btn sm" onClick={() => setConnecting(false)}>Cancel</button>
+                </div>
+              </div>
+            )}
+            {emailOwner && emp.id && !canConnect && <div className="small">Only someone who can manage both people can connect them.</div>}
+          </div>
+        )}
 
         <Field label="Role" help={self ? 'You can’t change your own role. Ask another admin.' : undefined}>
           <div className="col" style={{ gap: 6 }}>

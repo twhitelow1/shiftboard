@@ -325,3 +325,25 @@ test('start times only: notifications show just the in time when the restaurant 
   store.insert('users', { id: 'usr_m', name: 'M', role: 'manager', active: true, jobCodes: [] });
   assert.throws(() => svc.call(store.get('users', 'usr_m'), 'settings.update', { startTimesOnly: false }), /Admins only|admin/i);
 });
+
+test('an admin who also works shifts: their sign-in and the imported employee connect into one person', () => {
+  const { svc, store, owner } = fresh();
+  store.insert('jobCodes', { id: 'job_bar', name: 'Bartender', short: 'BAR', department: 'Restaurant', order: 0 });
+  store.update('users', 'usr_owner', { onSchedule: false });
+  // The import made "Todd" (no email) with shifts.
+  store.insert('users', { id: 'usr_todd', name: 'Todd', sheetName: 'Todd', role: 'employee', active: true, email: '', passwordHash: null,
+    jobCodes: [{ jobCodeId: 'job_bar', rate: null, primary: true, areas: ['Rabbit Hole', 'Moon Rabbit'] }] });
+  store.insert('shifts', { id: 's1', date: '2026-11-19', start: '15:30', jobCodeId: 'job_bar', area: 'Moon Rabbit', userId: 'usr_todd', published: true });
+  // Typing the admin's email on that record says whose sign-in it is.
+  assert.throws(() => svc.call(owner(), 'employees.save', { id: 'usr_todd', name: 'Todd', role: 'employee', email: 'O@r.co' }), /already Owner's sign-in/);
+  // Connecting folds the employee into the admin's own account.
+  svc.call(owner(), 'employees.merge', { fromId: 'usr_todd', intoId: 'usr_owner' });
+  const me = store.get('users', 'usr_owner');
+  assert.equal(store.get('users', 'usr_todd'), null);
+  assert.equal(me.role, 'super_admin', 'keeps the admin role and sign-in');
+  assert.equal(me.email, 'o@r.co');
+  assert.equal(me.onSchedule, true, 'now shows on the schedule');
+  assert.equal(me.sheetName, 'Todd');
+  assert.deepEqual(me.jobCodes.map((j) => [j.jobCodeId, j.areas]), [['job_bar', ['Rabbit Hole', 'Moon Rabbit']]]);
+  assert.equal(store.get('shifts', 's1').userId, 'usr_owner');
+});
