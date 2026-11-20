@@ -16,7 +16,7 @@ Built by DubLow Digital.
 | **Time off & availability** | Requests go to managers for approval. Approved time off shows as **REQUEST OFF** on the grid, and any shift that conflicts with it is flagged. |
 | **Forecasting & labor** | Forecasts covers and sales from your daily history (weighted same-weekday average with a trend), adds event guests from BEOs, and shows labor $ and labor % against your target. Labor rules like "1 server per 22 dinner covers" produce a scheduled-vs-recommended staffing grid. A one-click button fills the gaps with open shifts. |
 | **Events & BEOs** | A full Banquet Event Order: guests, room, service style, banquet captain, menu, dietary notes, beverage package, **special drinks** with recipes, timeline, setup, and **staffing needs** (how many servers, runners, bartenders, BCs). The app suggests staffing from guest count using standard banquet ratios, turns staffing lines into open shifts staff can claim, tracks fill status (e.g. 13/14), and includes a team comment thread. Staff on an event are notified whenever the BEO changes. |
-| **Import your spreadsheet** | Paste your existing Excel schedule directly. Sections, names, and cells like `4PM`, `3:30PM BC`, `12-4PM`, and `REQUEST OFF` are read automatically. CSV works too. |
+| **Import your schedule** | Upload the PDF of your weekly schedule, or paste it straight from Excel. Sections, banners (RABBIT HOLE, MOON RABBIT…), names, the dates, and cells like `4PM`, `3:30PM BC`, `1-9PM*`, and `REQUEST OFF` are read automatically. Event notes with a guest count (`CHANG/SMITH WEDDING RECEPTION FULL BUYOUT 160PPL`) become events, and projected covers feed the forecast. People and job codes that don't exist yet can be created during the import, so a new restaurant can be set up from one PDF. CSV works too. |
 | **Calendar sync** | Each employee gets a private iCal link for Google or Apple Calendar. |
 | **Notifications** | In-app notifications for schedule posted, shift changes, swap requests and approvals, open shifts, BEO updates, and comments. |
 
@@ -117,7 +117,8 @@ core/       Business logic shared by server + demo (pure JS, no I/O)
   service.js   every API method, with its permission checks
   forecast.js  covers/sales forecast, labor math, "until close" estimates
   beo.js       banquet staffing ratios
-  importer.js  spreadsheet/CSV schedule parser
+  importer.js  schedule parser (pasted spreadsheet, CSV, or a PDF grid), job/name matching, events from notes
+  pdfgrid.js   rebuilds the schedule grid from a PDF's positioned text (read in the browser with pdf.js)
   store.js     in-memory document store + a copy-on-write overlay used per request
   seed.js      demo data (the real week of 9/28/2026)
 server/     Express API (one RPC endpoint + auth) and iCal feed

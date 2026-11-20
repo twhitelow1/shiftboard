@@ -438,6 +438,86 @@ export function createService(store, opts = {}) {
       });
       return { created: created.length };
     },
+    // Everything a schedule import creates, in one all-or-nothing step (see web/src/pages/ImportDialog.jsx).
+    // References to people and job codes are either existing ids or keys of the new ones listed here.
+    'import.apply': (actor, a) => {
+      needMgr(actor);
+      const PALETTE = ['#2563eb', '#16a34a', '#d97706', '#9333ea', '#dc2626', '#0891b2', '#65a30d', '#e11d48', '#475569', '#ca8a04', '#0f766e', '#a855f7', '#7c2d12', '#db2777'];
+      const at = now().toISOString();
+      const out = { jobCodes: 0, employees: 0, shifts: 0, duplicates: 0, invalid: 0, jobsAdded: 0, timeOff: 0, events: 0, covers: 0 };
+      const jobRef = {}, userRef = {};
+      let order = store.list('jobCodes').reduce((m, j) => Math.max(m, Number(j.order) || 0), 0);
+      for (const j of a.newJobCodes || []) {
+        const name = String(j.name || '').trim();
+        if (!name) fail(400, 'Every new job code needs a name');
+        const same = store.list('jobCodes', (x) => x.name.trim().toLowerCase() === name.toLowerCase())[0];
+        if (same) { jobRef[j.key] = same.id; continue; }
+        const words = name.replace(/[^A-Za-z0-9 ]/g, '').split(/\s+/).filter(Boolean);
+        const short = (words.length > 1 ? words.map((w) => w[0]).join('') : name).slice(0, 4).toUpperCase();
+        order += 1;
+        jobRef[j.key] = store.insert('jobCodes', { id: uid('job'), name, short, department: String(j.department || 'Restaurant').trim(), color: PALETTE[order % PALETTE.length],
+          defaultRate: Number(j.defaultRate) || 0, order, eventRole: false, archived: false }).id;
+        out.jobCodes++;
+      }
+      const job = (ref) => jobRef[ref] || (ref && jobById(ref) ? ref : null);
+      for (const p of a.newEmployees || []) {
+        const name = String(p.name || '').trim();
+        if (!name || userRef[p.key]) continue;
+        const ids = [...new Set((p.jobs || []).map(job).filter(Boolean))];
+        // No password yet: a manager adds their email and sends a sign-in link from Team.
+        userRef[p.key] = store.insert('users', { id: uid('usr'), name, email: '', phone: '', role: 'employee', active: true, eventsAccess: false, onSchedule: true,
+          jobCodes: ids.map((id, i) => ({ jobCodeId: id, rate: null, primary: i === 0 })), availability: {}, passwordHash: null, createdAt: at, createdBy: actor.id }).id;
+        out.employees++;
+      }
+      const user = (ref) => userRef[ref] || (ref && userById(ref) ? ref : null);
+
+      const seen = new Set(store.list('shifts', (s) => s.userId).map((s) => `${s.userId}|${s.date}|${s.start}`));
+      const addJobs = new Map(); // people scheduled for a job code they don't hold yet
+      for (const s of a.shifts || []) {
+        const userId = user(s.user), jobCodeId = job(s.job);
+        if (!userId || !jobCodeId) continue;
+        try { validateShiftInput({ ...s, userId, jobCodeId }); } catch { out.invalid++; continue; }
+        const key = `${userId}|${s.date}|${s.start}`;
+        if (a.skipDuplicates !== false && seen.has(key)) { out.duplicates++; continue; }
+        seen.add(key);
+        store.insert('shifts', { id: uid('shf'), ...cleanShift({ ...s, userId, jobCodeId }), published: false, createdAt: at, createdBy: actor.id });
+        out.shifts++;
+        if (!qualified(userById(userId), jobCodeId)) addJobs.set(userId, new Set([...(addJobs.get(userId) || []), jobCodeId]));
+      }
+      for (const [userId, ids] of addJobs) {
+        const u = userById(userId);
+        if (u.id !== actor.id && !canManageUser(actor, u)) continue;
+        const had = u.jobCodes || [];
+        store.update('users', userId, { jobCodes: [...had, ...[...ids].map((id, i) => ({ jobCodeId: id, rate: null, primary: !had.length && i === 0 }))] });
+        out.jobsAdded += ids.size;
+      }
+
+      for (const t of a.timeOff || []) {
+        const userId = user(t.user);
+        if (!userId || !/^\d{4}-\d{2}-\d{2}$/.test(t.date || '')) continue;
+        if (store.list('timeOff', (x) => x.userId === userId && !['cancelled', 'denied'].includes(x.status) && x.startDate <= t.date && x.endDate >= t.date).length) continue;
+        store.insert('timeOff', { id: uid('tof'), userId, startDate: t.date, endDate: t.date, reason: 'Imported: request off', status: 'approved', decidedBy: actor.id, decidedAt: at, createdAt: at });
+        out.timeOff++;
+      }
+
+      if ((a.events || []).length) needEvents(actor);
+      for (const e of a.events || []) {
+        const name = String(e.name || '').trim();
+        if (!name || !/^\d{4}-\d{2}-\d{2}$/.test(e.date || '')) continue;
+        if (store.list('events', (x) => x.date === e.date && String(x.name).trim().toLowerCase() === name.toLowerCase()).length) continue;
+        store.insert('events', { id: uid('evt'), name, date: e.date, start: e.start || '', end: '', room: e.room || '', guestCount: Number(e.guestCount) || 0, type: e.type || '',
+          status: 'confirmed', staffing: [], menu: [], specialDrinks: [], timeline: [], notes: String(e.notes || ''), createdAt: at, createdBy: actor.id, updatedAt: at, updatedBy: actor.id });
+        out.events++;
+      }
+
+      for (const c of a.covers || []) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(c.date || '')) continue;
+        const doc = { id: c.date, date: c.date, covers: Math.max(0, Number(c.covers) || 0), sales: null, source: 'import' };
+        if (store.get('forecastOverrides', c.date)) store.update('forecastOverrides', c.date, doc); else store.insert('forecastOverrides', doc);
+        out.covers++;
+      }
+      return out;
+    },
     'shifts.copyWeek': (actor, { fromWeek, toWeek, replace }) => {
       needMgr(actor);
       const offset = daysBetween(fromWeek, toWeek);
