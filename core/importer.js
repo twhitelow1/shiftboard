@@ -158,14 +158,39 @@ const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const singular = (w) => String(w || '').replace(/men$/i, 'man').replace(/(ss)es$/i, '$1').replace(/([^s])s$/i, '$1');
 const SYNONYMS = { mod: ['manager'], managerondut: ['manager'], runner: ['foodrunner'], bar: ['bartender'], cocktail: ['cocktailserver'], door: ['doorman'] };
 
-/** Match a name from a schedule ("ALEX D", "MARYANN") to an employee. */
+/**
+ * Match every name on a sheet to people, most certain first, and never the same person twice:
+ *  1. the person's name on the schedule (sheetName): MOE → Louis Henson
+ *  2. their full name: MARYANN → Mary Ann
+ *  3. a unique first name: LOUIS → Louis Henson
+ *  4. a guess for names of 4+ letters (LUCAS → Chef Lucas), only among people with no name on the
+ *     schedule. Short names like LOU are never guessed, so they can't land on the wrong person.
+ * Returns Map(sheet name → { id, person, how: 'sheet' | 'name' | 'first' | 'guess' }).
+ */
+export function matchPeople(names, employees) {
+  const out = new Map();
+  const taken = new Set();
+  const first = (e) => norm(String(e.name || '').trim().split(/\s+/)[0]);
+  const pass = (how, test) => {
+    for (const raw of names) {
+      const n = norm(raw);
+      if (!n || out.has(raw)) continue;
+      const hits = employees.filter((e) => !taken.has(e) && test(e, n));
+      if (hits.length !== 1) continue;
+      out.set(raw, { id: hits[0].id, how, person: hits[0] });
+      taken.add(hits[0]);
+    }
+  };
+  pass('sheet', (e, n) => !!e.sheetName && norm(e.sheetName) === n);
+  pass('name', (e, n) => norm(e.name) === n);
+  pass('first', (e, n) => !e.sheetName && first(e) === n);
+  pass('guess', (e, n) => !e.sheetName && n.length >= 4 && (norm(e.name).startsWith(n) || n.startsWith(norm(e.name)) || norm(e.name).endsWith(n)));
+  return out;
+}
+
+/** Match one name from a schedule ("ALEX D", "MOE") to an employee (see matchPeople). */
 export function matchEmployee(name, employees) {
-  const n = norm(name);
-  if (!n) return null;
-  return employees.find((e) => norm(e.name) === n)
-    || (n.length >= 3 && employees.find((e) => norm(e.name).startsWith(n) || n.startsWith(norm(e.name))))
-    || (n.length >= 4 && employees.find((e) => norm(e.name).endsWith(n)))
-    || null;
+  return matchPeople([name], employees).get(name)?.person || null;
 }
 
 const SMALL_WORDS = new Set(['a', 'an', 'and', 'at', 'by', 'for', 'in', 'of', 'on', 'or', 'the', 'to', 'with']);

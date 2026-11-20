@@ -310,7 +310,7 @@ export function createService(store, opts = {}) {
       const employees = users().map((u) => {
         const pub = userView(u);
         if (isMgr(actor) || u.id === actor.id) return pub;
-        const basic = { id: u.id, name: u.name, role: pub.role, active: u.active, color: u.color, onSchedule: pub.onSchedule, order: u.order, jobCodes: (u.jobCodes || []).map((j) => ({ jobCodeId: j.jobCodeId, ...(j.areas?.length ? { areas: j.areas } : {}) })) };
+        const basic = { id: u.id, name: u.name, sheetName: u.sheetName || '', role: pub.role, active: u.active, color: u.color, onSchedule: pub.onSchedule, order: u.order, jobCodes: (u.jobCodes || []).map((j) => ({ jobCodeId: j.jobCodeId, ...(j.areas?.length ? { areas: j.areas } : {}) })) };
         return canSeeContacts(actor) ? { ...basic, email: u.email, phone: u.phone } : basic;
       }).sort((a, b) => a.name.localeCompare(b.name));
       const me = userView(userById(actor.id));
@@ -431,8 +431,15 @@ export function createService(store, opts = {}) {
       }
       if (a.password && String(a.password).length < 6) fail(400, 'Password must be at least 6 characters');
 
+      // How the schedule sheet writes their name (MOE for Louis Henson): matched on import, shown on the sheet.
+      const sheetName = String(a.sheetName ?? cur?.sheetName ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);
+      const key = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (sheetName) {
+        const clash = users().find((u) => u.id !== a.id && u.active !== false && key(u.sheetName || '') === key(sheetName));
+        if (clash) fail(400, `${clash.name} already goes by ${sheetName} on the schedule`);
+      }
       const doc = {
-        name: a.name.trim(), email, phone: (a.phone || '').trim(), role,
+        name: a.name.trim(), sheetName, email, phone: (a.phone || '').trim(), role,
         eventsAccess: !!a.eventsAccess, onSchedule: a.onSchedule !== false,
         jobCodes: (a.jobCodes || []).filter((j) => jobById(j.jobCodeId)).map((j) => ({ jobCodeId: j.jobCodeId, rate: j.rate === '' || j.rate == null ? null : Number(j.rate), primary: !!j.primary,
           ...(Array.isArray(j.areas) && j.areas.length ? { areas: uniqueAreas(j.areas) } : {}) })), // areas they usually work this job in
@@ -452,6 +459,50 @@ export function createService(store, opts = {}) {
       const tempPassword = a.password || randomPassword();
       const u = store.insert('users', { id: uid('usr'), ...doc, availability: {}, passwordHash: hashPassword(tempPassword), createdAt: now().toISOString(), createdBy: actor.id });
       return { ...userView(u), tempPassword };
+    },
+    // Two records for one person (e.g. "Moe" made by an import and "Louis Henson" added in Team):
+    // everything of `from` moves to `into` (shifts, time off, trades, notifications, event comments,
+    // positions with their pay rates and areas), `from`'s name becomes `into`'s name on the schedule
+    // if it has none, and `from` is deleted.
+    'employees.merge': (actor, { fromId, intoId }) => {
+      needMgr(actor);
+      const from = userById(fromId), into = userById(intoId);
+      if (!from || !into) fail(404, 'Person not found');
+      if (from.id === into.id) fail(400, 'Pick a different person');
+      if (from.id === actor.id) fail(400, 'You can’t merge yourself into someone else');
+      if (roleOf(from) === 'super_admin') fail(400, 'A Super Admin can’t be merged away');
+      if (!canManageUser(actor, from) || (into.id !== actor.id && !canManageUser(actor, into))) fail(403, 'Only a higher role can merge these people');
+      const out = { shifts: 0, timeOff: 0, requests: 0 };
+      for (const x of store.list('shifts', (sh) => sh.userId === from.id)) { store.update('shifts', x.id, { userId: into.id }); out.shifts++; }
+      for (const x of store.list('timeOff', (t) => t.userId === from.id)) { store.update('timeOff', x.id, { userId: into.id }); out.timeOff++; }
+      for (const r of store.list('requests', (r) => [r.requesterId, r.targetUserId, r.pickupUserId].includes(from.id))) {
+        const patch = {};
+        for (const k of ['requesterId', 'targetUserId', 'pickupUserId']) if (r[k] === from.id) patch[k] = into.id;
+        store.update('requests', r.id, patch);
+        out.requests++;
+      }
+      for (const n of store.list('notifications', (n) => n.userId === from.id)) store.update('notifications', n.id, { userId: into.id });
+      for (const c of store.list('eventComments', (c) => c.userId === from.id)) store.update('eventComments', c.id, { userId: into.id });
+      for (const e of store.list('events', (e) => e.captainId === from.id)) store.update('events', e.id, { captainId: into.id });
+      for (const r of store.list('rosters', (r) => (r.userIds || []).includes(from.id))) {
+        store.update('rosters', r.id, { userIds: [...new Set(r.userIds.map((id) => (id === from.id ? into.id : id)))] });
+      }
+      const jobs = (into.jobCodes || []).map((j) => ({ ...j }));
+      for (const f of from.jobCodes || []) {
+        const t = jobs.find((j) => j.jobCodeId === f.jobCodeId);
+        if (!t) { jobs.push({ ...f, primary: !jobs.length && !!f.primary }); continue; }
+        if (t.rate == null && f.rate != null) t.rate = f.rate;
+        const areas = uniqueAreas([...(t.areas || []), ...(f.areas || [])]);
+        if (areas.length) t.areas = areas;
+      }
+      const patch = { jobCodes: jobs };
+      if (!into.sheetName) patch.sheetName = from.sheetName || (from.name !== into.name ? from.name : '');
+      if (!into.email && from.email) patch.email = from.email;
+      if (!into.phone && from.phone) patch.phone = from.phone;
+      if (into.order == null && from.order != null) patch.order = from.order;
+      store.remove('users', from.id);
+      store.update('users', into.id, patch);
+      return { ...out, into: userView(userById(into.id)) };
     },
     'employees.setAvailability': (actor, { userId, availability }) => {
       needAuth(actor);
@@ -575,7 +626,7 @@ export function createService(store, opts = {}) {
       needMgr(actor);
       const PALETTE = ['#2563eb', '#16a34a', '#d97706', '#9333ea', '#dc2626', '#0891b2', '#65a30d', '#e11d48', '#475569', '#ca8a04', '#0f766e', '#a855f7', '#7c2d12', '#db2777'];
       const at = now().toISOString();
-      const out = { jobCodes: 0, employees: 0, rolesLowered: 0, shifts: 0, updated: 0, duplicates: 0, invalid: 0, jobsAdded: 0, areas: 0, timeOff: 0, events: 0, covers: 0, notes: 0 };
+      const out = { jobCodes: 0, employees: 0, rolesLowered: 0, shifts: 0, updated: 0, duplicates: 0, invalid: 0, jobsAdded: 0, areas: 0, sheetNames: 0, timeOff: 0, events: 0, covers: 0, notes: 0 };
       const jobRef = {}, userRef = {};
       let order = store.list('jobCodes').reduce((m, j) => Math.max(m, Number(j.order) || 0), 0);
       for (const j of a.newJobCodes || []) {
@@ -607,11 +658,21 @@ export function createService(store, opts = {}) {
         let role = ROLE_IDS.includes(p.role) ? p.role : 'employee';
         if (!canGive.includes(role)) { role = 'employee'; out.rolesLowered++; }
         // No password yet: a manager adds their email and sends a sign-in link from Team.
-        userRef[p.key] = store.insert('users', { id: uid('usr'), name, email: '', phone: '', role, active: true, eventsAccess: false, onSchedule: true, order: ++rowOrder,
+        // Their name as the sheet writes it stays their name on the schedule, so renaming them later
+        // (Moe → Louis Henson) doesn't break the next import.
+        userRef[p.key] = store.insert('users', { id: uid('usr'), name, sheetName: String(p.sheetName || name).slice(0, 40), email: '', phone: '', role, active: true, eventsAccess: false, onSchedule: true, order: ++rowOrder,
           jobCodes: ids.map((id, i) => ({ jobCodeId: id, rate: null, primary: i === 0 })), availability: {}, passwordHash: null, createdAt: at, createdBy: actor.id }).id;
         out.employees++;
       }
       const user = (ref) => userRef[ref] || (ref && userById(ref) ? ref : null);
+      // Remember how the sheet writes existing people's names (MOE → Louis Henson) for next time.
+      for (const x of a.sheetNames || []) {
+        const u = userById(user(x.user));
+        const name = String(x.name || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+        if (!u || !name || u.sheetName || (u.id !== actor.id && !canManageUser(actor, u))) continue;
+        store.update('users', u.id, { sheetName: name });
+        out.sheetNames++;
+      }
 
       // Areas from the sheet's banners, in the sheet's order, then each name's saved spelling.
       const areas = rememberAreas([...(a.areas || []), ...(a.shifts || []).map((s) => s.area), ...(a.assignments || []).map((x) => x.area)]);

@@ -30,10 +30,11 @@ const IMPORT = {
 test('import.apply builds a restaurant from a schedule in one step', () => {
   const { svc, store, owner } = fresh();
   const r = svc.call(owner(), 'import.apply', IMPORT);
-  assert.deepEqual(r, { jobCodes: 2, employees: 3, rolesLowered: 0, shifts: 3, updated: 0, duplicates: 1, invalid: 1, jobsAdded: 1, areas: 0, timeOff: 1, events: 1, covers: 1, notes: 0 });
+  assert.deepEqual(r, { jobCodes: 2, employees: 3, rolesLowered: 0, shifts: 3, updated: 0, duplicates: 1, invalid: 1, jobsAdded: 1, areas: 0, sheetNames: 0, timeOff: 1, events: 1, covers: 1, notes: 0 });
   const alex = store.list('users', (u) => u.name === 'Alex D')[0];
   assert.equal(alex.role, 'employee');
   assert.equal(alex.passwordHash, null, 'no password until they get a sign-in link');
+  assert.equal(alex.sheetName, 'Alex D', 'the sheet spelling is kept, so a later rename still matches');
   assert.equal(store.list('shifts', (s) => s.userId === alex.id).length, 2);
   assert.ok(store.list('shifts').every((s) => s.published === false), 'imported as drafts');
   const pat = store.list('users', (u) => u.name === 'Pat')[0];
@@ -268,4 +269,43 @@ test('clear a week: drafts by default, posted shifts and notes when asked, never
   assert.equal(store.get('requests', 'req_1').status, 'cancelled');
   assert.equal(store.list('notifications', (n) => n.userId === 'usr_a' && /taken off the schedule/.test(n.text)).length, 1);
   assert.throws(() => svc.call(owner(), 'shifts.clearWeek', {}), /Pick a week/);
+});
+
+test("names on the schedule: remembered on import, unique, and duplicates merge into one person", () => {
+  const { svc, store, owner } = fresh();
+  store.insert('jobCodes', { id: 'job_mgr', name: 'Manager', short: 'MGR', department: 'M.O.D.', order: 0 });
+  store.insert('jobCodes', { id: 'job_bar', name: 'Bartender', short: 'BAR', department: 'Restaurant', order: 1 });
+  const louis = svc.call(owner(), 'employees.save', { name: 'Louis Henson', role: 'manager', email: 'louis@r.co', jobCodes: [{ jobCodeId: 'job_mgr', rate: 30 }] });
+  // The import made "Moe" as a separate person, with shifts, before anyone knew.
+  store.insert('users', { id: 'usr_moe', name: 'Moe', role: 'employee', active: true, order: 3, passwordHash: null,
+    jobCodes: [{ jobCodeId: 'job_mgr', rate: null, areas: [] }, { jobCodeId: 'job_bar', rate: 18, areas: ['Restaurant'] }] });
+  store.insert('shifts', { id: 's1', date: '2026-11-18', start: '18:00', jobCodeId: 'job_mgr', userId: 'usr_moe', published: true });
+  store.insert('timeOff', { id: 't1', userId: 'usr_moe', startDate: '2026-11-22', endDate: '2026-11-22', status: 'approved' });
+  store.insert('requests', { id: 'r1', type: 'drop', shiftId: 's1', requesterId: 'usr_moe', status: 'open' });
+  store.insert('rosters', { id: '|job_mgr', area: '', jobCodeId: 'job_mgr', label: '', banner: 'M.O.D.', userIds: ['usr_x', 'usr_moe'] });
+
+  const r = svc.call(owner(), 'employees.merge', { fromId: 'usr_moe', intoId: louis.id });
+  assert.deepEqual([r.shifts, r.timeOff, r.requests], [1, 1, 1]);
+  assert.equal(store.get('users', 'usr_moe'), null);
+  const kept = store.get('users', louis.id);
+  assert.equal(kept.sheetName, 'Moe', "the duplicate's name becomes the name on the schedule");
+  assert.deepEqual(kept.jobCodes.map((j) => [j.jobCodeId, j.rate, j.areas || null]), [['job_mgr', 30, null], ['job_bar', 18, ['Restaurant']]]);
+  assert.equal(store.get('shifts', 's1').userId, louis.id);
+  assert.equal(store.get('timeOff', 't1').userId, louis.id);
+  assert.equal(store.get('requests', 'r1').requesterId, louis.id);
+  assert.deepEqual(store.get('rosters', '|job_mgr').userIds, ['usr_x', louis.id]);
+  assert.throws(() => svc.call(owner(), 'employees.merge', { fromId: 'usr_owner', intoId: louis.id }), /yourself|Super Admin/);
+
+  // Names on the schedule are unique, and an import remembers them only for people without one.
+  assert.throws(() => svc.call(owner(), 'employees.save', { name: 'Someone', role: 'employee', sheetName: ' moe ' }), /already goes by/);
+  const kai = svc.call(owner(), 'employees.save', { name: 'Kai Morgan', role: 'employee' });
+  const out = svc.call(owner(), 'import.apply', { sheetNames: [{ user: kai.id, name: 'KAI M' }, { user: louis.id, name: 'LOU' }] });
+  assert.equal(out.sheetNames, 1);
+  assert.equal(store.get('users', kai.id).sheetName, 'KAI M');
+  assert.equal(store.get('users', louis.id).sheetName, 'Moe', 'never overwritten by an import');
+  // Saving from Team without the field keeps it; clearing it works.
+  svc.call(owner(), 'employees.save', { id: kai.id, name: 'Kai Morgan', role: 'employee' });
+  assert.equal(store.get('users', kai.id).sheetName, 'KAI M');
+  svc.call(owner(), 'employees.save', { id: kai.id, name: 'Kai Morgan', role: 'employee', sheetName: '' });
+  assert.equal(store.get('users', kai.id).sheetName, '');
 });

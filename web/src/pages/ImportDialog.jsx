@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useApp, Modal, Field, Icon, useAction } from '../ui.jsx';
-import { parseSchedule, readSections, dateForDow, matchEmployee, matchPosition, positionName, departmentFor, suggestRole, notesToEvents, personName, titleCase } from '../../../core/importer.js';
+import { parseSchedule, readSections, dateForDow, matchPeople, matchPosition, positionName, departmentFor, suggestRole, notesToEvents, personName, titleCase } from '../../../core/importer.js';
 import { scheduleAreas, findArea, uniqueAreas } from '../../../core/areas.js';
 import { ROLES, rankOf, roleLabel, assignableRoles } from '../../../core/roles.js';
 import { addDays, weekStart, prettyDate } from '../../../core/time.js';
@@ -52,7 +52,10 @@ export default function ImportDialog({ ws: initialWs, onClose }) {
   const jobFor = (label) => jobMap[label] ?? (matchPosition(info[label]?.position, activeJobs)?.id || NEW);
   const newJobName = (label) => jobNames[label] ?? positionName(info[label]?.position) ?? '';
   const areaFor = (label) => areaMap[label] ?? areaName(info[label]?.area);
-  const empFor = (name) => empMap[name] ?? (matchEmployee(name, people)?.id || NEW);
+  // Names → people, surest first (name on the schedule, full name, first name, then a guess).
+  const auto = useMemo(() => matchPeople(names, people), [names, employees]);
+  const empFor = (name) => empMap[name] ?? (auto.get(name)?.id || NEW);
+  const isGuess = (name) => empMap[name] === undefined && auto.get(name)?.how === 'guess';
   const superAdminExists = employees.some((e) => e.role === 'super_admin' && e.active !== false);
   const roleChoices = assignableRoles(me, { superAdminExists }).filter((r) => ['manager', 'supervisor', 'employee'].includes(r));
   const roleFor = (label) => {
@@ -133,7 +136,11 @@ export default function ImportDialog({ ws: initialWs, onClose }) {
       area: areaFor(sec.label), job: jobRef(sec.label), label: sec.role || '', banner: sec.banner || '',
       users: sec.rows.map((r) => (empFor(r.name) ? personRef(r.name) : '')).filter(Boolean),
     }));
-    return { shifts, tos, assignments, areas, jobOrder, areaColors, dayNotes, rosters, dupes, events, covers, newJobs: [...newJobs.values()], newPeople: [...newPeople.values()], skipped: [...skipped] };
+    // How the sheet writes existing people's names (MOE for Louis Henson), remembered for next time.
+    const key = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const sheetNames = names.map((n) => ({ n, p: people.find((x) => x.id === empFor(n)) }))
+      .filter(({ n, p }) => p && !p.sheetName && key(p.name) !== key(n)).map(({ n, p }) => ({ user: p.id, name: personName(n) }));
+    return { shifts, tos, assignments, areas, jobOrder, areaColors, dayNotes, rosters, sheetNames, dupes, events, covers, newJobs: [...newJobs.values()], newPeople: [...newPeople.values()], skipped: [...skipped] };
   }, [parsed, jobMap, jobNames, areaMap, empMap, roleMap, ws, opts, skipEvent, found, employees, jobCodes, settings, pdfColors]);
 
   const badJobName = plan.newJobs.some((j) => !j.name);
@@ -163,12 +170,12 @@ export default function ImportDialog({ ws: initialWs, onClose }) {
 
   const doImport = async () => {
     const r = await run(() => call('import.apply', {
-      newJobCodes: plan.newJobs, newEmployees: plan.newPeople, shifts: plan.shifts, assignments: plan.assignments, areas: plan.areas, jobOrder: plan.jobOrder, areaColors: plan.areaColors, dayNotes: plan.dayNotes, rosters: plan.rosters,
+      newJobCodes: plan.newJobs, newEmployees: plan.newPeople, shifts: plan.shifts, assignments: plan.assignments, areas: plan.areas, jobOrder: plan.jobOrder, areaColors: plan.areaColors, dayNotes: plan.dayNotes, rosters: plan.rosters, sheetNames: plan.sheetNames,
       timeOff: opts.timeOff ? plan.tos : [], events: plan.events, covers: plan.covers, skipDuplicates: opts.dupes,
     }), (r) => [
       `Imported ${r.shifts} draft shifts`, r.updated && `${r.updated} existing shifts updated`,
       r.employees && `${r.employees} new people`, r.jobCodes && `${r.jobCodes} job codes`, r.areas && `${r.areas} areas`, r.events && `${r.events} events`,
-      r.timeOff && `${r.timeOff} requests off`, r.notes && `${r.notes} day notes`, r.duplicates && `${r.duplicates} duplicates skipped`, r.rolesLowered && `${r.rolesLowered} added as Employee (your role can't give that role)`,
+      r.timeOff && `${r.timeOff} requests off`, r.notes && `${r.notes} day notes`, r.sheetNames && `${r.sheetNames} schedule names remembered`, r.duplicates && `${r.duplicates} duplicates skipped`, r.rolesLowered && `${r.rolesLowered} added as Employee (your role can't give that role)`,
     ].filter(Boolean).join(' · '));
     if (r) onClose(true);
   };
@@ -266,16 +273,20 @@ export default function ImportDialog({ ws: initialWs, onClose }) {
               const v = empFor(n);
               return (
                 <div key={n} className="row">
-                  <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: v === '' ? 'var(--text-3)' : undefined, minWidth: 0 }}>{n}{v === NEW && <span className="badge ok" style={{ marginLeft: 6 }}>new</span>}</span>
+                  <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: v === '' ? 'var(--text-3)' : undefined, minWidth: 0 }}>{n}
+                    {v === NEW && <span className="badge ok" style={{ marginLeft: 6 }}>new</span>}
+                    {isGuess(n) && <span className="badge warn" style={{ marginLeft: 6 }} title="Matched by a close spelling. Pick the right person if this is wrong.">check</span>}
+                  </span>
                   <select className="input sm" style={{ width: 170 }} value={v} onChange={(e) => setEmpMap((m) => ({ ...m, [n]: e.target.value }))}>
                     <option value={NEW}>＋ Add as {personName(n)}</option>
                     <option value="">Skip</option>
-                    {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    {people.map((p) => <option key={p.id} value={p.id}>{p.name}{p.sheetName ? ` (${p.sheetName})` : ''}</option>)}
                   </select>
                 </div>
               );
             })}
           </div>
+          <div className="help">Names are matched by each person’s <b>name on the schedule</b> (set in Team, e.g. MOE for Louis Henson), then their full name. Anything marked <b>check</b> is a guess. When you pick someone whose name is written differently, that spelling is remembered for next time.</div>
           {plan.newPeople.length > 0 && <div className="help">New people get their section’s role ({[...new Set(plan.newPeople.map((p) => roleLabel(p.role)))].join(', ')}), position and areas. People already in ShiftBoard keep their role and get any position or area from the sheet they don’t have yet. Add emails in Team, then send sign-in links.</div>}
         </div>
       )}

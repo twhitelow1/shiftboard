@@ -87,7 +87,7 @@ export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onO
                     <tr className="sh-head"><td style={fill} title={sec.label}>{sec.sheetLabel ?? plural(sec.label)}</td>{days.map((d) => <td key={d}>{DAY_NAMES[dow(d)]}</td>)}</tr>
                     {sec.rows.map(({ user, shifts }) => (
                       <tr key={user.id} className={user.id === me.id ? 'me' : ''}>
-                        <td className="sh-name">{user.name}</td>
+                        <td className="sh-name" title={user.sheetName ? user.name : undefined}>{user.sheetName || user.name}</td>
                         {days.map((d) => <Cell key={d} date={d} sec={sec} user={user} list={shifts.filter((s) => s.date === d)} />)}
                       </tr>
                     ))}
