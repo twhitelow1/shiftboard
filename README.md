@@ -8,7 +8,7 @@ Built by DubLow Digital.
 
 | | |
 |---|---|
-| **Weekly schedule** | Grid grouped by job code (the same layout as the house Excel sheet) or by employee. Supports "until close" shifts (`4p–CL`), section tags (LIB, RH, BC, PASSED…), draft vs. published, copy week, print, and CSV export. |
+| **Weekly schedule** | Grid grouped by job code (the same layout as the house Excel sheet) or by employee. Supports "until close" shifts (`4p–CL`), section tags (LIB, RH, BC, PASSED…), area banners and the sheet's row order, draft vs. published, copy this week forward to build the next one, print, and CSV export. |
 | **Mobile first** | Phones get a day-by-day view with a bottom nav. Staff can check their schedule and the whole team's schedule, and trade shifts, from their phone. |
 | **Multiple job codes** | Each employee can hold any number of job codes, each with its own pay rate. Server + Banquet Captain, Food Runner + Barback, etc. |
 | **Calendar** | Month view for your own shifts or the whole team, plus a day timeline with bars by position. |
@@ -19,12 +19,18 @@ Built by DubLow Digital.
 | **Import your schedule** | Upload the PDF of your weekly schedule, or paste it straight from Excel. Sections, banners (RABBIT HOLE, MOON RABBIT…), names, the dates, and cells like `4PM`, `3:30PM BC`, `1-9PM*`, and `REQUEST OFF` are read automatically. Event notes with a guest count (`CHANG/SMITH WEDDING RECEPTION FULL BUYOUT 160PPL`) become events, and projected covers feed the forecast. People and job codes that don't exist yet can be created during the import, so a new restaurant can be set up from one PDF. CSV works too. |
 | **Calendar sync** | Each employee gets a private iCal link for Google or Apple Calendar. |
 | **Notifications** | In-app notifications for schedule posted, shift changes, swap requests and approvals, open shifts, BEO updates, and comments. |
+| **People & sign-in** | Team & Job Codes shows everyone's role and sign-in status (Active, Invited, Not invited, No email). Send an invite link to one person or to everyone who hasn't signed in, email a password reset link, or set a temporary password for someone without email. |
+| **Venue & floor plans** | Locations (for multi-location groups; a one-room place needs no setup), levels, and rooms marked as dining, bar or event space with capacity. Draw each room's floor plan: round, square and long tables with seats, booths, bars with stools, stages, dance floors, DJ booth, host stand, walls, doors and labels. An event's BEO shows its room's floor plan. |
 
 ### Roles
-- **Admin**: everything, including settings.
-- **Manager**: builds and publishes schedules, approves swaps and time off, runs forecasting, manages the team.
-- **Events team**: creates and edits BEOs and staffing needs. Doesn't touch the schedule.
+Each role can do everything the roles below it can.
+- **Super Admin**: the account owner. Everything, including managing other admins. There is always at least one.
+- **Admin**: settings, approval rules, and everyone except Super Admins.
+- **Manager**: builds and publishes schedules, approves requests, runs forecasting and events, adds and edits Supervisors and Employees, manages job codes.
+- **Supervisor**: a shift lead. Approves trades, pickups and time off (never their own; can be switched off in Settings) and sees coworkers' phone and email. Can't edit the schedule.
 - **Employee**: sees their own shifts and the full published schedule, trades and picks up shifts, requests time off, and reads BEOs.
+
+**Events & BEOs access** is a separate switch on each person (Managers and up always have it), so an events coordinator can be a Supervisor or Employee. Each job code has a **default role**, used when people are added from an imported schedule, so roles come from your data rather than code.
 
 Employees never see drafts, coworkers' contact info or pay rates, or client contact details on BEOs.
 
