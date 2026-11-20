@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCell, parseSchedule, readSections, matchPosition, positionName, departmentFor, matchEmployee, suggestRole, personName, titleCase } from '../core/importer.js';
+import { parseCell, parseSchedule, readSections, matchPosition, positionName, departmentFor, matchEmployee, matchPeople, suggestRole, personName, titleCase } from '../core/importer.js';
 import { scheduleAreas, findArea, uniqueAreas, bannerColor, textOn } from '../core/areas.js';
 
 test('parseCell handles restaurant shorthand', () => {
@@ -119,4 +119,23 @@ test('people names and matching', () => {
 test('role guesses for new sections', () => {
   assert.deepEqual(['M.O.D.', 'RESTAURANT · Servers', 'EVENTS · Banquet Captain', 'BAR · Bar Lead', 'Manager'].map(suggestRole),
     ['manager', 'employee', 'supervisor', 'supervisor', 'manager']);
+});
+
+test('names match the right people: name on the schedule first, short names never guessed', () => {
+  const people = [
+    { id: 'u1', name: 'Louis Henson', sheetName: 'Moe' },
+    { id: 'u2', name: 'Mary Ann' },
+    { id: 'u3', name: 'Chef Lucas' },
+    { id: 'u4', name: 'Kai Morgan' },
+    { id: 'u5', name: 'Alexander Diaz' },
+  ];
+  const m = matchPeople(['MOE', 'LOU', 'MARYANN', 'LUCAS', 'KAI', 'ALEXANDER', 'LOUIS'], people);
+  const got = Object.fromEntries([...m].map(([k, v]) => [k, `${v.id}:${v.how}`]));
+  assert.deepEqual(got, { MOE: 'u1:sheet', MARYANN: 'u2:name', KAI: 'u4:first', ALEXANDER: 'u5:first', LUCAS: 'u3:guess' });
+  assert.equal(m.get('LOU'), undefined, 'LOU is not guessed onto Louis Henson');
+  assert.equal(m.get('LOUIS'), undefined, 'someone with a name on the schedule is only matched by it or by their full name');
+  // One person is never matched twice: the surer match wins.
+  const twins = matchPeople(['ALEX D', 'ALEX DIAZ'], [{ id: 'a', name: 'Alex Diaz' }]);
+  assert.deepEqual([...twins].map(([k, v]) => [k, v.how]), [['ALEX DIAZ', 'name']]);
+  assert.equal(matchEmployee('moe', people)?.id, 'u1');
 });

@@ -29,7 +29,7 @@ export default function Team() {
   const [showInactive, setShowInactive] = useState(false);
   const [run, busy] = useAction();
 
-  const list = employees.filter((e) => (showInactive || e.active !== false) && (!q || e.name.toLowerCase().includes(q.toLowerCase()))
+  const list = employees.filter((e) => (showInactive || e.active !== false) && (!q || `${e.name} ${e.sheetName || ''}`.toLowerCase().includes(q.toLowerCase()))
     && (!job || e.jobCodes?.some((j) => j.jobCodeId === job)) && (!role || roleOf(e) === role));
   const depts = [...new Set(jobCodes.map((j) => j.department))];
   // People this manager can invite: never signed in, active, with a real email.
@@ -83,6 +83,7 @@ export default function Team() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="row wrap" style={{ gap: 6 }}>
                     <b>{e.name}</b>
+                    {e.sheetName && <span className="small muted" title="Name on the schedule">“{e.sheetName}”</span>}
                     {roleOf(e) !== 'employee' && <span className="badge brand">{roleLabel(e)}</span>}
                     {e.eventsAccess && roleOf(e) !== 'manager' && !['admin', 'super_admin'].includes(roleOf(e)) && <span className="badge">Events</span>}
                     {!IS_DEMO && <span className={`badge ${st.cls}`} title={st.title}>{st.label}</span>}
@@ -205,6 +206,9 @@ function EmployeeDialog({ emp, onClose }) {
       <fieldset disabled={!editable} style={{ border: 0, padding: 0, margin: 0, display: 'contents' }}>
         <div className="grid2">
           <Field label="Name"><input className="input" value={f.name || ''} onChange={set('name')} autoFocus={!emp.id} /></Field>
+          <Field label="Name on the schedule" help="How the schedule sheet writes their name, if it's different (e.g. MOE). Imports match it, and the Sheet view shows it.">
+            <input className="input" value={f.sheetName || ''} onChange={set('sheetName')} placeholder={f.name ? String(f.name).split(' ')[0].toUpperCase() : 'e.g. MOE'} maxLength={40} />
+          </Field>
           <Field label="Email (sign-in)"><input className="input" type="email" value={f.email || ''} onChange={set('email')} placeholder="name@example.com" /></Field>
           <Field label="Phone"><input className="input" type="tel" value={f.phone || ''} onChange={set('phone')} /></Field>
           <Field label="Status"><label className="check" style={{ height: 38 }}><input type="checkbox" checked={f.active !== false} onChange={set('active')} disabled={self} />Active (can sign in and be scheduled)</label></Field>
@@ -255,6 +259,8 @@ function EmployeeDialog({ emp, onClose }) {
         )}
       </fieldset>
 
+      {emp.id && editable && !self && roleOf(emp) !== 'super_admin' && <MergePerson emp={emp} onDone={() => onClose(true)} />}
+
       {emp.id && !IS_DEMO && (editable || self) && (
         <div className="card card-pad col" style={{ gap: 8, background: 'var(--bg-2, transparent)' }}>
           <div className="row"><b style={{ flex: 1 }}>Sign-in</b><span className={`badge ${st.cls}`} title={st.title}>{st.label}</span></div>
@@ -275,6 +281,34 @@ function EmployeeDialog({ emp, onClose }) {
         </div>
       )}
     </Modal>
+  );
+}
+
+/** Two records for one person (an imported "Moe" and "Louis Henson"): fold this one into the other. */
+function MergePerson({ emp, onDone }) {
+  const { call, employees, me } = useApp();
+  const [into, setInto] = useState('');
+  const [sure, setSure] = useState(false);
+  const [run, busy] = useAction();
+  const target = employees.find((e) => e.id === into);
+  const choices = employees.filter((e) => e.id !== emp.id && e.active !== false && (e.id === me.id || canManageUser(me, e)))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const merge = async () => {
+    if (!sure) return setSure(true);
+    const r = await run(() => call('employees.merge', { fromId: emp.id, intoId: into }),
+      (res) => `Merged ${emp.name} into ${target?.name}: ${res.shifts} shifts${res.timeOff ? `, ${res.timeOff} time off` : ''}`);
+    if (r) onDone();
+  };
+  return (
+    <Field label="Same person as someone else?" help={`Moves ${emp.name}'s shifts, time off, trades and positions to the person you pick, then removes ${emp.name}. If they have no name on the schedule yet, "${emp.sheetName || emp.name}" becomes it.`}>
+      <div className="row wrap">
+        <select className="input" style={{ maxWidth: 260 }} value={into} onChange={(e) => { setInto(e.target.value); setSure(false); }}>
+          <option value="">Choose the person to keep…</option>
+          {choices.map((e) => <option key={e.id} value={e.id}>{e.name}{e.sheetName ? ` (${e.sheetName})` : ''}</option>)}
+        </select>
+        <button type="button" className={`btn ${sure ? 'danger solid' : ''}`} disabled={!into || busy} onClick={merge}><Icon name="copy" />{sure ? `Tap again: merge into ${target?.name}` : 'Merge'}</button>
+      </div>
+    </Field>
   );
 }
 
