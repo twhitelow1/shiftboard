@@ -134,7 +134,14 @@ export function useToasts() {
   return [toast, view];
 }
 
+// Some restaurants post only the in time ("4p"), never an end or CL: Settings → "Show start times only".
+// Set from the loaded settings before the app renders (see main.jsx), so every view follows it.
+let startOnly = false;
+export const setStartTimesOnly = (v) => { startOnly = !!v; };
+export const startTimesOnly = () => startOnly;
+
 export function shiftTime(s) {
+  if (startOnly) return fmtTime(s.start);
   return `${fmtTime(s.start)}–${s.end ? fmtTime(s.end) : 'CL'}`;
 }
 

@@ -309,3 +309,19 @@ test("names on the schedule: remembered on import, unique, and duplicates merge 
   svc.call(owner(), 'employees.save', { id: kai.id, name: 'Kai Morgan', role: 'employee', sheetName: '' });
   assert.equal(store.get('users', kai.id).sheetName, '');
 });
+
+test('start times only: notifications show just the in time when the restaurant turns it on', () => {
+  const { svc, store, owner } = fresh();
+  store.insert('jobCodes', { id: 'job_srv', name: 'Server', short: 'SRV', department: 'Restaurant', order: 0 });
+  store.insert('users', { id: 'usr_a', name: 'A', role: 'employee', active: true, jobCodes: [{ jobCodeId: 'job_srv' }] });
+  const add = (start) => svc.call(owner(), 'shifts.save', { date: '2026-11-19', start, end: '22:00', jobCodeId: 'job_srv', userId: 'usr_a', published: true });
+  const last = () => store.list('notifications', (n) => n.userId === 'usr_a').map((n) => n.text).pop();
+  add('16:00');
+  assert.match(last(), /4p–10p$/);
+  svc.call(owner(), 'settings.update', { startTimesOnly: true });
+  assert.equal(svc.call(owner(), 'app.bootstrap').settings.startTimesOnly, true);
+  add('17:00');
+  assert.match(last(), /Nov 19 5p$/, 'no end time');
+  store.insert('users', { id: 'usr_m', name: 'M', role: 'manager', active: true, jobCodes: [] });
+  assert.throws(() => svc.call(store.get('users', 'usr_m'), 'settings.update', { startTimesOnly: false }), /Admins only|admin/i);
+});

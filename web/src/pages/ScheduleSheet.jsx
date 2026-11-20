@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useApp, Modal, Field, Icon, useAction } from '../ui.jsx';
+import { useApp, Modal, Field, Icon, useAction, startTimesOnly } from '../ui.jsx';
 import { DOW_LONG, dow, parseDate, prettyDate } from '../../../core/time.js';
 import { bannerColor, textOn } from '../../../core/areas.js';
 
@@ -17,7 +17,7 @@ export function sheetTime(s) {
     return { n: `${h % 12 || 12}${m ? `:${String(m).padStart(2, '0')}` : ''}`, ap: h >= 12 ? 'PM' : 'AM' };
   };
   const a = part(s.start);
-  if (!s.end) return `${a.n}${a.ap}`;
+  if (!s.end || startTimesOnly()) return `${a.n}${a.ap}`;
   const b = part(s.end);
   return a.ap === b.ap ? `${a.n}-${b.n}${b.ap}` : `${a.n}${a.ap}-${b.n}${b.ap}`;
 }
