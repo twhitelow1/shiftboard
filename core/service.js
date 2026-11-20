@@ -4,6 +4,7 @@ import { uid } from './store.js';
 import { addDays, dow, weekStart, range, overlaps, shiftSpan, todayStr, prettyDate, fmtTime, toMin, daysBetween } from './time.js';
 import { forecastDay, effectiveShift, hoursOf, activeAt, recommend } from './forecast.js';
 import { suggestStaffing } from './beo.js';
+import { cleanArea, uniqueAreas, findArea, scheduleAreas } from './areas.js';
 import { ROLE_IDS, roleOf, roleLabel, canManageSchedule, canChangeSettings, canManageEvents, canSeeContacts, canApprove,
   offSchedule, assignableRoles, canManageUser } from './roles.js';
 
@@ -34,6 +35,7 @@ export const DEFAULT_SETTINGS = {
   minSwapNoticeHours: 12,
   tags: ['LIB', 'RH', 'FR', 'BC', 'MOON', 'PATIO', 'PASSED', 'BACK HOST', 'CLOSE', 'OPEN'],
   rooms: ['Restaurant', 'Library', 'Rabbit Hole', 'Moon Rabbit', 'Patio', 'Full Buyout'],
+  areas: [], // schedule areas in the sheet's order (see core/areas.js); rooms are offered too
   departments: ['Leadership', 'Restaurant', 'Bar', 'Moon Rabbit', 'Host', 'Events', 'Kitchen'],
   dayparts: [
     { name: 'Lunch', start: '11:00', end: '16:00', peak: '12:30', share: 0.3 },
@@ -80,7 +82,7 @@ export function createService(store, opts = {}) {
   const qualified = (user, jobCodeId) => !!user?.jobCodes?.some((j) => j.jobCodeId === jobCodeId);
   const managers = () => users().filter((u) => u.active !== false && canManageSchedule(u));
   const approvers = () => users().filter((u) => u.active !== false && canApprove(u, settings()));
-  const describe = (s) => `${jobName(s.jobCodeId)} ${prettyDate(s.date)} ${fmtTime(s.start)}${s.end ? '–' + fmtTime(s.end) : ''}`;
+  const describe = (s) => `${jobName(s.jobCodeId)}${s.area ? ` (${s.area})` : ''} ${prettyDate(s.date)} ${fmtTime(s.start)}${s.end ? '–' + fmtTime(s.end) : ''}`;
   const isFuture = (s) => {
     const [start] = shiftSpan(s);
     const n = now();
@@ -153,9 +155,33 @@ export function createService(store, opts = {}) {
 
   const cleanShift = (a) => ({
     date: a.date, start: a.start, end: a.end || null, jobCodeId: a.jobCodeId, userId: a.userId || null,
+    area: cleanArea(a.area), // where it's worked (Restaurant, Moon Rabbit…); the job code is the position
     tag: (a.tag || '').trim(), notes: (a.notes || '').trim(), breakMin: Number(a.breakMin) || 0,
     eventId: a.eventId || null, staffingLineId: a.staffingLineId || null,
   });
+
+  /**
+   * Add areas the schedule doesn't know yet to settings.areas (after the ones it has, in the order
+   * given) and return a function that gives each name its saved spelling ("RABBIT HOLE" → "Rabbit Hole").
+   */
+  function rememberAreas(names) {
+    const known = scheduleAreas(settings());
+    const added = [];
+    for (const n of names) {
+      const name = cleanArea(n);
+      if (name && !findArea(name, known) && !findArea(name, added)) added.push(name);
+    }
+    const listed = settings().areas || [];
+    // Rooms used on the schedule join the area list too, so the sheet's order is kept.
+    const fromRooms = names.map((n) => findArea(n, known)).filter((n) => n && !findArea(n, listed));
+    const next = uniqueAreas([...listed, ...fromRooms, ...added]);
+    if (next.length !== listed.length) {
+      if (store.get('settings', 'settings')) store.update('settings', 'settings', { areas: next });
+      else store.insert('settings', { ...DEFAULT_SETTINGS, areas: next });
+    }
+    const all = scheduleAreas(settings());
+    return { added: added.length, canon: (n) => (cleanArea(n) ? findArea(n, all) || cleanArea(n) : '') };
+  }
 
   function executeRequest(r) {
     const shift = store.get('shifts', r.shiftId);
@@ -273,7 +299,7 @@ export function createService(store, opts = {}) {
       const employees = users().map((u) => {
         const pub = userView(u);
         if (isMgr(actor) || u.id === actor.id) return pub;
-        const basic = { id: u.id, name: u.name, role: pub.role, active: u.active, color: u.color, onSchedule: pub.onSchedule, order: u.order, jobCodes: (u.jobCodes || []).map((j) => ({ jobCodeId: j.jobCodeId })) };
+        const basic = { id: u.id, name: u.name, role: pub.role, active: u.active, color: u.color, onSchedule: pub.onSchedule, order: u.order, jobCodes: (u.jobCodes || []).map((j) => ({ jobCodeId: j.jobCodeId, ...(j.areas?.length ? { areas: j.areas } : {}) })) };
         return canSeeContacts(actor) ? { ...basic, email: u.email, phone: u.phone } : basic;
       }).sort((a, b) => a.name.localeCompare(b.name));
       const me = userView(userById(actor.id));
@@ -290,9 +316,10 @@ export function createService(store, opts = {}) {
     'settings.update': (actor, patch) => {
       needAdmin(actor);
       const allowed = ['restaurantName', 'weekStartDow', 'closedDays', 'hours', 'openEndHours', 'overtimeHours', 'requireSwapApproval',
-        'requirePickupApproval', 'supervisorsCanApprove', 'emailNotifications', 'minSwapNoticeHours', 'tags', 'rooms', 'departments', 'dayparts', 'forecastWeeks', 'targetLaborPct', 'laborRules'];
+        'requirePickupApproval', 'supervisorsCanApprove', 'emailNotifications', 'minSwapNoticeHours', 'tags', 'rooms', 'areas', 'departments', 'dayparts', 'forecastWeeks', 'targetLaborPct', 'laborRules'];
       const clean = {};
       for (const k of allowed) if (k in patch) clean[k] = patch[k];
+      if ('areas' in clean) clean.areas = uniqueAreas(Array.isArray(clean.areas) ? clean.areas : []);
       const cur = store.get('settings', 'settings');
       return cur ? store.update('settings', 'settings', clean) : store.insert('settings', { ...DEFAULT_SETTINGS, ...clean });
     },
@@ -317,6 +344,43 @@ export function createService(store, opts = {}) {
       if (store.list('shifts', (s) => s.jobCodeId === id).length) return store.update('jobCodes', id, { archived: true });
       store.remove('jobCodes', id);
       return { ok: true };
+    },
+    // Fold one job code into another: its shifts, people (keeping their pay rate and areas), BEO
+    // staffing lines and labor rules move over, then it's deleted. For cleaning up duplicate positions,
+    // e.g. "Moon Rabbit Bartender" into "Bartender" once the area is kept on the shift.
+    'jobCodes.merge': (actor, { fromId, intoId }) => {
+      needMgr(actor);
+      const from = jobById(fromId), into = jobById(intoId);
+      if (!from || !into) fail(404, 'Job code not found');
+      if (from.id === into.id) fail(400, 'Pick a different job code to merge into');
+      const out = { shifts: 0, people: 0, events: 0, rules: 0 };
+      for (const sh of store.list('shifts', (x) => x.jobCodeId === from.id)) { store.update('shifts', sh.id, { jobCodeId: into.id }); out.shifts++; }
+      for (const u of users()) {
+        const list = u.jobCodes || [];
+        const i = list.findIndex((j) => j.jobCodeId === from.id);
+        if (i < 0) continue;
+        const f = list[i], t = list.find((j) => j.jobCodeId === into.id);
+        const areas = uniqueAreas([...(t?.areas || []), ...(f.areas || [])]);
+        const merged = { ...f, ...t, jobCodeId: into.id, rate: t?.rate ?? f.rate ?? null, primary: !!(t?.primary || f.primary), ...(areas.length ? { areas } : {}) };
+        const next = [];
+        list.forEach((j, k) => {
+          if (k === i) next.push(merged);
+          else if (j.jobCodeId !== into.id && j.jobCodeId !== from.id) next.push(j);
+        });
+        store.update('users', u.id, { jobCodes: next });
+        out.people++;
+      }
+      for (const e of store.list('events', (x) => (x.staffing || []).some((l) => l.jobCodeId === from.id))) {
+        store.update('events', e.id, { staffing: e.staffing.map((l) => (l.jobCodeId === from.id ? { ...l, jobCodeId: into.id } : l)) });
+        out.events++;
+      }
+      const rules = settings().laborRules || [];
+      if (rules.some((r) => r.jobCodeId === from.id)) {
+        out.rules = rules.filter((r) => r.jobCodeId === from.id).length;
+        store.update('settings', 'settings', { laborRules: rules.map((r) => (r.jobCodeId === from.id ? { ...r, jobCodeId: into.id } : r)) });
+      }
+      store.remove('jobCodes', from.id);
+      return out;
     },
 
     // ----- employees -----
@@ -351,7 +415,8 @@ export function createService(store, opts = {}) {
       const doc = {
         name: a.name.trim(), email, phone: (a.phone || '').trim(), role,
         eventsAccess: !!a.eventsAccess, onSchedule: a.onSchedule !== false,
-        jobCodes: (a.jobCodes || []).filter((j) => jobById(j.jobCodeId)).map((j) => ({ jobCodeId: j.jobCodeId, rate: j.rate === '' || j.rate == null ? null : Number(j.rate), primary: !!j.primary })),
+        jobCodes: (a.jobCodes || []).filter((j) => jobById(j.jobCodeId)).map((j) => ({ jobCodeId: j.jobCodeId, rate: j.rate === '' || j.rate == null ? null : Number(j.rate), primary: !!j.primary,
+          ...(Array.isArray(j.areas) && j.areas.length ? { areas: uniqueAreas(j.areas) } : {}) })), // areas they usually work this job in
         active, color: a.color || null, maxHours: Number(a.maxHours) || null,
       };
       if (cur) {
@@ -415,6 +480,7 @@ export function createService(store, opts = {}) {
       needMgr(actor);
       validateShiftInput(a);
       const doc = cleanShift(a);
+      if (doc.area) doc.area = rememberAreas([doc.area]).canon(doc.area);
       if (a.id) {
         const cur = store.get('shifts', a.id);
         if (!cur) fail(404, 'Shift not found');
@@ -456,7 +522,7 @@ export function createService(store, opts = {}) {
       needMgr(actor);
       const PALETTE = ['#2563eb', '#16a34a', '#d97706', '#9333ea', '#dc2626', '#0891b2', '#65a30d', '#e11d48', '#475569', '#ca8a04', '#0f766e', '#a855f7', '#7c2d12', '#db2777'];
       const at = now().toISOString();
-      const out = { jobCodes: 0, employees: 0, rolesLowered: 0, shifts: 0, duplicates: 0, invalid: 0, jobsAdded: 0, timeOff: 0, events: 0, covers: 0 };
+      const out = { jobCodes: 0, employees: 0, rolesLowered: 0, shifts: 0, updated: 0, duplicates: 0, invalid: 0, jobsAdded: 0, areas: 0, timeOff: 0, events: 0, covers: 0 };
       const jobRef = {}, userRef = {};
       let order = store.list('jobCodes').reduce((m, j) => Math.max(m, Number(j.order) || 0), 0);
       for (const j of a.newJobCodes || []) {
@@ -472,6 +538,13 @@ export function createService(store, opts = {}) {
         out.jobCodes++;
       }
       const job = (ref) => jobRef[ref] || (ref && jobById(ref) ? ref : null);
+      // The sheet's section order becomes the job code order, so positions show in the same order
+      // under each area banner (Bartender, then Servers…). Job codes not on the sheet follow.
+      const sheetJobs = [...new Set((a.jobOrder || []).map(job).filter(Boolean))];
+      if (sheetJobs.length) {
+        const rest = store.list('jobCodes', (j) => !sheetJobs.includes(j.id)).sort((x, y) => (Number(x.order) || 0) - (Number(y.order) || 0));
+        [...sheetJobs.map(jobById), ...rest].forEach((j, i) => { if (j.order !== i) store.update('jobCodes', j.id, { order: i }); });
+      }
       const canGive = assignableRoles(actor, { superAdminExists: users().some((u) => roleOf(u) === 'super_admin' && u.active !== false) });
       let rowOrder = users().reduce((m, u) => Math.max(m, Number(u.order) || 0), 0);
       for (const p of a.newEmployees || []) {
@@ -487,25 +560,67 @@ export function createService(store, opts = {}) {
       }
       const user = (ref) => userRef[ref] || (ref && userById(ref) ? ref : null);
 
-      const seen = new Set(store.list('shifts', (s) => s.userId).map((s) => `${s.userId}|${s.date}|${s.start}`));
-      const addJobs = new Map(); // people scheduled for a job code they don't hold yet
+      // Areas from the sheet's banners, in the sheet's order, then each name's saved spelling.
+      const areas = rememberAreas([...(a.areas || []), ...(a.shifts || []).map((s) => s.area), ...(a.assignments || []).map((x) => x.area)]);
+      out.areas = areas.added;
+
+      // Who works which position, and where: from every section a person is listed in (even a week
+      // they're off), so their job codes and areas match the sheet.
+      const worksIn = new Map(); // userId -> Map(jobCodeId -> Set(area))
+      const note = (userId, jobCodeId, area) => {
+        if (!worksIn.has(userId)) worksIn.set(userId, new Map());
+        const jobs = worksIn.get(userId);
+        if (!jobs.has(jobCodeId)) jobs.set(jobCodeId, new Set());
+        if (area) jobs.get(jobCodeId).add(area);
+      };
+      for (const x of a.assignments || []) {
+        const userId = user(x.user), jobCodeId = job(x.job);
+        if (userId && jobCodeId) note(userId, jobCodeId, areas.canon(x.area));
+      }
+
+      // A shift for the same person, day and start that's already on the schedule is updated to the
+      // sheet's position, area and tag (so re-importing fixes earlier imports) instead of doubled.
+      const existing = new Map(store.list('shifts', (s) => s.userId).map((s) => [`${s.userId}|${s.date}|${s.start}`, s]));
+      const seen = new Set();
       for (const s of a.shifts || []) {
         const userId = user(s.user), jobCodeId = job(s.job);
         if (!userId || !jobCodeId) continue;
         try { validateShiftInput({ ...s, userId, jobCodeId }); } catch { out.invalid++; continue; }
+        const doc = cleanShift({ ...s, userId, jobCodeId, area: areas.canon(s.area) });
+        note(userId, jobCodeId, doc.area);
         const key = `${userId}|${s.date}|${s.start}`;
-        if (a.skipDuplicates !== false && seen.has(key)) { out.duplicates++; continue; }
-        seen.add(key);
-        store.insert('shifts', { id: uid('shf'), ...cleanShift({ ...s, userId, jobCodeId }), published: false, createdAt: at, createdBy: actor.id });
+        if (a.skipDuplicates !== false) {
+          if (seen.has(key)) { out.duplicates++; continue; } // listed in two sections of this sheet
+          seen.add(key);
+          const cur = existing.get(key);
+          if (cur) {
+            const patch = {};
+            if (!cur.eventId) for (const k of ['jobCodeId', 'area', 'tag', 'end']) if ((cur[k] ?? '') !== (doc[k] ?? '')) patch[k] = doc[k];
+            if (Object.keys(patch).length) { store.update('shifts', cur.id, patch); out.updated++; } else out.duplicates++;
+            continue;
+          }
+        }
+        store.insert('shifts', { id: uid('shf'), ...doc, published: false, createdAt: at, createdBy: actor.id });
         out.shifts++;
-        if (!qualified(userById(userId), jobCodeId)) addJobs.set(userId, new Set([...(addJobs.get(userId) || []), jobCodeId]));
       }
-      for (const [userId, ids] of addJobs) {
+      for (const [userId, jobs] of worksIn) {
         const u = userById(userId);
         if (u.id !== actor.id && !canManageUser(actor, u)) continue;
         const had = u.jobCodes || [];
-        store.update('users', userId, { jobCodes: [...had, ...[...ids].map((id, i) => ({ jobCodeId: id, rate: null, primary: !had.length && i === 0 }))] });
-        out.jobsAdded += ids.size;
+        let list = had.map((e) => ({ ...e }));
+        let changed = false;
+        for (const [jobCodeId, set] of jobs) {
+          let entry = list.find((e) => e.jobCodeId === jobCodeId);
+          if (!entry) {
+            entry = { jobCodeId, rate: null, primary: !list.length };
+            list.push(entry);
+            out.jobsAdded++;
+            changed = true;
+          }
+          const merged = uniqueAreas([...(entry.areas || []), ...set]);
+          if (merged.length !== (entry.areas || []).length) { entry.areas = merged; changed = true; }
+        }
+        if (changed) store.update('users', userId, { jobCodes: list });
       }
 
       for (const t of a.timeOff || []) {
@@ -871,7 +986,7 @@ export function createService(store, opts = {}) {
           for (let i = existing.length; i < line.count; i++) {
             const isCaptainLine = /captain/i.test(jobName(line.jobCodeId));
             const assign = isCaptainLine && i === 0 && e.captainId && qualified(userById(e.captainId), line.jobCodeId) ? e.captainId : null;
-            store.insert('shifts', { id: uid('shf'), ...cleanShift({ date: e.date, start: line.start || e.start, end: line.end || null, jobCodeId: line.jobCodeId, userId: assign, tag: e.room ? e.room.split(' ').map((w) => w[0]).join('').toUpperCase() : 'EVT', notes: `${e.name}${line.notes ? ' — ' + line.notes : ''}`, eventId: id, staffingLineId: line.id }), published: !!publish, createdAt: now().toISOString(), createdBy: actor.id });
+            store.insert('shifts', { id: uid('shf'), ...cleanShift({ date: e.date, start: line.start || e.start, end: line.end || null, jobCodeId: line.jobCodeId, userId: assign, area: findArea(e.room || '', scheduleAreas(settings())) || '', tag: e.room ? e.room.split(' ').map((w) => w[0]).join('').toUpperCase() : 'EVT', notes: `${e.name}${line.notes ? ' — ' + line.notes : ''}`, eventId: id, staffingLineId: line.id }), published: !!publish, createdAt: now().toISOString(), createdBy: actor.id });
             created++;
           }
         }

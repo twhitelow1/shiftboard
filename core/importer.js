@@ -67,8 +67,10 @@ const isoDate = (c) => {
 
 /**
  * Parse pasted text (or a grid rebuilt from a PDF by core/pdfgrid.js).
- * Returns { mode, sections: [{label, rows:[{name, cells:[{dow, parsed}]}]}], csvRows, problems,
+ * Returns { mode, sections: [{label, banner, role, rows:[{name, cells:[{dow, parsed}]}]}], csvRows, problems,
  *           weekOf, notes: [{dow, text}], covers: [{dow, covers}] }.
+ * banner is the area heading above the section (RESTAURANT, RABBIT HOLE…) and role is the section's
+ * own label (Servers, Bar…); either can be empty. See readSections for what they mean.
  * weekOf is the earliest date printed on the schedule; notes are unlabeled day cells (events,
  * "CLOSED"…); covers come from a "Projected Covers" row.
  */
@@ -81,14 +83,14 @@ export function parseSchedule(text) {
   const head = rows[0].map((c) => c.toLowerCase());
   if (head.includes('date') && (head.includes('employee') || head.includes('name'))) {
     const idx = (k) => head.findIndex((h) => h === k || h.startsWith(k));
-    const iDate = idx('date'), iEmp = head.includes('employee') ? idx('employee') : idx('name'), iJob = idx('job'), iStart = idx('start'), iEnd = idx('end'), iTag = idx('tag');
+    const iDate = idx('date'), iEmp = head.includes('employee') ? idx('employee') : idx('name'), iJob = idx('job'), iStart = idx('start'), iEnd = idx('end'), iTag = idx('tag'), iArea = idx('area');
     const csvRows = rows.slice(1).map((r, n) => {
       let date = r[iDate];
       const us = date?.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
       if (us) date = `${us[3].length === 2 ? '20' + us[3] : us[3]}-${pad(us[1])}-${pad(us[2])}`;
       const st = parseCell(iEnd >= 0 && r[iEnd] ? `${r[iStart]}-${r[iEnd]}` : r[iStart]);
       if (!st || st.unparsed || st.timeOff) problems.push(`Line ${n + 2}: couldn't read time "${r[iStart]}"`);
-      return { date, name: r[iEmp], job: iJob >= 0 ? r[iJob] : '', start: st?.start, end: st?.end || null, tag: (iTag >= 0 ? r[iTag] : '') || st?.tag || '' };
+      return { date, name: r[iEmp], job: iJob >= 0 ? r[iJob] : '', area: iArea >= 0 ? r[iArea] || '' : '', start: st?.start, end: st?.end || null, tag: (iTag >= 0 ? r[iTag] : '') || st?.tag || '' };
     }).filter((r) => r.date && r.name && r.start);
     return { mode: 'csv', sections: [], csvRows, problems, weekOf: null, notes: [], covers: [] };
   }
@@ -113,7 +115,7 @@ export function parseSchedule(text) {
       for (let i = colDow.length - 2; i >= 1; i--) if (colDow[i] < 0 && colDow[i + 1] >= 0) colDow[i] = (colDow[i + 1] + 6) % 7;
       for (let i = 2; i < Math.min(colDow.length, 8); i++) if (colDow[i] < 0 && colDow[i - 1] >= 0 && r[i] !== undefined) colDow[i] = (colDow[i - 1] + 1) % 7;
       const label = r[0] && dayIndex(r[0]) < 0 ? r[0] : '';
-      cur = { label: [banner, label].filter(Boolean).join(' · ') || `Section ${sections.length + 1}`, baseLabel: label, rows: [] };
+      cur = { label: [banner, label].filter(Boolean).join(' · ') || `Section ${sections.length + 1}`, banner, role: label, rows: [] };
       sections.push(cur);
       continue;
     }
@@ -166,32 +168,6 @@ export function matchEmployee(name, employees) {
     || null;
 }
 
-/**
- * Match a section label ("RESTAURANT · Servers", "MOON RABBIT · Bar", "M.O.D.") to a job code.
- * Tries the most specific reading first: banner + role ("Moon Rabbit Bar" → "MR Bartender"),
- * then the role alone, then the banner.
- */
-export function matchJob(label, jobCodes) {
-  const parts = String(label || '').split('·').map((p) => p.trim()).filter(Boolean);
-  const role = parts.length > 1 ? parts[parts.length - 1] : parts[0] || '';
-  const banner = parts.length > 1 ? parts[0] : '';
-  const r = norm(role), rs = norm(singular(role));
-  const b = norm(banner);
-  const ini = banner.split(/\s+/).filter(Boolean).map((w) => w[0]).join('').toLowerCase();
-  const roleCands = [...new Set([r, rs, ...(SYNONYMS[rs] || SYNONYMS[r] || [])].filter(Boolean))];
-  const exact = (c) => jobCodes.find((j) => norm(j.name) === c || norm(j.short) === c);
-  const starts = (c) => c.length >= 3 && jobCodes.find((j) => norm(j.name).startsWith(c));
-  const contains = (c) => jobCodes.find((j) => norm(j.name).length >= 4 && c.includes(norm(j.name)));
-  const within = (c) => c.length >= 4 && jobCodes.find((j) => norm(j.name).includes(c));
-  const specific = [b && b + r, b && b + rs, ini.length > 1 && ini + r, ini.length > 1 && ini + rs].filter(Boolean);
-  for (const c of specific) { const j = exact(c) || starts(c); if (j) return j; }
-  for (const c of roleCands) { const j = jobCodes.find((x) => norm(x.name) === c); if (j) return j; }
-  for (const c of specific.slice(0, 2)) { const j = contains(c); if (j) return j; }
-  for (const c of roleCands) { const j = exact(c) || starts(c) || contains(c) || within(c); if (j) return j; }
-  if (b) { const j = exact(b) || starts(b) || within(b); if (j) return j; }
-  return null;
-}
-
 const SMALL_WORDS = new Set(['a', 'an', 'and', 'at', 'by', 'for', 'in', 'of', 'on', 'or', 'the', 'to', 'with']);
 /** "THROUGH THE LENS ARTIST" → "Through the Lens Artist", "CHANG/SMITH" → "Chang/Smith". */
 export function titleCase(s) {
@@ -203,28 +179,77 @@ export function personName(s) {
   return String(s || '').trim().split(/\s+/).map((w) => (w.length <= 2 ? w.toUpperCase() : titleCase(w))).join(' ');
 }
 
-const ROLE_NAMES = { server: 'Server', runner: 'Food Runner', busser: 'Busser', bar: 'Bartender', bartender: 'Bartender', barback: 'Barback',
-  cocktail: 'Cocktail Server', host: 'Host', doorman: 'Doorman', door: 'Doorman', cook: 'Cook', dishwasher: 'Dishwasher', expo: 'Expo' };
+const MOD = /^m\.?\s*o\.?\s*d\.?$|manager on duty/i;
+const ROLE_NAMES = { server: 'Server', runner: 'Food Runner', foodrunner: 'Food Runner', busser: 'Busser', bar: 'Bartender', bartender: 'Bartender', barback: 'Barback',
+  cocktail: 'Cocktail Server', host: 'Host', doorman: 'Doorman', door: 'Doorman', cook: 'Cook', dishwasher: 'Dishwasher', expo: 'Expo', manager: 'Manager' };
+// Words that make a lone banner a position rather than a place ("M.O.D.", "MANAGERS", "KITCHEN LEADS").
+const ROLE_WORDS = /\b(m\.?\s*o\.?\s*d\.?|managers?|gm|chefs?|captains?|leads?|supervisors?|cooks?|dishwashers?|expo|servers?|bartenders?|hosts?|runners?|bussers?|barbacks?|doorm[ae]n|security|valets?|sommeliers?|baristas?)\b/i;
+
+/** A position's usual name from a section label: "Bar" → "Bartender", "Doormen" → "Doorman", "M.O.D." → "Manager". */
+export function positionName(label) {
+  const t = String(label || '').replace(/\s+/g, ' ').trim();
+  if (!t) return '';
+  if (MOD.test(t)) return 'Manager';
+  return ROLE_NAMES[singular(t).toLowerCase().replace(/[^a-z]/g, '')] || titleCase(singular(t));
+}
+
 /**
- * Name and department for a new job code made from a section label. A role that shows up under
- * several banners keeps the banner ("Moon Rabbit Bartender"); a banner that already names the
- * role is used as-is ("Back Host Stand").
+ * What each schedule section means. The sheet puts the area (RESTAURANT, RABBIT HOLE, BACK HOST
+ * STAND…) in a banner and the position (Servers, Bar, Doormen…) on the section, so a Bartender in
+ * the Moon Rabbit is position "Bar" in area "MOON RABBIT", not a job called "Moon Rabbit".
+ *  - A section with its own label: area = banner, position = label.
+ *  - A banner-only section that names a position (M.O.D.): no area, position = banner.
+ *  - A banner-only section that names a place (RESTAURANT with Lou, Ciaran…): area = banner, and the
+ *    position is read from the same people's other sections (Stiliyan also works "Bar" → Bar).
+ * Returns [{ label, area, position, inferred }] in section order; area and position are raw text.
  */
-export function suggestJob(label, allLabels = []) {
-  const parts = String(label || '').split('·').map((p) => p.trim()).filter(Boolean);
-  const role = parts.length > 1 ? parts[parts.length - 1] : '';
-  const banner = parts.length > 1 ? parts[0] : parts[0] || '';
-  if (/^m\.?\s*o\.?\s*d\.?$|manager on duty/i.test(role || banner)) return { name: 'Manager', department: 'Leadership' };
-  const department = titleCase(banner) || 'Restaurant';
-  if (!role) return { name: titleCase(banner) || 'Staff', department };
-  const key = singular(role).toLowerCase().replace(/[^a-z]/g, '');
-  const base = ROLE_NAMES[key] || titleCase(singular(role));
-  if (banner && norm(banner).includes(key)) return { name: titleCase(banner), department };
-  const shared = allLabels.filter((l) => {
-    const p = String(l).split('·').map((x) => x.trim());
-    return p.length > 1 && singular(p[p.length - 1]).toLowerCase().replace(/[^a-z]/g, '') === key;
-  }).length > 1;
-  return { name: shared && banner ? `${titleCase(banner)} ${base}` : base, department };
+export function readSections(sections) {
+  const out = sections.map((s) => {
+    const banner = String(s.banner || '').trim(), role = String(s.role || '').trim();
+    if (role) return { label: s.label, area: banner, position: role, inferred: false };
+    if (!banner) return { label: s.label, area: '', position: 'Staff', inferred: false };
+    if (ROLE_WORDS.test(banner)) return { label: s.label, area: '', position: banner, inferred: false };
+    return { label: s.label, area: banner, position: '', inferred: true };
+  });
+  out.forEach((o, i) => {
+    if (!o.inferred) return;
+    const names = new Set(sections[i].rows.map((r) => norm(r.name)));
+    const votes = new Map();
+    sections.forEach((s, k) => {
+      if (k === i || out[k].inferred || !out[k].position) return;
+      const n = s.rows.filter((r) => names.has(norm(r.name))).length;
+      if (!n) return;
+      const pos = positionName(out[k].position);
+      const v = votes.get(pos) || { n: 0, label: out[k].position };
+      v.n += n;
+      votes.set(pos, v);
+    });
+    const best = [...votes.values()].sort((a, b) => b.n - a.n)[0];
+    o.position = best ? best.label : 'Staff';
+  });
+  return out;
+}
+
+/**
+ * Match a position label ("Servers", "Bar", "Doormen", "M.O.D.") to an existing job code by name or
+ * short code. Only the position counts: the area is kept separately, so "Bar" under MOON RABBIT and
+ * under RABBIT HOLE both find "Bartender". Short words only match exactly ("Bar" never finds "Barback").
+ */
+export function matchPosition(label, jobCodes) {
+  const t = String(label || '').trim();
+  if (!t) return null;
+  const r = norm(t), rs = norm(singular(t));
+  const cands = [...new Set([r, rs, norm(positionName(t)), ...(SYNONYMS[rs] || SYNONYMS[r] || [])].filter(Boolean))];
+  for (const c of cands) { const j = jobCodes.find((x) => norm(x.name) === c); if (j) return j; }
+  for (const c of cands) { const j = jobCodes.find((x) => norm(x.short) === c); if (j) return j; }
+  for (const c of cands) { if (c.length < 4) continue; const j = jobCodes.find((x) => norm(x.name).startsWith(c)); if (j) return j; }
+  return null;
+}
+
+/** Department for a new job code: the area it was first seen in, or Leadership for managers. */
+export function departmentFor(position, area) {
+  if (area) return titleCase(area);
+  return /manager|m\.?\s*o\.?\s*d|\bgm\b|director/i.test(position || '') ? 'Leadership' : 'Restaurant';
 }
 
 /**

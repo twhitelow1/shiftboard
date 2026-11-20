@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useApp, Icon, Avatar, Modal, Field, shiftTime, money, useAction, JobDot, Empty } from '../ui.jsx';
 import { addDays, weekStart, range, dow, prettyDate, DOW_SHORT, parseDate, MONTHS, fmtTime } from '../../../core/time.js';
 import { hoursOf } from '../../../core/forecast.js';
+import { scheduleAreas, findArea, sameArea } from '../../../core/areas.js';
 import ShiftDialog from './ShiftDialog.jsx';
 import ImportDialog from './ImportDialog.jsx';
 import { IS_DEMO } from '../api.js';
@@ -62,8 +63,9 @@ export default function Schedule() {
 
   const shifts = data?.shifts || [];
   const drafts = shifts.filter((s) => !s.published).length;
-  const departments = [...new Set(jobCodes.filter((j) => !j.archived).map((j) => j.department))];
-  const visibleJobs = jobCodes.filter((j) => !j.archived && (!dept || j.department === dept));
+  const areaList = useMemo(() => scheduleAreas(settings), [settings]);
+  // The banner a shift sits under: its area (Restaurant, Moon Rabbit…), else its job's department.
+  const bannerOf = (s) => s.area || jobs[s.jobCodeId]?.department || '';
 
   const timeOffOn = (userId, date) => data?.timeOff?.find((t) => t.userId === userId && t.startDate <= date && t.endDate >= date);
   const hoursByUser = useMemo(() => {
@@ -73,39 +75,77 @@ export default function Schedule() {
   }, [shifts, settings]);
 
   const openDialog = (shift) => setDialog({ shift, warnings: data?.warnings?.[shift.id] });
-  const addAt = (date, jobCodeId, userId) => isMgr && setDialog({ shift: { date, jobCodeId, userId, start: '16:00' } });
+  const addAt = (date, jobCodeId, userId, area = '') => isMgr && setDialog({ shift: { date, jobCodeId, userId, area, start: '16:00' } });
   const closeDialog = (changed) => { setDialog(null); if (changed) load(); };
+
+  // Sections like the house sheet: an area banner (RESTAURANT, RABBIT HOLE…), then each position
+  // worked there. Shifts go under their area; people also show under the areas their job code lists,
+  // so a manager sees the whole roster. Without areas, a job's department is the banner.
+  const allSections = useMemo(() => {
+    if (!data) return [];
+    const activeEmps = employees.filter((e) => e.active !== false && e.onSchedule !== false);
+    const groups = new Map();
+    const add = (banner, job) => {
+      const name = findArea(banner, areaList) || banner || '';
+      const k = `${name.toLowerCase()}|${job.id}`;
+      if (!groups.has(k)) groups.set(k, { banner: name, isArea: !!findArea(name, areaList), job, users: new Set(), shifts: [] });
+      return groups.get(k);
+    };
+    for (const sh of shifts) {
+      const j = jobs[sh.jobCodeId];
+      if (!j) continue;
+      const g = add(bannerOf(sh), j);
+      g.shifts.push(sh);
+      if (sh.userId) g.users.add(sh.userId);
+    }
+    for (const e of activeEmps) {
+      for (const entry of e.jobCodes || []) {
+        const j = jobs[entry.jobCodeId];
+        if (!j || j.archived) continue;
+        for (const b of entry.areas?.length ? entry.areas : [j.department || '']) add(b, j).users.add(e.id);
+      }
+    }
+    if (isMgr) for (const j of jobCodes) if (!j.archived && ![...groups.values()].some((g) => g.job.id === j.id)) add(j.department || '', j);
+    // Department banners first (in job order, e.g. Leadership), then areas in the schedule's area order.
+    const firstJob = {};
+    for (const g of groups.values()) firstJob[g.banner] = Math.min(firstJob[g.banner] ?? 1e9, g.job.order ?? 1e9);
+    const rank = (g) => (g.isArea ? 1e6 + areaList.findIndex((a) => sameArea(a, g.banner)) : firstJob[g.banner]);
+    const byJob = (a, b) => (a.job.order ?? 0) - (b.job.order ?? 0) || a.job.name.localeCompare(b.job.name);
+    return [...groups.values()].sort((a, b) => rank(a) - rank(b) || a.banner.localeCompare(b.banner) || byJob(a, b)).map((g) => {
+      let rows = [...g.users].map((id) => people[id]).filter(Boolean).map((u) => ({ user: u, shifts: g.shifts.filter((x) => x.userId === u.id) }));
+      // Keep the sheet's order (set when people are imported), then alphabetical.
+      rows.sort((a, b) => (a.user.order ?? 1e9) - (b.user.order ?? 1e9) || a.user.name.localeCompare(b.user.name));
+      return { key: `${g.banner}|${g.job.id}`, job: g.job, banner: g.banner, area: g.isArea ? g.banner : '', label: g.job.name, rows, open: g.shifts.filter((x) => !x.userId) };
+    });
+  }, [data, employees, jobCodes, areaList, people, isMgr]);
+  const banners = [...new Set(allSections.map((x) => x.banner).filter(Boolean))];
 
   const sections = useMemo(() => {
     if (!data) return [];
-    const activeEmps = employees.filter((e) => e.active !== false && e.onSchedule !== false);
+    const inBanner = (b) => !dept || sameArea(b, dept);
     if (groupBy === 'emp') {
-      const rows = activeEmps.filter((e) => (!mine || e.id === me.id) && (!dept || e.jobCodes?.some((j) => jobs[j.jobCodeId]?.department === dept)))
-        .map((e) => ({ user: e, shifts: shifts.filter((s) => s.userId === e.id && (!dept || jobs[s.jobCodeId]?.department === dept)) }))
-        .filter((r) => !hideEmpty || r.shifts.length || days.some((d) => timeOffOn(r.user.id, d)));
-      const open = shifts.filter((s) => !s.userId && (!dept || jobs[s.jobCodeId]?.department === dept));
+      const activeEmps = employees.filter((e) => e.active !== false && e.onSchedule !== false);
+      const worksIn = (e) => e.jobCodes?.some((x) => (x.areas?.length ? x.areas : [jobs[x.jobCodeId]?.department]).some(inBanner));
+      const rows = activeEmps.filter((e) => (!mine || e.id === me.id))
+        .map((e) => ({ user: e, shifts: shifts.filter((x) => x.userId === e.id && inBanner(bannerOf(x))) }))
+        .filter((r) => (!dept || r.shifts.length || worksIn(r.user)) && (!hideEmpty || r.shifts.length || days.some((d) => timeOffOn(r.user.id, d))));
+      const open = shifts.filter((x) => !x.userId && inBanner(bannerOf(x)));
       return [{ key: 'all', label: 'Everyone', rows, open }];
     }
-    return visibleJobs.map((j) => {
-      const jobShifts = shifts.filter((s) => s.jobCodeId === j.id);
-      const users = new Set(activeEmps.filter((e) => e.jobCodes?.some((x) => x.jobCodeId === j.id)).map((e) => e.id));
-      jobShifts.forEach((s) => s.userId && users.add(s.userId));
-      let rows = [...users].map((id) => people[id]).filter(Boolean)
-        .map((u) => ({ user: u, shifts: jobShifts.filter((s) => s.userId === u.id) }));
-      // Keep the sheet's order (set when people are imported), then alphabetical.
-      rows.sort((a, b) => (a.user.order ?? 1e9) - (b.user.order ?? 1e9) || a.user.name.localeCompare(b.user.name));
+    return allSections.filter((x) => inBanner(x.banner)).map((x) => {
+      let rows = x.rows;
       if (mine) rows = rows.filter((r) => r.user.id === me.id);
       if (hideEmpty) rows = rows.filter((r) => r.shifts.length);
-      return { key: j.id, job: j, label: j.name, rows, open: mine ? [] : jobShifts.filter((s) => !s.userId) };
-    }).filter((s) => s.rows.length || s.open.length || (isMgr && !hideEmpty && !mine));
-  }, [data, groupBy, dept, hideEmpty, mine, employees, jobCodes]);
+      return { ...x, rows, open: mine ? [] : x.open };
+    }).filter((x) => x.rows.length || x.open.length || (isMgr && !hideEmpty && !mine));
+  }, [allSections, data, employees, groupBy, dept, hideEmpty, mine]);
 
   const publish = () => run(() => call('shifts.publish', { start: ws, end: addDays(ws, 6) }), (r) => `Published ${r.published} shifts · ${r.notified} people notified`).then(load);
 
   const exportCsv = () => {
-    const rows = [['date', 'employee', 'job', 'start', 'end', 'tag', 'notes', 'status']];
+    const rows = [['date', 'employee', 'job', 'area', 'start', 'end', 'tag', 'notes', 'status']];
     for (const s of [...shifts].sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start))) {
-      rows.push([s.date, people[s.userId]?.name || 'OPEN', jobs[s.jobCodeId]?.name, s.start, s.end || '', s.tag, s.notes, s.published ? 'published' : 'draft']);
+      rows.push([s.date, people[s.userId]?.name || 'OPEN', jobs[s.jobCodeId]?.name, s.area || '', s.start, s.end || '', s.tag, s.notes, s.published ? 'published' : 'draft']);
     }
     const csv = rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
     const a = document.createElement('a');
@@ -127,17 +167,21 @@ export default function Schedule() {
         {s.tag && <span className="tag">{s.tag}</span>}
         {w && <span className="warn-ico">!</span>}
         {s.pending && <span className="pend" title="Swap pending">⇄</span>}
-        {(showJob || !s.userId) && <div className="sub">{!s.userId ? 'Open' : ''}{!s.userId && showJob ? ' · ' : ''}{showJob ? j?.name : ''}</div>}
+        {(showJob || !s.userId) && <div className="sub">{!s.userId ? 'Open' : ''}{!s.userId && showJob ? ' · ' : ''}{showJob ? `${j?.name || ''}${s.area ? ` · ${s.area}` : ''}` : ''}</div>}
       </button>
     );
   };
 
-  const Cell = ({ date, userId, list, jobCodeId }) => {
+  const Cell = ({ date, userId, list, jobCodeId, area }) => {
     const to = userId && timeOffOn(userId, date);
     const closed = isClosed(date);
     const canAdd = isMgr && !closed;
     return (
-      <td className={`cell ${date === today ? 'today' : ''} ${closed && !list.length ? 'closed' : ''} ${canAdd ? 'can-add' : ''}`} onClick={() => canAdd && addAt(date, jobCodeId || people[userId]?.jobCodes?.[0]?.jobCodeId, userId)}>
+      <td className={`cell ${date === today ? 'today' : ''} ${closed && !list.length ? 'closed' : ''} ${canAdd ? 'can-add' : ''}`} onClick={() => {
+        if (!canAdd) return;
+        const entry = jobCodeId ? null : people[userId]?.jobCodes?.find((x) => x.primary) || people[userId]?.jobCodes?.[0];
+        addAt(date, jobCodeId || entry?.jobCodeId, userId, area ?? entry?.areas?.[0] ?? '');
+      }}>
         {list.sort((a, b) => a.start.localeCompare(b.start)).map((s) => <ShiftChip key={s.id} s={s} showJob={groupBy === 'emp'} />)}
         {!list.length && to && <span className="reqoff" title={to.reason || ''}>{to.status === 'approved' ? 'REQUEST OFF' : 'REQ PENDING'}</span>}
         {!list.length && !to && !closed && userId && <span className="off">{isMgr ? '' : 'OFF'}</span>}
@@ -162,7 +206,7 @@ export default function Schedule() {
       <div className="toolbar" style={{ marginTop: -6 }}>
         <div className="row wrap" style={{ gap: 6 }}>
           <button className={`chip ${!dept ? 'on' : ''}`} onClick={() => setDept('')}>All</button>
-          {departments.map((d) => <button key={d} className={`chip ${dept === d ? 'on' : ''}`} onClick={() => setDept(dept === d ? '' : d)}>{d}</button>)}
+          {banners.map((d) => <button key={d} className={`chip ${dept === d ? 'on' : ''}`} onClick={() => setDept(dept === d ? '' : d)}>{d}</button>)}
         </div>
         <span className="spacer" />
         <label className="check small desktop-only"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />Only me</label>
@@ -214,9 +258,9 @@ export default function Schedule() {
               <tbody>
                 {sections.map((sec, i) => (
                   <React.Fragment key={sec.key}>
-                    {/* Area banner when the department changes, like the house sheet (RESTAURANT, RABBIT HOLE…). */}
-                    {groupBy === 'job' && sec.job.department && sec.job.department !== sections[i - 1]?.job?.department && (
-                      <tr className="section area"><td colSpan={8}><div className="row">{sec.job.department}</div></td></tr>
+                    {/* Area banner when the area changes, like the house sheet (RESTAURANT, RABBIT HOLE…). */}
+                    {groupBy === 'job' && sec.banner && sec.banner !== sections[i - 1]?.banner && (
+                      <tr className="section area"><td colSpan={8}><div className="row">{sec.banner}</div></td></tr>
                     )}
                     {groupBy === 'job' && (
                       <tr className="section"><td colSpan={8}><div className="row"><JobDot job={sec.job} />{sec.label}</div></td></tr>
@@ -234,14 +278,14 @@ export default function Schedule() {
                               </div>
                             </div>
                           </td>
-                          {days.map((d) => <Cell key={d} date={d} userId={user.id} jobCodeId={sec.job?.id} list={us.filter((s) => s.date === d)} />)}
+                          {days.map((d) => <Cell key={d} date={d} userId={user.id} jobCodeId={sec.job?.id} area={sec.job ? sec.area : undefined} list={us.filter((s) => s.date === d)} />)}
                         </tr>
                       );
                     })}
                     {sec.open.length > 0 && (
                       <tr>
                         <td className="namecol"><div className="emp"><span className="avatar sm" style={{ background: 'var(--surface-3)', color: 'var(--text-3)' }}>+</span><div className="emp-name faint">Open shifts</div></div></td>
-                        {days.map((d) => <Cell key={d} date={d} jobCodeId={sec.job?.id} list={sec.open.filter((s) => s.date === d)} />)}
+                        {days.map((d) => <Cell key={d} date={d} jobCodeId={sec.job?.id} area={sec.area} list={sec.open.filter((s) => s.date === d)} />)}
                       </tr>
                     )}
                   </React.Fragment>
@@ -314,15 +358,16 @@ function MobileDay({ days, selDay, setSelDay, data, sections, mine, setMine, ope
       ))}
       {isClosed(selDay) && <Empty title="Closed" />}
       {!isClosed(selDay) && !daySecs.length && <Empty title={mine ? 'You’re off' : 'No shifts'} />}
-      {daySecs.map((sec) => (
+      {daySecs.map((sec, i) => (
         <div key={sec.key} className="dgroup">
+          {sec.banner && sec.banner !== daySecs[i - 1]?.banner && <div className="dbanner">{sec.banner}</div>}
           <div className="dgroup-h">{sec.job && <JobDot job={sec.job} />}{sec.label}<span className="faint">{sec.items.length}</span></div>
           {sec.items.map((s) => (
             <div key={s.id} className={`mshift ${s.userId === me.id ? 'mine' : ''} ${!s.userId ? 'open' : ''}`} style={{ '--jc': jobs[s.jobCodeId]?.color }} onClick={() => openDialog(s)}>
               <Avatar user={people[s.userId]} size="sm" />
               <div className="who">
                 {s.userId ? people[s.userId]?.name : 'Open shift'}
-                <div className="small muted" style={{ fontWeight: 500 }}>{jobs[s.jobCodeId]?.short}{s.tag ? ` · ${s.tag}` : ''}{!s.published ? ' · draft' : ''}{s.pending ? ' · swap pending' : ''}</div>
+                <div className="small muted" style={{ fontWeight: 500 }}>{jobs[s.jobCodeId]?.short}{s.area && !sec.area ? ` · ${s.area}` : ''}{s.tag ? ` · ${s.tag}` : ''}{!s.published ? ' · draft' : ''}{s.pending ? ' · swap pending' : ''}</div>
               </div>
               <div className="when">{shiftTime(s)}</div>
             </div>

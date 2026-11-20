@@ -49,7 +49,7 @@ function MiniShift({ s, who }) {
     <div className="mini-shift" style={{ '--jc': j?.color }}>
       <div className="row" style={{ gap: 6 }}><Avatar user={people[who]} size="sm" /><b>{who ? people[who]?.name : 'Open shift'}</b></div>
       <div className="small" style={{ marginTop: 4 }}><b>{prettyDate(s.date)}</b> · {shiftTime(s)}</div>
-      <div className="small muted row" style={{ gap: 5 }}><JobDot job={j} />{j?.name}{s.tag ? ` · ${s.tag}` : ''}</div>
+      <div className="small muted row" style={{ gap: 5 }}><JobDot job={j} />{j?.name}{s.area ? ` · ${s.area}` : ''}{s.tag ? ` · ${s.tag}` : ''}</div>
     </div>
   );
 }

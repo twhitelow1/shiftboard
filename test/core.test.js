@@ -17,7 +17,13 @@ test('seed loads the posted week', () => {
   const res = svc.call(u('Alex D'), 'shifts.list', { start: '2026-09-28', end: '2026-10-04' });
   assert.ok(res.shifts.length > 120);
   const boot = svc.call(u('Alex D'), 'app.bootstrap');
-  assert.equal(boot.jobCodes.length, 14);
+  assert.equal(boot.jobCodes.length, 11, 'one job code per position');
+  assert.deepEqual(boot.settings.areas, ['Restaurant', 'Rabbit Hole', 'Moon Rabbit', 'Host Stand', 'Back Host Stand']);
+  // A bartender keeps one position and works several areas, like the house sheet.
+  const dante = boot.employees.find((e) => e.name === 'Dante');
+  assert.deepEqual(dante.jobCodes.map((j) => j.jobCodeId), ['job_bar']);
+  const mak = res.shifts.filter((s) => s.userId === u('Mak').id);
+  assert.ok(mak.length && mak.every((s) => s.jobCodeId === 'job_bar' && s.area === 'Rabbit Hole'));
   assert.ok(!boot.employees.some((e) => e.email && e.id !== u('Alex D').id), 'employees must not see coworker emails');
 });
 

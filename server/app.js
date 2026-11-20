@@ -344,12 +344,14 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     const jobs = Object.fromEntries(db.store.list('jobCodes').map((j) => [j.id, j.name]));
     const st = createService(db.store).settings();
     const dt = (date, time) => `${date.replace(/-/g, '')}T${time.replace(':', '')}00`;
+    const icalText = (v) => String(v).replace(/[\\;,]/g, (c) => `\\${c}`).replace(/\r?\n/g, '\\n');
     const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//ShiftBoard//EN', `X-WR-CALNAME:${st.restaurantName} shifts`];
     for (const raw of shifts) {
       const s = effectiveShift(raw, st);
       const endDate = s.end <= s.start ? addDays(s.date, 1) : s.date;
       lines.push('BEGIN:VEVENT', `UID:${s.id}@shiftboard`, `DTSTAMP:${dt(s.date, s.start)}`, `DTSTART:${dt(s.date, s.start)}`, `DTEND:${dt(endDate, s.end)}`,
-        `SUMMARY:${jobs[s.jobCodeId] || 'Shift'}${s.tag ? ' · ' + s.tag : ''}${raw.end ? '' : ' (until close)'}`, 'END:VEVENT');
+        `SUMMARY:${icalText(jobs[s.jobCodeId] || 'Shift')}${s.tag ? ' · ' + icalText(s.tag) : ''}${raw.end ? '' : ' (until close)'}`,
+        ...(s.area ? [`LOCATION:${icalText(s.area)}`] : []), 'END:VEVENT');
     }
     lines.push('END:VCALENDAR');
     res.type('text/calendar').send(lines.join('\r\n'));

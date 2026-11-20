@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useApp, Icon, Avatar, Modal, Field, useAction, JobDot, Empty } from '../ui.jsx';
 import { ROLES, roleLabel, roleOf, assignableRoles, canManageUser, canManageEvents } from '../../../core/roles.js';
 import { deliverable } from '../../../core/email-address.js';
+import { scheduleAreas, uniqueAreas, sameArea } from '../../../core/areas.js';
 import { sendSignInLink, inviteAll, IS_DEMO } from '../api.js';
 
 const COLORS = ['#2563eb', '#16a34a', '#65a30d', '#0891b2', '#9333ea', '#a855f7', '#dc2626', '#e11d48', '#d97706', '#ca8a04', '#475569', '#0f766e', '#334155', '#7c2d12', '#db2777'];
@@ -158,8 +159,9 @@ function RolesOverview() {
 }
 
 function EmployeeDialog({ emp, onClose }) {
-  const { call, jobCodes, me, employees, emailEnabled } = useApp();
+  const { call, jobCodes, me, employees, emailEnabled, settings } = useApp();
   const [f, setF] = useState({ onSchedule: true, ...emp, role: roleOf(emp), jobCodes: emp.jobCodes || [] });
+  const allAreas = uniqueAreas([...scheduleAreas(settings), ...f.jobCodes.flatMap((j) => j.areas || [])]);
   const [pw, setPw] = useState('');
   const [created, setCreated] = useState(null);
   const [temp, setTemp] = useState(null);
@@ -172,6 +174,8 @@ function EmployeeDialog({ emp, onClose }) {
   const has = (id) => f.jobCodes.find((j) => j.jobCodeId === id);
   const toggle = (id) => setF({ ...f, jobCodes: has(id) ? f.jobCodes.filter((j) => j.jobCodeId !== id) : [...f.jobCodes, { jobCodeId: id, rate: null }] });
   const setRate = (id, rate) => setF({ ...f, jobCodes: f.jobCodes.map((j) => (j.jobCodeId === id ? { ...j, rate } : j)) });
+  const toggleArea = (id, area) => setF({ ...f, jobCodes: f.jobCodes.map((j) => (j.jobCodeId !== id ? j
+    : { ...j, areas: (j.areas || []).some((a) => sameArea(a, area)) ? j.areas.filter((a) => !sameArea(a, area)) : [...(j.areas || []), area] })) });
   const st = emp.id ? signInStatus(emp) : null;
   const managerOrUp = canManageEvents({ role: f.role });
 
@@ -221,14 +225,24 @@ function EmployeeDialog({ emp, onClose }) {
           <label className="check"><input type="checkbox" checked={f.onSchedule !== false} onChange={set('onSchedule')} />Show on the schedule</label>
         </div>
 
-        <Field label="Job codes & pay rates" help="Pick every position this person can work; they can only pick up shifts for these. Leave the rate blank to use the job's default.">
+        <Field label="Job codes, pay rates & areas" help="Pick every position this person can work; they can only pick up shifts for these. Leave the rate blank to use the job's default. Areas are where they usually work it; they're listed there on the schedule.">
           <div className="col" style={{ gap: 4, maxHeight: 260, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 10, padding: 6 }}>
             {jobCodes.filter((j) => !j.archived).map((j) => {
               const h = has(j.id);
               return (
-                <div key={j.id} className="row" style={{ padding: '4px 6px', borderRadius: 8, background: h ? 'var(--brand-soft)' : undefined }}>
-                  <label className="check" style={{ flex: 1 }}><input type="checkbox" checked={!!h} onChange={() => toggle(j.id)} /><JobDot job={j} />{j.name} <span className="faint small">{j.department}</span></label>
-                  {h && <input className="input sm" type="number" step="0.25" style={{ width: 100 }} placeholder={j.defaultRate ? `$${j.defaultRate}` : '$/hr'} value={h.rate ?? ''} onChange={(e) => setRate(j.id, e.target.value)} />}
+                <div key={j.id} style={{ padding: '4px 6px', borderRadius: 8, background: h ? 'var(--brand-soft)' : undefined }}>
+                  <div className="row">
+                    <label className="check" style={{ flex: 1 }}><input type="checkbox" checked={!!h} onChange={() => toggle(j.id)} /><JobDot job={j} />{j.name} <span className="faint small">{j.department}</span></label>
+                    {h && <input className="input sm" type="number" step="0.25" style={{ width: 100 }} placeholder={j.defaultRate ? `$${j.defaultRate}` : '$/hr'} value={h.rate ?? ''} onChange={(e) => setRate(j.id, e.target.value)} />}
+                  </div>
+                  {h && allAreas.length > 0 && (
+                    <div className="row wrap" style={{ gap: 4, margin: '4px 0 2px 26px' }}>
+                      {allAreas.map((a) => {
+                        const on = (h.areas || []).some((x) => sameArea(x, a));
+                        return <button type="button" key={a} className={`chip ${on ? 'on' : ''}`} style={{ fontSize: 11 }} onClick={() => toggleArea(j.id, a)}>{a}</button>;
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -265,9 +279,18 @@ function EmployeeDialog({ emp, onClose }) {
 }
 
 function JobDialog({ job, onClose }) {
-  const { call, settings } = useApp();
+  const { call, settings, jobCodes } = useApp();
   const [f, setF] = useState({ defaultRole: 'employee', ...job });
   const [run, busy] = useAction();
+  const [into, setInto] = useState('');
+  const [sure, setSure] = useState(false);
+  const target = jobCodes.find((j) => j.id === into);
+  const merge = async () => {
+    if (!sure) return setSure(true);
+    const r = await run(() => call('jobCodes.merge', { fromId: job.id, intoId: into }),
+      (res) => `Merged ${job.name} into ${target?.name}: ${res.shifts} shifts, ${res.people} people${res.events ? `, ${res.events} events` : ''}`);
+    if (r) onClose();
+  };
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
   const save = async () => { const r = await run(() => call('jobCodes.save', f), 'Job code saved'); if (r) onClose(); };
   const archive = async () => { const r = await run(() => call('jobCodes.delete', { id: job.id }), 'Job code removed'); if (r) onClose(); };
@@ -292,6 +315,17 @@ function JobDialog({ job, onClose }) {
       </Field>
       <label className="check"><input type="checkbox" checked={!!f.eventRole} onChange={set('eventRole')} />Used for events (suggested when building BEO staffing)</label>
       {job.archived && <label className="check"><input type="checkbox" checked={!f.archived} onChange={(e) => setF({ ...f, archived: !e.target.checked })} />Restore (un-archive)</label>}
+      {job.id && (
+        <Field label="Merge into another job code" help={`Moves ${job.name}'s shifts, people (their pay rates and areas are kept), BEO staffing and labor rules to the job code you pick, then deletes ${job.name}. Use it for duplicates, e.g. "Moon Rabbit Bartender" into "Bartender" now that the area is kept on each shift.`}>
+          <div className="row wrap">
+            <select className="input" style={{ maxWidth: 240 }} value={into} onChange={(e) => { setInto(e.target.value); setSure(false); }}>
+              <option value="">Choose a job code…</option>
+              {jobCodes.filter((j) => j.id !== job.id && !j.archived).map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}
+            </select>
+            <button type="button" className={`btn ${sure ? 'danger solid' : ''}`} disabled={!into || busy} onClick={merge}><Icon name="copy" />{sure ? `Tap again: merge into ${target?.name}` : 'Merge'}</button>
+          </div>
+        </Field>
+      )}
     </Modal>
   );
 }

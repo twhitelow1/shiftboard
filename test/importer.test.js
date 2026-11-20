@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCell, parseSchedule, matchJob, matchEmployee, suggestJob, suggestRole, personName, titleCase } from '../core/importer.js';
+import { parseCell, parseSchedule, readSections, matchPosition, positionName, departmentFor, matchEmployee, suggestRole, personName, titleCase } from '../core/importer.js';
+import { scheduleAreas, findArea, uniqueAreas } from '../core/areas.js';
 
 test('parseCell handles restaurant shorthand', () => {
   assert.deepEqual(parseCell('4PM'), { start: '16:00', end: null, tag: '' });
@@ -29,46 +30,79 @@ test('parseSchedule reads a pasted grid with banners and a mistyped header', () 
   assert.equal(r.mode, 'grid');
   assert.equal(r.sections.length, 2);
   assert.equal(r.sections[0].label, 'RESTAURANT · SERVER');
+  assert.deepEqual([r.sections[0].banner, r.sections[0].role], ['RESTAURANT', 'SERVER']);
   const alex = r.sections[0].rows[0];
   assert.deepEqual(alex.cells.map((c) => c.dow), [2, 4, 5, 6]);
   assert.equal(r.sections[0].rows[1].cells.filter((c) => c.parsed.timeOff).length, 3);
   assert.equal(r.sections[1].label, 'MOON RABBIT · BAR');
   assert.deepEqual(r.sections[1].rows[0].cells.map((c) => c.dow), [2, 4, 6]);
-  assert.equal(matchJob('RESTAURANT · SERVER', [{ name: 'Server', short: 'SRV' }]).name, 'Server');
+  assert.equal(matchPosition(r.sections[0].role, [{ name: 'Server', short: 'SRV' }]).name, 'Server');
 });
 
 test('parseSchedule reads CSV', () => {
-  const r = parseSchedule('date,employee,job,start,end,tag\n10/6/2026,Alex D,Server,4PM,,LIB\n2026-10-07,Kelly,Manager,11:00,17:00,');
+  const r = parseSchedule('date,employee,job,area,start,end,tag\n10/6/2026,Alex D,Server,Restaurant,4PM,,LIB\n2026-10-07,Kelly,Manager,,11:00,17:00,');
   assert.equal(r.mode, 'csv');
   assert.equal(r.csvRows[0].date, '2026-10-06');
   assert.equal(r.csvRows[0].start, '16:00');
   assert.equal(r.csvRows[1].end, '17:00');
+  assert.deepEqual(r.csvRows.map((x) => x.area), ['Restaurant', '']);
 });
 
-const JOBS = [['Manager', 'MGR'], ['Chef', 'CHEF'], ['Restaurant Bar', 'RBAR'], ['Server', 'SRV'], ['Food Runner', 'FR'], ['Busser', 'BUS'], ['Bartender', 'BAR'],
-  ['Barback', 'BBK'], ['MR Bartender', 'MRB'], ['Cocktail Server', 'COC'], ['Restaurant Host', 'HOST'], ['Back Host Stand', 'BHST'], ['Doorman', 'DOOR']].map(([name, short]) => ({ name, short }));
+// The shape of a real sheet (synthetic names): banners are areas, section labels are positions.
+const SECTIONS = [
+  { label: 'M.O.D.', banner: 'M.O.D.', role: '', rows: [{ name: 'PAT' }] },
+  { label: 'RESTAURANT', banner: 'RESTAURANT', role: '', rows: [{ name: 'LOU' }, { name: 'KAI' }, { name: 'SAM' }] },
+  { label: 'RESTAURANT · Servers', banner: 'RESTAURANT', role: 'Servers', rows: [{ name: 'ALEX D' }] },
+  { label: 'RABBIT HOLE · Bar', banner: 'RABBIT HOLE', role: 'Bar', rows: [{ name: 'MAX' }, { name: 'SAM' }] },
+  { label: 'RABBIT HOLE · Barbacks', banner: 'RABBIT HOLE', role: 'Barbacks', rows: [{ name: 'HAN' }] },
+  { label: 'MOON RABBIT · Bar', banner: 'MOON RABBIT', role: 'Bar', rows: [{ name: 'SAM' }] },
+  { label: 'BACK HOST STAND · Hosts', banner: 'BACK HOST STAND', role: 'Hosts', rows: [{ name: 'NIA' }] },
+  { label: 'BACK HOST STAND · Doormen', banner: 'BACK HOST STAND', role: 'Doormen', rows: [{ name: 'JON' }] },
+  { label: 'BAKERY', banner: 'BAKERY', role: '', rows: [{ name: 'NEW PERSON' }] },
+];
 
-test('section labels match the right job codes', () => {
-  const cases = {
-    'M.O.D.': 'Manager', RESTAURANT: 'Restaurant Bar', 'RESTAURANT · Servers': 'Server', 'RESTAURANT · Runners': 'Food Runner',
-    'RESTAURANT · Bussers': 'Busser', 'RABBIT HOLE · Bar': 'Bartender', 'RABBIT HOLE · Barbacks': 'Barback', 'MOON RABBIT · Bar': 'MR Bartender',
-    'MOON RABBIT · Cocktail': 'Cocktail Server', 'RESTAURANT HOST · Hosts': 'Restaurant Host', 'BACK HOST STAND · Hosts': 'Back Host Stand',
-    'BACK HOST STAND · Doormen': 'Doorman',
-  };
-  for (const [label, job] of Object.entries(cases)) assert.equal(matchJob(label, JOBS)?.name, job, label);
-  assert.equal(matchJob('PASTRY', JOBS), null);
+test('banners become areas and section labels become positions', () => {
+  const r = readSections(SECTIONS);
+  assert.deepEqual(r.map((x) => [x.area, x.position, x.inferred]), [
+    ['', 'M.O.D.', false], // a banner that names a position, not a place
+    ['RESTAURANT', 'Bar', true], // no label: Sam works "Bar" in two other sections
+    ['RESTAURANT', 'Servers', false],
+    ['RABBIT HOLE', 'Bar', false],
+    ['RABBIT HOLE', 'Barbacks', false],
+    ['MOON RABBIT', 'Bar', false],
+    ['BACK HOST STAND', 'Hosts', false],
+    ['BACK HOST STAND', 'Doormen', false],
+    ['BAKERY', 'Staff', true], // nobody to learn from
+  ]);
+  assert.deepEqual(['M.O.D.', 'Bar', 'Servers', 'Runners', 'Barbacks', 'Cocktail', 'Hosts', 'Doormen', 'Banquet Captains'].map(positionName),
+    ['Manager', 'Bartender', 'Server', 'Food Runner', 'Barback', 'Cocktail Server', 'Host', 'Doorman', 'Banquet Captain']);
+  assert.equal(departmentFor('M.O.D.', ''), 'Leadership');
+  assert.equal(departmentFor('Bar', 'RABBIT HOLE'), 'Rabbit Hole');
 });
 
-test('new job code names and people names from a schedule', () => {
-  const labels = ['M.O.D.', 'RESTAURANT · Servers', 'RABBIT HOLE · Bar', 'MOON RABBIT · Bar', 'RESTAURANT HOST · Hosts', 'BACK HOST STAND · Hosts', 'BACK HOST STAND · Doormen'];
-  const s = (l) => suggestJob(l, labels);
-  assert.deepEqual(s('M.O.D.'), { name: 'Manager', department: 'Leadership' });
-  assert.deepEqual(s('RESTAURANT · Servers'), { name: 'Server', department: 'Restaurant' });
-  assert.equal(s('RABBIT HOLE · Bar').name, 'Rabbit Hole Bartender');
-  assert.equal(s('MOON RABBIT · Bar').name, 'Moon Rabbit Bartender');
-  assert.equal(s('RESTAURANT HOST · Hosts').name, 'Restaurant Host');
-  assert.equal(s('BACK HOST STAND · Hosts').name, 'Back Host Stand');
-  assert.equal(s('BACK HOST STAND · Doormen').name, 'Doorman');
+test('positions match job codes by position only', () => {
+  const JOBS = [['Manager', 'MGR'], ['Server', 'SRV'], ['Food Runner', 'FR'], ['Busser', 'BUS'], ['Bartender', 'BAR'], ['Barback', 'BBK'],
+    ['Cocktail Server', 'COC'], ['Host', 'HOST'], ['Doorman', 'DOOR']].map(([name, short]) => ({ name, short }));
+  const cases = { 'M.O.D.': 'Manager', Servers: 'Server', Runners: 'Food Runner', Bussers: 'Busser', Bar: 'Bartender', Barbacks: 'Barback',
+    Cocktail: 'Cocktail Server', Hosts: 'Host', Doormen: 'Doorman' };
+  for (const [label, job] of Object.entries(cases)) assert.equal(matchPosition(label, JOBS)?.name, job, label);
+  assert.equal(matchPosition('Pastry', JOBS), null);
+  // Job codes named after a banner (from the first importer) are not positions: Bar → new Bartender.
+  const old = ['Restaurant', 'Rabbit Hole Bartender', 'Moon Rabbit Bartender', 'Barback', 'Restaurant Host', 'Back Host Stand'].map((name) => ({ name, short: '' }));
+  assert.equal(matchPosition('Bar', old), null, '"Bar" never matches Barback or a banner job');
+  assert.equal(matchPosition('Hosts', old), null);
+  assert.equal(matchPosition('Barbacks', old)?.name, 'Barback');
+});
+
+test('schedule areas: the sheet order first, then rooms', () => {
+  const st = { areas: ['Restaurant', 'Back Host Stand'], rooms: ['Restaurant', 'Library', 'Full Buyout'] };
+  assert.deepEqual(scheduleAreas(st), ['Restaurant', 'Back Host Stand', 'Library'], 'no duplicates, booking-only rooms left out');
+  assert.equal(findArea('BACK HOST STAND', scheduleAreas(st)), 'Back Host Stand');
+  assert.equal(findArea('Patio', scheduleAreas(st)), null);
+  assert.deepEqual(uniqueAreas([' Moon  Rabbit ', 'moon rabbit', '', 'Patio']), ['Moon Rabbit', 'Patio']);
+});
+
+test('people names and matching', () => {
   assert.deepEqual(['ALEX D', 'CJ', 'MARYANN'].map(personName), ['Alex D', 'CJ', 'Maryann']);
   assert.equal(titleCase('CHANG/SMITH WEDDING RECEPTION OF THE YEAR'), 'Chang/Smith Wedding Reception of the Year');
   const people = [{ name: 'Mary Ann' }, { name: 'Chef Lucas' }, { name: 'Alex D' }];
