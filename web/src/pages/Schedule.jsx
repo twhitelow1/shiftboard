@@ -61,6 +61,7 @@ export default function Schedule() {
   const [selDay, setSelDay] = useState(() => (today >= ws && today <= addDays(ws, 6) ? today : range(ws, 7).find((d) => !settings.closedDays.includes(dow(d))) || ws));
   const [importOpen, setImportOpen] = useState(false);
   const [copyOpen, setCopyOpen] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
   const [run, busy] = useAction();
   const days = range(ws, 7);
 
@@ -239,6 +240,7 @@ export default function Schedule() {
         {isMgr && <div className="row wrap" style={{ gap: 4 }}>
           <button className="btn sm ghost" onClick={() => setCopyOpen(true)} title="Copy a week"><Icon name="copy" />Copy week</button>
           <button className="btn sm ghost" onClick={() => setImportOpen(true)} title="Import a schedule PDF, Excel paste or CSV"><Icon name="upload" />Import</button>
+          <button className="btn sm ghost" onClick={() => setClearOpen(true)} title="Delete this week's shifts and start over"><Icon name="trash" />Clear week</button>
           {!IS_DEMO && <button className="btn sm ghost desktop-only" onClick={exportCsv}><Icon name="download" />CSV</button>}
           {!IS_DEMO && <button className="btn sm ghost desktop-only" onClick={() => window.print()}><Icon name="print" />Print</button>}
         </div>}
@@ -342,6 +344,7 @@ export default function Schedule() {
 
       {dialog && <ShiftDialog shift={dialog.shift} warnings={dialog.warnings} events={data?.events || []} onClose={closeDialog} />}
       {importOpen && <ImportDialog ws={ws} onClose={(changed) => { setImportOpen(false); if (changed) load(); }} />}
+      {clearOpen && <ClearWeekDialog ws={ws} data={data} onClose={(changed) => { setClearOpen(false); if (changed) load(); }} />}
       {copyOpen && <CopyWeekDialog ws={ws} onClose={(changed, goTo) => { setCopyOpen(false); if (goTo && goTo !== ws) setWs(goTo); else if (changed) load(); }} />}
     </div>
   );
@@ -405,6 +408,40 @@ function MobileDay({ days, selDay, setSelDay, data, sections, mine, setMine, ope
         <div className="small muted" style={{ marginTop: 8 }}>Off (requested): {offToday.map((t) => people[t.userId]?.name).filter(Boolean).join(', ')}</div>
       )}
     </div>
+  );
+}
+
+function ClearWeekDialog({ ws, data, onClose }) {
+  const { call } = useApp();
+  const [published, setPublished] = useState(false);
+  const [notes, setNotes] = useState(false);
+  const [run, busy] = useAction();
+  const shifts = (data?.shifts || []).filter((s) => !s.eventId);
+  const drafts = shifts.filter((s) => !s.published).length;
+  const posted = shifts.length - drafts;
+  const eventShifts = (data?.shifts || []).length - shifts.length;
+  const noteCount = (data?.notes || []).length;
+  const count = drafts + (published ? posted : 0);
+  const go = async () => {
+    const r = await run(() => call('shifts.clearWeek', { weekStart: ws, published, notes }),
+      (r) => [`Deleted ${r.removed} shifts from ${weekLabel(ws)}`, r.published && `${r.published} were posted; those people were notified`, r.notes && `${r.notes} notes cleared`].filter(Boolean).join(' · '));
+    if (r) onClose(true);
+  };
+  return (
+    <Modal title={`Clear ${weekLabel(ws)}`} sub="Delete this week's shifts and start over, for example before importing the schedule again" onClose={() => onClose(false)}
+      footer={<><button className="btn" onClick={() => onClose(false)}>Cancel</button>
+        <button className="btn danger solid" disabled={busy || (!count && !(notes && noteCount))} onClick={go}><Icon name="trash" />{count ? `Delete ${count} shift${count === 1 ? '' : 's'}` : 'Clear'}</button></>}>
+      <div className="col" style={{ gap: 10 }}>
+        <div><b>{drafts}</b> draft shift{drafts === 1 ? '' : 's'} will be deleted.{!drafts && ' (There are none.)'}</div>
+        {posted > 0 && (
+          <label className="check"><input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} />
+            <span>Also delete the <b>{posted}</b> posted shift{posted === 1 ? '' : 's'}. Everyone who had one gets a notification.</span></label>
+        )}
+        {noteCount > 0 && <label className="check"><input type="checkbox" checked={notes} onChange={(e) => setNotes(e.target.checked)} />Also clear this week's day notes and Notes line ({noteCount})</label>}
+        {eventShifts > 0 && <div className="help">{eventShifts} event shift{eventShifts === 1 ? '' : 's'} from BEOs stay; change those on the event.</div>}
+        <div className="help">People, job codes, events, time off and the forecast aren't touched. This can't be undone.</div>
+      </div>
+    </Modal>
   );
 }
 
