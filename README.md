@@ -8,7 +8,7 @@ Built by DubLow Digital.
 
 | | |
 |---|---|
-| **Weekly schedule** | Grid grouped by job code (the same layout as the house Excel sheet) or by employee. Supports "until close" shifts (`4p–CL`), section tags (LIB, RH, BC, PASSED…), draft vs. published, copy week, print, and CSV export. |
+| **Weekly schedule** | Grid grouped by job code (the same layout as the house Excel sheet) or by employee. Supports "until close" shifts (`4p–CL`), section tags (LIB, RH, BC, PASSED…), area banners and the sheet's row order, draft vs. published, copy this week forward to build the next one, print, and CSV export. |
 | **Mobile first** | Phones get a day-by-day view with a bottom nav. Staff can check their schedule and the whole team's schedule, and trade shifts, from their phone. |
 | **Multiple job codes** | Each employee can hold any number of job codes, each with its own pay rate. Server + Banquet Captain, Food Runner + Barback, etc. |
 | **Calendar** | Month view for your own shifts or the whole team, plus a day timeline with bars by position. |
@@ -16,15 +16,21 @@ Built by DubLow Digital.
 | **Time off & availability** | Requests go to managers for approval. Approved time off shows as **REQUEST OFF** on the grid, and any shift that conflicts with it is flagged. |
 | **Forecasting & labor** | Forecasts covers and sales from your daily history (weighted same-weekday average with a trend), adds event guests from BEOs, and shows labor $ and labor % against your target. Labor rules like "1 server per 22 dinner covers" produce a scheduled-vs-recommended staffing grid. A one-click button fills the gaps with open shifts. |
 | **Events & BEOs** | A full Banquet Event Order: guests, room, service style, banquet captain, menu, dietary notes, beverage package, **special drinks** with recipes, timeline, setup, and **staffing needs** (how many servers, runners, bartenders, BCs). The app suggests staffing from guest count using standard banquet ratios, turns staffing lines into open shifts staff can claim, tracks fill status (e.g. 13/14), and includes a team comment thread. Staff on an event are notified whenever the BEO changes. |
-| **Import your spreadsheet** | Paste your existing Excel schedule directly. Sections, names, and cells like `4PM`, `3:30PM BC`, `12-4PM`, and `REQUEST OFF` are read automatically. CSV works too. |
+| **Import your schedule** | Upload the PDF of your weekly schedule, or paste it straight from Excel. Sections, banners (RABBIT HOLE, MOON RABBIT…), names, the dates, and cells like `4PM`, `3:30PM BC`, `1-9PM*`, and `REQUEST OFF` are read automatically. Event notes with a guest count (`CHANG/SMITH WEDDING RECEPTION FULL BUYOUT 160PPL`) become events, and projected covers feed the forecast. People and job codes that don't exist yet can be created during the import, so a new restaurant can be set up from one PDF. CSV works too. |
 | **Calendar sync** | Each employee gets a private iCal link for Google or Apple Calendar. |
 | **Notifications** | In-app notifications for schedule posted, shift changes, swap requests and approvals, open shifts, BEO updates, and comments. |
+| **People & sign-in** | Team & Job Codes shows everyone's role and sign-in status (Active, Invited, Not invited, No email). Send an invite link to one person or to everyone who hasn't signed in, email a password reset link, or set a temporary password for someone without email. |
+| **Venue & floor plans** | Locations (for multi-location groups; a one-room place needs no setup), levels, and rooms marked as dining, bar or event space with capacity. Draw each room's floor plan: round, square and long tables with seats, booths, bars with stools, stages, dance floors, DJ booth, host stand, walls, doors and labels. An event's BEO shows its room's floor plan. |
 
 ### Roles
-- **Admin**: everything, including settings.
-- **Manager**: builds and publishes schedules, approves swaps and time off, runs forecasting, manages the team.
-- **Events team**: creates and edits BEOs and staffing needs. Doesn't touch the schedule.
+Each role can do everything the roles below it can.
+- **Super Admin**: the account owner. Everything, including managing other admins. There is always at least one.
+- **Admin**: settings, approval rules, and everyone except Super Admins.
+- **Manager**: builds and publishes schedules, approves requests, runs forecasting and events, adds and edits Supervisors and Employees, manages job codes.
+- **Supervisor**: a shift lead. Approves trades, pickups and time off (never their own; can be switched off in Settings) and sees coworkers' phone and email. Can't edit the schedule.
 - **Employee**: sees their own shifts and the full published schedule, trades and picks up shifts, requests time off, and reads BEOs.
+
+**Events & BEOs access** is a separate switch on each person (Managers and up always have it), so an events coordinator can be a Supervisor or Employee. Each job code has a **default role**, used when people are added from an imported schedule, so roles come from your data rather than code.
 
 Employees never see drafts, coworkers' contact info or pay rates, or client contact details on BEOs.
 
@@ -36,36 +42,79 @@ npm run build
 SEED_DEMO=true npm start      # http://localhost:3000 — sign in as moe@demo.shiftboard / demo1234
 ```
 
+No database setup needed: without `DATABASE_URL`, the app uses an embedded Postgres (PGlite) stored in `./data/pglite`. To develop against Supabase or another real Postgres instead, set `DATABASE_URL`.
+
 For development with hot reload: `npm run dev:demo` (the API runs on :3000, and Vite prints its own URL).
 
 Start without the demo data: `ADMIN_EMAIL=you@restaurant.com ADMIN_PASSWORD=choose-one npm start`. This creates the first admin account. Everything else is set up from the app: add job codes, add employees, then import or build the first week.
 
-Tests: `npm test`
+Tests: `npm test` (uses the embedded database). To run them against a real Postgres, point `TEST_DATABASE_URL` at a throwaway database; the tests drop and recreate its `shiftboard` schema.
 
-## Deploy
+## Deploy to Vercel + Supabase
 
-It's a single Node service with a SQLite file, so it runs anywhere with a persistent disk.
+The web app is static (served from Vercel's CDN) and the API runs as one Vercel Function (`api/index.js`). Data lives in Postgres. Supabase is the default; Neon or any Postgres 13+ works the same way.
 
-**Render**: the repo includes `render.yaml`. Create a new Blueprint from the repo, then set `ADMIN_EMAIL` and `ADMIN_PASSWORD`. The 1 GB disk at `/data` holds the database.
+1. **Import the repo in Vercel** (Add New → Project → `shiftboard`). The settings come from `vercel.json`; leave them as they are.
+2. **Add the database**: in the project, open **Storage → Connect Database → Supabase**, create a database in **East US (North Virginia)** (the same region as the function, `iad1` in `vercel.json`), and connect it to all environments. This sets `POSTGRES_URL` for you.
+3. **Add environment variables** (Settings → Environment Variables):
+   - `ADMIN_EMAIL`, `ADMIN_PASSWORD` (and optionally `ADMIN_NAME`): the first admin account
+   - `TIMEZONE`: the restaurant's time zone, e.g. `America/Denver`
+   - `JWT_SECRET` (optional): a long random string (`openssl rand -hex 48`). If you skip it, the app generates one and stores it in the database.
+4. **Deploy** (or redeploy, so the new variables apply). The first request creates the tables in a `shiftboard` schema and the admin account. Then sign in.
 
-**Docker / any VPS**
+The tables have row-level security turned on with no policies, so Supabase's public REST API (the `anon` key) can't read them. The app connects as the database owner.
+
+### Email (Resend)
+
+Email is optional. Without it, everything still works in the app. With it:
+- staff get an email copy of their notifications (new schedule, shift changes, trades, time off, event updates). The restaurant can turn this off in Settings, and each person can turn it off in My Shifts.
+- new people added with an email get a link to set their password.
+- anyone can reset a forgotten password from the sign-in page (a one-time link that expires after 1 hour).
+
+Setup:
+1. In Resend, verify the domain you'll send from (e.g. `mail.yourrestaurant.com`), and create an API key with **sending access** for that domain.
+2. In Vercel, add `RESEND_API_KEY` (mark it **Sensitive**) and `EMAIL_FROM`, e.g. `Chasing Rabbits Schedule <schedule@mail.yourrestaurant.com>`. Optionally add `EMAIL_REPLY_TO` (where replies go) and `APP_URL` (the link in emails, e.g. `https://schedule.yourrestaurant.com`).
+3. Redeploy, then use **Settings → Email → Send me a test email**. If something is wrong, the error from Resend is shown there.
+
+Emails are sent after the change is saved, so a failed request never emails anyone. Batches go through Resend's batch API with idempotency keys.
+
+### Moving data from the old SQLite version
+
+If ShiftBoard has been running on Render or Docker with SQLite, copy its `shiftboard.db` file locally, then:
+
+```bash
+DATABASE_URL="<Supabase connection string>" npm run db:import-sqlite -- ./shiftboard.db
+```
+
+Set `JWT_SECRET` on Vercel to the old server's secret (its `JWT_SECRET`, or the contents of `DATA_DIR/.secret`) so employees' calendar links keep working.
+
+### Self-hosting with Docker
+
 ```bash
 docker build -t shiftboard .
-docker run -d -p 3000:3000 -v shiftboard-data:/data \
+docker run -d -p 3000:3000 -e DATABASE_URL=postgres://... \
   -e ADMIN_EMAIL=you@restaurant.com -e ADMIN_PASSWORD=change-me shiftboard
 ```
 Put it behind HTTPS (Caddy, Cloudflare, or the platform's TLS). Session cookies are `Secure` when `NODE_ENV=production`.
 
+### Environment variables
+
 | Env var | Default | Notes |
 |---|---|---|
-| `PORT` | 3000 | |
-| `DATA_DIR` | `./data` | SQLite DB and auto-generated secret |
-| `JWT_SECRET` | auto | Generated and saved to `DATA_DIR/.secret` if not set |
-| `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | | First-run admin account |
+| `DATABASE_URL` / `POSTGRES_URL` | | Postgres connection string. Vercel's Supabase integration sets `POSTGRES_URL` (the pooled connection, which is what you want); Neon sets `DATABASE_URL`. Without either, local runs use the embedded database. |
+| `TIMEZONE` | `America/Denver` | The restaurant's IANA time zone. Vercel runs in UTC and reserves `TZ`, so the app applies this itself. |
+| `JWT_SECRET` | auto | Signs sessions and calendar links. If unset, one is generated and stored in the database. |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | | First-run admin account (used only while there are no users) |
 | `SEED_DEMO` | | `true` loads the demo restaurant on first run |
-| `TZ` | | Set to the restaurant's time zone (e.g. `America/Denver`) |
+| `RESEND_API_KEY` | | Optional. Resend API key (sending access). Email is off without it |
+| `EMAIL_FROM` | | Sender, e.g. `Chasing Rabbits Schedule <schedule@mail.yourrestaurant.com>`. The domain must be verified in Resend |
+| `EMAIL_REPLY_TO` | | Optional reply-to address |
+| `APP_URL` | production URL | Base URL for links in emails. Defaults to Vercel's production domain |
+| `DATABASE_CA_CERT` | | Optional. Your provider's CA certificate (PEM) to verify the database's TLS certificate. Without it, the connection is encrypted per `sslmode=require` but the certificate isn't checked. |
+| `PG_POOL_MAX` | 5 | Connections per running instance |
+| `PORT` | 3000 | Standalone server only |
 
-Back up by copying `DATA_DIR/shiftboard.db` (it uses SQLite WAL, so `sqlite3 shiftboard.db ".backup backup.db"` is safest).
+Back up with `pg_dump "$DATABASE_URL" -n shiftboard > backup.sql`, or use your database provider's backups.
 
 ## Architecture
 
@@ -74,16 +123,24 @@ core/       Business logic shared by server + demo (pure JS, no I/O)
   service.js   every API method, with its permission checks
   forecast.js  covers/sales forecast, labor math, "until close" estimates
   beo.js       banquet staffing ratios
-  importer.js  spreadsheet/CSV schedule parser
-  store.js     in-memory document store
+  importer.js  schedule parser (pasted spreadsheet, CSV, or a PDF grid), job/name matching, events from notes
+  pdfgrid.js   rebuilds the schedule grid from a PDF's positioned text (read in the browser with pdf.js)
+  store.js     in-memory document store + a copy-on-write overlay used per request
   seed.js      demo data (the real week of 9/28/2026)
-server/     Express API (one RPC endpoint + auth), SQLite write-through persistence, iCal feed
+server/     Express API (one RPC endpoint + auth) and iCal feed
+  app.js       routes, sessions, login rate limiting
+  db.js        Postgres persistence (see below)
+  email.js     Resend email sender and email templates
+  index.js     standalone server (local, Docker)
+api/        Vercel Function entry point (wraps server/app.js)
 web/        React UI (Vite). DEMO=1 builds a self-contained single-file demo that runs core/ in the browser
-test/       node:test suites for scheduling, swaps, forecast, events, importer
+scripts/    one-off tools (SQLite → Postgres import)
+test/       node:test suites for scheduling, swaps, forecast, events, importer, store, database and API
 ```
 
 The API is `POST /api/rpc/<method>` with a JSON body. Every method enforces its own role check in `core/service.js`, so the web app, the demo, and any future mobile app or integration share one set of rules.
 
+**How data is stored.** Each record (shift, user, event…) is a JSON document in one Postgres table, `shiftboard.docs`, stamped with an ever-increasing sequence number. Each running instance keeps a cache and, before every request, pulls only the rows that changed since its last look (usually none: one indexed query). Writes run in a transaction that holds a single lock: the instance catches up, re-runs the operation on the latest data, and saves every change in one statement. That keeps check-then-act operations correct when Vercel runs several instances at once, for example two people grabbing the same open shift. The business logic stays synchronous and unchanged, and a failed request never leaves partial writes.
 ## Roadmap ideas
 - SMS/email notifications (Twilio / SendGrid) alongside the in-app ones
 - POS integration (Toast / Square) to pull daily sales automatically

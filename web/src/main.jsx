@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
-import { call, login, logout, IS_DEMO, demoPersonas, demoSwitch, demoCurrent } from './api.js';
+import { call, login, logout, IS_DEMO, demoPersonas, demoSwitch, demoCurrent, getConfig, forgotPassword, resetPassword } from './api.js';
 import { Ctx, Icon, Avatar, useToasts, Modal } from './ui.jsx';
+import { canManageSchedule, canChangeSettings, canManageEvents, canApprove, roleLabel } from '../../core/roles.js';
 import Schedule from './pages/Schedule.jsx';
 import CalendarPage from './pages/Calendar.jsx';
 import MyShifts from './pages/MyShifts.jsx';
@@ -12,6 +13,7 @@ import Forecast from './pages/Forecast.jsx';
 import Team from './pages/Team.jsx';
 import TimeOff from './pages/TimeOff.jsx';
 import Settings from './pages/Settings.jsx';
+import Venue from './pages/Venue.jsx';
 import { prettyDate } from '../../core/time.js';
 
 function useHashRoute() {
@@ -34,11 +36,27 @@ const NAV = [
   { key: 'events', label: 'Events & BEOs', short: 'Events', icon: 'glass' },
   { key: 'timeoff', label: 'Time Off', icon: 'sun', badge: 'timeoff' },
   { key: 'forecast', label: 'Forecast & Labor', icon: 'chart', mgr: true },
+  { key: 'venue', label: 'Venue & Floor Plans', short: 'Venue', icon: 'map', mgr: true },
   { key: 'team', label: 'Team & Job Codes', icon: 'users', mgr: true },
   { key: 'settings', label: 'Settings', icon: 'settings', admin: true },
 ];
 
-function Login({ onDone }) {
+function AuthCard({ children, onSubmit }) {
+  return (
+    <div className="login">
+      <form className="card card-pad col" style={{ gap: 14, padding: 26 }} onSubmit={onSubmit}>
+        <div className="brand" style={{ color: 'var(--text)', padding: 0 }}>
+          <div className="brand-mark">S</div>
+          <div><div className="brand-name">ShiftBoard</div><div className="small muted">Restaurant scheduling</div></div>
+        </div>
+        {children}
+      </form>
+    </div>
+  );
+}
+
+function Login({ onDone, emailEnabled }) {
+  const [mode, setMode] = useState('login'); // login | forgot | sent
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [err, setErr] = useState('');
@@ -46,22 +64,52 @@ function Login({ onDone }) {
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true); setErr('');
-    try { await login(email, password); onDone(); } catch (x) { setErr(x.message); } finally { setBusy(false); }
+    try {
+      if (mode === 'forgot') { await forgotPassword(email); setMode('sent'); }
+      else { await login(email, password); onDone(); }
+    } catch (x) { setErr(x.message); } finally { setBusy(false); }
+  };
+  if (mode === 'sent') return (
+    <AuthCard onSubmit={(e) => { e.preventDefault(); setMode('login'); }}>
+      <div className="alert ok"><Icon name="send" size={16} />If {email} has an account, we just emailed a link to reset the password. It works for 1 hour.</div>
+      <button className="btn block">Back to sign in</button>
+    </AuthCard>
+  );
+  return (
+    <AuthCard onSubmit={submit}>
+      {mode === 'forgot' && <div className="small muted">Enter your sign-in email and we'll send you a link to choose a new password.</div>}
+      <label className="field"><span>Email</span><input className="input" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus /></label>
+      {mode === 'login' && <label className="field"><span>Password</span><input className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>}
+      {err && <div className="alert bad">{err}</div>}
+      <button className="btn primary block" disabled={busy}>{mode === 'forgot' ? (busy ? 'Sending…' : 'Email me a reset link') : (busy ? 'Signing in…' : 'Sign in')}</button>
+      {emailEnabled
+        ? <button type="button" className="btn ghost sm" onClick={() => { setErr(''); setMode(mode === 'login' ? 'forgot' : 'login'); }}>{mode === 'login' ? 'Forgot your password?' : 'Back to sign in'}</button>
+        : <div className="help">Forgot your password? Ask a manager to reset it.</div>}
+    </AuthCard>
+  );
+}
+
+// Opened from an email link (#/reset?token=…): set a password for a new account or reset a forgotten one.
+function ResetPassword({ token, onDone }) {
+  const [pw, setPw] = useState('');
+  const [pw2, setPw2] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const submit = async (e) => {
+    e.preventDefault();
+    if (pw !== pw2) return setErr('The two passwords don’t match');
+    setBusy(true); setErr('');
+    try { await resetPassword(token, pw); onDone(); } catch (x) { setErr(x.message); } finally { setBusy(false); }
   };
   return (
-    <div className="login">
-      <form className="card card-pad col" style={{ gap: 14, padding: 26 }} onSubmit={submit}>
-        <div className="brand" style={{ color: 'var(--text)', padding: 0 }}>
-          <div className="brand-mark">S</div>
-          <div><div className="brand-name">ShiftBoard</div><div className="small muted">Restaurant scheduling</div></div>
-        </div>
-        <label className="field"><span>Email</span><input className="input" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
-        <label className="field"><span>Password</span><input className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
-        {err && <div className="alert bad">{err}</div>}
-        <button className="btn primary block" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
-        <div className="help">Forgot your password? Ask a manager to reset it.</div>
-      </form>
-    </div>
+    <AuthCard onSubmit={submit}>
+      <div><b>Choose your password</b><div className="small muted">At least 6 characters. You'll be signed in right after.</div></div>
+      <label className="field"><span>New password</span><input className="input" type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} required minLength={6} autoFocus /></label>
+      <label className="field"><span>Repeat it</span><input className="input" type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} required minLength={6} /></label>
+      {err && <div className="alert bad">{err}</div>}
+      <button className="btn primary block" disabled={busy}>{busy ? 'Saving…' : 'Save and sign in'}</button>
+      <a className="btn ghost sm" href="#/">Back to sign in</a>
+    </AuthCard>
   );
 }
 
@@ -97,6 +145,8 @@ function App() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [toast, toasts] = useToasts();
   const parts = useHashRoute();
+  const [config, setConfig] = useState({ email: false, emailFrom: null });
+  useEffect(() => { getConfig().then(setConfig); }, []);
 
   const load = useCallback(async () => {
     try {
@@ -115,21 +165,26 @@ function App() {
     if (!boot) return null;
     const jobs = Object.fromEntries(boot.jobCodes.map((j) => [j.id, j]));
     const people = Object.fromEntries(boot.employees.map((e) => [e.id, e]));
-    const isMgr = boot.me.role === 'admin' || boot.me.role === 'manager';
-    return { ...boot, jobs, people, isMgr, isAdmin: boot.me.role === 'admin', isEvents: isMgr || boot.me.role === 'events', call, toast, refresh, version, go };
-  }, [boot, toast, refresh, version]);
+    const isMgr = canManageSchedule(boot.me);
+    return { ...boot, jobs, people, isMgr, emailEnabled: config.email, emailFrom: config.emailFrom, isAdmin: canChangeSettings(boot.me), isEvents: canManageEvents(boot.me),
+      canApprove: canApprove(boot.me, boot.settings), call, toast, refresh, version, go };
+  }, [boot, toast, refresh, version, config]);
 
-  if (authed === false) return <Login onDone={() => { setAuthed(true); refresh(); }} />;
+  if (parts[0]?.startsWith('reset')) {
+    const token = new URLSearchParams(location.hash.split('?')[1] || '').get('token') || '';
+    return <ResetPassword token={token} onDone={() => { location.hash = '#/'; setAuthed(true); refresh(); }} />;
+  }
+  if (authed === false) return <Login emailEnabled={config.email} onDone={() => { setAuthed(true); refresh(); }} />;
   if (!ctx) return <div className="empty" style={{ paddingTop: 120 }}>Loading…</div>;
 
   const route = parts[0] || (ctx.isMgr ? 'schedule' : 'my');
   const nav = NAV.filter((n) => (!n.mgr || ctx.isMgr) && (!n.admin || ctx.isAdmin));
-  const badges = { swaps: (ctx.isMgr ? ctx.pendingApprovals : 0) + ctx.openOffers, timeoff: 0 };
+  const badges = { swaps: (ctx.canApprove ? ctx.pendingApprovals : 0) + ctx.openOffers, timeoff: 0 };
   const current = NAV.find((n) => n.key === route) || NAV[0];
 
   const Page = {
     schedule: Schedule, calendar: CalendarPage, my: MyShifts, swaps: Swaps, events: Events,
-    forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings,
+    forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue,
   }[route] || Schedule;
 
   const signOut = async () => { await logout(); setBoot(null); setAuthed(false); };
@@ -153,7 +208,7 @@ function App() {
               <Avatar user={ctx.me} />
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ color: '#fff', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ctx.me.name}</div>
-                <div className="tiny" style={{ color: '#94a3b8', textTransform: 'capitalize' }}>{ctx.me.role}</div>
+                <div className="tiny" style={{ color: '#94a3b8' }}>{roleLabel(ctx.me)}</div>
               </div>
             </div>
             {!IS_DEMO && <button className="nav-item" onClick={signOut}><Icon name="logout" />Sign out</button>}
@@ -220,7 +275,7 @@ function DemoBar({ onSwitch }) {
       <span className="spacer" />
       <label className="row" style={{ gap: 6 }}><span className="desktop-only">View as</span><span className="mobile-only">Viewing as</span>
         <select value={cur} onChange={(e) => { demoSwitch(e.target.value); setCur(e.target.value); onSwitch(); location.hash = '#/'; }}>
-          {personas.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.role})</option>)}
+          {personas.map((p) => <option key={p.id} value={p.id}>{p.name} ({roleLabel(p.role)})</option>)}
         </select>
       </label>
     </div>

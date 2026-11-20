@@ -72,3 +72,21 @@ export function demoPersonas() {
 export function demoSwitch(userId) { getDemo().userId = userId; }
 export function demoCurrent() { return getDemo().userId; }
 export function nowDate() { return IS_DEMO ? DEMO_NOW : new Date(); }
+
+// ---------- email features (hosted app only) ----------
+async function post(path, body) {
+  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(body || {}) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data.error || `Request failed (${res.status})`);
+  return data.result ?? data;
+}
+/** Server features the UI adapts to: { email: boolean, emailFrom } */
+export async function getConfig() {
+  if (IS_DEMO) return { email: false, emailFrom: null };
+  try { return await (await fetch('/api/config')).json(); } catch { return { email: false, emailFrom: null }; }
+}
+export const forgotPassword = (email) => post('/api/auth/forgot', { email });
+export const resetPassword = (token, password) => post('/api/auth/reset', { token, password });
+export const sendTestEmail = () => post('/api/email/test');
+export const sendSignInLink = (userId) => post(`/api/users/${encodeURIComponent(userId)}/invite`);
+export const inviteAll = () => post('/api/users/invite-all');

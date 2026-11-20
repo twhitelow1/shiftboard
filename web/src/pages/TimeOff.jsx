@@ -3,15 +3,15 @@ import { useApp, Icon, Avatar, Field, Empty, useAction, Modal } from '../ui.jsx'
 import { prettyDate, addDays, DOW_LONG, fmtTime } from '../../../core/time.js';
 
 export default function TimeOff() {
-  const { call, version, isMgr, people, me, today } = useApp();
+  const { call, version, canApprove, isMgr, people, me, today } = useApp();
   const [list, setList] = useState(null);
-  const [tab, setTab] = useState(isMgr ? 'pending' : 'mine');
+  const [tab, setTab] = useState(canApprove ? 'pending' : 'mine');
   const [form, setForm] = useState(false);
   const [run, busy] = useAction();
   useEffect(() => { call('timeOff.list').then(setList); }, [version]);
 
   const tabs = [
-    ...(isMgr ? [{ key: 'pending', label: 'To approve' }, { key: 'upcoming', label: 'Everyone upcoming' }] : []),
+    ...(canApprove ? [{ key: 'pending', label: 'To approve' }, { key: 'upcoming', label: 'Everyone upcoming' }] : []),
     { key: 'mine', label: 'My requests' },
     { key: 'availability', label: 'My availability' },
   ];
@@ -39,7 +39,7 @@ export default function TimeOff() {
                 <div className="small muted">{prettyDate(t.startDate)}{t.endDate !== t.startDate ? ` – ${prettyDate(t.endDate)}` : ''}{t.reason ? ` · ${t.reason}` : ''}</div>
               </div>
               <span className={`badge ${t.status === 'approved' ? 'ok' : t.status === 'pending' ? 'warn' : t.status === 'denied' ? 'bad' : ''}`}>{t.status}</span>
-              {isMgr && t.status === 'pending' && <>
+              {canApprove && t.status === 'pending' && (isMgr || t.userId !== me.id) && <>
                 <button className="btn sm danger" disabled={busy} onClick={() => run(() => call('timeOff.decide', { id: t.id, status: 'denied' }), 'Denied')}>Deny</button>
                 <button className="btn sm ok" disabled={busy} onClick={() => run(() => call('timeOff.decide', { id: t.id, status: 'approved' }), 'Approved')}>Approve</button>
               </>}

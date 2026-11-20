@@ -10,14 +10,16 @@ export function forecastDay(date, salesByDate, settings, override) {
     return { date, covers: 0, sales: 0, closed: true, basis: 'Closed', samples: 0 };
   }
   if (override && (override.covers != null || override.sales != null)) {
-    return {
-      date,
-      covers: Number(override.covers) || 0,
-      sales: Number(override.sales) || 0,
-      basis: 'Manager override',
-      override: true,
-      samples: 0,
-    };
+    const covers = Number(override.covers) || 0;
+    let sales = override.sales;
+    let basis = 'Manager override';
+    if (sales == null || sales === '') {
+      // Covers-only projection (e.g. imported from the schedule): price it at the usual average check.
+      const base = forecastDay(date, salesByDate, settings, null);
+      sales = base.covers > 0 ? Math.round(covers * (base.sales / base.covers)) : 0;
+      basis = 'Projected covers';
+    }
+    return { date, covers, sales: Number(sales) || 0, basis, override: true, samples: 0 };
   }
   const lookback = settings.forecastWeeks || 8;
   const samples = [];

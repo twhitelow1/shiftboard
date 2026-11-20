@@ -6,3 +6,5 @@ data/
 *.db-*
 .env
 .DS_Store
+.vercel
+.claude/worktrees/

@@ -78,7 +78,7 @@ export default function Schedule() {
 
   const sections = useMemo(() => {
     if (!data) return [];
-    const activeEmps = employees.filter((e) => e.active !== false && e.role !== 'events');
+    const activeEmps = employees.filter((e) => e.active !== false && e.onSchedule !== false);
     if (groupBy === 'emp') {
       const rows = activeEmps.filter((e) => (!mine || e.id === me.id) && (!dept || e.jobCodes?.some((j) => jobs[j.jobCodeId]?.department === dept)))
         .map((e) => ({ user: e, shifts: shifts.filter((s) => s.userId === e.id && (!dept || jobs[s.jobCodeId]?.department === dept)) }))
@@ -92,8 +92,8 @@ export default function Schedule() {
       jobShifts.forEach((s) => s.userId && users.add(s.userId));
       let rows = [...users].map((id) => people[id]).filter(Boolean)
         .map((u) => ({ user: u, shifts: jobShifts.filter((s) => s.userId === u.id) }));
-      // Keep the sheet's order: people with a primary job here first, then alphabetical.
-      rows.sort((a, b) => a.user.name.localeCompare(b.user.name));
+      // Keep the sheet's order (set when people are imported), then alphabetical.
+      rows.sort((a, b) => (a.user.order ?? 1e9) - (b.user.order ?? 1e9) || a.user.name.localeCompare(b.user.name));
       if (mine) rows = rows.filter((r) => r.user.id === me.id);
       if (hideEmpty) rows = rows.filter((r) => r.shifts.length);
       return { key: j.id, job: j, label: j.name, rows, open: mine ? [] : jobShifts.filter((s) => !s.userId) };
@@ -211,10 +211,14 @@ export default function Schedule() {
                 </tr>
               </thead>
               <tbody>
-                {sections.map((sec) => (
+                {sections.map((sec, i) => (
                   <React.Fragment key={sec.key}>
+                    {/* Area banner when the department changes, like the house sheet (RESTAURANT, RABBIT HOLE…). */}
+                    {groupBy === 'job' && sec.job.department && sec.job.department !== sections[i - 1]?.job?.department && (
+                      <tr className="section area"><td colSpan={8}><div className="row">{sec.job.department}</div></td></tr>
+                    )}
                     {groupBy === 'job' && (
-                      <tr className="section"><td colSpan={8}><div className="row"><JobDot job={sec.job} />{sec.label}<span className="faint" style={{ fontWeight: 600 }}>{sec.job.department}</span></div></td></tr>
+                      <tr className="section"><td colSpan={8}><div className="row"><JobDot job={sec.job} />{sec.label}</div></td></tr>
                     )}
                     {sec.rows.map(({ user, shifts: us }) => {
                       const hrs = hoursByUser[user.id] || 0;
@@ -267,7 +271,7 @@ export default function Schedule() {
 
       {dialog && <ShiftDialog shift={dialog.shift} warnings={dialog.warnings} events={data?.events || []} onClose={closeDialog} />}
       {importOpen && <ImportDialog ws={ws} onClose={(changed) => { setImportOpen(false); if (changed) load(); }} />}
-      {copyOpen && <CopyWeekDialog ws={ws} onClose={(changed) => { setCopyOpen(false); if (changed) load(); }} />}
+      {copyOpen && <CopyWeekDialog ws={ws} onClose={(changed, goTo) => { setCopyOpen(false); if (goTo && goTo !== ws) setWs(goTo); else if (changed) load(); }} />}
     </div>
   );
 }
@@ -333,24 +337,35 @@ function MobileDay({ days, selDay, setSelDay, data, sections, mine, setMine, ope
 
 function CopyWeekDialog({ ws, onClose }) {
   const { call } = useApp();
-  const [from, setFrom] = useState(addDays(ws, -7));
+  const [mode, setMode] = useState('forward'); // forward: this week → another week; into: another week → this week
+  const [other, setOther] = useState(addDays(ws, 7));
   const [replace, setReplace] = useState(true);
   const [run, busy] = useAction();
+  const switchMode = (m) => { setMode(m); setOther(addDays(ws, m === 'forward' ? 7 : -7)); };
+  const from = mode === 'forward' ? ws : other;
+  const to = mode === 'forward' ? other : ws;
   const go = async () => {
-    const r = await run(() => call('shifts.copyWeek', { fromWeek: from, toWeek: ws, replace }), (r) => `Copied ${r.copied} shifts as drafts`);
-    if (r) onClose(true);
+    const r = await run(() => call('shifts.copyWeek', { fromWeek: from, toWeek: to, replace }),
+      (r) => `Copied ${r.copied} shifts as drafts into ${weekLabel(to)}${r.skipped ? ` · ${r.skipped} skipped (inactive people)` : ''}`);
+    if (r) onClose(true, to);
   };
   return (
-    <Modal title="Copy a week" sub={`Into ${weekLabel(ws)}`} onClose={() => onClose(false)}
-      footer={<><button className="btn" onClick={() => onClose(false)}>Cancel</button><button className="btn primary" disabled={busy} onClick={go}>Copy as drafts</button></>}>
-      <Field label="Copy from week of" help="Event shifts aren't copied — they come from each event's BEO.">
+    <Modal title="Copy a week" sub="Build a new week in the same layout, then adjust it" onClose={() => onClose(false)}
+      footer={<><button className="btn" onClick={() => onClose(false)}>Cancel</button><button className="btn primary" disabled={busy || from === to} onClick={go}><Icon name="copy" />Copy as drafts</button></>}>
+      <div className="tabs" style={{ marginBottom: 4 }}>
+        <button className={mode === 'forward' ? 'on' : ''} onClick={() => switchMode('forward')}>This week → another week</button>
+        <button className={mode === 'into' ? 'on' : ''} onClick={() => switchMode('into')}>Another week → this week</button>
+      </div>
+      <Field label={mode === 'forward' ? `Copy ${weekLabel(ws)} into the week of` : `Copy into ${weekLabel(ws)} from the week of`}
+        help="Everyone keeps the same job codes, times and notes. Event shifts aren't copied — they come from each event's BEO. People who are no longer active are skipped.">
         <div className="row">
-          <button className="btn icon sm" onClick={() => setFrom(addDays(from, -7))}><Icon name="left" /></button>
-          <div style={{ fontWeight: 700, minWidth: 140, textAlign: 'center' }}>{weekLabel(from)}</div>
-          <button className="btn icon sm" onClick={() => setFrom(addDays(from, 7))}><Icon name="right" /></button>
+          <button className="btn icon sm" onClick={() => setOther(addDays(other, -7))}><Icon name="left" /></button>
+          <div style={{ fontWeight: 700, minWidth: 140, textAlign: 'center' }}>{weekLabel(other)}</div>
+          <button className="btn icon sm" onClick={() => setOther(addDays(other, 7))}><Icon name="right" /></button>
         </div>
       </Field>
-      <label className="check"><input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} />Replace existing draft shifts in this week</label>
+      {from === to && <div className="alert warn"><Icon name="alert" size={16} />Pick a different week.</div>}
+      <label className="check"><input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} />Replace draft shifts already in {weekLabel(to)}</label>
       <div className="help">Copied shifts stay as drafts until you publish. Conflicts with approved time off are flagged in red.</div>
     </Modal>
   );

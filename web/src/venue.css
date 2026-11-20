@@ -1,0 +1,67 @@
+/* Venue & floor plans. Colors are tokens so plans follow light/dark mode. */
+:root {
+  --fp-floor: #fbfaf7; --fp-grid: #ece9e2; --fp-edge: #d9d4c8;
+  --fp-table: #ffffff; --fp-table-line: #8a7f6c; --fp-seat: #c9bfae;
+  --fp-bar: #7a4f2a; --fp-bar-top: #a8743f; --fp-stage: #3b4256; --fp-stage-2: #4b5470;
+  --fp-dance-1: #e9e4f7; --fp-dance-2: #d7cff0; --fp-wall: #374151; --fp-plant: #3f8f4f;
+  --fp-text: #2b2b2b; --fp-text-inv: #ffffff; --fp-select: #4f46e5;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --fp-floor: #141b2d; --fp-grid: #1d263c; --fp-edge: #2f3f63;
+    --fp-table: #1f2a44; --fp-table-line: #8fa0c4; --fp-seat: #3a4a6e;
+    --fp-bar: #6b4423; --fp-bar-top: #8c5a2e; --fp-stage: #2a3147; --fp-stage-2: #3a4360;
+    --fp-dance-1: #2a2650; --fp-dance-2: #36306a; --fp-wall: #aab5cb; --fp-plant: #4caf63;
+    --fp-text: #e6ebf5; --fp-text-inv: #ffffff; --fp-select: #818cf8;
+  }
+}
+:root[data-theme="dark"] {
+  --fp-floor: #141b2d; --fp-grid: #1d263c; --fp-edge: #2f3f63;
+  --fp-table: #1f2a44; --fp-table-line: #8fa0c4; --fp-seat: #3a4a6e;
+  --fp-bar: #6b4423; --fp-bar-top: #8c5a2e; --fp-stage: #2a3147; --fp-stage-2: #3a4360;
+  --fp-dance-1: #2a2650; --fp-dance-2: #36306a; --fp-wall: #aab5cb; --fp-plant: #4caf63;
+  --fp-text: #e6ebf5; --fp-text-inv: #ffffff; --fp-select: #818cf8;
+}
+
+.fp-svg { display: block; width: 100%; height: auto; border-radius: var(--radius-sm); border: 1px solid var(--fp-edge); background: var(--fp-floor); user-select: none; -webkit-user-select: none; }
+.fp-svg.editing { touch-action: none; cursor: default; }
+.fp-svg .fp-item { cursor: default; }
+.fp-svg.editing .fp-item { cursor: move; }
+.fp-table { fill: var(--fp-table); stroke: var(--fp-table-line); stroke-width: 2; }
+.fp-seat { fill: var(--fp-seat); stroke: var(--fp-table-line); stroke-width: 1; }
+.fp-bench { fill: var(--fp-seat); stroke: var(--fp-table-line); stroke-width: 1.5; }
+.fp-bar { fill: var(--fp-bar); }
+.fp-bar-top { fill: none; stroke: var(--fp-bar-top); stroke-width: 3; }
+.fp-stage-edge { fill: none; stroke: var(--fp-stage-2); stroke-width: 3; }
+.fp-dance-edge { fill: none; stroke: var(--fp-dance-2); stroke-width: 2; }
+.fp-wall { fill: var(--fp-wall); }
+.fp-door { fill: none; stroke: var(--fp-wall); stroke-width: 2; stroke-dasharray: 5 4; }
+.fp-door-leaf { stroke: var(--fp-wall); stroke-width: 3; }
+.fp-plant { fill: var(--fp-plant); }
+.fp-dj { fill: var(--fp-stage); }
+.fp-dj-deck { fill: none; stroke: var(--fp-stage-2); stroke-width: 2.5; }
+.fp-host { fill: var(--fp-table); stroke: var(--fp-wall); stroke-width: 2; }
+.fp-text { fill: var(--fp-text); font: 600 15px Inter, system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.fp-text.inv { fill: var(--fp-text-inv); }
+.fp-text.big { font-size: 20px; font-weight: 700; }
+.fp-select { fill: none; stroke: var(--fp-select); stroke-width: 2; stroke-dasharray: 6 4; pointer-events: none; }
+.fp-handle { fill: var(--fp-select); stroke: #fff; stroke-width: 2; cursor: nwse-resize; }
+
+/* Page layout */
+.venue-grid { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 14px; align-items: start; }
+.venue-rooms .level { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); padding: 10px 12px 4px; display: flex; align-items: center; gap: 6px; }
+.venue-room { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 12px; cursor: pointer; border-left: 3px solid transparent; }
+.venue-room:hover { background: var(--surface-2); }
+.venue-room.on { background: var(--brand-soft); border-left-color: var(--brand); }
+.venue-room .name { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.venue-room .moves { display: flex; gap: 2px; opacity: .5; }
+.venue-room:hover .moves, .venue-room.on .moves { opacity: 1; }
+.fp-toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.fp-add { display: inline-flex; align-items: center; gap: 6px; }
+.fp-add svg.fp-mini { width: 22px; height: 16px; }
+.fp-editor { display: grid; grid-template-columns: minmax(0, 1fr) 230px; gap: 12px; align-items: start; }
+.fp-panel { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; background: var(--surface-2); }
+.fp-panel .grid2 { gap: 8px; }
+@media (max-width: 1100px) { .fp-editor { grid-template-columns: 1fr; } }
+@media (max-width: 860px) { .venue-grid { grid-template-columns: 1fr; } }
+@media print { .fp-toolbar, .fp-panel { display: none; } }

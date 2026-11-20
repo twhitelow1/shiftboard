@@ -3,6 +3,7 @@ import { useApp, Icon, Avatar, Field, Empty, useAction, JobDot, money, shiftTime
 import { prettyDate, fmtTime, parseDate, MONTHS, DOW_SHORT, addDays } from '../../../core/time.js';
 import { SERVICE_STYLES } from '../../../core/beo.js';
 import { IS_DEMO } from '../api.js';
+import { RoomPlanCard } from './FloorPlan.jsx';
 
 const STATUS_BADGE = { tentative: 'warn', confirmed: 'ok', completed: '', cancelled: 'bad' };
 
@@ -103,6 +104,8 @@ function EventDetail({ id }) {
         </div>
         {myShift && <div className="alert info" style={{ marginTop: 12 }}><Icon name="user" size={16} />You're working this: {jobs[myShift.jobCodeId]?.name} · {shiftTime(myShift)}</div>}
       </div>
+
+      <RoomPlanCard room={e.room} />
 
       <div className="beo">
         <div className="card card-pad">

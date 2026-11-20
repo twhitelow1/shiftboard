@@ -87,6 +87,7 @@ export default function MyShifts() {
           : <button className="btn sm" onClick={async () => setIcal(await icalLink())}><Icon name="link" />Get calendar link</button>}
       </div>
 
+      {!IS_DEMO && <EmailPrefCard />}
       {!IS_DEMO && <PasswordCard />}
 
       {dialog && <ShiftDialog shift={dialog} events={data.events} onClose={(c) => { setDialog(null); if (c) load(); }} />}
@@ -107,6 +108,23 @@ function ShiftRow({ s, onClick, right }) {
       </div>
       {right}
       <Icon name="right" size={16} style={{ color: 'var(--text-3)' }} />
+    </div>
+  );
+}
+
+function EmailPrefCard() {
+  const { call, me, emailEnabled } = useApp();
+  const [run, busy] = useAction();
+  if (!emailEnabled || !me.email) return null;
+  const on = me.emailNotifications !== false;
+  return (
+    <div className="card card-pad section">
+      <h3>Email notifications</h3>
+      <label className="check" style={{ marginTop: 8 }}>
+        <input type="checkbox" checked={on} disabled={busy}
+          onChange={(e) => run(() => call('account.preferences', { emailNotifications: e.target.checked }), e.target.checked ? 'Email notifications on' : 'Email notifications off')} />
+        Email me at {me.email} when my schedule changes, a trade or time off needs me, or an event I'm working is updated
+      </label>
     </div>
   );
 }

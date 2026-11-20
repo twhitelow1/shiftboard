@@ -20,7 +20,7 @@ function ShiftEditor({ shift, onClose, warnings, events }) {
   const [publishNow, setPublishNow] = useState(!!shift.published);
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e?.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e }));
 
-  const active = employees.filter((e) => e.active !== false && e.role !== 'events');
+  const active = employees.filter((e) => e.active !== false && e.onSchedule !== false);
   const trained = active.filter((e) => e.jobCodes?.some((j) => j.jobCodeId === f.jobCodeId));
   const others = active.filter((e) => !trained.includes(e));
   const dayEvents = events.filter((e) => e.date === f.date);

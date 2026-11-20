@@ -9,7 +9,7 @@ const STATUS = {
 };
 
 export default function Swaps() {
-  const { call, version, isMgr, settings } = useApp();
+  const { call, version, canApprove, settings } = useApp();
   const [data, setData] = useState(null);
   const [tab, setTab] = useState(null);
   const load = () => call('swaps.list').then(setData);
@@ -17,10 +17,10 @@ export default function Swaps() {
   if (!data) return <div className="empty">Loading…</div>;
 
   const tabs = [
-    ...(isMgr ? [{ key: 'approvals', label: 'Needs approval', n: data.approvals.length }] : []),
+    ...(canApprove ? [{ key: 'approvals', label: 'Needs approval', n: data.approvals.length }] : []),
     { key: 'offers', label: 'Up for grabs', n: data.offers.length },
     { key: 'mine', label: 'My requests', n: data.mine.filter((r) => ['open', 'pending_approval'].includes(r.status)).length },
-    ...(isMgr ? [{ key: 'open', label: 'Waiting on staff', n: data.openPending.length }, { key: 'history', label: 'History' }] : []),
+    ...(canApprove ? [{ key: 'open', label: 'Waiting on staff', n: data.openPending.length }, { key: 'history', label: 'History' }] : []),
   ];
   const cur = tab || tabs[0].key;
   const list = { approvals: data.approvals, offers: data.offers, mine: data.mine, open: data.openPending, history: data.history }[cur];

@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { useApp, Icon, Field, useAction } from '../ui.jsx';
 import { DOW_LONG, DOW_SHORT } from '../../../core/time.js';
-import { IS_DEMO } from '../api.js';
+import { IS_DEMO, sendTestEmail } from '../api.js';
 
 export default function Settings() {
-  const { settings, call } = useApp();
+  const { settings, call, emailEnabled, emailFrom } = useApp();
   const [s, setS] = useState(() => JSON.parse(JSON.stringify(settings)));
   const [run, busy] = useAction();
   const [pw, setPw] = useState('');
@@ -54,9 +54,20 @@ export default function Settings() {
         </div>
         <label className="check"><input type="checkbox" checked={s.requireSwapApproval} onChange={set('requireSwapApproval')} />Managers must approve trades & giveaways</label>
         <label className="check"><input type="checkbox" checked={s.requirePickupApproval} onChange={set('requirePickupApproval')} />Managers must approve open-shift pickups</label>
+        <label className="check"><input type="checkbox" checked={s.supervisorsCanApprove !== false} onChange={set('supervisorsCanApprove')} />Supervisors can approve trades, pickups and time off (never their own)</label>
         <Field label="Shift tags (comma separated)" help="Quick picks when adding a shift — sections, rooms, roles for the night"><input className="input" {...listField('tags')} /></Field>
         <Field label="Rooms / areas for events"><input className="input" {...listField('rooms')} /></Field>
         <Field label="Departments"><input className="input" {...listField('departments')} /></Field>
+      </div>
+
+      <div className="card card-pad col" style={{ gap: 12 }}>
+        <h2>Email</h2>
+        {IS_DEMO ? <div className="help">Email is available in the hosted app.</div> : emailEnabled
+          ? <div className="alert ok"><Icon name="check" size={16} />Connected to Resend. Emails come from {emailFrom}.</div>
+          : <div className="alert warn"><Icon name="alert" size={16} />Not set up yet. Add RESEND_API_KEY and EMAIL_FROM in Vercel (Settings → Environment Variables), then redeploy.</div>}
+        <label className="check"><input type="checkbox" checked={s.emailNotifications !== false} onChange={set('emailNotifications')} disabled={!emailEnabled} />Email staff a copy of their notifications: new schedule, shift changes, trades, time off and event updates</label>
+        <div className="help">People you add with an email get a link to set their password, and anyone can reset a forgotten password from the sign-in page. Each person can turn notification emails off in My Shifts.</div>
+        {emailEnabled && <div><button className="btn sm" disabled={busy} onClick={() => run(() => sendTestEmail(), (r) => `Test email sent to ${r.to}`)}><Icon name="send" />Send me a test email</button></div>}
       </div>
 
       <div className="card card-pad col" style={{ gap: 12 }}>
