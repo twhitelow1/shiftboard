@@ -873,6 +873,157 @@ export function createService(store, opts = {}) {
       return { ...c, userName: nameOf(actor.id) };
     },
 
+    // ----- venue: locations, levels, rooms and floor plans -----
+    // A one-room restaurant needs none of this; the UI offers a one-click start from settings.rooms.
+    // Room names are mirrored into settings.rooms, which events and the schedule importer use.
+    ...(() => {
+      const ITEM_TYPES = ['table-round', 'table-square', 'table-rect', 'booth', 'bar', 'stage', 'dancefloor', 'dj', 'host', 'wall', 'door', 'plant', 'label'];
+      const SEATED = new Set(['table-round', 'table-square', 'table-rect', 'booth', 'bar']);
+      const KINDS = ['dining', 'bar', 'events', 'other'];
+      const BOOKING_TYPES = /full buyout/i; // in settings.rooms but not a physical space
+      const num = (v, d) => (v !== '' && v != null && Number.isFinite(Number(v)) ? Number(v) : d);
+      const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+      const text = (v, max) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+      const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0) || String(a.name).localeCompare(String(b.name));
+      const emptyPlan = () => ({ width: 1000, height: 700, items: [] });
+
+      function cleanPlan(p) {
+        const width = clamp(Math.round(num(p?.width, 1000)), 200, 5000);
+        const height = clamp(Math.round(num(p?.height, 700)), 200, 5000);
+        const raw = Array.isArray(p?.items) ? p.items : [];
+        if (raw.length > 500) fail(400, 'A floor plan can have at most 500 items');
+        const ids = new Set();
+        const items = raw.map((i) => {
+          if (!ITEM_TYPES.includes(i?.type)) fail(400, `Unknown floor plan item "${text(i?.type, 30)}"`);
+          const w = clamp(Math.round(num(i.w, 60)), 4, width);
+          const h = clamp(Math.round(num(i.h, 60)), 4, height);
+          let id = text(i.id, 40);
+          if (!id || ids.has(id)) id = uid('itm');
+          ids.add(id);
+          return {
+            id, type: i.type, w, h,
+            x: clamp(Math.round(num(i.x, 0)), 0, width - w),
+            y: clamp(Math.round(num(i.y, 0)), 0, height - h),
+            r: ((Math.round(num(i.r, 0)) % 360) + 360) % 360,
+            label: text(i.label, 40),
+            seats: SEATED.has(i.type) ? clamp(Math.round(num(i.seats, 0)), 0, 40) : 0,
+          };
+        });
+        return { width, height, items };
+      }
+
+      function syncRoomNames() {
+        const rooms = store.list('rooms');
+        const order = new Map(store.list('locations').map((l) => [l.id, l.order ?? 0]));
+        rooms.sort((a, b) => (order.get(a.locationId) ?? 0) - (order.get(b.locationId) ?? 0) || byOrder(a, b));
+        const names = [...new Set(rooms.map((r) => r.name))];
+        const keep = (settings().rooms || []).filter((r) => BOOKING_TYPES.test(r) && !names.some((n) => n.toLowerCase() === r.toLowerCase()));
+        const next = [...names, ...keep];
+        if (store.get('settings', 'settings')) store.update('settings', 'settings', { rooms: next });
+        else store.insert('settings', { ...DEFAULT_SETTINGS, rooms: next });
+      }
+
+      function defaultLocation() {
+        const first = store.list('locations').sort(byOrder)[0];
+        return first || store.insert('locations', { id: uid('loc'), name: settings().restaurantName || 'Main location', address: '', order: 0 });
+      }
+
+      const view = () => ({
+        locations: store.list('locations').sort(byOrder),
+        rooms: store.list('rooms').sort(byOrder),
+        itemTypes: ITEM_TYPES,
+        kinds: KINDS,
+      });
+
+      return {
+        'venue.get': (actor) => {
+          needAuth(actor);
+          return view();
+        },
+        'venue.setup': (actor) => {
+          needMgr(actor);
+          if (store.list('locations').length || store.list('rooms').length) fail(409, 'The venue is already set up');
+          const loc = defaultLocation();
+          let order = 0;
+          for (const name of settings().rooms || []) {
+            if (/buyout/i.test(name)) continue;
+            const kinds = /\bbar\b|lounge|pub|rabbit hole/i.test(name) ? ['bar'] : ['dining'];
+            store.insert('rooms', { id: uid('room'), locationId: loc.id, level: 'Main floor', name: text(name, 60), kinds, capacity: 0, order: order++, plan: emptyPlan() });
+          }
+          syncRoomNames();
+          return view();
+        },
+        'venue.saveLocation': (actor, a) => {
+          needMgr(actor);
+          const name = text(a.name, 80);
+          if (!name) fail(400, 'Location name is required');
+          const doc = { name, address: text(a.address, 200), order: num(a.order, store.list('locations').length) };
+          if (a.id) {
+            if (!store.get('locations', a.id)) fail(404, 'Location not found');
+            const out = store.update('locations', a.id, doc);
+            syncRoomNames();
+            return out;
+          }
+          return store.insert('locations', { id: uid('loc'), ...doc });
+        },
+        'venue.deleteLocation': (actor, { id }) => {
+          needMgr(actor);
+          if (!store.get('locations', id)) fail(404, 'Location not found');
+          const n = store.list('rooms', (r) => r.locationId === id).length;
+          if (n) fail(409, `Move or delete its ${n} room${n === 1 ? '' : 's'} first`);
+          store.remove('locations', id);
+          return { ok: true };
+        },
+        'venue.saveRoom': (actor, a) => {
+          needMgr(actor);
+          const cur = a.id ? store.get('rooms', a.id) : null;
+          if (a.id && !cur) fail(404, 'Room not found');
+          const locationId = a.locationId || cur?.locationId || defaultLocation().id;
+          if (!store.get('locations', locationId)) fail(404, 'Location not found');
+          const name = text(a.name ?? cur?.name, 60);
+          if (!name) fail(400, 'Room name is required');
+          if (store.list('rooms', (r) => r.locationId === locationId && r.id !== a.id && r.name.toLowerCase() === name.toLowerCase()).length) {
+            fail(400, `There's already a room called ${name} here`);
+          }
+          const kinds = [...new Set((Array.isArray(a.kinds) ? a.kinds : cur?.kinds || ['dining']).filter((k) => KINDS.includes(k)))];
+          const doc = {
+            locationId, name, kinds,
+            level: text(a.level ?? cur?.level, 40) || 'Main floor',
+            capacity: clamp(Math.round(num(a.capacity ?? cur?.capacity, 0)), 0, 100000),
+            order: num(a.order ?? cur?.order, store.list('rooms').length),
+          };
+          const out = cur ? store.update('rooms', cur.id, doc) : store.insert('rooms', { id: uid('room'), ...doc, plan: emptyPlan() });
+          syncRoomNames();
+          return out;
+        },
+        'venue.deleteRoom': (actor, { id }) => {
+          needMgr(actor);
+          if (!store.remove('rooms', id)) fail(404, 'Room not found');
+          syncRoomNames();
+          return { ok: true };
+        },
+        'venue.reorderRooms': (actor, { ids }) => {
+          needMgr(actor);
+          (Array.isArray(ids) ? ids : []).forEach((id, i) => { if (store.get('rooms', id)) store.update('rooms', id, { order: i }); });
+          syncRoomNames();
+          return view();
+        },
+        'venue.renameLevel': (actor, { locationId, from, to }) => {
+          needMgr(actor);
+          const name = text(to, 40);
+          if (!name) fail(400, 'Level name is required');
+          const rooms = store.list('rooms', (r) => r.locationId === locationId && r.level === from);
+          for (const r of rooms) store.update('rooms', r.id, { level: name });
+          return { renamed: rooms.length };
+        },
+        'venue.savePlan': (actor, { roomId, plan }) => {
+          needMgr(actor);
+          if (!store.get('rooms', roomId)) fail(404, 'Room not found');
+          return store.update('rooms', roomId, { plan: cleanPlan(plan) });
+        },
+      };
+    })(),
+
     // ----- notifications -----
     'notifications.list': (actor) => {
       needAuth(actor);

@@ -12,6 +12,7 @@ import Forecast from './pages/Forecast.jsx';
 import Team from './pages/Team.jsx';
 import TimeOff from './pages/TimeOff.jsx';
 import Settings from './pages/Settings.jsx';
+import Venue from './pages/Venue.jsx';
 import { prettyDate } from '../../core/time.js';
 
 function useHashRoute() {
@@ -34,6 +35,7 @@ const NAV = [
   { key: 'events', label: 'Events & BEOs', short: 'Events', icon: 'glass' },
   { key: 'timeoff', label: 'Time Off', icon: 'sun', badge: 'timeoff' },
   { key: 'forecast', label: 'Forecast & Labor', icon: 'chart', mgr: true },
+  { key: 'venue', label: 'Venue & Floor Plans', short: 'Venue', icon: 'map', mgr: true },
   { key: 'team', label: 'Team & Job Codes', icon: 'users', mgr: true },
   { key: 'settings', label: 'Settings', icon: 'settings', admin: true },
 ];
@@ -180,7 +182,7 @@ function App() {
 
   const Page = {
     schedule: Schedule, calendar: CalendarPage, my: MyShifts, swaps: Swaps, events: Events,
-    forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings,
+    forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue,
   }[route] || Schedule;
 
   const signOut = async () => { await logout(); setBoot(null); setAuthed(false); };

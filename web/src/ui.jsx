@@ -5,6 +5,13 @@ export const Ctx = createContext(null);
 export const useApp = () => useContext(Ctx);
 
 const P = {
+  map: 'M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3zM9 3v15M15 6v15',
+  pin: 'M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
+  layers: 'M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
+  up: 'M18 15l-6-6-6 6',
+  down: 'M6 9l6 6 6-6',
+  rotateLeft: 'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5',
+  rotateRight: 'M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5',
   calendar: 'M8 2v3M16 2v3M3 9h18M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z',
   grid: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
   user: 'M20 21a8 8 0 1 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10z',
