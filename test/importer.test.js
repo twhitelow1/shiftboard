@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseCell, parseSchedule, readSections, matchPosition, positionName, departmentFor, matchEmployee, suggestRole, personName, titleCase } from '../core/importer.js';
-import { scheduleAreas, findArea, uniqueAreas } from '../core/areas.js';
+import { scheduleAreas, findArea, uniqueAreas, bannerColor, textOn } from '../core/areas.js';
 
 test('parseCell handles restaurant shorthand', () => {
   assert.deepEqual(parseCell('4PM'), { start: '16:00', end: null, tag: '' });
@@ -77,6 +77,8 @@ test('banners become areas and section labels become positions', () => {
   assert.deepEqual(['M.O.D.', 'Bar', 'Servers', 'Runners', 'Barbacks', 'Cocktail', 'Hosts', 'Doormen', 'Banquet Captains'].map(positionName),
     ['Manager', 'Bartender', 'Server', 'Food Runner', 'Barback', 'Cocktail Server', 'Host', 'Doorman', 'Banquet Captain']);
   assert.equal(departmentFor('M.O.D.', ''), 'Leadership');
+  assert.equal(departmentFor('M.O.D.', '', 'M.O.D.'), 'M.O.D.', 'a position banner keeps its heading');
+  assert.equal(departmentFor('Managers', '', 'MANAGERS'), 'Managers');
   assert.equal(departmentFor('Bar', 'RABBIT HOLE'), 'Rabbit Hole');
 });
 
@@ -100,6 +102,9 @@ test('schedule areas: the sheet order first, then rooms', () => {
   assert.equal(findArea('BACK HOST STAND', scheduleAreas(st)), 'Back Host Stand');
   assert.equal(findArea('Patio', scheduleAreas(st)), null);
   assert.deepEqual(uniqueAreas([' Moon  Rabbit ', 'moon rabbit', '', 'Patio']), ['Moon Rabbit', 'Patio']);
+  assert.equal(bannerColor({ areaColors: { 'Moon Rabbit': '#ff0000' } }, 'MOON RABBIT'), '#ff0000');
+  assert.equal(bannerColor({}, 'Patio', 1), bannerColor({}, 'Other', 1), 'steady fallback by position');
+  assert.deepEqual(['#ff0000', '#0070c0', '#a9d08e', '#203864', '#000000'].map(textOn), ['#000', '#000', '#000', '#fff', '#fff']);
 });
 
 test('people names and matching', () => {

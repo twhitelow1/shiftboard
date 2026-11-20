@@ -36,6 +36,7 @@ export const DEFAULT_SETTINGS = {
   tags: ['LIB', 'RH', 'FR', 'BC', 'MOON', 'PATIO', 'PASSED', 'BACK HOST', 'CLOSE', 'OPEN'],
   rooms: ['Restaurant', 'Library', 'Rabbit Hole', 'Moon Rabbit', 'Patio', 'Full Buyout'],
   areas: [], // schedule areas in the sheet's order (see core/areas.js); rooms are offered too
+  areaColors: {}, // banner color per area or department name, e.g. { 'Moon Rabbit': '#ff0000' }
   departments: ['Leadership', 'Restaurant', 'Bar', 'Moon Rabbit', 'Host', 'Events', 'Kitchen'],
   dayparts: [
     { name: 'Lunch', start: '11:00', end: '16:00', peak: '12:30', share: 0.3 },
@@ -159,6 +160,16 @@ export function createService(store, opts = {}) {
     tag: (a.tag || '').trim(), notes: (a.notes || '').trim(), breakMin: Number(a.breakMin) || 0,
     eventId: a.eventId || null, staffingLineId: a.staffingLineId || null,
   });
+
+  // Banner colors: { name: '#rrggbb' } with valid names and colors only.
+  function cleanColors(v) {
+    const out = {};
+    for (const [k, c] of Object.entries(v && typeof v === 'object' ? v : {})) {
+      const name = cleanArea(k);
+      if (name && /^#[0-9a-f]{6}$/i.test(String(c))) out[name] = String(c).toLowerCase();
+    }
+    return out;
+  }
 
   /**
    * Add areas the schedule doesn't know yet to settings.areas (after the ones it has, in the order
@@ -316,10 +327,11 @@ export function createService(store, opts = {}) {
     'settings.update': (actor, patch) => {
       needAdmin(actor);
       const allowed = ['restaurantName', 'weekStartDow', 'closedDays', 'hours', 'openEndHours', 'overtimeHours', 'requireSwapApproval',
-        'requirePickupApproval', 'supervisorsCanApprove', 'emailNotifications', 'minSwapNoticeHours', 'tags', 'rooms', 'areas', 'departments', 'dayparts', 'forecastWeeks', 'targetLaborPct', 'laborRules'];
+        'requirePickupApproval', 'supervisorsCanApprove', 'emailNotifications', 'minSwapNoticeHours', 'tags', 'rooms', 'areas', 'areaColors', 'departments', 'dayparts', 'forecastWeeks', 'targetLaborPct', 'laborRules'];
       const clean = {};
       for (const k of allowed) if (k in patch) clean[k] = patch[k];
       if ('areas' in clean) clean.areas = uniqueAreas(Array.isArray(clean.areas) ? clean.areas : []);
+      if ('areaColors' in clean) clean.areaColors = cleanColors(clean.areaColors);
       const cur = store.get('settings', 'settings');
       return cur ? store.update('settings', 'settings', clean) : store.insert('settings', { ...DEFAULT_SETTINGS, ...clean });
     },
@@ -373,6 +385,13 @@ export function createService(store, opts = {}) {
       for (const e of store.list('events', (x) => (x.staffing || []).some((l) => l.jobCodeId === from.id))) {
         store.update('events', e.id, { staffing: e.staffing.map((l) => (l.jobCodeId === from.id ? { ...l, jobCodeId: into.id } : l)) });
         out.events++;
+      }
+      for (const r of store.list('rosters', (x) => x.jobCodeId === from.id)) {
+        const id = `${String(r.area || '').toLowerCase()}|${into.id}`;
+        const t = store.get('rosters', id);
+        if (t) store.update('rosters', id, { userIds: [...new Set([...(t.userIds || []), ...(r.userIds || [])])] });
+        else store.insert('rosters', { ...r, id, jobCodeId: into.id });
+        store.remove('rosters', r.id);
       }
       const rules = settings().laborRules || [];
       if (rules.some((r) => r.jobCodeId === from.id)) {
@@ -474,7 +493,22 @@ export function createService(store, opts = {}) {
       let warnings = {};
       if (isMgr(actor)) for (const s of shifts) if (s.userId) { const w = conflictsFor(s.userId, s); if (w.length) warnings[s.id] = w; }
       const st = settings();
-      return { shifts: shifts.map((s) => ({ ...s, hours: +hoursOf(s, st).toFixed(2), pending: pendingByShift[s.id] || null })), timeOff, events, warnings };
+      // The sheet's day notes (CLOSED, MEETING…) and the week's "Notes:" line.
+      const notes = store.list('notes', (n) => n.date >= start && n.date <= end && n.text).map(({ id, kind, date, text }) => ({ id, kind, date, text }));
+      // How each section looked on the imported sheet: its heading, label and the order of names.
+      const rosters = store.list('rosters').map(({ id, area, jobCodeId, label, banner, userIds }) => ({ id, area, jobCodeId, label, banner, userIds }));
+      return { shifts: shifts.map((s) => ({ ...s, hours: +hoursOf(s, st).toFixed(2), pending: pendingByShift[s.id] || null })), timeOff, events, warnings, notes, rosters };
+    },
+    // A note for one day (kind 'day') or for the week starting on `date` (kind 'week'). Empty text removes it.
+    'notes.save': (actor, { kind, date, text }) => {
+      needMgr(actor);
+      if (!['day', 'week'].includes(kind)) fail(400, 'Unknown note');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) fail(400, 'Pick a date');
+      const id = `${kind}:${date}`;
+      const body = String(text ?? '').replace(/\r/g, '').trim().slice(0, 2000);
+      if (!body) { store.remove('notes', id); return { id, text: '' }; }
+      const doc = { id, kind, date, text: body, updatedAt: now().toISOString(), updatedBy: actor.id };
+      return store.get('notes', id) ? store.update('notes', id, doc) : store.insert('notes', doc);
     },
     'shifts.save': (actor, a) => {
       needMgr(actor);
@@ -522,7 +556,7 @@ export function createService(store, opts = {}) {
       needMgr(actor);
       const PALETTE = ['#2563eb', '#16a34a', '#d97706', '#9333ea', '#dc2626', '#0891b2', '#65a30d', '#e11d48', '#475569', '#ca8a04', '#0f766e', '#a855f7', '#7c2d12', '#db2777'];
       const at = now().toISOString();
-      const out = { jobCodes: 0, employees: 0, rolesLowered: 0, shifts: 0, updated: 0, duplicates: 0, invalid: 0, jobsAdded: 0, areas: 0, timeOff: 0, events: 0, covers: 0 };
+      const out = { jobCodes: 0, employees: 0, rolesLowered: 0, shifts: 0, updated: 0, duplicates: 0, invalid: 0, jobsAdded: 0, areas: 0, timeOff: 0, events: 0, covers: 0, notes: 0 };
       const jobRef = {}, userRef = {};
       let order = store.list('jobCodes').reduce((m, j) => Math.max(m, Number(j.order) || 0), 0);
       for (const j of a.newJobCodes || []) {
@@ -639,6 +673,47 @@ export function createService(store, opts = {}) {
         store.insert('events', { id: uid('evt'), name, date: e.date, start: e.start || '', end: '', room: e.room || '', guestCount: Number(e.guestCount) || 0, type: e.type || '',
           status: 'confirmed', staffing: [], menu: [], specialDrinks: [], timeline: [], notes: String(e.notes || ''), createdAt: at, createdBy: actor.id, updatedAt: at, updatedBy: actor.id });
         out.events++;
+      }
+
+      // Each section's layout on the sheet (its banner as written, its label, the order of names), so
+      // the schedule's Sheet view can look just like it. Keyed by area + position.
+      const layouts = new Map();
+      for (const r of a.rosters || []) {
+        const jobCodeId = job(r.job);
+        if (!jobCodeId) continue;
+        const area = areas.canon(r.area);
+        const id = `${area.toLowerCase()}|${jobCodeId}`;
+        const prev = layouts.get(id);
+        const userIds = [...new Set([...(prev?.userIds || []), ...(r.users || []).map(user).filter(Boolean)])];
+        layouts.set(id, { id, area, jobCodeId, label: prev ? prev.label : String(r.label ?? '').trim().slice(0, 60), banner: prev ? prev.banner : String(r.banner ?? '').trim().slice(0, 60), userIds });
+      }
+      for (const doc of layouts.values()) {
+        if (store.get('rosters', doc.id)) store.update('rosters', doc.id, { ...doc, updatedAt: at }); else store.insert('rosters', { ...doc, updatedAt: at });
+      }
+
+      // The sheet's own day notes (CLOSED, MEETING, NORMAL SERVICE…), one note per day.
+      const byDay = new Map();
+      for (const n of a.dayNotes || []) {
+        const t = String(n.text || '').replace(/\s+/g, ' ').trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(n.date || '') && t) byDay.set(n.date, [...(byDay.get(n.date) || []), t]);
+      }
+      for (const [date, list] of byDay) {
+        const id = `day:${date}`, text = [...new Set(list)].join('\n').slice(0, 2000);
+        if (store.get('notes', id)?.text === text) continue;
+        const doc = { id, kind: 'day', date, text, updatedAt: at, updatedBy: actor.id };
+        if (store.get('notes', id)) store.update('notes', id, doc); else store.insert('notes', doc);
+        out.notes++;
+      }
+      // Banner colors read from the PDF, for banners that don't have one yet (Settings can change them).
+      const colors = cleanColors(a.areaColors);
+      if (Object.keys(colors).length) {
+        const cur = settings().areaColors || {};
+        const has = (n) => Object.keys(cur).some((k) => k.toLowerCase() === n.toLowerCase());
+        const add = Object.fromEntries(Object.entries(colors).filter(([n]) => !has(n)).map(([n, c]) => [areas.canon(n) || n, c]));
+        if (Object.keys(add).length) {
+          if (store.get('settings', 'settings')) store.update('settings', 'settings', { areaColors: { ...cur, ...add } });
+          else store.insert('settings', { ...DEFAULT_SETTINGS, areaColors: add });
+        }
       }
 
       for (const c of a.covers || []) {

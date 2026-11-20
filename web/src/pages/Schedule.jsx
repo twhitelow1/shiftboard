@@ -5,6 +5,7 @@ import { hoursOf } from '../../../core/forecast.js';
 import { scheduleAreas, findArea, sameArea } from '../../../core/areas.js';
 import ShiftDialog from './ShiftDialog.jsx';
 import ImportDialog from './ImportDialog.jsx';
+import ScheduleSheet from './ScheduleSheet.jsx';
 import { IS_DEMO } from '../api.js';
 
 export function useWeek() {
@@ -17,6 +18,13 @@ export function useWeek() {
   return [ws, setWs];
 }
 function sessionStorageGet(k) { try { return sessionStorage.getItem(k); } catch { return null; } }
+// The schedule's layout, remembered per device: 'sheet' (like the house PDF), 'job' (grid; the day
+// view on phones) or 'emp'. Desktops open on the sheet, phones on the day view.
+const VIEW_KEY = () => { try { return window.matchMedia('(max-width: 900px)').matches ? 'sb_view_phone' : 'sb_view'; } catch { return 'sb_view'; } };
+function initialView() {
+  try { const v = localStorage.getItem(VIEW_KEY()); if (['sheet', 'job', 'emp'].includes(v)) return v; } catch { /* ignore */ }
+  return VIEW_KEY() === 'sb_view_phone' ? 'job' : 'sheet';
+}
 function sessionStorageSet(k, v) { try { sessionStorage.setItem(k, v); } catch { /* ignore */ } }
 
 export function weekLabel(ws) {
@@ -43,7 +51,9 @@ export default function Schedule() {
   const [ws, setWs] = useWeek();
   const [data, setData] = useState(null);
   const [fc, setFc] = useState(null);
-  const [groupBy, setGroupBy] = useState('job');
+  const [view, setViewState] = useState(initialView);
+  const setView = (v) => { setViewState(v); try { localStorage.setItem(VIEW_KEY(), v); } catch { /* ignore */ } };
+  const groupBy = view === 'emp' ? 'emp' : 'job';
   const [dept, setDept] = useState('');
   const [hideEmpty, setHideEmpty] = useState(!isMgr);
   const [mine, setMine] = useState(false);
@@ -112,10 +122,14 @@ export default function Schedule() {
     const rank = (g) => (g.isArea ? 1e6 + areaList.findIndex((a) => sameArea(a, g.banner)) : firstJob[g.banner]);
     const byJob = (a, b) => (a.job.order ?? 0) - (b.job.order ?? 0) || a.job.name.localeCompare(b.job.name);
     return [...groups.values()].sort((a, b) => rank(a) - rank(b) || a.banner.localeCompare(b.banner) || byJob(a, b)).map((g) => {
-      let rows = [...g.users].map((id) => people[id]).filter(Boolean).map((u) => ({ user: u, shifts: g.shifts.filter((x) => x.userId === u.id) }));
-      // Keep the sheet's order (set when people are imported), then alphabetical.
-      rows.sort((a, b) => (a.user.order ?? 1e9) - (b.user.order ?? 1e9) || a.user.name.localeCompare(b.user.name));
-      return { key: `${g.banner}|${g.job.id}`, job: g.job, banner: g.banner, area: g.isArea ? g.banner : '', label: g.job.name, rows, open: g.shifts.filter((x) => !x.userId) };
+      // The imported sheet's layout for this section: names in its order, its label and heading.
+      const area = g.isArea ? g.banner : '';
+      const roster = (data.rosters || []).find((r) => r.jobCodeId === g.job.id && (r.area ? sameArea(r.area, area) : !area));
+      const at = (id) => { const i = roster?.userIds?.indexOf(id) ?? -1; return i < 0 ? 1e9 : i; };
+      const rows = [...g.users].map((id) => people[id]).filter(Boolean).map((u) => ({ user: u, shifts: g.shifts.filter((x) => x.userId === u.id) }));
+      rows.sort((a, b) => at(a.user.id) - at(b.user.id) || (a.user.order ?? 1e9) - (b.user.order ?? 1e9) || a.user.name.localeCompare(b.user.name));
+      return { key: `${g.banner}|${g.job.id}`, job: g.job, banner: g.banner, area, label: g.job.name, rows, open: g.shifts.filter((x) => !x.userId),
+        sheetLabel: roster ? roster.label : null, sheetBanner: roster?.banner || '' };
     });
   }, [data, employees, jobCodes, areaList, people, isMgr]);
   const banners = [...new Set(allSections.map((x) => x.banner).filter(Boolean))];
@@ -139,6 +153,9 @@ export default function Schedule() {
       return { ...x, rows, open: mine ? [] : x.open };
     }).filter((x) => x.rows.length || x.open.length || (isMgr && !hideEmpty && !mine));
   }, [allSections, data, employees, groupBy, dept, hideEmpty, mine]);
+
+  // The sheet lists everyone on the roster (like the PDF), whatever the grid's filters are.
+  const sheetSections = allSections.filter((x) => (!dept || sameArea(x.banner, dept)) && (x.rows.length || x.open.length));
 
   const publish = () => run(() => call('shifts.publish', { start: ws, end: addDays(ws, 6) }), (r) => `Published ${r.published} shifts · ${r.notified} people notified`).then(load);
 
@@ -195,8 +212,13 @@ export default function Schedule() {
         <WeekNav ws={ws} setWs={setWs} />
         <span className="spacer" />
         <div className="seg desktop-only">
-          <button className={groupBy === 'job' ? 'on' : ''} onClick={() => setGroupBy('job')}>By job code</button>
-          <button className={groupBy === 'emp' ? 'on' : ''} onClick={() => setGroupBy('emp')}>By employee</button>
+          <button className={view === 'sheet' ? 'on' : ''} onClick={() => setView('sheet')} title="Laid out like the schedule PDF">Sheet</button>
+          <button className={view === 'job' ? 'on' : ''} onClick={() => setView('job')}>Grid</button>
+          <button className={view === 'emp' ? 'on' : ''} onClick={() => setView('emp')}>By employee</button>
+        </div>
+        <div className="seg mobile-only">
+          <button className={view !== 'sheet' ? 'on' : ''} onClick={() => setView('job')}>Day</button>
+          <button className={view === 'sheet' ? 'on' : ''} onClick={() => setView('sheet')}>Sheet</button>
         </div>
         {isMgr && <>
           <button className="btn sm desktop-only" onClick={() => setDialog({ shift: { date: selDay, start: '16:00' } })}><Icon name="plus" />Add shift</button>
@@ -209,8 +231,10 @@ export default function Schedule() {
           {banners.map((d) => <button key={d} className={`chip ${dept === d ? 'on' : ''}`} onClick={() => setDept(dept === d ? '' : d)}>{d}</button>)}
         </div>
         <span className="spacer" />
-        <label className="check small desktop-only"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />Only me</label>
-        <label className="check small desktop-only"><input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} />Hide people not scheduled</label>
+        {view !== 'sheet' && <>
+          <label className="check small desktop-only"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />Only me</label>
+          <label className="check small desktop-only"><input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} />Hide people not scheduled</label>
+        </>}
         {/* Copy week and Import work on phones too; CSV and Print are desk tasks. */}
         {isMgr && <div className="row wrap" style={{ gap: 4 }}>
           <button className="btn sm ghost" onClick={() => setCopyOpen(true)} title="Copy a week"><Icon name="copy" />Copy week</button>
@@ -221,7 +245,7 @@ export default function Schedule() {
       </div>
 
       {fc && isMgr && (
-        <div className="row wrap small desktop-only" style={{ marginBottom: 10, gap: 14 }}>
+        <div className="row wrap small desktop-only no-print" style={{ marginBottom: 10, gap: 14 }}>
           <span className="muted">Week forecast: <b className="num">{fc.totals.covers.toLocaleString()}</b> covers · <b className="num">{money(fc.totals.sales)}</b> sales</span>
           <span className="muted">Scheduled: <b className="num">{fc.totals.hours}</b> hrs · <b className="num">{money(fc.totals.cost)}</b></span>
           <span className={`badge ${fc.totals.laborPct > fc.targetLaborPct ? 'bad' : 'ok'}`}>Labor {fc.totals.laborPct ?? '—'}% (target {fc.targetLaborPct}%)</span>
@@ -229,12 +253,14 @@ export default function Schedule() {
         </div>
       )}
 
-      <div className="print-title">{settings.restaurantName} — Schedule {weekLabel(ws)}</div>
-
       {!data ? <div className="empty">Loading…</div> : (
         <>
+          {/* Like the house PDF. Print always uses this layout. */}
+          <ScheduleSheet className={view === 'sheet' ? 'sheet-print' : 'sheet-print print-only'} sections={sheetSections} days={days} data={data} fc={isMgr ? fc : null} ws={ws}
+            onAdd={addAt} onOpen={openDialog} onSaved={load} />
+
           {/* Desktop grid */}
-          <div className="sched-wrap desktop-only">
+          {view !== 'sheet' && <div className="sched-wrap desktop-only no-print">
             <table className="sched">
               <thead>
                 <tr>
@@ -305,12 +331,12 @@ export default function Schedule() {
                 </tfoot>
               )}
             </table>
-          </div>
+          </div>}
 
           {/* Mobile day view */}
-          <div className="mobile-only">
+          {view !== 'sheet' && <div className="mobile-only no-print">
             <MobileDay days={days} selDay={selDay} setSelDay={setSelDay} data={data} sections={sections} mine={mine} setMine={setMine} openDialog={openDialog} isClosed={isClosed} fcDay={fcDay} addAt={addAt} />
-          </div>
+          </div>}
         </>
       )}
 
@@ -356,6 +382,7 @@ function MobileDay({ days, selDay, setSelDay, data, sections, mine, setMine, ope
           <div><b>{e.name}</b><div className="small">{fmtTime(e.start)} · {e.room} · {e.guestCount} guests</div></div>
         </a>
       ))}
+      {(data.notes || []).filter((n) => n.kind === 'day' && n.date === selDay).map((n) => <div key={n.id} className="alert info" style={{ marginBottom: 8 }}><Icon name="alert" size={16} /><b>{n.text}</b></div>)}
       {isClosed(selDay) && <Empty title="Closed" />}
       {!isClosed(selDay) && !daySecs.length && <Empty title={mine ? 'You’re off' : 'No shifts'} />}
       {daySecs.map((sec, i) => (

@@ -201,15 +201,15 @@ export function positionName(label) {
  *  - A banner-only section that names a position (M.O.D.): no area, position = banner.
  *  - A banner-only section that names a place (RESTAURANT with Lou, Ciaran…): area = banner, and the
  *    position is read from the same people's other sections (Stiliyan also works "Bar" → Bar).
- * Returns [{ label, area, position, inferred }] in section order; area and position are raw text.
+ * Returns [{ label, banner, area, position, inferred }] in section order; all raw text.
  */
 export function readSections(sections) {
   const out = sections.map((s) => {
     const banner = String(s.banner || '').trim(), role = String(s.role || '').trim();
-    if (role) return { label: s.label, area: banner, position: role, inferred: false };
-    if (!banner) return { label: s.label, area: '', position: 'Staff', inferred: false };
-    if (ROLE_WORDS.test(banner)) return { label: s.label, area: '', position: banner, inferred: false };
-    return { label: s.label, area: banner, position: '', inferred: true };
+    if (role) return { label: s.label, banner, area: banner, position: role, inferred: false };
+    if (!banner) return { label: s.label, banner, area: '', position: 'Staff', inferred: false };
+    if (ROLE_WORDS.test(banner)) return { label: s.label, banner, area: '', position: banner, inferred: false };
+    return { label: s.label, banner, area: banner, position: '', inferred: true };
   });
   out.forEach((o, i) => {
     if (!o.inferred) return;
@@ -246,9 +246,14 @@ export function matchPosition(label, jobCodes) {
   return null;
 }
 
-/** Department for a new job code: the area it was first seen in, or Leadership for managers. */
-export function departmentFor(position, area) {
+/**
+ * Department for a new job code: the area it was first seen in; for a banner that names a position
+ * (M.O.D.), the banner as written, so the schedule shows the same heading; else Leadership/Restaurant.
+ */
+export function departmentFor(position, area, banner = '') {
   if (area) return titleCase(area);
+  const b = String(banner || '').trim();
+  if (b) return b.replace(/[^A-Za-z]/g, '').length <= 4 ? b.toUpperCase() : titleCase(b);
   return /manager|m\.?\s*o\.?\s*d|\bgm\b|director/i.test(position || '') ? 'Leadership' : 'Restaurant';
 }
 

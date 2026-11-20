@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { useApp, Icon, Field, useAction } from '../ui.jsx';
 import { DOW_LONG, DOW_SHORT } from '../../../core/time.js';
 import { IS_DEMO, sendTestEmail } from '../api.js';
+import { scheduleAreas, uniqueAreas, bannerColor, textOn, sameArea } from '../../../core/areas.js';
 
 export default function Settings() {
-  const { settings, call, emailEnabled, emailFrom } = useApp();
+  const { settings, call, emailEnabled, emailFrom, jobCodes } = useApp();
   const [s, setS] = useState(() => JSON.parse(JSON.stringify(settings)));
   const [run, busy] = useAction();
   const [pw, setPw] = useState('');
@@ -58,6 +59,22 @@ export default function Settings() {
         <Field label="Shift tags (comma separated)" help="Quick picks when adding a shift — sections, rooms, roles for the night"><input className="input" {...listField('tags')} /></Field>
         <Field label="Rooms / areas for events"><input className="input" {...listField('rooms')} /></Field>
         <Field label="Schedule areas (comma separated, in order)" help="Where people work: rooms, bars, host stands. The schedule groups shifts under these, in this order, like the banners on your sheet. The rooms above are offered too. Importing a schedule adds its banners here."><input className="input" {...listField('areas')} /></Field>
+        <Field label="Banner colors" help="The color of each banner on the schedule sheet. Importing a PDF picks these up from it.">
+          <div className="row wrap" style={{ gap: 6 }}>
+            {uniqueAreas([...jobCodes.filter((j) => !j.archived).map((j) => j.department), ...scheduleAreas(s)]).map((name, i) => {
+              const color = bannerColor(s, name, i);
+              const setColor = (c) => {
+                const rest = Object.fromEntries(Object.entries(s.areaColors || {}).filter(([k]) => !sameArea(k, name)));
+                setS({ ...s, areaColors: { ...rest, [name]: c } });
+              };
+              return (
+                <label key={name} className="sheet-swatch" style={{ background: color, color: textOn(color), cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 8px' }}>
+                  {name}<input type="color" value={color} onChange={(e) => setColor(e.target.value)} style={{ width: 22, height: 18, padding: 0, border: 0, background: 'none' }} />
+                </label>
+              );
+            })}
+          </div>
+        </Field>
         <Field label="Departments"><input className="input" {...listField('departments')} /></Field>
       </div>
 

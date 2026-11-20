@@ -37,3 +37,22 @@ export function uniqueAreas(list) {
   }
   return out;
 }
+
+// Banner colors for areas that don't have one yet: light spreadsheet fills that take black text.
+const FALLBACK_COLORS = ['#9bc2e6', '#a9d08e', '#f4b084', '#ffd966', '#b4c6e7', '#c9c9c9', '#f8cbad', '#c6e0b4'];
+
+/** The banner color for an area or department (settings.areaColors, else a steady fallback). */
+export function bannerColor(settings = {}, name = '', index = 0) {
+  const colors = settings.areaColors || {};
+  const hit = Object.keys(colors).find((k) => sameArea(k, name));
+  return hit ? colors[hit] : FALLBACK_COLORS[Math.abs(index) % FALLBACK_COLORS.length];
+}
+
+/** Black or white text, whichever reads better on `hex` (black unless the fill is dark). */
+export function textOn(hex) {
+  const m = String(hex || '').match(/^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if (!m) return '#000';
+  const lin = (v) => { const c = parseInt(v, 16) / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  const L = 0.2126 * lin(m[1]) + 0.7152 * lin(m[2]) + 0.0722 * lin(m[3]);
+  return L > 0.15 ? '#000' : '#fff';
+}

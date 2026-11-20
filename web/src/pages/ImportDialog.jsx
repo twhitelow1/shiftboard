@@ -14,6 +14,7 @@ STYVES\tOFF\t4PM LIB\t4PM\tOFF\t4PM\t4PM\tOFF`;
 export default function ImportDialog({ ws: initialWs, onClose }) {
   const { employees, jobCodes, settings, call, toast, me } = useApp();
   const [text, setText] = useState('');
+  const [pdfColors, setPdfColors] = useState({}); // banner text → cell color, read from the PDF
   const [fileName, setFileName] = useState('');
   const [reading, setReading] = useState(false);
   const [ws, setWs] = useState(initialWs);
@@ -22,7 +23,7 @@ export default function ImportDialog({ ws: initialWs, onClose }) {
   const [areaMap, setAreaMap] = useState({});   // section label -> area name | ''
   const [empMap, setEmpMap] = useState({});     // schedule name -> user id | NEW | ''
   const [roleMap, setRoleMap] = useState({});   // section label -> role for new people
-  const [opts, setOpts] = useState({ timeOff: true, dupes: true, events: true, covers: true });
+  const [opts, setOpts] = useState({ timeOff: true, dupes: true, events: true, covers: true, notes: true });
   const [skipEvent, setSkipEvent] = useState({});
   const [run, busy] = useAction();
 
@@ -70,7 +71,7 @@ export default function ImportDialog({ ws: initialWs, onClose }) {
       if (v !== NEW) return v;
       const name = newJobName(label).trim();
       const key = `new:${name.toLowerCase()}`;
-      if (!newJobs.has(key)) newJobs.set(key, { key, name, department: departmentFor(info[label]?.position, areaFor(label)), defaultRole: roleFor(label) });
+      if (!newJobs.has(key)) newJobs.set(key, { key, name, department: departmentFor(info[label]?.position, areaFor(label), info[label]?.area ? '' : info[label]?.banner), defaultRole: roleFor(label) });
       return key;
     };
     const personRef = (name, job, role) => {
@@ -117,22 +118,39 @@ export default function ImportDialog({ ws: initialWs, onClose }) {
     const covers = opts.covers ? parsed.covers.map((c) => ({ date: dateOf(c.dow), covers: Math.max(0, c.covers - (guests[dateOf(c.dow)] || 0)) })) : [];
     const areas = uniqueAreas(shifts.map((s) => s.area).concat(assignments.map((x) => x.area)));
     const jobOrder = parsed.mode === 'grid' ? [...new Set(parsed.sections.map((sec) => (jobFor(sec.label) ? jobRef(sec.label) : '')).filter(Boolean))] : [];
-    return { shifts, tos, assignments, areas, jobOrder, dupes, events, covers, newJobs: [...newJobs.values()], newPeople: [...newPeople.values()], skipped: [...skipped] };
-  }, [parsed, jobMap, jobNames, areaMap, empMap, roleMap, ws, opts, skipEvent, found, employees, jobCodes, settings]);
+    // Banner colors from the PDF, for the area (or, for a banner like M.O.D., the job's department).
+    const areaColors = {};
+    for (const r of read) {
+      const color = pdfColors[String(r.banner || '').toUpperCase()];
+      if (!color || !jobFor(r.label)) continue;
+      const v = jobFor(r.label);
+      const name = areaFor(r.label) || (v === NEW ? newJobs.get(`new:${newJobName(r.label).trim().toLowerCase()}`)?.department : jobCodes.find((j) => j.id === v)?.department);
+      if (name && !areaColors[name]) areaColors[name] = color;
+    }
+    const dayNotes = opts.notes ? found.dayNotes.map((n) => ({ date: dateOf(n.dow), text: n.text })) : [];
+    // Each section as laid out on the sheet: banner and label as written, names in order.
+    const rosters = parsed.mode !== 'grid' ? [] : parsed.sections.filter((sec) => jobFor(sec.label)).map((sec) => ({
+      area: areaFor(sec.label), job: jobRef(sec.label), label: sec.role || '', banner: sec.banner || '',
+      users: sec.rows.map((r) => (empFor(r.name) ? personRef(r.name) : '')).filter(Boolean),
+    }));
+    return { shifts, tos, assignments, areas, jobOrder, areaColors, dayNotes, rosters, dupes, events, covers, newJobs: [...newJobs.values()], newPeople: [...newPeople.values()], skipped: [...skipped] };
+  }, [parsed, jobMap, jobNames, areaMap, empMap, roleMap, ws, opts, skipEvent, found, employees, jobCodes, settings, pdfColors]);
 
   const badJobName = plan.newJobs.some((j) => !j.name);
 
   const loadFile = async (f) => {
     if (!f) return;
     setFileName(f.name);
+    setPdfColors({});
     if (/\.pdf$/i.test(f.name) || f.type === 'application/pdf') {
       const reader = __DEMO__ ? null : await import('../pdf.js');
       if (!reader) return toast('PDF import works in the hosted app', 'bad');
       setReading(true);
       try {
-        const t = await reader.pdfToGridText(f);
+        const { text: t, colors } = await reader.pdfToGridText(f);
         if (!t.trim()) toast('Couldn’t find a schedule in that PDF (it needs day names across the top)', 'bad');
         setText(t);
+        setPdfColors(colors || {});
       } catch (e) {
         toast(`Couldn’t read that PDF: ${e.message}`, 'bad');
       } finally {
@@ -145,12 +163,12 @@ export default function ImportDialog({ ws: initialWs, onClose }) {
 
   const doImport = async () => {
     const r = await run(() => call('import.apply', {
-      newJobCodes: plan.newJobs, newEmployees: plan.newPeople, shifts: plan.shifts, assignments: plan.assignments, areas: plan.areas, jobOrder: plan.jobOrder,
+      newJobCodes: plan.newJobs, newEmployees: plan.newPeople, shifts: plan.shifts, assignments: plan.assignments, areas: plan.areas, jobOrder: plan.jobOrder, areaColors: plan.areaColors, dayNotes: plan.dayNotes, rosters: plan.rosters,
       timeOff: opts.timeOff ? plan.tos : [], events: plan.events, covers: plan.covers, skipDuplicates: opts.dupes,
     }), (r) => [
       `Imported ${r.shifts} draft shifts`, r.updated && `${r.updated} existing shifts updated`,
       r.employees && `${r.employees} new people`, r.jobCodes && `${r.jobCodes} job codes`, r.areas && `${r.areas} areas`, r.events && `${r.events} events`,
-      r.timeOff && `${r.timeOff} requests off`, r.duplicates && `${r.duplicates} duplicates skipped`, r.rolesLowered && `${r.rolesLowered} added as Employee (your role can't give that role)`,
+      r.timeOff && `${r.timeOff} requests off`, r.notes && `${r.notes} day notes`, r.duplicates && `${r.duplicates} duplicates skipped`, r.rolesLowered && `${r.rolesLowered} added as Employee (your role can't give that role)`,
     ].filter(Boolean).join(' · '));
     if (r) onClose(true);
   };
@@ -275,7 +293,13 @@ export default function ImportDialog({ ws: initialWs, onClose }) {
         </div>
       )}
       {found.dayNotes.length > 0 && (
-        <div className="small muted">Also on the schedule: {found.dayNotes.map((n) => `${prettyDate(dateOf(n.dow))} ${titleCase(n.text)}`).join(' · ')}</div>
+        <label className="check"><input type="checkbox" checked={opts.notes} onChange={(e) => setOpts({ ...opts, notes: e.target.checked })} />
+          <span>Show the sheet’s day notes on the schedule: {found.dayNotes.map((n) => `${prettyDate(dateOf(n.dow))} ${titleCase(n.text)}`).join(' · ')}</span></label>
+      )}
+      {Object.keys(plan.areaColors).length > 0 && (
+        <div className="row wrap small muted" style={{ gap: 6 }}>Banner colors from the PDF:
+          {Object.entries(plan.areaColors).map(([n, c]) => <span key={n} className="sheet-swatch" style={{ background: c }}>{n}</span>)}
+        </div>
       )}
       {parsed.covers.length > 0 && (
         <label className="check"><input type="checkbox" checked={opts.covers} onChange={(e) => setOpts({ ...opts, covers: e.target.checked })} />
