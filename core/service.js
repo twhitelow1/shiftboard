@@ -539,6 +539,25 @@ export function createService(store, opts = {}) {
       if (s.published && s.userId) notify([s.userId], `Shift removed: ${describe(s)}`, '#/my');
       return { ok: true };
     },
+    // Start a week over: delete its draft shifts (and, if asked, its published ones and its notes).
+    // Shifts that come from an event's BEO staffing stay; they belong to the event.
+    'shifts.clearWeek': (actor, { weekStart: ws, published = false, notes = false }) => {
+      needMgr(actor);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(ws || '')) fail(400, 'Pick a week');
+      const end = addDays(ws, 6);
+      const out = { removed: 0, published: 0, notes: 0, kept: 0 };
+      const told = new Set();
+      for (const sh of store.list('shifts', (x) => x.date >= ws && x.date <= end)) {
+        if (sh.eventId || (sh.published && !published)) { out.kept++; continue; }
+        cancelRequestsForShift(sh.id, 'the shift was removed');
+        store.remove('shifts', sh.id);
+        out.removed++;
+        if (sh.published) { out.published++; if (sh.userId) told.add(sh.userId); }
+      }
+      if (told.size) notify([...told], `Your shifts for the week of ${prettyDate(ws)} were taken off the schedule. A new schedule is coming.`, '#/my');
+      if (notes) for (const n of store.list('notes', (x) => x.date >= ws && x.date <= end)) { store.remove('notes', n.id); out.notes++; }
+      return out;
+    },
     'shifts.bulkCreate': (actor, { shifts, publish }) => {
       needMgr(actor);
       const created = [];

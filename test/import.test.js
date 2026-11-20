@@ -242,3 +242,30 @@ test("each section keeps the sheet's heading, label and order of names, through 
   assert.equal(store.get('rosters', 'moon rabbit|job_old'), null);
   assert.deepEqual(store.get('rosters', `moon rabbit|${bar.id}`).userIds, [id('Sam')]);
 });
+
+test('clear a week: drafts by default, posted shifts and notes when asked, never event shifts or other weeks', () => {
+  const { svc, store, owner } = fresh();
+  store.insert('jobCodes', { id: 'job_srv', name: 'Server', short: 'SRV', department: 'Restaurant', order: 0 });
+  store.insert('users', { id: 'usr_a', name: 'A', role: 'employee', active: true, jobCodes: [{ jobCodeId: 'job_srv' }] });
+  store.insert('users', { id: 'usr_b', name: 'B', role: 'employee', active: true, jobCodes: [{ jobCodeId: 'job_srv' }] });
+  const add = (id, date, extra = {}) => store.insert('shifts', { id, date, start: '16:00', end: null, jobCodeId: 'job_srv', userId: 'usr_a', published: false, ...extra });
+  add('d1', '2026-11-18'); add('d2', '2026-11-22');
+  add('p1', '2026-11-19', { published: true });
+  add('e1', '2026-11-20', { published: true, eventId: 'evt_x' });
+  add('next', '2026-11-23');
+  store.insert('requests', { id: 'req_1', type: 'drop', shiftId: 'p1', requesterId: 'usr_a', status: 'open' });
+  svc.call(owner(), 'notes.save', { kind: 'day', date: '2026-11-18', text: 'MEETING' });
+
+  store.insert('users', { id: 'usr_e', name: 'E', role: 'employee', active: true, jobCodes: [] });
+  assert.throws(() => svc.call(store.get('users', 'usr_e'), 'shifts.clearWeek', { weekStart: '2026-11-16' }), /Managers only/);
+
+  assert.deepEqual(svc.call(owner(), 'shifts.clearWeek', { weekStart: '2026-11-16' }), { removed: 2, published: 0, notes: 0, kept: 2 });
+  assert.deepEqual(store.list('shifts').map((x) => x.id).sort(), ['e1', 'next', 'p1']);
+  assert.equal(store.list('notifications', (n) => n.userId === 'usr_a').length, 0, 'drafts were never seen, so nobody is told');
+
+  assert.deepEqual(svc.call(owner(), 'shifts.clearWeek', { weekStart: '2026-11-16', published: true, notes: true }), { removed: 1, published: 1, notes: 1, kept: 1 });
+  assert.deepEqual(store.list('shifts').map((x) => x.id).sort(), ['e1', 'next'], 'event shifts and next week stay');
+  assert.equal(store.get('requests', 'req_1').status, 'cancelled');
+  assert.equal(store.list('notifications', (n) => n.userId === 'usr_a' && /taken off the schedule/.test(n.text)).length, 1);
+  assert.throws(() => svc.call(owner(), 'shifts.clearWeek', {}), /Pick a week/);
+});
