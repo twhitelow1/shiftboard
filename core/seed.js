@@ -273,5 +273,45 @@ export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password =
   for (const id of Object.values(userId)) {
     store.insert('notifications', { id: uid('ntf'), userId: id, text: 'The schedule for Sep 28 – Oct 4 is posted. Check your shifts.', link: '#/my', read: false, at: now });
   }
+  // SAMPLE venue: one location, rooms on three levels, floor plans for the Restaurant and Moon Rabbit
+  store.insert('locations', { id: 'loc_main', name: 'Our Restaurant', address: '', order: 0 });
+  const plan = (items) => ({
+    width: 1000, height: 700,
+    items: items.map(([type, x, y, w, h, label = '', seats = 0, r = 0], i) => ({ id: `itm_${i + 1}`, type, x, y, w, h, r, label, seats })),
+  });
+  const fourTops = [];
+  [170, 310, 450].forEach((y, row) => [70, 210, 350].forEach((x, col) => fourTops.push(['table-square', x, y, 70, 70, `T${row * 3 + col + 1}`, 4])));
+  const restaurantPlan = plan([
+    ['door', 20, 620, 60, 60, 'Entry'],
+    ['host', 100, 630, 80, 40, 'Host'],
+    ['bar', 560, 40, 400, 60, 'Bar', 10],
+    ...fourTops,
+    ['booth', 560, 190, 150, 70, 'B1', 4],
+    ['booth', 560, 310, 150, 70, 'B2', 4],
+    ['booth', 560, 430, 150, 70, 'B3', 4],
+    ['table-round', 790, 200, 100, 100, 'T10', 6],
+    ['table-round', 790, 380, 100, 100, 'T11', 6],
+    ['plant', 500, 630, 40, 40],
+    ['wall', 0, 0, 1000, 10],
+  ]);
+  const moonPlan = plan([
+    ['stage', 330, 20, 340, 130, 'Stage'],
+    ['dj', 700, 50, 90, 60, 'DJ'],
+    ['dancefloor', 360, 200, 280, 240, 'Dance floor'],
+    ['bar', 30, 120, 60, 420, 'Bar', 8],
+    ['door', 900, 620, 60, 60, 'Entry'],
+    ...[[180, 200], [180, 330], [180, 460], [740, 220], [740, 350], [740, 480]].map(([x, y], i) => ['table-round', x, y, 60, 60, `HT${i + 1}`, 2]),
+    ['label', 380, 600, 240, 40, 'Moon Rabbit'],
+  ]);
+  [
+    ['room_restaurant', 'Restaurant', 'Main floor', ['dining'], 120, restaurantPlan],
+    ['room_library', 'Library', 'Main floor', ['dining', 'events'], 40],
+    ['room_patio', 'Patio', 'Main floor', ['dining'], 60],
+    ['room_rabbithole', 'Rabbit Hole', 'Lower level', ['bar', 'events'], 150],
+    ['room_moonrabbit', 'Moon Rabbit', 'Upstairs', ['bar', 'events'], 120, moonPlan],
+  ].forEach(([id, name, level, kinds, capacity, p], order) => store.insert('rooms', {
+    id, locationId: 'loc_main', name, level, kinds, capacity, order, plan: p || { width: 1000, height: 700, items: [] },
+  }));
+
   return { userId, jobId, eventId };
 }
