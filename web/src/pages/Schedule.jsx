@@ -167,11 +167,12 @@ export default function Schedule() {
         <span className="spacer" />
         <label className="check small desktop-only"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />Only me</label>
         <label className="check small desktop-only"><input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} />Hide people not scheduled</label>
-        {isMgr && <div className="row desktop-only" style={{ gap: 4 }}>
-          <button className="btn sm ghost" onClick={() => setCopyOpen(true)} title="Copy another week"><Icon name="copy" />Copy week</button>
-          <button className="btn sm ghost" onClick={() => setImportOpen(true)} title="Paste from Excel / CSV"><Icon name="upload" />Import</button>
-          {!IS_DEMO && <button className="btn sm ghost" onClick={exportCsv}><Icon name="download" />CSV</button>}
-          {!IS_DEMO && <button className="btn sm ghost" onClick={() => window.print()}><Icon name="print" />Print</button>}
+        {/* Copy week and Import work on phones too; CSV and Print are desk tasks. */}
+        {isMgr && <div className="row wrap" style={{ gap: 4 }}>
+          <button className="btn sm ghost" onClick={() => setCopyOpen(true)} title="Copy a week"><Icon name="copy" />Copy week</button>
+          <button className="btn sm ghost" onClick={() => setImportOpen(true)} title="Import a schedule PDF, Excel paste or CSV"><Icon name="upload" />Import</button>
+          {!IS_DEMO && <button className="btn sm ghost desktop-only" onClick={exportCsv}><Icon name="download" />CSV</button>}
+          {!IS_DEMO && <button className="btn sm ghost desktop-only" onClick={() => window.print()}><Icon name="print" />Print</button>}
         </div>}
       </div>
 
