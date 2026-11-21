@@ -791,7 +791,7 @@ export function trainingApi({ store, now, settings, notify, fail, random = Math.
     'menu.photo.get': (actor, { id }) => {
       needAuth(actor);
       const p = store.get('menuPhotos', id);
-      if (!p) fail(404, 'Photo not found');
+      if (!p?.data) fail(404, 'Photo not found'); // on a server the bytes aren't cached: /api/training/photos/:id serves them
       return { id: p.id, dataUrl: `data:${p.mime};base64,${p.data}` };
     },
 
@@ -953,6 +953,7 @@ export function trainingApi({ store, now, settings, notify, fail, random = Math.
     'quiz.photo.get': (actor, { attemptId, key: qKey }) => {
       needAuth(actor);
       const p = quizPhoto(actor, attemptId, qKey);
+      if (!p?.data) fail(404, 'Photo not found');
       return { dataUrl: `data:${p.mime};base64,${p.data}` };
     },
 

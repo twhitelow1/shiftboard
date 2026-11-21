@@ -6,13 +6,16 @@ import { quizPhotoFor } from '../core/training.js';
 // Uploads are JPEG, PNG or WebP; the demo seed uses small SVG placeholders (served with scripts blocked).
 const SERVABLE = /^image\/(jpeg|png|webp|svg\+xml)$/;
 
-function send(res, photo, cache) {
+// The cache holds each photo's details but not its bytes (db.js LAZY_DATA), so the bytes are read on demand.
+async function send(db, res, photo, cache) {
   if (!photo || !SERVABLE.test(photo.mime)) return res.status(404).json({ error: 'Photo not found' });
+  const data = photo.data ?? (db.lazyData ? await db.lazyData('menuPhotos', photo.id) : null);
+  if (!data) return res.status(404).json({ error: 'Photo not found' });
   res.set('Content-Type', photo.mime);
   res.set('Cache-Control', cache);
   res.set('Content-Security-Policy', "default-src 'none'");
   res.set('Cross-Origin-Resource-Policy', 'same-origin');
-  res.send(Buffer.from(photo.data, 'base64'));
+  res.send(Buffer.from(data, 'base64'));
 }
 
 /**
@@ -24,7 +27,7 @@ export function trainingRoutes(app, { db, signedIn }) {
   app.get('/api/training/photos/:id', async (req, res) => {
     await db.sync();
     if (!signedIn(req)) return res.status(401).json({ error: 'Please sign in' });
-    send(res, db.store.get('menuPhotos', req.params.id), 'private, max-age=31536000, immutable');
+    await send(db, res, db.store.get('menuPhotos', req.params.id), 'private, max-age=31536000, immutable');
   });
 
   // The photo for one question of one quiz attempt, without saying which item it shows.
@@ -32,6 +35,6 @@ export function trainingRoutes(app, { db, signedIn }) {
     await db.sync();
     const actor = signedIn(req);
     if (!actor) return res.status(401).json({ error: 'Please sign in' });
-    send(res, quizPhotoFor(db.store, actor, req.params.attemptId, req.params.key), 'private, max-age=3600');
+    await send(db, res, quizPhotoFor(db.store, actor, req.params.attemptId, req.params.key), 'private, max-age=3600');
   });
 }

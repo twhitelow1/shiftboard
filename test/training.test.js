@@ -585,6 +585,18 @@ test('HTTP: photos are uploaded one per request and served only to signed-in peo
     assert.equal(done.body.result.score, 0);
     assert.ok(done.body.result.questions.every((q) => q.correctId));
 
+    // Photo bytes stay in Postgres: this instance's cache and a cold-started one hold none, and both serve them.
+    assert.equal(db.store.get('menuPhotos', id).data, undefined);
+    const cold = new DocDb(conn);
+    await cold.sync();
+    assert.equal(cold.store.get('menuPhotos', id).data, undefined, 'a cold start loads no photo bytes');
+    assert.equal(cold.store.get('menuPhotos', id).mime, 'image/jpeg');
+    assert.equal((await cold.lazyData('menuPhotos', id)).length, Math.ceil(300 * 1024 / 3) * 4, 'the bytes are still in Postgres');
+    // Saving the cached copy (no bytes) again keeps the stored bytes.
+    await db.run((store) => store.update('menuPhotos', id, { note: 'touched' }), { write: true });
+    const again = await fetch(`${base}/api/training/photos/${id}`, { headers: { Cookie: alex } });
+    assert.equal((await again.arrayBuffer()).byteLength, 300 * 1024);
+
     // Staff get the manager on duty's phone through mod.get and nobody else's through bootstrap.
     const boot = await rpc(alex, 'app.bootstrap', {});
     assert.ok(boot.body.result.employees.filter((e) => e.name !== 'Alex D').every((e) => !e.phone));
