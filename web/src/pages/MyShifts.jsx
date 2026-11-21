@@ -92,6 +92,7 @@ export default function MyShifts() {
           : <button className="btn sm" onClick={async () => setIcal(await icalLink())}><Icon name="link" />Get calendar link</button>}
       </div>
 
+      <AppearanceCard />
       {!IS_DEMO && <EmailPrefCard />}
       {!IS_DEMO && <PasswordCard />}
 
@@ -152,6 +153,26 @@ function ShiftRow({ s, onClick, right, past }) {
       </div>
       {right}
       <Icon name="right" size={16} style={{ color: 'var(--text-3)' }} />
+    </div>
+  );
+}
+
+/** Light or dark mode for me only, or the restaurant's default. */
+function AppearanceCard() {
+  const { call, me, settings, refresh } = useApp();
+  const [run, busy] = useAction();
+  const mine = me.appearance || '';
+  const label = { auto: 'Auto', light: 'Light', dark: 'Dark' }[settings.appearance || 'auto'];
+  const pick = async (v) => { const r = await run(() => call('account.preferences', { appearance: v }), 'Saved'); if (r) refresh(); };
+  return (
+    <div className="card card-pad section">
+      <h3>Appearance</h3>
+      <div className="seg" style={{ marginTop: 8, flexWrap: 'wrap' }}>
+        {[['', `Restaurant default (${label})`], ['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([k, l]) => (
+          <button key={k || 'default'} className={mine === k ? 'on' : ''} disabled={busy} onClick={() => pick(k)}>{l}</button>
+        ))}
+      </div>
+      <div className="help">Auto follows your phone or computer’s light/dark setting.</div>
     </div>
   );
 }

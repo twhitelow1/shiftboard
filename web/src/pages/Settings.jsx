@@ -3,7 +3,7 @@ import { useApp, Icon, Field, useAction } from '../ui.jsx';
 import { DOW_LONG, DOW_SHORT } from '../../../core/time.js';
 import { IS_DEMO, sendTestEmail } from '../api.js';
 import { scheduleAreas, uniqueAreas, bannerColor, textOn, sameArea } from '../../../core/areas.js';
-import { applyBranding, logoUrl, imageToPng } from '../theme.js';
+import { applyBranding, logoUrl, imageToPng, THEMES } from '../theme.js';
 
 export default function Settings() {
   const { settings, call, emailEnabled, emailFrom, jobCodes } = useApp();
@@ -19,7 +19,7 @@ export default function Settings() {
   const shareTotal = s.dayparts.reduce((t, d) => t + Number(d.share || 0), 0);
 
   // Branding saves on its own (BrandingCard), so this Save never overwrites the colors.
-  const save = () => run(() => call('settings.update', { ...s, brandColor: undefined, navColor: undefined, weekStartDow: Number(s.weekStartDow), dayparts: s.dayparts.map((d) => ({ ...d, share: Number(d.share) })) }), 'Settings saved');
+  const save = () => run(() => call('settings.update', { ...s, brandColor: undefined, navColor: undefined, bgColor: undefined, appearance: undefined, weekStartDow: Number(s.weekStartDow), dayparts: s.dayparts.map((d) => ({ ...d, share: Number(d.share) })) }), 'Settings saved');
 
   return (
     <div style={{ maxWidth: 820 }} className="col">
@@ -135,9 +135,11 @@ const NAV_PRESETS = ['#0f172a', '#111827', '#1e1b4b', '#14532d', '#3f1d0b', '#ff
 
 /** Logo and colors. Colors preview live and save with their own button; a logo saves as soon as it's picked. */
 function BrandingCard() {
-  const { settings, call, refresh, toast } = useApp();
+  const { settings, call, refresh, toast, me } = useApp();
   const [color, setColor] = useState(settings.brandColor || '');
   const [nav, setNav] = useState(settings.navColor || '');
+  const [bg, setBg] = useState(settings.bgColor || '');
+  const [mode, setMode] = useState(settings.appearance || 'auto');
   const [suggested, setSuggested] = useState('');
   const [run, busy] = useAction();
   const [uploading, setUploading] = useState(false);
@@ -146,14 +148,19 @@ function BrandingCard() {
   const logo = logoUrl(settings, IS_DEMO);
 
   // Preview while picking; put the saved look back when leaving the page.
-  useEffect(() => { applyBranding({ color, nav, logo }); }, [color, nav, logo]);
-  useEffect(() => () => { const st = saved.current; applyBranding({ color: st.brandColor, nav: st.navColor, logo: logoUrl(st, IS_DEMO) }); }, []);
+  useEffect(() => { applyBranding({ color, nav, bg, mode, logo }); }, [color, nav, bg, mode, logo]);
+  useEffect(() => () => {
+    const st = saved.current;
+    applyBranding({ color: st.brandColor, nav: st.navColor, bg: st.bgColor, mode: me?.appearance || st.appearance, logo: logoUrl(st, IS_DEMO) });
+  }, []);
 
-  const changed = color !== (settings.brandColor || '') || nav !== (settings.navColor || '');
+  const changed = color !== (settings.brandColor || '') || nav !== (settings.navColor || '') || bg !== (settings.bgColor || '') || mode !== (settings.appearance || 'auto');
   const saveColors = async () => {
-    const r = await run(() => call('settings.update', { brandColor: color, navColor: nav }), 'Branding saved');
+    const r = await run(() => call('settings.update', { brandColor: color, navColor: nav, bgColor: bg, appearance: mode }), 'Theme saved');
     if (r) refresh();
   };
+  const pickTheme = (t) => { setColor(t.color); setNav(t.nav); setBg(t.bg); };
+  const current = THEMES.find((t) => t.color === color && t.nav === nav && t.bg === bg);
   const upload = async (file) => {
     if (!file) return;
     setUploading(true);
@@ -175,8 +182,8 @@ function BrandingCard() {
 
   return (
     <div className="card card-pad col" style={{ gap: 12 }}>
-      <h2>Branding</h2>
-      <div className="small muted" style={{ marginTop: -6 }}>Your logo and colors on the app, the sign-in page, the browser tab and emails.</div>
+      <h2>Branding & theme</h2>
+      <div className="small muted" style={{ marginTop: -6 }}>Your logo, colors and light/dark mode across the app, the sign-in page, the browser tab and emails.</div>
       <Field label="Logo" help={IS_DEMO ? 'Logo upload works in the hosted app.' : 'PNG, JPG, SVG or WebP. It’s resized to fit; a square or wide logo on a transparent background looks best.'}>
         <div className="row wrap" style={{ gap: 12, alignItems: 'center' }}>
           <div className="brand-preview" style={{ background: navShown }}>
@@ -192,6 +199,27 @@ function BrandingCard() {
               {logo && <button type="button" className="btn sm ghost" disabled={busy} onClick={removeLogo}><Icon name="trash" />Remove</button>}
             </div>
           )}
+        </div>
+      </Field>
+      <Field label="Theme" help="Sets the brand color, sidebar and background together. Adjust any of them below.">
+        <div className="theme-grid">
+          {THEMES.map((t) => {
+            const tc = t.color || '#4f46e5', tn = t.nav || '#0f172a', tb = t.bg || '#f4f5f7';
+            return (
+              <button key={t.id} type="button" className={`theme-tile ${current?.id === t.id ? 'on' : ''}`} onClick={() => pickTheme(t)} aria-label={`${t.label} theme`}>
+                <span className="theme-mini" style={{ background: tb }}>
+                  <span className="theme-mini-nav" style={{ background: tn }} />
+                  <span className="theme-mini-body"><span className="theme-mini-bar" style={{ background: tc }} /><span className="theme-mini-card" /></span>
+                </span>
+                <span className="theme-name">{t.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </Field>
+      <Field label="Mode" help="The default for everyone. Each person can still pick their own in My Shifts.">
+        <div className="seg">
+          {[['auto', 'Auto (follow the device)'], ['light', 'Light'], ['dark', 'Dark']].map(([k, l]) => <button key={k} type="button" className={mode === k ? 'on' : ''} onClick={() => setMode(k)}>{l}</button>)}
         </div>
       </Field>
       <div className="grid2">
@@ -210,10 +238,17 @@ function BrandingCard() {
             {nav && <button type="button" className="btn sm ghost" onClick={() => setNav('')}>Default</button>}
           </div>
         </Field>
+        <Field label="Background color" help="The page behind the cards, in light mode.">
+          <div className="row wrap" style={{ gap: 6 }}>
+            <input type="color" className="color-input" value={bg || '#f4f5f7'} onChange={(e) => setBg(e.target.value)} aria-label="Background color" />
+            {['#f4f5f7', '#ffffff', '#f8fafc', '#faf7f2', '#f2f7f3', '#eff6f8', '#f7f3fa'].map((c) => <button key={c} type="button" className={`swatch-btn ${bg === c ? 'on' : ''}`} style={{ background: c }} onClick={() => setBg(c)} aria-label={c} />)}
+            {bg && <button type="button" className="btn sm ghost" onClick={() => setBg('')}>Default</button>}
+          </div>
+        </Field>
       </div>
       <div className="row wrap" style={{ gap: 8 }}>
-        <button type="button" className="btn primary" disabled={!changed || busy} onClick={saveColors}><Icon name="check" />Save colors</button>
-        {changed && <button type="button" className="btn ghost" onClick={() => { setColor(settings.brandColor || ''); setNav(settings.navColor || ''); }}>Undo</button>}
+        <button type="button" className="btn primary" disabled={!changed || busy} onClick={saveColors}><Icon name="check" />Save theme</button>
+        {changed && <button type="button" className="btn ghost" onClick={() => { setColor(settings.brandColor || ''); setNav(settings.navColor || ''); setBg(settings.bgColor || ''); setMode(settings.appearance || 'auto'); }}>Undo</button>}
         {changed && <span className="small muted">Previewing: the whole app shows these colors until you save or leave this page.</span>}
       </div>
     </div>

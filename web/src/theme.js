@@ -5,28 +5,61 @@ import { textOn } from '../../core/areas.js';
 
 const hex = (c) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c.toLowerCase() : '');
 
-export function applyBranding({ color, nav, logo } = {}) {
+/**
+ * Ready-made themes: a brand color, a sidebar color and a light page background that go together.
+ * Picking one fills in the three colors, which can then be adjusted.
+ */
+export const THEMES = [
+  { id: 'default', label: 'ShiftBoard', color: '', nav: '', bg: '' },
+  { id: 'berry', label: 'Berry', color: '#7c2d91', nav: '#1f0a2b', bg: '#f7f3fa' },
+  { id: 'ocean', label: 'Ocean', color: '#0e7490', nav: '#082f49', bg: '#eff6f8' },
+  { id: 'forest', label: 'Forest', color: '#15803d', nav: '#052e16', bg: '#f2f7f3' },
+  { id: 'sunset', label: 'Sunset', color: '#ea580c', nav: '#431407', bg: '#fbf5f0' },
+  { id: 'rose', label: 'Rose', color: '#e11d48', nav: '#4c0519', bg: '#fbf3f5' },
+  { id: 'gold', label: 'Gold', color: '#b45309', nav: '#1c1917', bg: '#f9f6f1' },
+  { id: 'mono', label: 'Mono', color: '#111827', nav: '#000000', bg: '#f4f4f5' },
+  { id: 'bright', label: 'Bright', color: '#4f46e5', nav: '#ffffff', bg: '#f8fafc' },
+];
+
+/** Light, dark, or '' to follow the phone/computer. */
+export function applyMode(mode) {
   if (typeof document === 'undefined') return;
+  if (mode === 'light' || mode === 'dark') document.documentElement.dataset.theme = mode;
+  else delete document.documentElement.dataset.theme;
+}
+
+export function applyBranding({ color, nav, bg, mode, logo } = {}) {
+  if (typeof document === 'undefined') return;
+  applyMode(mode);
   let el = document.getElementById('sb-brand');
   if (!el) {
     el = document.createElement('style');
     el.id = 'sb-brand';
     document.head.appendChild(el);
   }
-  const c = hex(color), n = hex(nav);
+  const c = hex(color), n = hex(nav), b = hex(bg);
   let css = '';
+  if (b) { // light mode only: dark mode keeps its own background
+    css += `:root{--bg:${b};--surface-2:color-mix(in srgb,${b} 60%,#fff);--surface-3:color-mix(in srgb,${b} 85%,#000 5%);}`;
+  }
   if (c) {
     css += `:root{--brand:${c};--brand-2:color-mix(in srgb,${c} 82%,#000);--brand-soft:color-mix(in srgb,${c} 12%,#fff);}`;
-    const dark = `--brand:color-mix(in srgb,${c} 70%,#fff);--brand-2:${c};--brand-soft:color-mix(in srgb,${c} 28%,#0b1020);`;
+    // In dark mode the brand color is lifted to stay readable, and the dark background takes a hint of it.
+    const dark = `--brand:color-mix(in srgb,${c} 70%,#fff);--brand-2:${c};--brand-soft:color-mix(in srgb,${c} 28%,#0b1020);`
+      + `--bg:color-mix(in srgb,${c} 6%,#0b1020);--surface:color-mix(in srgb,${c} 5%,#121a2e);--surface-2:color-mix(in srgb,${c} 5%,#0f1628);--surface-3:color-mix(in srgb,${c} 7%,#1a2440);`;
     css += `@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){${dark}}}:root[data-theme="dark"]{${dark}}`;
     css += `.brand-mark{background:${c};color:${textOn(c)};}.nav-item.active{background:color-mix(in srgb,${c} 30%,transparent);}`;
     css += `.login{background:radial-gradient(1200px 600px at 20% -10%,color-mix(in srgb,${c} 55%,#000) 0,transparent 60%),#0b1020;}`;
   }
   if (n) {
+    const light = textOn(n) === '#000';
     css += `:root{--nav:${n};}`;
-    if (textOn(n) === '#000') { // a light sidebar needs dark text
-      css += '.sidebar{--nav-text:#334155;}.sidebar .brand{color:#0f172a;}.sidebar .brand-sub,.sidebar .nav-section{color:#64748b;}'
+    if (!light) css += `@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--nav:${n};}}:root[data-theme="dark"]{--nav:${n};}`;
+    else { // a light sidebar needs dark text; in dark mode the sidebar stays dark instead
+      const rules = '.sidebar{--nav-text:#334155;}.sidebar .brand{color:#0f172a;}.sidebar .brand-sub,.sidebar .nav-section{color:#64748b;}'
         + '.sidebar-user{color:#0f172a;}.nav-item:hover,.nav-item.active{color:#0f172a;}.nav-item:hover{background:rgba(0,0,0,.06);}.sidebar-foot{border-top-color:rgba(0,0,0,.1);}';
+      const scoped = (sel) => rules.replace(/(^|})([^{}]+)\{/g, (m, close, selList) => `${close}${selList.split(',').map((x) => `${sel} ${x.trim()}`).join(',')}{`);
+      css += `@media (prefers-color-scheme: light){${scoped(':root:not([data-theme="dark"])')}}${scoped(':root[data-theme="light"]')}`;
     }
   }
   el.textContent = css;

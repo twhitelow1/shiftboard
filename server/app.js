@@ -242,7 +242,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     try {
       await db.sync();
       const st = createService(db.store).settings();
-      brand = { name: st.restaurantName, color: st.brandColor || '', nav: st.navColor || '', logo: st.logoVersion ? `/api/branding/logo?v=${st.logoVersion}` : '' };
+      brand = { name: st.restaurantName, color: st.brandColor || '', nav: st.navColor || '', bg: st.bgColor || '', mode: st.appearance || 'auto',
+        logo: st.logoVersion ? `/api/branding/logo?v=${st.logoVersion}` : '' };
     } catch { /* the sign-in page still works with ShiftBoard's look */ }
     res.json({ email: mailer.enabled, emailFrom: mailer.enabled ? mailer.from : null, brand });
   });

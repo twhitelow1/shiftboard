@@ -369,7 +369,7 @@ test('without Resend configured, email features stay off', async () => {
   try {
     const cfg = await (await fetch(`${A.base}/api/config`)).json();
     assert.deepEqual([cfg.email, cfg.emailFrom], [false, null]);
-    assert.deepEqual(cfg.brand, { name: 'Our Restaurant', color: '', nav: '', logo: '' }, 'branding for the sign-in page');
+    assert.deepEqual(cfg.brand, { name: 'Our Restaurant', color: '', nav: '', bg: '', mode: 'auto', logo: '' }, 'branding for the sign-in page');
     assert.equal((await client(A.base).post('/api/auth/forgot', { email: 'moe@demo.shiftboard' })).status, 400);
     const mgr = await client(A.base).login('moe@demo.shiftboard');
     const r = await mgr.rpc('employees.save', { name: 'No Mail', email: 'nomail@rabbits.co', role: 'employee' });
@@ -428,9 +428,18 @@ test('branding: admins upload a logo that everyone (and the sign-in page) can lo
     assert.match(img.headers.get('cache-control'), /immutable/);
     assert.deepEqual([...new Uint8Array(await img.arrayBuffer())].slice(1, 4), [80, 78, 71], 'PNG bytes');
     // Colors: valid hex kept, anything else cleared.
-    await admin.rpc('settings.update', { brandColor: '#AA3300', navColor: 'red' });
+    await admin.rpc('settings.update', { brandColor: '#AA3300', navColor: 'red', bgColor: '#F7F3FA', appearance: 'dark' });
     const st = (await staff.rpc('app.bootstrap')).body.result.settings;
-    assert.deepEqual([st.brandColor, st.navColor, st.logoVersion], ['#aa3300', '', up.body.result.logoVersion]);
+    assert.deepEqual([st.brandColor, st.navColor, st.bgColor, st.appearance, st.logoVersion], ['#aa3300', '', '#f7f3fa', 'dark', up.body.result.logoVersion]);
+    await admin.rpc('settings.update', { appearance: 'sepia' });
+    assert.equal((await staff.rpc('app.bootstrap')).body.result.settings.appearance, 'auto', 'unknown modes fall back to auto');
+    assert.equal((await staff.rpc('settings.update', { brandColor: '#000000' })).status, 403);
+    // Each person picks their own mode; email preferences are untouched.
+    const me = (await staff.rpc('account.preferences', { appearance: 'light' })).body.result;
+    assert.equal(me.appearance, 'light');
+    assert.equal((await staff.rpc('app.bootstrap')).body.result.me.appearance, 'light');
+    assert.equal((await staff.rpc('account.preferences', { appearance: 'neon' })).body.result.appearance, '', 'back to the restaurant default');
+    assert.notEqual((await staff.rpc('app.bootstrap')).body.result.me.emailNotifications, false);
     assert.equal((await admin.rpc('branding.removeLogo', {})).status, 200);
     assert.equal((await fetch(`${A.base}/api/branding/logo`)).status, 404);
   } finally { await A.close(); await close(); }

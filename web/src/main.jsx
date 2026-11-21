@@ -163,7 +163,7 @@ function App() {
   // The restaurant's colors and logo: from its settings once signed in, from /api/config before.
   useEffect(() => {
     const st = boot?.settings;
-    if (st) applyBranding({ color: st.brandColor, nav: st.navColor, logo: logoUrl(st, IS_DEMO) });
+    if (st) applyBranding({ color: st.brandColor, nav: st.navColor, bg: st.bgColor, mode: boot.me?.appearance || st.appearance, logo: logoUrl(st, IS_DEMO) });
     else if (config.brand) applyBranding(config.brand);
   }, [boot, config]);
 
