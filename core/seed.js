@@ -4,6 +4,7 @@ import { uid } from './store.js';
 import { addDays, dow, range } from './time.js';
 import { DEFAULT_SETTINGS } from './service.js';
 import { findArea } from './areas.js';
+import { seedDemoTips } from './tips.js';
 
 const WEEK = '2026-09-28'; // Monday
 const D = { MON: 0, TUE: 1, WED: 2, THU: 3, FRI: 4, SAT: 5, SUN: 6 };
@@ -335,6 +336,9 @@ export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password =
   ].forEach(([id, name, level, kinds, capacity, p], order) => store.insert('rooms', {
     id, locationId: 'loc_main', name, level, kinds, capacity, order, plan: p || { width: 1000, height: 700, items: [] },
   }));
+
+  // SAMPLE tips: a house pool and a Rabbit Hole pool, with tips entered for the demo week (core/tips.js).
+  seedDemoTips(store, { week: WEEK, jobId, userId });
 
   return { userId, jobId, eventId };
 }
