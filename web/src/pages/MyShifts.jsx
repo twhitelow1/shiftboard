@@ -8,7 +8,8 @@ import ShiftDialog from './ShiftDialog.jsx';
 import { PhoneCards } from './PhoneCards.jsx';
 import { ShiftSection } from './Sections.jsx';
 import { ModCard } from './TrainingShared.jsx';
-import { useT, dowShort, fmtTime, prettyDate, LANGUAGE_NAMES } from '../i18n/index.js';
+import { useT, tx, dowShort, fmtTime, prettyDate, LANGUAGE_NAMES } from '../i18n/index.js';
+import { STATUS } from './TimeOff.jsx';
 
 export default function MyShifts() {
   const t = useT();
@@ -95,7 +96,7 @@ export default function MyShifts() {
           <div className="section-title"><h2>{t('myShifts.myTimeOff')}</h2><a className="btn sm ghost" href="#/timeoff">{t('myShifts.seeAll')}</a></div>
           <div className="card list">
             {myTimeOff.map((t) => (
-              <div key={t.id} className="list-item"><Icon name="sun" size={18} /><div style={{ flex: 1 }}>{prettyDate(t.startDate)}{t.endDate !== t.startDate ? ` – ${prettyDate(t.endDate)}` : ''}</div><span className={`badge ${t.status === 'approved' ? 'ok' : 'warn'}`}>{t.status}</span></div>
+              <div key={t.id} className="list-item"><Icon name="sun" size={18} /><div style={{ flex: 1 }}>{prettyDate(t.startDate)}{t.endDate !== t.startDate ? ` – ${prettyDate(t.endDate)}` : ''}</div><span className={`badge ${t.status === 'approved' ? 'ok' : 'warn'}`}>{STATUS[t.status] ? tx(STATUS[t.status]) : t.status}</span></div>
             ))}
           </div>
         </div>

@@ -126,7 +126,8 @@ export function Warnings({ items }) {
 
 export function useToasts() {
   const [toasts, setToasts] = useState([]);
-  const toast = useCallback((text, kind = '') => {
+  const toast = useCallback((message, kind = '') => {
+    const text = typeof message === 'string' ? translateError(message) : message; // a known English error, in Spanish when needed
     const id = Math.random();
     setToasts((t) => [...t, { id, text, kind }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3200);

@@ -3,6 +3,9 @@ import { useApp, Icon, Avatar, Field, Empty, useAction, Modal } from '../ui.jsx'
 import { addDays } from '../../../core/time.js';
 import { tx, useT, dowLong, fmtTime, prettyDate } from '../i18n/index.js';
 
+// Catalog keys for a request's status (web/src/i18n).
+export const STATUS = { pending: 'timeOff.statusPending', approved: 'timeOff.statusApproved', denied: 'timeOff.statusDenied', cancelled: 'timeOff.statusCancelled' };
+
 export default function TimeOff({ parts = [] }) {
   const t = useT();
   const { call, version, canApprove, isMgr, people, me, today } = useApp();
@@ -46,7 +49,7 @@ export default function TimeOff({ parts = [] }) {
                 <b>{people[t.userId]?.name}</b>
                 <div className="small muted">{prettyDate(t.startDate)}{t.endDate !== t.startDate ? ` – ${prettyDate(t.endDate)}` : ''}{t.reason ? ` · ${t.reason === 'Imported: request off' ? tx('timeOff.importedRequestOff') : t.reason}` : ''}</div>
               </div>
-              <span className={`badge ${t.status === 'approved' ? 'ok' : t.status === 'pending' ? 'warn' : t.status === 'denied' ? 'bad' : ''}`}>{t.status}</span>
+              <span className={`badge ${t.status === 'approved' ? 'ok' : t.status === 'pending' ? 'warn' : t.status === 'denied' ? 'bad' : ''}`}>{STATUS[t.status] ? tx(STATUS[t.status]) : t.status}</span>
               {canApprove && t.status === 'pending' && (isMgr || t.userId !== me.id) && <>
                 <button className="btn sm danger" disabled={busy} onClick={() => run(() => call('timeOff.decide', { id: t.id, status: 'denied' }), tx('timeOff.denied'))}>{tx('timeOff.deny')}</button>
                 <button className="btn sm ok" disabled={busy} onClick={() => run(() => call('timeOff.decide', { id: t.id, status: 'approved' }), tx('timeOff.approved'))}>{tx('timeOff.approve')}</button>

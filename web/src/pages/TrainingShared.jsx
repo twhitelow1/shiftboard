@@ -4,14 +4,17 @@ import React, { useEffect, useState } from 'react';
 import '../training.css';
 import { useApp, Icon, Modal, Field, useAction } from '../ui.jsx';
 import { call as rpc, IS_DEMO } from '../api.js';
-import { fmtTime } from '../../../core/time.js';
-import { langOf, localize, dayLabel, categoryLabel, FIELD_GROUPS } from '../../../core/training.js';
+import { localize, dayLabel, categoryLabel, FIELD_GROUPS } from '../../../core/training.js';
+import { useI18n, fmtTime } from '../i18n/index.js';
 import { parseBlocks, parseInline } from '../minimark.js';
 import { STRINGS } from '../training-strings.js';
 
-/** UI words in the viewer's language (me.language: 'en' | 'es'). */
-export function useT() { return STRINGS[langOf(useApp()?.me)]; }
-export function useLang() { return langOf(useApp()?.me); }
+/**
+ * Training's words in the app's language: the same switch as everything else (web/src/i18n). The words
+ * stay in training-strings.js because many are functions; the catalog test checks it has the same keys in both.
+ */
+export function useT() { return STRINGS[useLang()] || STRINGS.en; }
+export function useLang() { const { lang } = useI18n(); return lang === 'es' ? 'es' : 'en'; }
 
 const PATHS = {
   phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z',

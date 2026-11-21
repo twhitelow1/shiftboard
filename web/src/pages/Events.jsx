@@ -390,7 +390,7 @@ function RoomField({ e, setE, settings }) {
             {rooms.filter((r) => (r.level || t('events.rooms')) === l).map((r) => <option key={r.id} value={r.id}>{r.name}{r.capacity ? ` (${r.capacity})` : ''}</option>)}
           </optgroup>
         ))}
-        <optgroup label={t('events.other')}>
+        <optgroup label={t('events.otherRoom')}>
           {bookings.map((n) => <option key={n} value={`name:${n}`}>{n}</option>)}
           <option value="other">{t('events.somewhereElse')}</option>
         </optgroup>

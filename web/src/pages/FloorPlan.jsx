@@ -40,7 +40,7 @@ export function planStats(plan) {
   const barSeats = items.filter((i) => i.type === 'bar').reduce((t, i) => t + (Number(i.seats) || 0), 0);
   return { tables, seats, barSeats, items: items.length };
 }
-export const statsText = (s) => `${s.tables} table${s.tables === 1 ? '' : 's'} · ${s.seats} seat${s.seats === 1 ? '' : 's'}${s.barSeats ? ` (${s.barSeats} at the bar)` : ''}`;
+export const statsText = (s) => `${tr('floorPlan.tablesCount', { count: s.tables })} · ${tr('floorPlan.seatsCount', { count: s.seats })}${s.barSeats ? tr('floorPlan.atTheBar', { count: s.barSeats }) : ''}`;
 
 // Icons the floor plan needs beyond the app's set.
 const FP_ICONS = {

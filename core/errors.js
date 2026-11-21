@@ -32,7 +32,7 @@ export const ERRORS_ES = {
   'Not found': 'No se encontró',
   'Invalid JSON': 'JSON no válido',
   'That upload is too large': 'Ese archivo es demasiado grande',
-  'The database is not reachable right now. Try again in a minute.': 'Ahorita no podemos conectar con la base de datos. Inténtalo de nuevo en un minuto.',
+  'The database is not reachable right now. Try again in a minute.': 'En este momento no podemos conectar con la base de datos. Inténtalo de nuevo en un minuto.',
   // ----- people -----
   'Name is required': 'Falta el nombre',
   'User not found': 'No encontramos a esa persona',
@@ -155,6 +155,11 @@ export const ERRORS_ES = {
   // ----- Toast -----
   'That Toast employee is gone. Sync again.': 'Ese empleado de Toast ya no existe. Sincroniza otra vez.',
   'That Toast job is gone. Sync again.': 'Ese puesto de Toast ya no existe. Sincroniza otra vez.',
+  // ----- messages the web app writes itself (web/src/toast-api.js, push.js, theme.js) -----
+  'Toast sync works in the hosted app': 'La sincronización con Toast funciona en la app real',
+  'Sync made no progress. Try a shorter range.': 'La sincronización no avanzó. Prueba con menos días.',
+  'Couldn’t reach this phone’s notification service. Check the connection and try again.': 'No pudimos conectar con el servicio de notificaciones de este teléfono. Revisa la conexión e inténtalo de nuevo.',
+  'That file isn’t an image the browser can read': 'Ese archivo no es una imagen que el navegador pueda abrir',
   // ----- training -----
   'Menu item not found': 'No encontramos ese platillo',
   'Photo not found': 'No encontramos esa foto',

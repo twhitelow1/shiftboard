@@ -205,7 +205,7 @@ const catalog = {
     room: 'Salón',
     notSet: 'Sin definir',
     rooms: 'Salones',
-    other: 'Otro',
+    otherRoom: 'Otro',
     somewhereElse: 'Otro lugar…',
     eGPatioAndLibrary: 'p. ej. Patio y Library',
     typeSuggestions: 'Boda|Corporativo|Cena privada|Fiesta|Cena de ensayo|Happy hour|Recaudación de fondos|Evento exclusivo (buyout)',
@@ -277,6 +277,8 @@ const catalog = {
     nameHost: 'Anfitrión',
     nameLabel: 'Etiqueta',
     seatsCount: { one: '{count} lugar', other: '{count} lugares' },
+    tablesCount: { one: '{count} mesa', other: '{count} mesas' },
+    atTheBar: ' ({count} en la barra)',
   },
   forecast: {
     forecast: 'Pronóstico',
@@ -939,6 +941,7 @@ const catalog = {
     noteChangedByManager: 'un gerente cambió el turno',
     noteShiftRemoved: 'se quitó el turno',
     noteEventRemoved: 'se quitó el evento',
+    youWarning: 'Tú: {warning}',
   },
   team: {
     inactive: 'Inactivo',
@@ -1098,6 +1101,10 @@ const catalog = {
     requestSent: 'Le mandamos tu solicitud a tus gerentes',
     clashesNote: { one: '. Ojo: tienes {count} turno en esas fechas', other: '. Ojo: tienes {count} turnos en esas fechas' },
     importedRequestOff: 'Importado: pidió libre',
+    statusPending: 'pendiente',
+    statusApproved: 'aprobado',
+    statusDenied: 'rechazado',
+    statusCancelled: 'cancelado',
   },
   tipPoolSettings: {
     bUsLawFlsaB: '<b>Ley de EE. UU. (FLSA):</b> los gerentes y supervisores no pueden quedarse con ninguna parte de un fondo común de propinas, ni tampoco los dueños. Los fondos nuevos dejan fuera a gerentes, administradores y superadministradores. Algunos estados tienen reglas más estrictas; consúltalo con tu contador.',

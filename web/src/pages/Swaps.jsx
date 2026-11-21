@@ -132,7 +132,7 @@ function RequestCard({ r, mode, onDone }) {
       {r.note && <div className="small">“{r.note}” <span className="faint">— {people[r.requesterId]?.name}</span></div>}
       {r.resolution && <div className="small muted">{t('swaps.noteResolution', { resolution: SYSTEM_NOTES[r.resolution] ? t(SYSTEM_NOTES[r.resolution]) : r.resolution })}</div>}
       {mode === 'approvals' && <Warnings items={r.warnings} />}
-      {mode === 'offers' && <Warnings items={r.myConflicts?.map((w) => `You: ${w}`)} />}
+      {mode === 'offers' && <Warnings items={r.myConflicts?.map((w) => t('swaps.youWarning', { warning: w }))} />}
 
       {mode === 'approvals' && (
         <div className="row wrap">

@@ -206,7 +206,7 @@ const catalog = {
     room: 'Room',
     notSet: 'Not set',
     rooms: 'Rooms',
-    other: 'Other',
+    otherRoom: 'Other',
     somewhereElse: 'Somewhere else…',
     eGPatioAndLibrary: 'e.g. Patio and Library',
     typeSuggestions: 'Wedding|Corporate|Private dinner|Party|Rehearsal dinner|Happy hour|Fundraiser|Buyout',
@@ -277,7 +277,9 @@ const catalog = {
     nameDj: 'DJ',
     nameHost: 'Host',
     nameLabel: 'Label',
-    seatsCount: { one: '{count} seats', other: '{count} seats' },
+    seatsCount: { one: '{count} seat', other: '{count} seats' },
+    tablesCount: { one: '{count} table', other: '{count} tables' },
+    atTheBar: ' ({count} at the bar)',
   },
   forecast: {
     forecast: 'Forecast',
@@ -940,6 +942,7 @@ const catalog = {
     noteChangedByManager: 'the shift was changed by a manager',
     noteShiftRemoved: 'the shift was removed',
     noteEventRemoved: 'the event was removed',
+    youWarning: 'You: {warning}',
   },
   team: {
     inactive: 'Inactive',
@@ -1099,6 +1102,10 @@ const catalog = {
     requestSent: 'Request sent to managers',
     clashesNote: { one: ' — note: you have {count} shift then', other: ' — note: you have {count} shifts then' },
     importedRequestOff: 'Imported: request off',
+    statusPending: 'pending',
+    statusApproved: 'approved',
+    statusDenied: 'denied',
+    statusCancelled: 'cancelled',
   },
   tipPoolSettings: {
     bUsLawFlsaB: '<b>US law (FLSA):</b> managers and supervisors can’t keep any part of a tip pool, and neither can owners. New pools leave out Managers, Admins and Super Admins. Some states have stricter rules, so check with your accountant.',
