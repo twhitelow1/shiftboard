@@ -5,6 +5,7 @@ import { addDays, dow, weekStart, range, overlaps, shiftSpan, todayStr, prettyDa
 import { forecastDay, effectiveShift, hoursOf, activeAt, recommend } from './forecast.js';
 import { suggestStaffing } from './beo.js';
 import { cleanArea, uniqueAreas, findArea, scheduleAreas } from './areas.js';
+import { tipMethods } from './tips.js';
 import { ROLE_IDS, roleOf, roleLabel, canManageSchedule, canChangeSettings, canManageEvents, canSeeContacts, canApprove,
   offSchedule, assignableRoles, canManageUser } from './roles.js';
 
@@ -1354,6 +1355,9 @@ export function createService(store, opts = {}) {
         },
       };
     })(),
+
+    // ----- tip pooling (core/tips.js) -----
+    ...tipMethods({ store, now, settings, fail, needAuth, needMgr, needAdmin, notify }),
 
     // ----- notifications -----
     'notifications.list': (actor) => {
