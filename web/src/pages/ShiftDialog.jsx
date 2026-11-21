@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useApp, Modal, Field, Icon, Avatar, Warnings, shiftTime, startTimesOnly, useAction, JobDot } from '../ui.jsx';
 import { prettyDate, addDays, fmtTime } from '../../../core/time.js';
 import { scheduleAreas, findArea } from '../../../core/areas.js';
+import { ShiftSectionCard, useSectionField } from './Sections.jsx';
 
 /**
  * Opens the right dialog for the viewer: managers edit other people's shifts; your own shift (any
@@ -25,6 +26,7 @@ function ShiftEditor({ shift, onClose, warnings, events }) {
   }));
   const [run, busy] = useAction();
   const [publishNow, setPublishNow] = useState(!!shift.published);
+  const section = useSectionField(shift, f.date); // room & tables (server section)
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e?.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e }));
 
   const active = employees.filter((e) => e.active !== false && e.onSchedule !== false);
@@ -44,6 +46,7 @@ function ShiftEditor({ shift, onClose, warnings, events }) {
     const payload = { ...f, end: f.untilClose ? null : f.end, userId: f.userId || null, eventId: f.eventId || null, published: shift.id ? undefined : publishNow };
     const r = await run(() => call('shifts.save', payload));
     if (r) {
+      await section.save(r.shift.id);
       if (r.warnings?.length) toast(`Saved — heads up: ${r.warnings[0]}`, 'bad');
       else toast(shift.id ? 'Shift updated' : 'Shift added');
       onClose(true);
@@ -99,6 +102,7 @@ function ShiftEditor({ shift, onClose, warnings, events }) {
           {areas.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
       </Field>
+      {section.field}
       <Field label="Tag / section" help="Shows on the schedule next to the time — e.g. LIB, RH, BC, PASSED">
         <input className="input" value={f.tag} onChange={set('tag')} placeholder="Optional" />
         <div className="row wrap" style={{ marginTop: 4 }}>
@@ -194,6 +198,7 @@ function ShiftDetail({ shift, onClose, events, startIn, onEdit }) {
             <div className="small muted row" style={{ gap: 6 }}><JobDot job={job} />{job?.name}{job?.department ? ` · ${job.department}` : ''}</div>
           </div>
         </div>
+        <ShiftSectionCard shift={shift} />
         {shift.pending && <div className="alert warn"><Icon name="clock" size={16} />A {shift.pending === 'drop' ? 'giveaway' : shift.pending} request is in progress for this shift.</div>}
         {event && (
           <a className="card card-pad row" href={`#/events/${event.id}`} style={{ color: 'inherit', boxShadow: 'none' }}>

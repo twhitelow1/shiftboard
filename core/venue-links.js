@@ -19,6 +19,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_DAYS = 62; // sections.list range
 const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
 const docId = (roomId, date) => `${roomId}|${date}`;
+const byLabel = (a, b) => String(a.label || '').localeCompare(String(b.label || ''), 'en', { numeric: true }); // T2 before T10
 const days = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
 
 /** Tables (and booths, bars) on a room's plan, by item id. */
@@ -110,7 +111,8 @@ export function venueLinks({ store, api, fail, needAuth, needMgr, needEvents, vi
       const s = store.get('shifts', e.shiftId);
       if (!s || s.date !== doc.date || seen.has(s.id)) continue;
       seen.add(s.id);
-      out.push({ shiftId: s.id, tableIds: [...new Set(e.tableIds || [])].filter((t) => tables.has(t)) });
+      const ids = [...new Set(e.tableIds || [])].filter((t) => tables.has(t));
+      out.push({ shiftId: s.id, tableIds: ids.sort((a, b) => byLabel(tables.get(a), tables.get(b))) });
     }
     return out;
   }

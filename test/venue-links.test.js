@@ -141,9 +141,9 @@ test('sections: one server per table per room and day, and one room per shift pe
   let out = mgr('sections.assign', { shiftId: b.id, roomId: main.id, tableIds: ['t3', 't4'] });
   assert.deepEqual(byUser(out), { usr_emp: ['t1', 't2'], usr_two: ['t3', 't4'] }, 'T3 moved over');
   out = mgr('sections.assign', { shiftId: a.id, roomId: main.id, tableIds: ['b1'], mode: 'add' });
-  assert.deepEqual(byUser(out).usr_emp, ['t1', 't2', 'b1'], 'add keeps the tables they had');
+  assert.deepEqual(byUser(out).usr_emp, ['b1', 't1', 't2'], 'add keeps the tables they had (listed in table order)');
   out = mgr('sections.clear', { roomId: main.id, date: DAY, tableIds: ['t2', 't3', 't4'] });
-  assert.deepEqual(byUser(out), { usr_emp: ['t1', 'b1'], usr_two: [] }, 'cleared tables leave the section; the person stays in the room');
+  assert.deepEqual(byUser(out), { usr_emp: ['b1', 't1'], usr_two: [] }, 'cleared tables leave the section; the person stays in the room');
 
   out = mgr('sections.assign', { shiftId: a.id, roomId: library.id, tableIds: ['lt1'] });
   assert.deepEqual(out.map((d) => [d.roomName, d.entries.map((e) => e.userId)]), [['Main', ['usr_two']], ['Library', ['usr_emp']]], 'moving rooms leaves the first');

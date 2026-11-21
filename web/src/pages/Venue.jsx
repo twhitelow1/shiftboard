@@ -1,16 +1,23 @@
 // Venue & floor plans: locations → levels → rooms (dining / bar / event space), each with a floor plan.
 // A one-room place can ignore locations and levels entirely; they only show up once there's more than one.
+// Each room has two views: Sections (who works which tables on a day) and, for managers, Edit layout.
+// Route: #/venue/<roomId>/<date> opens a room's sections for that day (BEOs link here).
 import React, { useEffect, useMemo, useState } from 'react';
 import { useApp, Icon, Modal, Field, Empty } from '../ui.jsx';
-import { FloorPlanEditor, FloorPlanView, planStats, statsText } from './FloorPlan.jsx';
+import { FloorPlanEditor, planStats, statsText, SEATED } from './FloorPlan.jsx';
+import { SectionsBoard } from './Sections.jsx';
 
 const KIND_LABELS = { dining: 'Dining', bar: 'Bar', events: 'Event space', other: 'Other' };
 
-export default function Venue() {
-  const { call, toast, settings, isMgr, refresh } = useApp();
+const isDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || '');
+
+export default function Venue({ parts = [] }) {
+  const { call, toast, settings, isMgr, refresh, today } = useApp();
   const [v, setV] = useState(null);
   const [locId, setLocId] = useState(null);
-  const [roomId, setRoomId] = useState(null);
+  const [roomId, setRoomId] = useState(parts[1] || null);
+  const [date, setDate] = useState(isDate(parts[2]) ? parts[2] : today);
+  const [tab, setTab] = useState('sections'); // 'sections' | 'layout' (managers)
   const [planDirty, setPlanDirty] = useState(false);
   const [editRoom, setEditRoom] = useState(null);     // room form in a modal (new or existing)
   const [editLoc, setEditLoc] = useState(null);       // location form in a modal
@@ -19,6 +26,10 @@ export default function Venue() {
 
   const load = () => call('venue.get').then(setV).catch((e) => toast(e.message, 'bad'));
   useEffect(() => { load(); }, []);
+  useEffect(() => { // opened from a link: #/venue/<room>/<date>
+    if (parts[1]) { setRoomId(parts[1]); setLocId(null); }
+    if (isDate(parts[2])) { setDate(parts[2]); setTab('sections'); }
+  }, [parts[1], parts[2]]);
 
   const act = async (fn, ok) => {
     setBusy(true);
@@ -29,7 +40,8 @@ export default function Venue() {
   };
 
   const locations = v?.locations || [];
-  const loc = locations.find((l) => l.id === locId) || locations[0] || null;
+  const linked = v?.rooms.find((r) => r.id === roomId);
+  const loc = locations.find((l) => l.id === (locId || linked?.locationId)) || locations[0] || null;
   const rooms = useMemo(() => (v?.rooms || []).filter((r) => !loc || r.locationId === loc.id), [v, loc]);
   const levels = useMemo(() => {
     const out = [];
@@ -41,13 +53,22 @@ export default function Venue() {
     return out;
   }, [rooms]);
   const room = rooms.find((r) => r.id === roomId) || rooms[0] || null;
+  // A room with no tables yet opens on its layout for managers: there's nothing to assign.
+  useEffect(() => {
+    if (isMgr && room && !(room.plan?.items || []).some((i) => SEATED.has(i.type))) setTab('layout');
+  }, [room?.id]);
 
-  const pickRoom = (id) => {
-    if (id === room?.id) return;
-    if (planDirty && !window.confirm('Leave this floor plan without saving your changes?')) return;
+  const leavePlan = () => {
+    if (planDirty && !window.confirm('Leave this floor plan without saving your changes?')) return false;
     setPlanDirty(false);
+    return true;
+  };
+  const pickRoom = (id) => {
+    if (id === room?.id || !leavePlan()) return;
     setRoomId(id);
   };
+  const pickTab = (t) => { if (t !== tab && (t === 'layout' || leavePlan())) setTab(t); };
+  const view = isMgr && tab === 'layout' ? 'layout' : 'sections';
   const move = (r, dir) => {
     const ids = rooms.map((x) => x.id);
     const i = ids.indexOf(r.id), j = i + dir;
@@ -124,20 +145,31 @@ export default function Venue() {
         {room && (
           <div className="col" style={{ gap: 12, minWidth: 0 }}>
             <div className="card card-pad">
+              {rooms.length > 1 && (
+                <select className="input mobile-only venue-room-pick" value={room.id} onChange={(e) => pickRoom(e.target.value)} aria-label="Room">
+                  {levels.map((g) => <optgroup key={g.name} label={g.name}>{g.rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</optgroup>)}
+                </select>
+              )}
               <div className="row wrap">
                 <div style={{ flex: 1, minWidth: 200 }}>
-                  <h2 style={{ margin: 0 }}>{room.name}</h2>
+                  <h2 className={rooms.length > 1 ? 'desktop-only' : ''} style={{ margin: 0 }}>{room.name}</h2>
                   <div className="small muted">{room.level}{locations.length > 1 ? ` · ${loc?.name}` : ''} · {statsText(stats)}{room.capacity ? ` · capacity ${room.capacity}` : ''}</div>
                 </div>
                 <div className="row wrap">{(room.kinds || []).map((k) => <span key={k} className="badge brand">{KIND_LABELS[k]}</span>)}</div>
                 {isMgr && <button className="btn sm" onClick={() => setEditRoom(room)}><Icon name="edit" />Room details</button>}
               </div>
             </div>
-            <div className="card card-pad">
-              {isMgr
+            <div className="card card-pad col" style={{ gap: 12 }}>
+              {isMgr && (
+                <div className="seg venue-tabs" role="tablist">
+                  <button role="tab" aria-selected={view === 'sections'} className={view === 'sections' ? 'on' : ''} onClick={() => pickTab('sections')}>Sections</button>
+                  <button role="tab" aria-selected={view === 'layout'} className={view === 'layout' ? 'on' : ''} onClick={() => pickTab('layout')}>Edit layout</button>
+                </div>
+              )}
+              {view === 'layout'
                 ? <FloorPlanEditor key={room.id} room={room} onDirtyChange={setPlanDirty}
-                    onSaved={(r) => setV((cur) => ({ ...cur, rooms: cur.rooms.map((x) => (x.id === r.id ? r : x)) }))} />
-                : <FloorPlanView plan={room.plan} title={`${room.name} floor plan`} />}
+                    onSaved={(r) => { setV((cur) => ({ ...cur, rooms: cur.rooms.map((x) => (x.id === r.id ? r : x)) })); refresh(); }} />
+                : <SectionsBoard key={room.id} room={room} date={date} setDate={setDate} onEditLayout={() => pickTab('layout')} />}
             </div>
           </div>
         )}

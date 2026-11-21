@@ -5,6 +5,7 @@ import { addDays, weekStart, parseDate, MONTHS, DOW_SHORT, dow, prettyDate, fmtT
 import { hoursOf } from '../../../core/forecast.js';
 import { icalLink, IS_DEMO } from '../api.js';
 import ShiftDialog from './ShiftDialog.jsx';
+import { ShiftSection } from './Sections.jsx';
 
 export default function MyShifts() {
   const { call, version, today, me, jobs, settings, employees, refresh, toast } = useApp();
@@ -39,6 +40,7 @@ export default function MyShifts() {
           <div className="small" style={{ opacity: .85, fontWeight: 600 }}>{nextShift.date === today ? 'Today' : 'Next shift'}</div>
           <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-.02em' }}>{prettyDate(nextShift.date)} · {shiftTime(nextShift)}</div>
           <div style={{ opacity: .9 }}>{jobs[nextShift.jobCodeId]?.name}{nextShift.tag ? ` · ${nextShift.tag}` : ''}{nextShift.eventId ? ' · Event shift' : ''}</div>
+          <ShiftSection shift={nextShift} full className="on-brand" />
           <div className="row" style={{ marginTop: 10 }}>
             <button className="btn sm" style={{ background: 'rgba(255,255,255,.18)', color: '#fff', borderColor: 'transparent' }} onClick={() => open(nextShift)}>{nextShift.published ? 'Trade or give away' : 'Details'}</button>
             {nextShift.eventId && <a className="btn sm" style={{ background: 'rgba(255,255,255,.18)', color: '#fff', borderColor: 'transparent' }} href={`#/events/${nextShift.eventId}`}>View BEO</a>}
@@ -153,6 +155,7 @@ function ShiftRow({ s, onClick, right, past }) {
       <div className="body">
         <div className="title num">{shiftTime(s)}{!s.end && !startTimesOnly() && <span className="faint small" style={{ fontWeight: 500 }}> until close</span>}</div>
         <div className="small muted row" style={{ gap: 6 }}><JobDot job={j} />{j?.name}{s.area ? ` · ${s.area}` : ''}{s.tag ? ` · ${s.tag}` : ''}{s.eventId ? ' · Event' : ''}</div>
+        <ShiftSection shift={s} />
       </div>
       {right}
       <Icon name="right" size={16} style={{ color: 'var(--text-3)' }} />
