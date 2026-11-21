@@ -4,6 +4,7 @@ import { uid } from './store.js';
 import { addDays, dow, weekStart, range, overlaps, shiftSpan, todayStr, prettyDate, fmtTime, toMin, daysBetween } from './time.js';
 import { forecastDay, effectiveShift, hoursOf, activeAt, recommend } from './forecast.js';
 import { suggestStaffing } from './beo.js';
+import { laborMethods } from './labor-api.js';
 import { cleanArea, uniqueAreas, findArea, scheduleAreas } from './areas.js';
 import { ROLE_IDS, roleOf, roleLabel, canManageSchedule, canChangeSettings, canManageEvents, canSeeContacts, canApprove,
   offSchedule, assignableRoles, canManageUser } from './roles.js';
@@ -1109,6 +1110,8 @@ export function createService(store, opts = {}) {
       store.transaction(() => toCreate.forEach((s) => store.insert('shifts', { id: uid('shf'), ...cleanShift(s), published: false, createdAt: now().toISOString(), createdBy: actor.id })));
       return { created: toCreate.length };
     },
+    // Labor review (scheduled vs. worked) and Toast POS mappings: core/labor-api.js
+    ...laborMethods({ store, settings, fail, needMgr, now }),
 
     // ----- events / BEOs -----
     'events.list': (actor, { start, end } = {}) => {

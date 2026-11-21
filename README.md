@@ -80,6 +80,16 @@ Setup:
 
 Emails are sent after the change is saved, so a failed request never emails anyone. Batches go through Resend's batch API with idempotency keys.
 
+### Toast POS (optional)
+
+Pulls each day's net sales and covers from Toast into the sales history the forecast uses, and Toast clock-ins (time entries) for **Forecast & Labor → Labor review**: scheduled vs. worked hours and cost by day, person and position, labor % of actual sales, overtime, and who worked without a shift or missed one.
+
+1. In Toast Web, someone with the Manage Integrations permission creates **Standard API** credentials for the location (read-only; needs Restaurant Management Suite Essentials or higher) with the scopes `orders:read`, `labor:read`, `labor.employees:read` and `restaurants:read`.
+2. In Vercel, add `TOAST_CLIENT_ID`, `TOAST_CLIENT_SECRET` (Sensitive), `TOAST_RESTAURANT_GUID`, and `TOAST_API_HOST` only if Toast gives a host other than `https://ws-api.toasttab.com`. Add `CRON_SECRET` (a long random string) for the daily sync. Redeploy.
+3. **Settings → Integrations → Toast**: Sync now (the last 14 days by default), then check how Toast's employees and jobs were matched to people (by email, then name) and positions, and fix the rest.
+
+A Vercel Cron (`vercel.json`) calls `/api/cron/toast` every morning and syncs the last 3 days. Syncs run a day at a time within the 30-second limit and can be repeated safely. Days typed in by hand under Sales history are kept unless you choose to replace them. Credentials live only in env vars; the code is in `server/toast*.js`, `core/toast.js`, `core/labor.js` and `core/labor-api.js`.
+
 ### Moving data from the old SQLite version
 
 If ShiftBoard has been running on Render or Docker with SQLite, copy its `shiftboard.db` file locally, then:

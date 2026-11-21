@@ -15,6 +15,7 @@ import { createService, AppError } from '../core/service.js';
 import { seedDemo } from '../core/seed.js';
 import { effectiveShift } from '../core/forecast.js';
 import { addDays } from '../core/time.js';
+import { mountToast } from './toast-routes.js';
 
 const COOKIE = 'sb_session';
 const MAX_LOGIN_ATTEMPTS = 10; // per IP + email, per 15 minutes
@@ -389,6 +390,9 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     if (!u) return res.status(401).json({ error: 'Please sign in' });
     res.json({ result: `/api/ical/${u.id}/${icalToken(u.id)}.ics` });
   });
+
+  // Toast POS: status, Sync now, and the daily Vercel Cron (server/toast-routes.js).
+  mountToast(app, { db, env, userOf: (req) => userFromToken(db.store, req.cookies[COOKIE]) });
 
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 

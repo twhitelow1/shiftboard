@@ -336,5 +336,9 @@ export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password =
     id, locationId: 'loc_main', name, level, kinds, capacity, order, plan: p || { width: 1000, height: 700, items: [] },
   }));
 
+  // SAMPLE clock-ins (as if synced from Toast) for Forecast & Labor → Labor review: core/labor-demo.js
+  seedLaborDemo(store, { week: WEEK });
   return { userId, jobId, eventId };
 }
+
+import { seedLaborDemo } from './labor-demo.js';
