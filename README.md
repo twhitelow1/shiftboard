@@ -22,6 +22,7 @@ Built by DubLow Digital.
 | **Notifications** | In-app notifications for schedule posted, shift changes, swap requests and approvals, open shifts, BEO updates, and comments. |
 | **Branding & theme** | Settings → Branding & theme: upload the restaurant's logo (resized in the browser; PNG, JPG, SVG or WebP), pick a ready-made theme (Berry, Ocean, Forest, Sunset, Rose, Gold, Mono, Bright…) or set the brand, sidebar and background colors yourself, with a live preview and a "use logo color" shortcut, and choose light, dark or auto mode for everyone (each person can pick their own in My Shifts). The logo and colors show in the app, on phones, on the sign-in page, in the browser tab and at the top of emails. |
 | **People & sign-in** | Team & Job Codes shows everyone's role and sign-in status (Active, Invited, Not invited, No email). Send an invite link to one person or to everyone who hasn't signed in, email a password reset link, or set a temporary password for someone without email. |
+| **Training** | A menu study guide: photos (several per dish, swipe on phones), description, allergens (the 9 major ones plus your own), dietary tags and an 86'd flag. Selling notes go to everyone; recipes and prep notes go to the kitchen and bar by default (managers always see everything, and each item can change who sees what). Search, "without nuts" allergen filters, and study flashcards. **Quizzes** are written from the menu for you (which dish is this photo, allergens, what's in it, which section) plus your own questions, assigned to positions with a due date, and graded on the server. A **leaderboard** (best, average, quizzes passed, items mastered; staff can see it or managers only) with each person's weak spots. The **employee manual** with "I've read this" and re-reads after an edit, including the call-out procedure. The **manager on duty** card (Call and Text buttons) on Training, My Shifts and your own upcoming shifts: it's the one coworker phone number staff can see. Managers can add a Spanish version of everything they write. |
 | **Venue & floor plans** | Locations (for multi-location groups; a one-room place needs no setup), levels, and rooms marked as dining, bar or event space with capacity. Draw each room's floor plan: round, square and long tables with seats, booths, bars with stools, stages, dance floors, DJ booth, host stand, walls, doors and labels. An event's BEO shows its room's floor plan. |
 
 ### Roles
@@ -130,10 +131,12 @@ core/       Business logic shared by server + demo (pure JS, no I/O)
   pdfgrid.js   rebuilds the schedule grid from a PDF's positioned text (read in the browser with pdf.js)
   store.js     in-memory document store + a copy-on-write overlay used per request
   seed.js      demo data (the real week of 9/28/2026)
+  training.js  menu study guide, quizzes, leaderboard, employee manual, manager on duty (training-seed.js: its demo data)
 server/     Express API (one RPC endpoint + auth) and iCal feed
   app.js       routes, sessions, login rate limiting
   db.js        Postgres persistence (see below)
   email.js     Resend email sender and email templates
+  training-routes.js  menu and quiz photos, for signed-in people only
   index.js     standalone server (local, Docker)
 api/        Vercel Function entry point (wraps server/app.js)
 web/        React UI (Vite). DEMO=1 builds a self-contained single-file demo that runs core/ in the browser

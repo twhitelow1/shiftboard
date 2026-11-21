@@ -428,6 +428,27 @@ test('manual: staff acknowledge pages; managers see who has and who hasn’t, an
   assert.deepEqual(f.as('srv')('manual.list').sections[0].pages.map((p) => [p.title, p.body]), [['Call-out procedure', undefined], ['New call-out', undefined]]);
 });
 
+test('manual formatting: headings, lists, bold, links and notes, with no HTML and only safe links', async () => {
+  const { parseBlocks, parseInline, safeHref, plainText } = await import('../web/src/minimark.js');
+  const blocks = parseBlocks('# Call out\nCall **as early as you can**, with *details*.\n\n- one\n- two\n1. first\n2. second\n> Be kind\n## Next');
+  assert.deepEqual(blocks.map((b) => b.type), ['h', 'p', 'list', 'list', 'note', 'h']);
+  assert.deepEqual([blocks[0].level, blocks[2].items, blocks[3].ordered, blocks[5].level], [1, ['one', 'two'], true, 2]);
+  // Nested marks (this used to loop forever: the parser recurses).
+  assert.deepEqual(parseInline('a **b [c](https://x.test) d** *e*'), [
+    { t: 'text', v: 'a ' },
+    { t: 'b', c: [{ t: 'text', v: 'b ' }, { t: 'a', href: 'https://x.test', c: [{ t: 'text', v: 'c' }] }, { t: 'text', v: ' d' }] },
+    { t: 'text', v: ' ' }, { t: 'i', c: [{ t: 'text', v: 'e' }] },
+  ]);
+  // Raw HTML stays text; unsafe links stay text.
+  assert.deepEqual(parseInline('<img src=x onerror=alert(1)>'), [{ t: 'text', v: '<img src=x onerror=alert(1)>' }]);
+  const unsafe = parseInline('[x](javascript:alert(1))');
+  assert.ok(unsafe.every((x) => x.t === 'text'));
+  assert.equal(unsafe.map((x) => x.v).join(''), '[x](javascript:alert(1))');
+  for (const ok of ['https://a.test/b?c=1', 'mailto:a@b.test', 'tel:+1 555 010 0100', 'sms:5550100100', '#/training/manual']) assert.equal(safeHref(ok), ok);
+  for (const bad of ['javascript:alert(1)', 'data:text/html,hi', '//evil.test', 'vbscript:x']) assert.equal(safeHref(bad), null);
+  assert.equal(plainText('# Hi\n**Bold** and [link](https://x.test)'), 'Hi Bold and link');
+});
+
 // ---------- manager on duty ----------
 
 function modFixture() {

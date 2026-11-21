@@ -15,6 +15,7 @@ import Team from './pages/Team.jsx';
 import TimeOff from './pages/TimeOff.jsx';
 import Settings from './pages/Settings.jsx';
 import Venue from './pages/Venue.jsx';
+import Training from './pages/Training.jsx';
 import { prettyDate } from '../../core/time.js';
 
 function useHashRoute() {
@@ -36,6 +37,7 @@ const NAV = [
   { key: 'swaps', label: 'Swaps & Trades', short: 'Swaps', icon: 'swap', badge: 'swaps' },
   { key: 'events', label: 'Events & BEOs', short: 'Events', icon: 'glass' },
   { key: 'timeoff', label: 'Time Off', icon: 'sun', badge: 'timeoff' },
+  { key: 'training', label: 'Training', icon: 'book' },
   { key: 'forecast', label: 'Forecast & Labor', icon: 'chart', mgr: true },
   { key: 'venue', label: 'Venue & Floor Plans', short: 'Venue', icon: 'map', mgr: true },
   { key: 'team', label: 'Team & Job Codes', icon: 'users', mgr: true },
@@ -204,7 +206,7 @@ function App() {
 
   const Page = {
     schedule: Schedule, calendar: CalendarPage, my: MyShifts, swaps: Swaps, events: Events,
-    forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue,
+    forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue, training: Training,
   }[route] || Schedule;
 
   const signOut = async () => { await logout(); setBoot(null); setAuthed(false); };

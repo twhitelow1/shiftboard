@@ -5,6 +5,7 @@ import { addDays, weekStart, parseDate, MONTHS, DOW_SHORT, dow, prettyDate, fmtT
 import { hoursOf } from '../../../core/forecast.js';
 import { icalLink, IS_DEMO } from '../api.js';
 import ShiftDialog from './ShiftDialog.jsx';
+import { ModCard } from './TrainingShared.jsx';
 
 export default function MyShifts() {
   const { call, version, today, me, jobs, settings, employees, refresh, toast } = useApp();
@@ -45,6 +46,8 @@ export default function MyShifts() {
           </div>
         </div>
       )}
+
+      <div className="section"><ModCard compact /></div>
 
       {openShifts.length > 0 && (
         <div className="section">
