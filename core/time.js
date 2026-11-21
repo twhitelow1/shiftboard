@@ -66,11 +66,13 @@ export function overlaps(a, b) {
   return as < be && bs < ae;
 }
 
-export function fmtTime(t) {
+/** '16:00' → '4p', '16:30' → '4:30p' (English, the way schedules write it) · '4 pm', '4:30 pm' (Spanish). */
+export function fmtTime(t, lang = 'en') {
   if (!t) return '';
   const [h, m] = t.split(':').map(Number);
-  const suffix = h >= 12 ? 'p' : 'a';
   const hh = h % 12 === 0 ? 12 : h % 12;
+  if (lang === 'es') return `${hh}${m ? `:${pad(m)}` : ''} ${h >= 12 ? 'pm' : 'am'}`;
+  const suffix = h >= 12 ? 'p' : 'a';
   return m ? `${hh}:${pad(m)}${suffix}` : `${hh}${suffix}`;
 }
 
@@ -78,10 +80,49 @@ export const DOW_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const DOW_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 export const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
+/** 'Thu, Dec 24' (or 'Dec 24' with { dow: false }). With { lang: 'es' }: 'jue, 24 de dic' / '24 dic'. */
 export function prettyDate(s, opts = {}) {
+  if (opts.lang && opts.lang !== 'en') return formatDate(s, opts.dow === false ? 'dayMonth' : 'short', opts.lang);
   const d = parseDate(s);
   const base = `${MONTHS[d.getUTCMonth()].slice(0, 3)} ${d.getUTCDate()}`;
   return opts.dow === false ? base : `${DOW_SHORT[d.getUTCDay()]}, ${base}`;
+}
+
+// ---------- dates in a language (Intl), shared by the server, the demo and the web app ----------
+/** Intl locales: US English, and US Spanish (12-hour clock, $1,234.50), as the phone app uses. */
+export const LOCALES = { en: 'en-US', es: 'es-US' };
+const DATE_STYLES = {
+  short: { weekday: 'short', month: 'short', day: 'numeric' }, // Thu, Dec 24 · jue, 24 de dic
+  long: { weekday: 'long', month: 'long', day: 'numeric' }, // Thursday, December 24 · jueves, 24 de diciembre
+  full: { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' },
+  dayMonth: { month: 'short', day: 'numeric' }, // Dec 24 · 24 dic
+  dayMonthYear: { month: 'short', day: 'numeric', year: 'numeric' },
+  weekday: { weekday: 'short' }, // Thu · jue
+  weekdayLong: { weekday: 'long' }, // Thursday · jueves
+  month: { month: 'long' }, // December · diciembre
+  monthShort: { month: 'short' }, // Dec · dic
+  monthYear: { month: 'long', year: 'numeric' }, // December 2026 · diciembre de 2026
+};
+const fmtCache = new Map();
+/** A 'YYYY-MM-DD' date in a language and style (see DATE_STYLES). Calendar days, so formatted in UTC. */
+export function formatDate(s, style = 'short', lang = 'en') {
+  const k = `${lang}|${style}`;
+  let f = fmtCache.get(k);
+  if (!f) {
+    try { f = new Intl.DateTimeFormat(LOCALES[lang] || LOCALES.en, { ...(DATE_STYLES[style] || DATE_STYLES.short), timeZone: 'UTC' }); } catch { f = null; }
+    fmtCache.set(k, f);
+  }
+  return f ? f.format(parseDate(s)) : s;
+}
+/** Day names in a language: 0 = Sunday. style 'short' (Sun · dom) or 'long' (Sunday · domingo). */
+export function dayName(i, style = 'short', lang = 'en') {
+  if (lang === 'en') return (style === 'long' ? DOW_LONG : DOW_SHORT)[i];
+  return formatDate(fmtDate(new Date(Date.UTC(2023, 0, 1 + i))), style === 'long' ? 'weekdayLong' : 'weekday', lang); // 2023-01-01 was a Sunday
+}
+/** Month names in a language: 0 = January. style 'long' (January · enero) or 'short' (Jan · ene). */
+export function monthName(i, style = 'long', lang = 'en') {
+  if (lang === 'en') return style === 'short' ? MONTHS[i].slice(0, 3) : MONTHS[i];
+  return formatDate(`2023-${pad(i + 1)}-15`, style === 'short' ? 'monthShort' : 'month', lang);
 }
 
 export function todayStr(now = new Date()) {

@@ -1,5 +1,5 @@
 // Every word the Training screens show, in English and Spanish (neutral Latin American, "tú").
-// Pick with useT() from pages/TrainingShared.jsx, which follows the signed-in person's language (me.language).
+// Pick with useT() from pages/TrainingShared.jsx, which follows the app's language (web/src/i18n: the switch at the top right).
 // Words Training writes into the data itself (generated quiz questions, allergen and section names,
 // notifications) live in core/training.js (TEXT, MAJOR_ALLERGENS).
 
@@ -133,7 +133,7 @@ const es = {
   overdueN: (n) => `${n} vencido${n === 1 ? '' : 's'}`,
   pagesToRead: (n) => `${n} página${n === 1 ? '' : 's'} del manual por leer`,
 
-  managerOnDuty: 'Gerente en turno', noManagerNow: 'Ahorita no hay gerente en el horario.',
+  managerOnDuty: 'Gerente en turno', noManagerNow: 'Ahora no hay ningún gerente en el horario.',
   onNow: 'En turno', until: (time) => `hasta las ${time}`, inAt: (time) => `Entra a las ${time} hoy`, todayOverride: 'Hoy',
   alsoOn: (names) => `También en turno: ${names}`, call: 'Llamar', text: 'Mensaje', callOutLine: 'Línea para avisos',
   noPhone: (name) => `No hay teléfono registrado para ${name}.`,
@@ -155,7 +155,7 @@ const es = {
   withoutAllergens: 'Sin estos alérgenos', onlyDietary: 'Solo', hide86: 'Ocultar lo que está agotado (86)', clearFilters: 'Quitar filtros',
   showingWithout: (list) => `Mostrando platillos sin ${list}. Siempre confírmalo con la cocina.`,
   noItemsYet: 'Todavía no hay platillos', noItemsMgr: 'Agrega tus platillos y bebidas con fotos, alérgenos y recetas.', noItemsStaff: 'Tus gerentes todavía no agregan el menú.',
-  nothingMatches: 'No hay resultados', eightySixed: 'Agotado (86)', is86: 'Agotado (86): ahorita no está en el menú.',
+  nothingMatches: 'No hay resultados', eightySixed: 'Agotado (86)', is86: 'Agotado (86): por ahora no está en el menú.',
   allergens: 'Alérgenos', noMajorAllergens: 'Ninguno de los 9 alérgenos principales', dietary: 'Dieta', whatsInIt: 'Qué lleva',
   groupName: { selling: 'Cómo venderlo', recipe: 'Receta', prep: 'Notas de preparación' },
   pairings: 'Va bien con', lockedGroups: 'Las recetas y notas de preparación son para la cocina y la barra.', fullScreen: 'Pantalla completa',
@@ -165,7 +165,7 @@ const es = {
   swipeHelp: 'Desliza o usa las flechas para avanzar. Toca la tarjeta para voltearla.',
   basics: 'Lo básico', name: 'Nombre', nameEs: 'Nombre en español (opcional)', price: 'Precio', description: 'Descripción',
   keyIngredients: 'Qué lleva', keyIngredientsHelp: 'Los ingredientes por los que preguntan los clientes, separados por comas. Todos los ven.',
-  otherAllergens: 'Otros alérgenos (separados por comas)', otherDietary: 'Otras etiquetas (separadas por comas)', mark86: 'Agotado (86): ahorita no está en el menú',
+  otherAllergens: 'Otros alérgenos (separados por comas)', otherDietary: 'Otras etiquetas (separadas por comas)', mark86: 'Agotado (86): por ahora no está en el menú',
   sellingNotes: 'Cómo describirlo', sellingPlaceholder: 'Qué decir, qué preguntar, qué sugerir', yield: 'Rinde', yieldPlaceholder: 'p. ej. 1 plato',
   ingredients: 'Ingredientes', amount: 'Cantidad', ingredient: 'Ingrediente', addIngredient: 'Agregar ingrediente', copyFromEnglish: 'Empezar con la lista en inglés',
   steps: 'Pasos', stepsHelp: 'Un paso por renglón.', prepNotes: 'Notas de preparación',

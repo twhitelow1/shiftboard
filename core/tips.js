@@ -9,20 +9,30 @@
 import { addDays, weekStart, range, prettyDate, todayStr, parseDate, MONTHS } from './time.js';
 import { hoursOf } from './forecast.js';
 import { sameArea, uniqueAreas } from './areas.js';
-import { ROLE_IDS, roleOf, roleLabel } from './roles.js';
+import { ROLE_IDS, roleOf, roleLabel, roleLabelPlural } from './roles.js';
+import { msg } from './messages.js';
 import { uid } from './store.js';
 
 // ---------- options ----------
+// Each option has its Spanish words in `es`; tipOption(o, lang) picks them.
 export const TIP_METHODS = [
-  { id: 'hours_points', label: 'Hours × points', help: 'Hours worked times the position’s points. More hours and higher-point positions get more.' },
-  { id: 'points_shift', label: 'Points per shift', help: 'Each shift worked earns its position’s points, however long it was.' },
-  { id: 'equal', label: 'Equal split', help: 'Everyone who worked gets the same amount.' },
+  { id: 'hours_points', label: 'Hours × points', help: 'Hours worked times the position’s points. More hours and higher-point positions get more.',
+    es: { label: 'Horas × puntos', help: 'Las horas trabajadas por los puntos del puesto. Más horas y puestos con más puntos reciben más.' } },
+  { id: 'points_shift', label: 'Points per shift', help: 'Each shift worked earns its position’s points, however long it was.',
+    es: { label: 'Puntos por turno', help: 'Cada turno trabajado gana los puntos de su puesto, sin importar cuánto duró.' } },
+  { id: 'equal', label: 'Equal split', help: 'Everyone who worked gets the same amount.',
+    es: { label: 'Partes iguales', help: 'Todos los que trabajaron reciben lo mismo.' } },
 ];
 export const TIP_PERIODS = [
-  { id: 'day', label: 'Per day', help: 'Each day’s tips are split among the people who worked that day.' },
-  { id: 'week', label: 'Per week', help: 'The week’s tips are added up and split among everyone who worked that week.' },
+  { id: 'day', label: 'Per day', help: 'Each day’s tips are split among the people who worked that day.',
+    es: { label: 'Por día', help: 'Las propinas de cada día se reparten entre quienes trabajaron ese día.' } },
+  { id: 'week', label: 'Per week', help: 'The week’s tips are added up and split among everyone who worked that week.',
+    es: { label: 'Por semana', help: 'Las propinas de la semana se suman y se reparten entre todos los que trabajaron esa semana.' } },
 ];
+/** An option's label and help in a language. */
+export const tipOption = (o, lang = 'en') => (lang === 'es' && o?.es ? { ...o, ...o.es } : o);
 export const TIP_SOURCES = { all: 'card and cash tips', card: 'card tips', cash: 'cash tips' };
+const TIP_SOURCES_ES = { all: 'las propinas con tarjeta y en efectivo', card: 'las propinas con tarjeta', cash: 'las propinas en efectivo' };
 /** Roles left out of a new pool: manager level and up (FLSA). Supervisors are a choice. */
 export const MANAGER_ROLES = ['super_admin', 'admin', 'manager'];
 /** Starting points for common positions, matched by name when a pool is created. */
@@ -73,8 +83,9 @@ export const fmtHours = (minutes) => trim(minutes / 60);
 /** Points with one or two decimals: 1.0, 0.5, 0.75, 41.2 */
 export const fmtPoints = (x) => { const s = trim(x); return s.includes('.') ? s : `${s}.0`; };
 export const fmtPct = (x) => `${trim(x, 1)}%`;
-export function periodLabel(start, end) {
-  if (start === end) return prettyDate(start);
+export function periodLabel(start, end, lang = 'en') {
+  if (start === end) return prettyDate(start, { lang });
+  if (lang === 'es') return `${prettyDate(start, { lang, dow: false })} – ${prettyDate(end, { lang, dow: false })}`; // 28 sep – 4 oct
   const a = parseDate(start), b = parseDate(end);
   const m1 = MONTHS[a.getUTCMonth()].slice(0, 3), m2 = MONTHS[b.getUTCMonth()].slice(0, 3);
   return m1 === m2 ? `${m1} ${a.getUTCDate()} – ${b.getUTCDate()}` : `${m1} ${a.getUTCDate()} – ${m2} ${b.getUTCDate()}`;
@@ -182,15 +193,25 @@ export function dayWork({ date, pools, shifts = [], timeEntries = [], settings }
 }
 
 // ---------- what goes in ----------
-export function contributionLabel(c, jobName = () => '') {
+export function contributionLabel(c, jobName = () => '', lang = 'en') {
+  const pct = trim(Number(c.percent) || 0);
+  if (lang === 'es') {
+    if (c.type === 'sales') {
+      if (c.label) return `Aporte de ${c.label}: ${pct}% de sus ventas`;
+      return c.jobCodeId ? `Aporte de ${jobName(c.jobCodeId)}: ${pct}% de sus ventas` : `Aporte: ${pct}% de las ventas`;
+    }
+    return `${pct}% de ${TIP_SOURCES_ES[c.source] || TIP_SOURCES_ES.all}`;
+  }
   if (c.type === 'sales') {
     const who = c.label || (c.jobCodeId ? `${jobName(c.jobCodeId)}s` : '');
-    return `${who ? `${who} tip out ` : 'Tip-out: '}${trim(Number(c.percent) || 0)}% of ${c.jobCodeId || c.label ? 'their ' : ''}sales`;
+    return `${who ? `${who} tip out ` : 'Tip-out: '}${pct}% of ${c.jobCodeId || c.label ? 'their ' : ''}sales`;
   }
-  return `${trim(Number(c.percent) || 0)}% of ${TIP_SOURCES[c.source] || TIP_SOURCES.all}`;
+  return `${pct}% of ${TIP_SOURCES[c.source] || TIP_SOURCES.all}`;
 }
 /** The name of the sales figure a manager types in for a tip-out ("Server sales"). */
-export const salesLabel = (c, jobName = () => '') => (c.jobCodeId ? `${jobName(c.jobCodeId)} sales` : c.label ? `${c.label}: sales` : 'Sales');
+export const salesLabel = (c, jobName = () => '', lang = 'en') => (lang === 'es'
+  ? (c.jobCodeId ? `Ventas de ${jobName(c.jobCodeId)}` : c.label ? `${c.label}: ventas` : 'Ventas')
+  : (c.jobCodeId ? `${jobName(c.jobCodeId)} sales` : c.label ? `${c.label}: sales` : 'Sales'));
 
 /** One day's pool: the tips (typed in, or from Toast) and each contribution, in cents. */
 export function dayTotal(pool, entry, toast = { card: 0, cash: 0 }) {
@@ -242,7 +263,8 @@ export function splitPeriod({ pool, rows, totalCents, adjustments = [], users = 
   let adjTotal = 0;
   for (const a of adjustments) {
     if (isOut(a.userId)) {
-      warnings.push({ code: 'excluded-adjustment', text: `${users[a.userId]?.name || 'Someone'} (${roleLabel(users[a.userId]?.role)}) can’t get money from this pool, so their adjustment is left out.` });
+      const params = { name: users[a.userId]?.name || '', role: users[a.userId]?.role || 'employee' };
+      warnings.push({ code: 'excluded-adjustment', params, text: tipWarningText({ code: 'excluded-adjustment', params }) });
       continue;
     }
     person(a.userId).adjustments.push({ cents: a.cents, note: a.note, date: a.date });
@@ -257,8 +279,9 @@ export function splitPeriod({ pool, rows, totalCents, adjustments = [], users = 
   const people = [...byUser.values()].map((p) => ({ ...p, units: unitsOf(p) }));
   const totalUnits = people.reduce((t, p) => t + p.units, 0);
   const toSplit = totalCents - adjTotal;
-  if (toSplit < 0) warnings.push({ code: 'over', block: true, text: `Adjustments (${fmtCents(adjTotal)}) are more than the pool (${fmtCents(totalCents)}).` });
-  if (toSplit > 0 && !totalUnits) warnings.push({ code: 'nobody', block: true, text: `${fmtCents(toSplit)} in tips but nobody in this pool worked.` });
+  const warn = (code, params) => warnings.push({ code, block: true, params, text: tipWarningText({ code, params }) });
+  if (toSplit < 0) warn('over', { adjustments: adjTotal, pool: totalCents });
+  if (toSplit > 0 && !totalUnits) warn('nobody', { amount: toSplit });
   const shares = splitCents(Math.max(0, toSplit), people.map((p) => ({ key: p.userId, units: p.units, name: p.name })));
   const out = people.map((p) => {
     const split = shares.get(p.userId) || 0;
@@ -332,13 +355,33 @@ export function buildWeek({ weekStart: ws, pools, shifts = [], timeEntries = [],
   };
 }
 
+/** A tip warning ({ code, params }) in words. Older saved reports only have `text` (English). */
+export function tipWarningText(w, lang = 'en') {
+  const p = w.params;
+  if (!p) return w.text || '';
+  const es = lang === 'es';
+  switch (w.code) {
+    case 'excluded-adjustment': return es
+      ? `${p.name || 'Alguien'} (${roleLabel(p.role, lang)}) no puede recibir dinero de este fondo, así que su ajuste no cuenta.`
+      : `${p.name || 'Someone'} (${roleLabel(p.role)}) can’t get money from this pool, so their adjustment is left out.`;
+    case 'over': return es
+      ? `Los ajustes (${fmtCents(p.adjustments)}) son más que el fondo (${fmtCents(p.pool)}).`
+      : `Adjustments (${fmtCents(p.adjustments)}) are more than the pool (${fmtCents(p.pool)}).`;
+    case 'nobody': return es
+      ? `Hay ${fmtCents(p.amount)} en propinas, pero nadie de este fondo trabajó.`
+      : `${fmtCents(p.amount)} in tips but nobody in this pool worked.`;
+    default: return w.text || '';
+  }
+}
+
 /** Problems that stop a week from being finalized. */
-export const blockingProblems = (rep) => rep.pools.flatMap((p) => p.periods.flatMap((per) =>
-  per.warnings.filter((w) => w.block).map((w) => `${p.pool.name}, ${per.label}: ${w.text}`)));
+export const blockingProblems = (rep, lang = 'en') => rep.pools.flatMap((p) => p.periods.flatMap((per) =>
+  per.warnings.filter((w) => w.block).map((w) => `${p.pool.name}, ${periodLabel(per.start, per.end, lang)}: ${tipWarningText(w, lang)}`)));
 
 // ---------- the formula in words ----------
 /** How one person's share was worked out, in plain words ("You worked 6.5 hrs × 1.0 points = …"). */
-export function explainShare(pool, period, p, { jobName = () => '', you = true } = {}) {
+export function explainShare(pool, period, p, { jobName = () => '', you = true, lang = 'en' } = {}) {
+  if (lang === 'es') return explainShareEs(pool, period, p, { jobName, you });
   const lines = [];
   const worked = p.jobs.filter((j) => j.minutes > 0 || j.shifts > 0);
   const named = worked.length > 1;
@@ -357,9 +400,29 @@ export function explainShare(pool, period, p, { jobName = () => '', you = true }
   if (period.adjustments && p.units > 0) lines.push(`Adjustments (${fmtCents(period.adjustments)}) come off the top of the ${fmtCents(period.total)} pool before the split.`);
   return lines;
 }
+function explainShareEs(pool, period, p, { jobName, you }) {
+  const lines = [];
+  const worked = p.jobs.filter((j) => j.minutes > 0 || j.shifts > 0);
+  const named = worked.length > 1;
+  const potWords = period.adjustments ? `${fmtCents(period.toSplit)} por repartir` : `un fondo de ${fmtCents(period.toSplit)}`;
+  if (p.units > 0) {
+    if (pool.method === 'equal') {
+      lines.push(`En partes iguales: ${potWords} ÷ ${period.workers} ${period.workers === 1 ? 'persona' : 'personas'} = ${fmtCents(p.split)}`);
+    } else {
+      const parts = worked.map((j) => (pool.method === 'points_shift'
+        ? `${j.shifts} ${j.shifts === 1 ? 'turno' : 'turnos'} × ${fmtPoints(j.points)} puntos`
+        : `${fmtHours(j.minutes)} h × ${fmtPoints(j.points)} puntos`) + (named ? ` (${jobName(j.jobCodeId)})` : ''));
+      lines.push(`${you ? 'Trabajaste' : `${p.name} trabajó`} ${parts.join(' + ')} = ${fmtPoints(p.points)} de ${fmtPoints(period.totalPoints)} puntos × ${potWords} = ${fmtCents(p.split)}`);
+    }
+  }
+  for (const a of p.adjustments) lines.push(`${a.cents < 0 ? '−' : '+'} ${fmtCents(Math.abs(a.cents))} de ajuste: ${a.note}`);
+  if (period.adjustments && p.units > 0) lines.push(`Los ajustes (${fmtCents(period.adjustments)}) se descuentan del fondo de ${fmtCents(period.total)} antes de repartir.`);
+  return lines;
+}
 
 /** The pool's rules as short plain sentences, for the settings screen and for staff. */
-export function describePool(pool, { jobName = () => '', otherPools = [] } = {}) {
+export function describePool(pool, { jobName = () => '', otherPools = [], lang = 'en' } = {}) {
+  if (lang === 'es') return describePoolEs(pool, { jobName, otherPools });
   const out = [];
   const what = pool.contributions.map((c) => contributionLabel(c, jobName));
   out.push(`${pool.period === 'week' ? 'Each week' : 'Each day'}, the pool is ${what.join(' + ')}.`);
@@ -377,6 +440,26 @@ export function describePool(pool, { jobName = () => '', otherPools = [] } = {})
   const left = [...ROLE_IDS].reverse().filter((r) => pool.excludeRoles.includes(r)).map((r) => `${roleLabel(r)}s`);
   if (left.length) out.push(`${left.length > 1 ? `${left.slice(0, -1).join(', ')} and ${left.at(-1)}` : left[0]} are left out.`);
   out.push('Adjustments a manager adds come off the top before the split. Amounts are rounded to the cent, and leftover cents go to whoever was closest to the next cent, so the shares add up to the pool exactly.');
+  return out;
+}
+function describePoolEs(pool, { jobName, otherPools }) {
+  const out = [];
+  const what = pool.contributions.map((c) => contributionLabel(c, jobName, 'es'));
+  out.push(`${pool.period === 'week' ? 'Cada semana' : 'Cada día'}, el fondo es ${what.join(' + ')}.`);
+  const claimedElsewhere = uniqueAreas(otherPools.filter((p) => p.id !== pool.id).flatMap((p) => p.areas));
+  out.push(pool.areas.length
+    ? `Cuenta los turnos trabajados en ${pool.areas.join(', ')}.`
+    : claimedElsewhere.length ? `Cuenta los turnos de todas las áreas, menos las que tienen su propio fondo (${claimedElsewhere.join(', ')}).` : 'Cuenta los turnos de todas las áreas.');
+  const jobs = pool.jobs.map((j) => (pool.method === 'equal' ? jobName(j.jobCodeId) : `${jobName(j.jobCodeId)} ${fmtPoints(j.points)}`));
+  out.push(`Quiénes lo comparten${pool.method === 'equal' ? '' : ' (puntos)'}: ${jobs.join(', ')}.`);
+  if (pool.method === 'hours_points') out.push('Cada persona recibe puntos: horas trabajadas × los puntos de su puesto. Su parte son sus puntos ÷ los puntos de todos.');
+  if (pool.method === 'points_shift') out.push('Cada turno trabajado gana los puntos de su puesto, sin importar cuánto duró. La parte de cada persona son sus puntos ÷ los puntos de todos.');
+  if (pool.method === 'equal') out.push('Todos los que trabajaron reciben lo mismo.');
+  if (pool.method !== 'equal') out.push('Las horas salen de las checadas de Toast cuando las hay; si no, del horario (los turnos “hasta el cierre” se estiman).');
+  if (!pool.events) out.push('Los turnos de eventos (BEO) no cuentan.');
+  const left = [...ROLE_IDS].reverse().filter((r) => pool.excludeRoles.includes(r)).map((r) => roleLabelPlural(r, 'es'));
+  if (left.length) out.push(`${left.length > 1 ? `${left.slice(0, -1).join(', ')} y ${left.at(-1)}` : left[0]} quedan fuera.`);
+  out.push('Los ajustes que agrega un gerente se descuentan antes de repartir. Las cantidades se redondean al centavo, y los centavos que sobran van a quien estaba más cerca del siguiente centavo, así que las partes suman exactamente el fondo.');
   return out;
 }
 
@@ -399,7 +482,7 @@ export function exampleSplit(pool, cents, { jobName = () => '' } = {}) {
 }
 
 /** Pools that would count the same shift twice (same position, overlapping areas). */
-export function poolOverlaps(pools, jobName = () => '') {
+export function poolOverlaps(pools, jobName = () => '', lang = 'en') {
   const out = [];
   for (let i = 0; i < pools.length; i++) {
     for (let k = i + 1; k < pools.length; k++) {
@@ -408,7 +491,11 @@ export function poolOverlaps(pools, jobName = () => '') {
         if (!b.jobs.some((x) => x.jobCodeId === j.jobCodeId)) continue;
         const both = !a.areas.length && !b.areas.length;
         const shared = a.areas.filter((x) => b.areas.some((y) => sameArea(x, y)));
-        if (both || shared.length) out.push(`${jobName(j.jobCodeId)} shifts${shared.length ? ` in ${shared.join(', ')}` : ''} count in both “${a.name}” and “${b.name}”.`);
+        if (both || shared.length) {
+          out.push(lang === 'es'
+            ? `Los turnos de ${jobName(j.jobCodeId)}${shared.length ? ` en ${shared.join(', ')}` : ''} cuentan en “${a.name}” y también en “${b.name}”.`
+            : `${jobName(j.jobCodeId)} shifts${shared.length ? ` in ${shared.join(', ')}` : ''} count in both “${a.name}” and “${b.name}”.`);
+        }
       }
     }
   }
@@ -425,7 +512,7 @@ const text = (v, max) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, ma
  * Privacy: only tips.week (managers) returns other people's amounts; myTips.week returns the
  * caller's own share, the pool total and the total points, never a coworker's numbers.
  */
-export function tipMethods({ store, now, settings, fail, needAuth, needMgr, needAdmin, notify }) {
+export function tipMethods({ store, now, settings, fail, needAuth, needMgr, needAdmin, notify, langOf = () => 'en' }) {
   const today = () => todayStr(now());
   const jobName = (id) => store.get('jobCodes', id)?.name || 'Position';
   const pools = () => store.list('tipPools').filter((p) => !p.archived).map(normalizePool)
@@ -545,7 +632,7 @@ export function tipMethods({ store, now, settings, fail, needAuth, needMgr, need
       const rep = liveWeek(weekOf(a.date), empty ? { id: doc.id, poolId: 'none', date: '' } : doc);
       const per = rep.pools.find((p) => p.pool.id === pool.id)?.periods.find((p) => p.start <= a.date && a.date <= p.end);
       const over = per?.warnings.find((w) => w.code === 'over');
-      if (over) fail(400, `${over.text} Lower the adjustments or check the tips.`);
+      if (over) fail(400, langOf(actor) === 'es' ? `${tipWarningText(over, 'es')} Baja los ajustes o revisa las propinas.` : `${over.text} Lower the adjustments or check the tips.`);
       const existing = store.get('tipEntries', doc.id);
       if (empty) { if (existing) store.remove('tipEntries', doc.id); return { ...doc, removed: true }; }
       return existing ? store.update('tipEntries', doc.id, doc) : store.insert('tipEntries', doc);
@@ -564,10 +651,15 @@ export function tipMethods({ store, now, settings, fail, needAuth, needMgr, need
       if (lockOn(ws) || lockOn(addDays(ws, 6))) fail(409, 'This week is already final');
       const rep = liveWeek(ws);
       if (!rep.total && !rep.people.length) fail(400, 'No tips entered for this week yet');
-      const problems = blockingProblems(rep);
-      if (problems.length) fail(400, `Fix this first: ${problems[0]}${problems.length > 1 ? ` (and ${problems.length - 1} more)` : ''}`);
+      const lang = langOf(actor);
+      const problems = blockingProblems(rep, lang);
+      if (problems.length) {
+        fail(400, lang === 'es'
+          ? `Primero corrige esto: ${problems[0]}${problems.length > 1 ? ` (y ${problems.length - 1} más)` : ''}`
+          : `Fix this first: ${problems[0]}${problems.length > 1 ? ` (and ${problems.length - 1} more)` : ''}`);
+      }
       const lock = store.insert('tipLocks', { id: `week:${ws}`, start: ws, end: addDays(ws, 6), lockedAt: now().toISOString(), lockedBy: actor.id, report: rep });
-      for (const p of rep.people) notify([p.userId], `Your tips for ${rep.label} are final: ${fmtCents(p.amount)}. Tap to see how it was worked out.`, `#/tips/${ws}`);
+      for (const p of rep.people) notify([p.userId], (l) => msg(l).tipsFinal(periodLabel(ws, rep.end, l), fmtCents(p.amount)), `#/tips/${ws}`);
       return { ...rep, locked: lockView(lock) };
     },
     'tips.unlock': (actor, { weekStart: w } = {}) => {
@@ -576,13 +668,14 @@ export function tipMethods({ store, now, settings, fail, needAuth, needMgr, need
       const lock = lockOn(ws);
       if (!lock) fail(404, 'This week isn’t final');
       store.remove('tipLocks', lock.id);
-      for (const p of lock.report.people) notify([p.userId], `Your tips for ${lock.report.label} were reopened and may change. You’ll be told again when they’re final.`, `#/tips/${lock.start}`);
+      for (const p of lock.report.people) notify([p.userId], (l) => msg(l).tipsReopened(periodLabel(lock.start, lock.end, l)), `#/tips/${lock.start}`);
       return { ok: true };
     },
 
     // Anyone: their own share only, with how it was worked out. Never a coworker's amount.
     'myTips.week': (actor, { weekStart: w } = {}) => {
       needAuth(actor);
+      const lang = langOf(actor);
       const ws = weekOf(w);
       const rep = week(ws);
       const items = [];
@@ -598,22 +691,22 @@ export function tipMethods({ store, now, settings, fail, needAuth, needMgr, need
           if (!me) continue;
           items.push({
             poolId: pool.id, poolName: pool.name, method: pool.method, period: pool.period,
-            start: per.start, end: per.end, label: per.label,
+            start: per.start, end: per.end, label: periodLabel(per.start, per.end, lang),
             poolTotal: per.total, toSplit: per.toSplit, totalPoints: per.totalPoints, workers: per.workers,
             me: {
               minutes: me.minutes, shifts: me.shifts, points: me.points, sharePct: me.sharePct, jobs: me.jobs,
               source: me.source, estimated: me.estimated, split: me.split, adjustment: me.adjustment,
               adjustments: me.adjustments, amount: me.amount,
             },
-            lines: explainShare(pool, per, me, { jobName }),
+            lines: explainShare(pool, per, me, { jobName, lang }),
           });
         }
       }
       const otherPools = rep.pools.map((p) => p.pool);
       return {
-        weekStart: rep.weekStart, end: rep.end, label: rep.label, final: !!rep.locked, finalAt: rep.locked?.at || null,
+        weekStart: rep.weekStart, end: rep.end, label: periodLabel(rep.weekStart, rep.end, lang), final: !!rep.locked, finalAt: rep.locked?.at || null,
         total: items.reduce((t, i) => t + i.me.amount, 0), items, waiting,
-        pools: otherPools.map((p) => ({ id: p.id, name: p.name, rules: describePool(p, { jobName, otherPools }) })),
+        pools: otherPools.map((p) => ({ id: p.id, name: p.name, rules: describePool(p, { jobName, otherPools, lang }) })),
       };
     },
   };

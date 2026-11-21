@@ -7,19 +7,21 @@ import { addDays, dow, toMin, fromMin, shiftSpan, daysBetween } from './time.js'
 export function forecastDay(date, salesByDate, settings, override) {
   const d = dow(date);
   if ((settings.closedDays || []).includes(d)) {
-    return { date, covers: 0, sales: 0, closed: true, basis: 'Closed', samples: 0 };
+    return { date, covers: 0, sales: 0, closed: true, basis: 'Closed', basisKey: 'closed', samples: 0 };
   }
   if (override && (override.covers != null || override.sales != null)) {
     const covers = Number(override.covers) || 0;
     let sales = override.sales;
     let basis = 'Manager override';
+    let basisKey = 'override';
     if (sales == null || sales === '') {
       // Covers-only projection (e.g. imported from the schedule): price it at the usual average check.
       const base = forecastDay(date, salesByDate, settings, null);
       sales = base.covers > 0 ? Math.round(covers * (base.sales / base.covers)) : 0;
       basis = 'Projected covers';
+      basisKey = 'projected';
     }
-    return { date, covers, sales: Number(sales) || 0, basis, override: true, samples: 0 };
+    return { date, covers, sales: Number(sales) || 0, basis, basisKey, override: true, samples: 0 };
   }
   const lookback = settings.forecastWeeks || 8;
   const samples = [];
@@ -28,7 +30,7 @@ export function forecastDay(date, salesByDate, settings, override) {
     if (r && (r.covers > 0 || r.sales > 0)) samples.push({ w, ...r });
   }
   if (!samples.length) {
-    return { date, covers: 0, sales: 0, basis: 'No history yet', samples: 0 };
+    return { date, covers: 0, sales: 0, basis: 'No history yet', basisKey: 'noHistory', samples: 0 };
   }
   let wsum = 0, cov = 0, sal = 0;
   for (const s of samples) {
@@ -59,6 +61,8 @@ export function forecastDay(date, salesByDate, settings, override) {
     covers: Math.round(cov * trend),
     sales: Math.round(sal * trend),
     basis: `Weighted avg of ${samples.length} prior ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]}s${pct ? `, trend ${pct > 0 ? '+' : ''}${pct}%` : ''}`,
+    // The same in any language: the apps word it from these (web/src/i18n, forecast.basis.*).
+    basisKey: pct ? 'weightedTrend' : 'weighted', basisParams: { count: samples.length, dow: d, trend: `${pct > 0 ? '+' : ''}${pct}%` },
     samples: samples.length,
     trend,
   };
