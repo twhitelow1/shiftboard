@@ -3,6 +3,7 @@ import { useApp, Icon, Avatar, shiftTime, JobDot, Empty } from '../ui.jsx';
 import { addDays, weekStart, range, dow, parseDate, fmtDate, MONTHS, DOW_SHORT, toMin, prettyDate, fmtTime } from '../../../core/time.js';
 import { effectiveShift } from '../../../core/forecast.js';
 import ShiftDialog from './ShiftDialog.jsx';
+import TradeHint, { canTrade } from './TradeHint.jsx';
 
 export default function CalendarPage() {
   const { call, version, today, settings, me, jobs, people, jobCodes, isMgr } = useApp();
@@ -53,6 +54,7 @@ export default function CalendarPage() {
         </div>
       </div>
 
+      <TradeHint shifts={data?.shifts} />
       <div className="month card" style={{ marginBottom: 16 }}>
         {heads.map((h) => <div key={h} className="mh">{h}</div>)}
         {days.map((d) => {
@@ -71,6 +73,27 @@ export default function CalendarPage() {
           );
         })}
       </div>
+
+      {(() => {
+        const mineToday = (data?.shifts || []).filter((s) => s.date === sel && s.userId === me.id).sort((a, b) => a.start.localeCompare(b.start));
+        if (!mineToday.length) return null;
+        return (
+          <div className="card section" style={{ marginBottom: 16 }}>
+            <div className="list">
+              {mineToday.map((s) => (
+                <div key={s.id} className="list-item click" onClick={() => setDialog(s)}>
+                  <JobDot job={jobs[s.jobCodeId]} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <b>Your shift · {prettyDate(s.date)} · {shiftTime(s)}</b>
+                    <div className="small muted">{jobs[s.jobCodeId]?.name}{s.area ? ` · ${s.area}` : ''}{s.tag ? ` · ${s.tag}` : ''}{!s.published ? ' · draft' : ''}{s.pending ? ' · request in progress' : ''}</div>
+                  </div>
+                  {canTrade(s, me, today) && <button className="btn sm primary" onClick={(e) => { e.stopPropagation(); setDialog(s); }}><Icon name="swap" />Trade or give away</button>}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       <DayTimeline date={sel} shifts={(data?.shifts || []).filter((s) => s.date === sel && (scope === 'all' || s.userId === me.id))} events={(data?.events || []).filter((e) => e.date === sel)} onOpen={(s) => setDialog(s)} />
       {dialog && <ShiftDialog shift={dialog} events={data?.events || []} warnings={data?.warnings?.[dialog.id]} onClose={(c) => { setDialog(null); if (c) load(); }} />}

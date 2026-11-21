@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
+import { applyBranding, logoUrl } from './theme.js';
 import { call, login, logout, IS_DEMO, demoPersonas, demoSwitch, demoCurrent, getConfig, forgotPassword, resetPassword } from './api.js';
 import { Ctx, Icon, Avatar, useToasts, Modal, setStartTimesOnly } from './ui.jsx';
 import { canManageSchedule, canChangeSettings, canManageEvents, canApprove, roleLabel } from '../../core/roles.js';
@@ -10,6 +11,7 @@ import MyShifts from './pages/MyShifts.jsx';
 import Swaps from './pages/Swaps.jsx';
 import Events from './pages/Events.jsx';
 import Forecast from './pages/Forecast.jsx';
+import Tips from './pages/Tips.jsx';
 import Team from './pages/Team.jsx';
 import TimeOff from './pages/TimeOff.jsx';
 import Settings from './pages/Settings.jsx';
@@ -35,19 +37,32 @@ const NAV = [
   { key: 'swaps', label: 'Swaps & Trades', short: 'Swaps', icon: 'swap', badge: 'swaps' },
   { key: 'events', label: 'Events & BEOs', short: 'Events', icon: 'glass' },
   { key: 'timeoff', label: 'Time Off', icon: 'sun', badge: 'timeoff' },
+  { key: 'tips', label: 'Tips', icon: 'dollar' },
   { key: 'forecast', label: 'Forecast & Labor', icon: 'chart', mgr: true },
   { key: 'venue', label: 'Venue & Floor Plans', short: 'Venue', icon: 'map', mgr: true },
   { key: 'team', label: 'Team & Job Codes', icon: 'users', mgr: true },
   { key: 'settings', label: 'Settings', icon: 'settings', admin: true },
 ];
 
+// The restaurant's name and logo for the sign-in screens (from /api/config, before anyone signs in).
+const SignInBrand = React.createContext(null);
+
+/** The restaurant's logo, or the first letter of its name in its color. */
+export function BrandMark({ name, logo, size = 32 }) {
+  if (logo) return <img className="brand-logo" src={logo} alt="" style={{ height: size, maxWidth: size * 4 }} />;
+  return <div className="brand-mark" style={{ width: size, height: size }}>{(String(name || 'S').trim()[0] || 'S').toUpperCase()}</div>;
+}
+const DEFAULT_NAME = 'Our Restaurant';
+
 function AuthCard({ children, onSubmit }) {
+  const brand = React.useContext(SignInBrand);
+  const named = brand?.name && brand.name !== DEFAULT_NAME;
   return (
     <div className="login">
       <form className="card card-pad col" style={{ gap: 14, padding: 26 }} onSubmit={onSubmit}>
         <div className="brand" style={{ color: 'var(--text)', padding: 0 }}>
-          <div className="brand-mark">S</div>
-          <div><div className="brand-name">ShiftBoard</div><div className="small muted">Restaurant scheduling</div></div>
+          <BrandMark name={named ? brand.name : 'S'} logo={brand?.logo} size={40} />
+          <div><div className="brand-name">{named ? brand.name : 'ShiftBoard'}</div><div className="small muted">{named ? 'Schedule · ShiftBoard' : 'Restaurant scheduling'}</div></div>
         </div>
         {children}
       </form>
@@ -147,6 +162,12 @@ function App() {
   const parts = useHashRoute();
   const [config, setConfig] = useState({ email: false, emailFrom: null });
   useEffect(() => { getConfig().then(setConfig); }, []);
+  // The restaurant's colors and logo: from its settings once signed in, from /api/config before.
+  useEffect(() => {
+    const st = boot?.settings;
+    if (st) applyBranding({ color: st.brandColor, nav: st.navColor, bg: st.bgColor, mode: boot.me?.appearance || st.appearance, logo: logoUrl(st, IS_DEMO) });
+    else if (config.brand) applyBranding(config.brand);
+  }, [boot, config]);
 
   const load = useCallback(async () => {
     try {
@@ -173,9 +194,9 @@ function App() {
 
   if (parts[0]?.startsWith('reset')) {
     const token = new URLSearchParams(location.hash.split('?')[1] || '').get('token') || '';
-    return <ResetPassword token={token} onDone={() => { location.hash = '#/'; setAuthed(true); refresh(); }} />;
+    return <SignInBrand.Provider value={config.brand}><ResetPassword token={token} onDone={() => { location.hash = '#/'; setAuthed(true); refresh(); }} /></SignInBrand.Provider>;
   }
-  if (authed === false) return <Login emailEnabled={config.email} onDone={() => { setAuthed(true); refresh(); }} />;
+  if (authed === false) return <SignInBrand.Provider value={config.brand}><Login emailEnabled={config.email} onDone={() => { setAuthed(true); refresh(); }} /></SignInBrand.Provider>;
   if (!ctx) return <div className="empty" style={{ paddingTop: 120 }}>Loading…</div>;
 
   const route = parts[0] || (ctx.isMgr ? 'schedule' : 'my');
@@ -185,7 +206,7 @@ function App() {
 
   const Page = {
     schedule: Schedule, calendar: CalendarPage, my: MyShifts, swaps: Swaps, events: Events,
-    forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue,
+    forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue, tips: Tips,
   }[route] || Schedule;
 
   const signOut = async () => { await logout(); setBoot(null); setAuthed(false); };
@@ -195,8 +216,10 @@ function App() {
       <div className="app">
         <aside className="sidebar">
           <div className="brand">
-            <div className="brand-mark">S</div>
-            <div style={{ minWidth: 0 }}><div className="brand-name">ShiftBoard</div><div className="brand-sub">{ctx.settings.restaurantName}</div></div>
+            <BrandMark name={ctx.settings.restaurantName} logo={logoUrl(ctx.settings, IS_DEMO)} />
+            {ctx.settings.restaurantName && ctx.settings.restaurantName !== DEFAULT_NAME
+              ? <div style={{ minWidth: 0 }}><div className="brand-name">{ctx.settings.restaurantName}</div><div className="brand-sub">ShiftBoard</div></div>
+              : <div style={{ minWidth: 0 }}><div className="brand-name">ShiftBoard</div><div className="brand-sub">{ctx.settings.restaurantName}</div></div>}
           </div>
           {nav.map((n) => (
             <button key={n.key} className={`nav-item ${route === n.key ? 'active' : ''}`} onClick={() => go(n.key)}>
@@ -208,7 +231,7 @@ function App() {
             <div className="row" style={{ padding: '4px 8px 10px' }}>
               <Avatar user={ctx.me} />
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ color: '#fff', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ctx.me.name}</div>
+                <div className="sidebar-user" style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ctx.me.name}</div>
                 <div className="tiny" style={{ color: '#94a3b8' }}>{roleLabel(ctx.me)}</div>
               </div>
             </div>
@@ -219,6 +242,7 @@ function App() {
         <div className="main">
           {IS_DEMO && <DemoBar onSwitch={refresh} />}
           <header className="topbar">
+            <span className="mobile-only topbar-logo"><BrandMark name={ctx.settings.restaurantName} logo={logoUrl(ctx.settings, IS_DEMO)} size={28} /></span>
             <h1 style={{ flex: 1 }}>{current.label}</h1>
             <button className="btn ghost icon" onClick={() => setNotifOpen(true)} aria-label="Notifications" style={{ position: 'relative' }}>
               <Icon name="bell" />
@@ -236,7 +260,7 @@ function App() {
             { key: ctx.isMgr ? 'schedule' : 'my', label: ctx.isMgr ? 'Schedule' : 'My Shifts', icon: ctx.isMgr ? 'grid' : 'user' },
             { key: ctx.isMgr ? 'my' : 'schedule', label: ctx.isMgr ? 'Mine' : 'Schedule', icon: ctx.isMgr ? 'user' : 'grid' },
             { key: 'swaps', label: 'Swaps', icon: 'swap', badge: badges.swaps },
-            { key: 'events', label: 'Events', icon: 'glass' },
+            ctx.isMgr ? { key: 'events', label: 'Events', icon: 'glass' } : { key: 'timeoff', label: 'Time Off', icon: 'sun' },
           ].map((n) => (
             <button key={n.key} className={route === n.key ? 'active' : ''} onClick={() => go(n.key)}>
               <Icon name={n.icon} />{n.label}

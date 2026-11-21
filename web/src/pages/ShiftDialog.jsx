@@ -3,11 +3,17 @@ import { useApp, Modal, Field, Icon, Avatar, Warnings, shiftTime, startTimesOnly
 import { prettyDate, addDays, fmtTime } from '../../../core/time.js';
 import { scheduleAreas, findArea } from '../../../core/areas.js';
 
-/** Opens the right dialog for the viewer: editor for managers, details + trade actions for staff. */
-export default function ShiftDialog({ shift, onClose, warnings, events = [] }) {
-  const { isMgr } = useApp();
-  if (isMgr) return <ShiftEditor shift={shift} onClose={onClose} warnings={warnings} events={events} />;
-  return <ShiftDetail shift={shift} onClose={onClose} events={events} />;
+/**
+ * Opens the right dialog for the viewer: managers edit other people's shifts; your own shift (any
+ * role) opens its details with trade and give-away options, and managers can switch to editing it.
+ * startIn opens straight into 'swap' or 'drop'.
+ */
+export default function ShiftDialog({ shift, onClose, warnings, events = [], startIn }) {
+  const { isMgr, me } = useApp();
+  const mine = !!shift.id && shift.userId === me.id;
+  const [editing, setEditing] = useState(isMgr && !mine);
+  if (editing) return <ShiftEditor shift={shift} onClose={onClose} warnings={warnings} events={events} />;
+  return <ShiftDetail shift={shift} onClose={onClose} events={events} startIn={startIn} onEdit={isMgr ? () => setEditing(true) : null} />;
 }
 
 function ShiftEditor({ shift, onClose, warnings, events }) {
@@ -114,10 +120,12 @@ function ShiftEditor({ shift, onClose, warnings, events }) {
   );
 }
 
-function ShiftDetail({ shift, onClose, events }) {
+function ShiftDetail({ shift, onClose, events, startIn, onEdit }) {
   const { me, jobs, people, call, today, settings } = useApp();
   const [run, busy] = useAction();
-  const [mode, setMode] = useState(null); // 'drop' | 'swap'
+  const [mode, setMode] = useState(startIn && shift.published ? startIn : null); // 'drop' | 'swap'
+  const [sent, setSent] = useState(null); // what was just requested, for the "what happens next" screen
+  const [filter, setFilter] = useState('');
   const [note, setNote] = useState('');
   const [candidates, setCandidates] = useState(null);
   const [target, setTarget] = useState(null);
@@ -131,7 +139,7 @@ function ShiftDetail({ shift, onClose, events }) {
 
   useEffect(() => {
     call('shifts.list', { start: shift.date, end: shift.date }).then((r) => {
-      setCoworkers(r.shifts.filter((s) => s.id !== shift.id && s.userId && (s.jobCodeId === shift.jobCodeId || (shift.eventId && s.eventId === shift.eventId))));
+      setCoworkers(r.shifts.filter((s) => s.id !== shift.id && s.userId && s.userId !== shift.userId && (s.jobCodeId === shift.jobCodeId || (shift.eventId && s.eventId === shift.eventId))));
     });
   }, [shift.id]);
 
@@ -144,11 +152,31 @@ function ShiftDetail({ shift, onClose, events }) {
     });
   }, [mode]);
 
+  const approval = settings.requireSwapApproval !== false;
   const submit = async (type) => {
-    const r = await run(() => call('swaps.create', { shiftId: shift.id, type, targetShiftId: target?.id, note }),
-      type === 'drop' ? 'Shift posted — qualified coworkers were notified' : type === 'swap' ? 'Trade request sent' : 'Pickup requested — waiting on a manager');
-    if (r) onClose(true);
+    const r = await run(() => call('swaps.create', { shiftId: shift.id, type, targetShiftId: target?.id, note }));
+    if (r) setSent({ type, target });
   };
+  const shown = (candidates || []).filter((c) => !filter || (people[c.userId]?.name || '').toLowerCase().includes(filter.toLowerCase()));
+  const byDay = shown.reduce((m, c) => ((m[c.date] ||= []).push(c), m), {});
+
+  if (sent) {
+    const who = sent.target ? people[sent.target.userId]?.name : '';
+    const steps = sent.type === 'swap'
+      ? [`${who} gets your request and accepts (or declines) it`, approval && 'A manager approves it', 'The schedule updates and you both get a notification']
+      : sent.type === 'drop'
+        ? [`Everyone trained as ${job?.name} was notified`, 'Someone picks it up', approval && 'A manager approves it', 'The schedule updates and you get a notification']
+        : [approval ? 'A manager approves your pickup' : 'It’s yours', 'The schedule updates and you get a notification'];
+    return (
+      <Modal title={sent.type === 'swap' ? 'Trade request sent' : sent.type === 'drop' ? 'Your shift is up for grabs' : 'Pickup requested'} onClose={() => onClose(true)}
+        footer={<><a className="btn" href="#/swaps" onClick={() => onClose(true)}>See my requests</a><span className="spacer" /><button className="btn primary" onClick={() => onClose(true)}>Done</button></>}>
+        <div className="alert ok"><Icon name="check" size={16} /><span>{sent.type === 'pickup' ? 'Requested.' : `You’re still on ${prettyDate(shift.date)} until it’s ${approval ? 'approved' : 'taken'}.`}</span></div>
+        <div className="small" style={{ fontWeight: 700 }}>What happens next</div>
+        <ol className="trade-steps">{steps.filter(Boolean).map((t) => <li key={t}>{t}</li>)}</ol>
+        <div className="help">Track it, or cancel it, in Swaps & Trades → My requests.</div>
+      </Modal>
+    );
+  }
 
   return (
     <Modal title={`${job?.name || 'Shift'}${shift.tag ? ' · ' + shift.tag : ''}`} sub={`${prettyDate(shift.date)} · ${shiftTime(shift)}${!shift.end && !startTimesOnly() ? ' (until close)' : ''}${shift.area ? ` · ${shift.area}` : ''}`} onClose={() => onClose(false)}
@@ -156,8 +184,8 @@ function ShiftDetail({ shift, onClose, events }) {
         <button className="btn" onClick={() => { setMode(null); setTarget(null); }}>Back</button>
         <span className="spacer" />
         {mode === 'drop' && <button className="btn primary" disabled={busy} onClick={() => submit('drop')}><Icon name="send" />Post for pickup</button>}
-        {mode === 'swap' && <button className="btn primary" disabled={busy || !target} onClick={() => submit('swap')}><Icon name="swap" />Request trade</button>}
-      </> : null}>
+        {mode === 'swap' && <button className="btn primary" disabled={busy || !target} onClick={() => submit('swap')}><Icon name="swap" />{target ? `Send trade to ${people[target.userId]?.name?.split(' ')[0] || 'them'}` : 'Pick a shift first'}</button>}
+      </> : onEdit ? <><button className="btn" onClick={onEdit}><Icon name="edit" />Edit shift</button><span className="spacer" /><button className="btn" onClick={() => onClose(false)}>Close</button></> : null}>
       {!mode && <>
         <div className="row">
           <Avatar user={people[shift.userId]} size="lg" />
@@ -182,10 +210,23 @@ function ShiftDetail({ shift, onClose, events }) {
             <div className="row wrap">{coworkers.map((c) => <span key={c.id} className="badge"><JobDot job={jobs[c.jobCodeId]} />{people[c.userId]?.name} · {fmtTime(c.start)}</span>)}</div>
           </div>
         )}
-        {future && mine && !shift.pending && (
-          <div className="grid2">
-            <button className="btn block" onClick={() => setMode('drop')}><Icon name="hand" />Give away</button>
-            <button className="btn block primary" onClick={() => setMode('swap')}><Icon name="swap" />Trade shifts</button>
+        {future && mine && !shift.pending && !shift.published && (
+          <div className="alert info"><Icon name="clock" size={16} />This shift is still a draft. Trading and giving it away open once the schedule is published.</div>
+        )}
+        {future && mine && !shift.pending && shift.published && (
+          <div className="col" style={{ gap: 8 }}>
+            <div style={{ fontWeight: 700 }}>Can’t make it?</div>
+            <div className="trade-choices">
+              <button type="button" className="trade-choice" onClick={() => setMode('swap')}>
+                <Icon name="swap" size={22} /><b>Trade with a coworker</b>
+                <span>Swap it for someone else’s shift. They accept{approval ? ', then a manager approves' : ''}.</span>
+              </button>
+              <button type="button" className="trade-choice" onClick={() => setMode('drop')}>
+                <Icon name="hand" size={22} /><b>Give it away</b>
+                <span>Anyone trained as {job?.name} can pick it up{approval ? ', then a manager approves' : ''}.</span>
+              </button>
+            </div>
+            <div className="help">You keep the shift until the trade or giveaway goes through.{settings.minSwapNoticeHours ? ` Trades need ${settings.minSwapNoticeHours} hours’ notice; closer than that, call your manager.` : ''}</div>
           </div>
         )}
         {future && isOpen && qualified && <button className="btn primary block" disabled={busy} onClick={() => submit('pickup')}><Icon name="plus" />Request to pick up</button>}
@@ -193,27 +234,41 @@ function ShiftDetail({ shift, onClose, events }) {
       </>}
 
       {mode === 'drop' && <>
-        <div className="alert info"><Icon name="hand" size={16} />Everyone trained as {job?.name} gets notified. You stay responsible for the shift until someone picks it up{settings.requireSwapApproval ? ' and a manager approves' : ''}.</div>
+        <div className="alert info"><Icon name="hand" size={16} />Everyone trained as {job?.name} gets notified. You stay responsible for the shift until someone picks it up{approval ? ' and a manager approves' : ''}.</div>
         <Field label="Note to coworkers (optional)"><textarea className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Family event, will owe you one!" /></Field>
       </>}
 
       {mode === 'swap' && <>
-        <div className="small muted">Pick a coworker's shift to trade for your {job?.name} shift on {prettyDate(shift.date)}. Only people trained for both jobs are shown.</div>
+        <div className="small"><b>Which shift would you take instead?</b> You give {prettyDate(shift.date)} · {shiftTime(shift)} and take the shift you pick. Showing posted shifts in the next 3 weeks from people who can work your {job?.name} shift and that you’re trained for.</div>
         {!candidates && <div className="empty">Loading…</div>}
-        {candidates?.length === 0 && <div className="empty">No tradeable shifts in the next 3 weeks.</div>}
-        <div className="list card" style={{ boxShadow: 'none', maxHeight: 320, overflowY: 'auto' }}>
-          {candidates?.map((s) => (
-            <label key={s.id} className="list-item click" style={{ background: target?.id === s.id ? 'var(--brand-soft)' : undefined }}>
-              <input type="radio" name="t" checked={target?.id === s.id} onChange={() => setTarget(s)} style={{ accentColor: 'var(--brand)' }} />
-              <Avatar user={people[s.userId]} size="sm" />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 600 }}>{people[s.userId]?.name}</div>
-                <div className="small muted">{prettyDate(s.date)} · {shiftTime(s)} · {jobs[s.jobCodeId]?.name}{s.area ? ' · ' + s.area : ''}{s.tag ? ' · ' + s.tag : ''}</div>
-              </div>
-            </label>
-          ))}
-        </div>
-        <Field label="Note (optional)"><input className="input" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+        {candidates?.length === 0 && (
+          <div className="alert warn col" style={{ alignItems: 'stretch', gap: 8 }}>
+            <span>No one has a shift you could trade for in the next 3 weeks.</span>
+            <div><button type="button" className="btn sm primary" onClick={() => { setMode('drop'); setTarget(null); }}><Icon name="hand" />Give it away instead</button></div>
+          </div>
+        )}
+        {(candidates?.length || 0) > 6 && <input className="input sm" placeholder="Find a coworker…" value={filter} onChange={(e) => setFilter(e.target.value)} />}
+        {candidates?.length > 0 && (
+          <div className="list card" style={{ boxShadow: 'none', maxHeight: 320, overflowY: 'auto' }}>
+            {Object.entries(byDay).map(([day, list]) => (
+              <React.Fragment key={day}>
+                <div className="trade-day">{prettyDate(day)}</div>
+                {list.map((s) => (
+                  <label key={s.id} className="list-item click" style={{ background: target?.id === s.id ? 'var(--brand-soft)' : undefined }}>
+                    <input type="radio" name="t" checked={target?.id === s.id} onChange={() => setTarget(s)} style={{ accentColor: 'var(--brand)' }} />
+                    <Avatar user={people[s.userId]} size="sm" />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600 }}>{people[s.userId]?.name}</div>
+                      <div className="small muted">{shiftTime(s)} · {jobs[s.jobCodeId]?.name}{s.area ? ' · ' + s.area : ''}{s.tag ? ' · ' + s.tag : ''}</div>
+                    </div>
+                  </label>
+                ))}
+              </React.Fragment>
+            ))}
+          </div>
+        )}
+        {target && <div className="alert info"><Icon name="swap" size={16} /><span>You’d work <b>{prettyDate(target.date)} · {shiftTime(target)}</b>; {people[target.userId]?.name} would work your <b>{prettyDate(shift.date)} · {shiftTime(shift)}</b>.</span></div>}
+        <Field label="Note (optional)"><input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Have a wedding that day" /></Field>
       </>}
     </Modal>
   );

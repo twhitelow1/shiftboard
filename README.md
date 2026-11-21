@@ -19,7 +19,9 @@ Built by DubLow Digital.
 | **Events & BEOs** | A full Banquet Event Order: guests, room, service style, banquet captain, menu, dietary notes, beverage package, **special drinks** with recipes, timeline, setup, and **staffing needs** (how many servers, runners, bartenders, BCs). The app suggests staffing from guest count using standard banquet ratios, turns staffing lines into open shifts staff can claim, tracks fill status (e.g. 13/14), and includes a team comment thread. Staff on an event are notified whenever the BEO changes. |
 | **Import your schedule** | Upload the PDF of your weekly schedule, or paste it straight from Excel. Banners (RESTAURANT, RABBIT HOLE…) become areas and section labels (Servers, Bar…) become positions; a section with no label gets its position from the same people's other sections. Names, the dates, and cells like `4PM`, `3:30PM BC`, `1-9PM*`, and `REQUEST OFF` are read automatically. Re-importing a week updates the shifts already there instead of doubling them, and **Merge** (on a job code) folds duplicate job codes together. Event notes with a guest count (`CHANG/SMITH WEDDING RECEPTION FULL BUYOUT 160PPL`) become events, and projected covers feed the forecast. People and job codes that don't exist yet can be created during the import, so a new restaurant can be set up from one PDF. CSV works too. |
 | **Calendar sync** | Each employee gets a private iCal link for Google or Apple Calendar. |
+| **Tip pooling** | Settings → Tip pool sets up one or more pools: an area (e.g. a separate Rabbit Hole pool), per day or per week, the positions that share it with their points (Server 1.0, Busser 0.5…), and how it's split: hours × points (default), points per shift, or equal. Pools can take all tips, card tips only, or a tip-out like 3% of server sales, and leave out managers (FLSA) by default. A live example shows the formula in words. Managers enter each day's card and cash tips (or use Toast's), add adjustments with a note, export CSV and finalize the week, which locks it and tells each person their share; only an admin can unlock it. Hours come from Toast punches when they're there, otherwise the schedule. Staff see only their own share and how it was worked out. Money is whole cents and the shares always add up to the pool. |
 | **Notifications** | In-app notifications for schedule posted, shift changes, swap requests and approvals, open shifts, BEO updates, and comments. |
+| **Branding & theme** | Settings → Branding & theme: upload the restaurant's logo (resized in the browser; PNG, JPG, SVG or WebP), pick a ready-made theme (Berry, Ocean, Forest, Sunset, Rose, Gold, Mono, Bright…) or set the brand, sidebar and background colors yourself, with a live preview and a "use logo color" shortcut, and choose light, dark or auto mode for everyone (each person can pick their own in My Shifts). The logo and colors show in the app, on phones, on the sign-in page, in the browser tab and at the top of emails. |
 | **People & sign-in** | Team & Job Codes shows everyone's role and sign-in status (Active, Invited, Not invited, No email). Send an invite link to one person or to everyone who hasn't signed in, email a password reset link, or set a temporary password for someone without email. |
 | **Venue & floor plans** | Locations (for multi-location groups; a one-room place needs no setup), levels, and rooms marked as dining, bar or event space with capacity. Draw each room's floor plan: round, square and long tables with seats, booths, bars with stools, stages, dance floors, DJ booth, host stand, walls, doors and labels. An event's BEO shows its room's floor plan. |
 
@@ -79,6 +81,35 @@ Setup:
 
 Emails are sent after the change is saved, so a failed request never emails anyone. Batches go through Resend's batch API with idempotency keys.
 
+### Phone notifications and text messages
+
+Both are optional and work like email: each new in-app notification is also sent as a phone notification and/or a text, after the change is saved. A failed or slow send never fails or slows anyone's request; it's logged and skipped. Each person turns them on for themselves in **My Shifts**. Code: `server/channels.js` (sending after the commit), `server/push.js`, `server/sms.js`, `core/notify-prefs.js` (the rules and RPCs), `web/public/sw.js` (the service worker).
+
+**Phone notifications (Web Push)** work on Android (Chrome) and on iPhone (iOS 16.4+) once the app is added to the Home Screen (Share → Add to Home Screen, then open it from there). My Shifts explains this on an iPhone.
+1. Run `npm run vapid-keys` (or `node scripts/vapid-keys.js`) once. It prints a key pair.
+2. In Vercel, add `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` (mark it **Sensitive**) and `VAPID_SUBJECT` (`mailto:` one of your addresses, or your site's `https://` URL). Redeploy.
+3. Keep the same keys afterwards: new keys mean everyone has to turn notifications on again.
+
+Phones the push service reports as gone are removed automatically. Signing out stops notifications on that phone.
+
+**Text messages (Twilio)** are off for everyone until each person turns them on with their own mobile number (managers can't do it for them). Admins have a restaurant-wide switch and a **Send me a test text** button in Settings.
+1. Create a Twilio account and buy a phone number (or a toll-free number).
+2. **Register for A2P 10DLC** (Twilio Console → Messaging → Regulatory Compliance): a brand, then a campaign for staff notifications, and add the number to the campaign's Messaging Service. US carriers block or filter business texts from unregistered 10-digit numbers. A toll-free number needs toll-free verification instead. Approval can take days to a few weeks. Describe opt-in as "employees turn on texts in the app's My Shifts page with their own mobile number".
+3. In Vercel, add `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` (**Sensitive**), and `TWILIO_MESSAGING_SERVICE_SID` (recommended) or `TWILIO_FROM_NUMBER` (e.g. `+17205550100`). Redeploy, then use **Settings → Texts & phone notifications → Send me a test text**; Twilio's error, if any, is shown there.
+4. For STOP/START replies, set the number's (or Messaging Service's) incoming message webhook to `POST https://<your app>/api/twilio/inbound`. It checks Twilio's signature with the auth token. STOP turns that person's texts off in the app and START turns them back on; Twilio itself sends the replies and won't deliver to anyone who replied STOP. If the app sits behind a different public URL than `APP_URL`, set `TWILIO_WEBHOOK_URL` to the exact URL configured in Twilio.
+
+Numbers are stored in E.164; numbers typed without a country code are taken as US/Canada (+1). Texts are kept short (one 160-character segment when possible) and end with the app link (`APP_URL`).
+
+### Toast POS (optional)
+
+Pulls each day's net sales and covers from Toast into the sales history the forecast uses, and Toast clock-ins (time entries) for **Forecast & Labor → Labor review**: scheduled vs. worked hours and cost by day, person and position, labor % of actual sales, overtime, and who worked without a shift or missed one.
+
+1. In Toast Web, someone with the Manage Integrations permission creates **Standard API** credentials for the location (read-only; needs Restaurant Management Suite Essentials or higher) with the scopes `orders:read`, `labor:read`, `labor.employees:read` and `restaurants:read`.
+2. In Vercel, add `TOAST_CLIENT_ID`, `TOAST_CLIENT_SECRET` (Sensitive), `TOAST_RESTAURANT_GUID`, and `TOAST_API_HOST` only if Toast gives a host other than `https://ws-api.toasttab.com`. Add `CRON_SECRET` (a long random string) for the daily sync. Redeploy.
+3. **Settings → Integrations → Toast**: Sync now (the last 14 days by default), then check how Toast's employees and jobs were matched to people (by email, then name) and positions, and fix the rest.
+
+A Vercel Cron (`vercel.json`) calls `/api/cron/toast` every morning and syncs the last 3 days. Syncs run a day at a time within the 30-second limit and can be repeated safely. Days typed in by hand under Sales history are kept unless you choose to replace them. Credentials live only in env vars; the code is in `server/toast*.js`, `core/toast.js`, `core/labor.js` and `core/labor-api.js`.
+
 ### Moving data from the old SQLite version
 
 If ShiftBoard has been running on Render or Docker with SQLite, copy its `shiftboard.db` file locally, then:
@@ -124,6 +155,7 @@ core/       Business logic shared by server + demo (pure JS, no I/O)
   service.js   every API method, with its permission checks
   forecast.js  covers/sales forecast, labor math, "until close" estimates
   beo.js       banquet staffing ratios
+  tips.js      tip pools: the split (whole cents, leftover cents by rule), Toast or scheduled hours, week report, locking
   importer.js  schedule parser (pasted spreadsheet, CSV, or a PDF grid), area/position reading, name matching, events from notes
   areas.js     schedule areas (where a shift is worked), kept apart from positions (job codes)
   pdfgrid.js   rebuilds the schedule grid from a PDF's positioned text (read in the browser with pdf.js)
@@ -144,8 +176,6 @@ The API is `POST /api/rpc/<method>` with a JSON body. Every method enforces its 
 
 **How data is stored.** Each record (shift, user, event…) is a JSON document in one Postgres table, `shiftboard.docs`, stamped with an ever-increasing sequence number. Each running instance keeps a cache and, before every request, pulls only the rows that changed since its last look (usually none: one indexed query). Writes run in a transaction that holds a single lock: the instance catches up, re-runs the operation on the latest data, and saves every change in one statement. That keeps check-then-act operations correct when Vercel runs several instances at once, for example two people grabbing the same open shift. The business logic stays synchronous and unchanged, and a failed request never leaves partial writes.
 ## Roadmap ideas
-- SMS/email notifications (Twilio / SendGrid) alongside the in-app ones
 - POS integration (Toast / Square) to pull daily sales automatically
 - Time clock and tip pooling
 - Multi-location
-- Push notifications via PWA

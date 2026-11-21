@@ -127,7 +127,7 @@ function EventDetail({ id }) {
             {e.needed > 0 && <span className={`badge ${e.filled >= e.needed ? 'ok' : 'warn'}`}>{e.filled}/{e.needed} filled</span>}
           </div>
           {!e.staffing.length ? <div className="muted small">No staffing requirements listed.</div> : (
-            <table className="table">
+            <div className="table-wrap"><table className="table">
               <thead><tr><th>Position</th><th>Need</th><th>Call time</th><th>Filled</th></tr></thead>
               <tbody>
                 {e.staffing.map((l) => (
@@ -139,7 +139,7 @@ function EventDetail({ id }) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
           {e.shifts.length > 0 && (
             <div className="row wrap" style={{ marginTop: 10, gap: 6 }}>

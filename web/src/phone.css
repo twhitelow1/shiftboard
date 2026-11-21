@@ -1,0 +1,9 @@
+/* Phone notifications and text messages (web/src/pages/PhoneCards.jsx) */
+.phone-card h3 { margin-bottom: 8px; }
+.phone-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.phone-steps .share-glyph { vertical-align: -2px; margin: 0 2px; color: var(--brand); }
+.phone-row .input { flex: 1 1 180px; min-width: 0; max-width: 260px; }
+@media (max-width: 640px) {
+  .phone-row .input { max-width: none; }
+  .phone-row .btn { flex: 1 1 auto; }
+}

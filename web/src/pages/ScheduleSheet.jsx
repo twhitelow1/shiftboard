@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp, Modal, Field, Icon, useAction, startTimesOnly } from '../ui.jsx';
+import { canTrade } from './TradeHint.jsx';
 import { DOW_LONG, dow, parseDate, prettyDate } from '../../../core/time.js';
 import { bannerColor, textOn } from '../../../core/areas.js';
 
@@ -27,7 +28,7 @@ const plural = (n) => (/man$/i.test(n) ? n.replace(/man$/i, 'men') : /(s|x|ch|sh
 const usDate = (d) => { const x = parseDate(d); return `${x.getUTCMonth() + 1}/${x.getUTCDate()}/${x.getUTCFullYear()}`; };
 
 export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onOpen, onSaved, className = '' }) {
-  const { isMgr, me, settings, people } = useApp();
+  const { isMgr, me, settings, people, today } = useApp();
   const [editNote, setEditNote] = useState(null); // { kind, date, text }
 
   // Consecutive sections under the same banner form one block, like the sheet.
@@ -53,7 +54,7 @@ export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onO
           {shifts.map((s, i) => (
             <React.Fragment key={s.id}>
               {i > 0 && ' / '}
-              <span className={`sh-shift ${s.published ? '' : 'draft'} ${s.userId === me.id ? 'mine' : ''}`} title={[!s.published && 'Draft (not posted yet)', ...(data.warnings?.[s.id] || []), s.notes].filter(Boolean).join('\n')}
+              <span className={`sh-shift ${s.published ? '' : 'draft'} ${s.userId === me.id ? 'mine' : ''}`} title={[!s.published && 'Draft (not posted yet)', canTrade(s, me, today) && 'Your shift: tap to trade or give it away', ...(data.warnings?.[s.id] || []), s.notes].filter(Boolean).join('\n')}
                 onClick={(e) => { e.stopPropagation(); onOpen(s); }}>
                 {sheetTime(s)}{s.tag ? ` ${s.tag}` : ''}{data.warnings?.[s.id] && <sup className="sh-warn">!</sup>}{s.pending && <sup>⇄</sup>}
               </span>

@@ -47,3 +47,15 @@ test('templates escape user text and include the link', () => {
   assert.match(inv.subject, /Chasing Rabbits/);
   assert.ok(inv.text.includes('https://app.test/#/reset?token=abc'));
 });
+
+test('emails carry the restaurant brand color and logo when set', () => {
+  const plain = notificationEmail({ user: { name: 'Ana', email: 'ana@x.co' }, note: { text: 'Hi', link: '#/my' }, appUrl: 'https://a.app', restaurant: 'Rabbits' });
+  assert.match(plain.html, /background:#0f172a/);
+  assert.doesNotMatch(plain.html, /<img/);
+  const branded = notificationEmail({ user: { name: 'Ana', email: 'ana@x.co' }, note: { text: 'Hi', link: '#/my' }, appUrl: 'https://a.app', restaurant: 'Rabbits',
+    brand: { color: '#aa3300', logoUrl: 'https://a.app/api/branding/logo?v=1' } });
+  assert.match(branded.html, /background:#aa3300/);
+  assert.match(branded.html, /<img src="https:\/\/a\.app\/api\/branding\/logo\?v=1"/);
+  const unsafe = notificationEmail({ user: { name: 'Ana', email: 'ana@x.co' }, note: { text: 'Hi' }, appUrl: 'https://a.app', restaurant: 'R', brand: { color: 'red;x', logoUrl: 'javascript:alert(1)' } });
+  assert.doesNotMatch(unsafe.html, /javascript:|red;x/);
+});

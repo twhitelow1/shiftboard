@@ -4,9 +4,12 @@ import { uid } from './store.js';
 import { addDays, dow, weekStart, range, overlaps, shiftSpan, todayStr, prettyDate, fmtTime, toMin, daysBetween } from './time.js';
 import { forecastDay, effectiveShift, hoursOf, activeAt, recommend } from './forecast.js';
 import { suggestStaffing } from './beo.js';
+import { laborMethods } from './labor-api.js';
 import { cleanArea, uniqueAreas, findArea, scheduleAreas } from './areas.js';
+import { tipMethods } from './tips.js';
 import { ROLE_IDS, roleOf, roleLabel, canManageSchedule, canChangeSettings, canManageEvents, canSeeContacts, canApprove,
   offSchedule, assignableRoles, canManageUser } from './roles.js';
+import { channelApi } from './notify-prefs.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -32,6 +35,11 @@ export const DEFAULT_SETTINGS = {
   requirePickupApproval: true,
   supervisorsCanApprove: true,
   startTimesOnly: false, // show only the in time (4PM), never an end time or CL
+  brandColor: '', // the restaurant's color for buttons, links and highlights ('' = ShiftBoard's)
+  navColor: '', // sidebar color ('' = default)
+  bgColor: '', // page background in light mode ('' = default)
+  appearance: 'auto', // the company's default mode: auto (follows each phone/computer), light or dark
+  logoVersion: 0, // set when a logo is uploaded; the logo itself is the 'assets/logo' document
   emailNotifications: true,
   minSwapNoticeHours: 12,
   tags: ['LIB', 'RH', 'FR', 'BC', 'MOON', 'PATIO', 'PASSED', 'BACK HOST', 'CLOSE', 'OPEN'],
@@ -328,13 +336,37 @@ export function createService(store, opts = {}) {
     'settings.update': (actor, patch) => {
       needAdmin(actor);
       const allowed = ['restaurantName', 'weekStartDow', 'closedDays', 'hours', 'openEndHours', 'overtimeHours', 'requireSwapApproval',
-        'requirePickupApproval', 'supervisorsCanApprove', 'startTimesOnly', 'emailNotifications', 'minSwapNoticeHours', 'tags', 'rooms', 'areas', 'areaColors', 'departments', 'dayparts', 'forecastWeeks', 'targetLaborPct', 'laborRules'];
+        'requirePickupApproval', 'supervisorsCanApprove', 'startTimesOnly', 'emailNotifications', 'minSwapNoticeHours', 'tags', 'rooms', 'areas', 'areaColors', 'brandColor', 'navColor', 'bgColor', 'appearance', 'departments', 'dayparts', 'forecastWeeks', 'targetLaborPct', 'laborRules'];
       const clean = {};
       for (const k of allowed) if (k in patch) clean[k] = patch[k];
       if ('areas' in clean) clean.areas = uniqueAreas(Array.isArray(clean.areas) ? clean.areas : []);
       if ('areaColors' in clean) clean.areaColors = cleanColors(clean.areaColors);
+      if ('appearance' in clean) clean.appearance = ['light', 'dark'].includes(clean.appearance) ? clean.appearance : 'auto';
+      for (const k of ['brandColor', 'navColor', 'bgColor']) {
+        if (k in clean) clean[k] = /^#[0-9a-f]{6}$/i.test(String(clean[k] || '')) ? String(clean[k]).toLowerCase() : '';
+      }
       const cur = store.get('settings', 'settings');
       return cur ? store.update('settings', 'settings', clean) : store.insert('settings', { ...DEFAULT_SETTINGS, ...clean });
+    },
+    // The restaurant's logo: a PNG, JPEG or WebP (the app resizes it before upload), served to
+    // everyone at /api/branding/logo, including the sign-in page and emails.
+    'branding.setLogo': (actor, { dataUrl }) => {
+      needAdmin(actor);
+      const m = String(dataUrl || '').match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/);
+      if (!m) fail(400, 'Upload a PNG, JPG or WebP image');
+      if (m[2].length > 600000) fail(400, 'That logo is too large. Try a smaller image (under about 400 KB).');
+      const doc = { id: 'logo', mime: m[1], data: m[2], updatedAt: now().toISOString(), updatedBy: actor.id };
+      if (store.get('assets', 'logo')) store.update('assets', 'logo', doc); else store.insert('assets', doc);
+      const logoVersion = Date.now();
+      if (store.get('settings', 'settings')) store.update('settings', 'settings', { logoVersion });
+      else store.insert('settings', { ...DEFAULT_SETTINGS, logoVersion });
+      return { logoVersion };
+    },
+    'branding.removeLogo': (actor) => {
+      needAdmin(actor);
+      store.remove('assets', 'logo');
+      if (store.get('settings', 'settings')) store.update('settings', 'settings', { logoVersion: 0 });
+      return { logoVersion: 0 };
     },
     'settings.laborRules': (actor, { laborRules }) => {
       needMgr(actor);
@@ -522,9 +554,13 @@ export function createService(store, opts = {}) {
       store.update('users', u.id, { passwordHash: hashPassword(tempPassword), sessionVersion: (u.sessionVersion || 0) + 1, passwordResetAt: now().toISOString(), passwordResetBy: actor.id });
       return { tempPassword };
     },
-    'account.preferences': (actor, { emailNotifications }) => {
+    // Each person's own choices: email copies of notifications, and light/dark mode ('' = the company's).
+    'account.preferences': (actor, a = {}) => {
       needAuth(actor);
-      return userView(store.update('users', actor.id, { emailNotifications: emailNotifications !== false }));
+      const patch = {};
+      if ('emailNotifications' in a) patch.emailNotifications = a.emailNotifications !== false;
+      if ('appearance' in a) patch.appearance = ['auto', 'light', 'dark'].includes(a.appearance) ? a.appearance : '';
+      return userView(store.update('users', actor.id, patch));
     },
     'employees.changePassword': (actor, { password }) => {
       needAuth(actor);
@@ -1060,6 +1096,12 @@ export function createService(store, opts = {}) {
       const f = computeForecastWeek(ws);
       return { days: f.days.map((d) => ({ date: d.date, covers: d.covers, totalCovers: d.totalCovers, sales: d.totalSales, laborPct: d.laborPct, laborCost: d.laborCost, hours: d.hours, closed: d.closed })), totals: f.totals, targetLaborPct: f.targetLaborPct };
     },
+    // Projected covers only (no sales or labor), for everyone: the house sheet shows them to all staff.
+    'forecast.covers': (actor, { weekStart: ws }) => {
+      needAuth(actor);
+      const f = computeForecastWeek(ws);
+      return { days: f.days.map((d) => ({ date: d.date, totalCovers: d.totalCovers, closed: d.closed })) };
+    },
     'forecast.override': (actor, { date, covers, sales, clear }) => {
       needMgr(actor);
       if (clear) { store.remove('forecastOverrides', date); return { ok: true }; }
@@ -1076,6 +1118,8 @@ export function createService(store, opts = {}) {
       store.transaction(() => toCreate.forEach((s) => store.insert('shifts', { id: uid('shf'), ...cleanShift(s), published: false, createdAt: now().toISOString(), createdBy: actor.id })));
       return { created: toCreate.length };
     },
+    // Labor review (scheduled vs. worked) and Toast POS mappings: core/labor-api.js
+    ...laborMethods({ store, settings, fail, needMgr, now }),
 
     // ----- events / BEOs -----
     'events.list': (actor, { start, end } = {}) => {
@@ -1315,6 +1359,11 @@ export function createService(store, opts = {}) {
         },
       };
     })(),
+
+    // ----- tip pooling (core/tips.js) -----
+    ...tipMethods({ store, now, settings, fail, needAuth, needMgr, needAdmin, notify }),
+    // ----- phone notifications and text messages (core/notify-prefs.js) -----
+    ...channelApi({ store, fail, needAuth, needAdmin, settings, now, channels: opts.channels }),
 
     // ----- notifications -----
     'notifications.list': (actor) => {

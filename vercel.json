@@ -10,6 +10,9 @@
       "excludeFiles": "{node_modules/@electric-sql/**,web/**,test/**}"
     }
   },
+  "crons": [
+    { "path": "/api/cron/toast", "schedule": "0 12 * * *" }
+  ],
   "rewrites": [
     { "source": "/api/:path*", "destination": "/api" },
     { "source": "/(.*)", "destination": "/index.html" }

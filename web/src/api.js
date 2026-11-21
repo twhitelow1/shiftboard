@@ -3,8 +3,11 @@
 import { MemoryStore } from '../../core/store.js';
 import { createService } from '../../core/service.js';
 import { seedDemo } from '../../core/seed.js';
+import { startServiceWorker, forgetThisDevice } from './push.js';
 
 export const IS_DEMO = __DEMO__;
+// Phone notifications need the service worker (web/public/sw.js). The demo has no server, so no worker.
+if (!IS_DEMO) startServiceWorker();
 export const DEMO_NOW = new Date(2026, 8, 27, 12, 0, 0); // Sun Sep 27 2026, noon
 
 let demo = null;
@@ -53,6 +56,7 @@ export async function login(email, password) {
 
 export async function logout() {
   if (IS_DEMO) return;
+  await forgetThisDevice(call); // no more of this person's notifications on this phone
   await fetch('/api/auth/logout', { method: 'POST' });
 }
 
@@ -90,3 +94,6 @@ export const resetPassword = (token, password) => post('/api/auth/reset', { toke
 export const sendTestEmail = () => post('/api/email/test');
 export const sendSignInLink = (userId) => post(`/api/users/${encodeURIComponent(userId)}/invite`);
 export const inviteAll = () => post('/api/users/invite-all');
+// Phone notifications and texts (server/channels.js)
+export const sendTestPush = () => post('/api/push/test');
+export const sendTestText = (phone) => post('/api/sms/test', { phone });
