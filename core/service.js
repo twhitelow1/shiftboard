@@ -10,6 +10,7 @@ import { tipMethods } from './tips.js';
 import { ROLE_IDS, roleOf, roleLabel, canManageSchedule, canChangeSettings, canManageEvents, canSeeContacts, canApprove,
   offSchedule, assignableRoles, canManageUser } from './roles.js';
 import { channelApi } from './notify-prefs.js';
+import { venueLinks } from './venue-links.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -1376,6 +1377,8 @@ export function createService(store, opts = {}) {
       return { ok: true };
     },
   };
+  // Rooms ↔ schedule: sections.* (who works which tables) and event room links. See core/venue-links.js.
+  venueLinks({ store, api, fail, needAuth, needMgr, needEvents, visibleShift, now });
 
   return {
     api,

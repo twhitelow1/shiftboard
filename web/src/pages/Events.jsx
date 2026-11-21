@@ -3,7 +3,7 @@ import { useApp, Icon, Avatar, Field, Empty, useAction, JobDot, money, shiftTime
 import { prettyDate, fmtTime, parseDate, MONTHS, DOW_SHORT, addDays } from '../../../core/time.js';
 import { SERVICE_STYLES } from '../../../core/beo.js';
 import { IS_DEMO } from '../api.js';
-import { RoomPlanCard } from './FloorPlan.jsx';
+import { EventPlans, useVenueRooms } from './Sections.jsx';
 
 const STATUS_BADGE = { tentative: 'warn', confirmed: 'ok', completed: '', cancelled: 'bad' };
 
@@ -105,7 +105,7 @@ function EventDetail({ id }) {
         {myShift && <div className="alert info" style={{ marginTop: 12 }}><Icon name="user" size={16} />You're working this: {jobs[myShift.jobCodeId]?.name} · {shiftTime(myShift)}</div>}
       </div>
 
-      <RoomPlanCard room={e.room} />
+      <EventPlans event={e} />
 
       <div className="beo">
         <div className="card card-pad">
@@ -221,7 +221,7 @@ function EventDetail({ id }) {
 }
 
 const blank = (today) => ({
-  name: '', date: addDays(today, 7), start: '18:00', end: '22:00', room: '', guestCount: 50, guaranteed: '', type: '', serviceStyle: 'plated', status: 'tentative',
+  name: '', date: addDays(today, 7), start: '18:00', end: '22:00', room: '', roomId: '', guestCount: 50, guaranteed: '', type: '', serviceStyle: 'plated', status: 'tentative',
   client: '', contactName: '', contactPhone: '', contactEmail: '', estRevenue: '', captainId: '', attire: '',
   menu: [], beverage: { package: '', bar: '', notes: '' }, specialDrinks: [], staffing: [], timeline: [], setupNotes: '', dietaryNotes: '', avNotes: '', notes: '',
 });
@@ -270,10 +270,7 @@ function EventEditor({ id }) {
             <Field label="End"><input className="input" type="time" value={e.end} onChange={set('end')} /></Field>
           </div>
           <div className="grid3">
-            <Field label="Room / area">
-              <input className="input" list="rooms" value={e.room} onChange={set('room')} />
-              <datalist id="rooms">{settings.rooms.map((r) => <option key={r} value={r} />)}</datalist>
-            </Field>
+            <RoomField e={e} setE={setE} settings={settings} />
             <Field label="Guest count"><input className="input" type="number" min="0" value={e.guestCount} onChange={set('guestCount')} /></Field>
             <Field label="Guaranteed"><input className="input" type="number" min="0" value={e.guaranteed} onChange={set('guaranteed')} /></Field>
           </div>
@@ -350,6 +347,51 @@ function EventEditor({ id }) {
         <div className="row"><span className="spacer" /><button className="btn primary" disabled={busy || !e.name} onClick={save}><Icon name="check" />Save BEO</button></div>
       </div>
     </div>
+  );
+}
+
+const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+/** The event's room: one of the venue's rooms (stored by id), Full Buyout, or anything else typed in. */
+function RoomField({ e, setE, settings }) {
+  const rooms = useVenueRooms();
+  const [typing, setTyping] = useState(false);
+  if (!rooms?.length) { // no venue set up yet: the room list from Settings
+    return (
+      <Field label="Room / area">
+        <input className="input" list="rooms" value={e.room} onChange={(x) => setE((c) => ({ ...c, room: x.target.value, roomId: '' }))} />
+        <datalist id="rooms">{settings.rooms.map((r) => <option key={r} value={r} />)}</datalist>
+      </Field>
+    );
+  }
+  const linked = rooms.find((r) => r.id === e.roomId) || rooms.find((r) => norm(r.name) === norm(e.room));
+  const bookings = (settings.rooms || []).filter((n) => !rooms.some((r) => norm(r.name) === norm(n)));
+  const booking = !linked && bookings.find((n) => norm(n) === norm(e.room));
+  const other = !linked && !booking && (typing || !!e.room);
+  const value = linked ? linked.id : booking ? `name:${booking}` : other ? 'other' : '';
+  const levels = [...new Set(rooms.map((r) => r.level || 'Rooms'))];
+  const pick = (v) => {
+    setTyping(v === 'other');
+    if (v === 'other') setE((c) => ({ ...c, roomId: '', room: '' }));
+    else if (v.startsWith('name:')) setE((c) => ({ ...c, roomId: '', room: v.slice(5) }));
+    else setE((c) => ({ ...c, roomId: v, room: rooms.find((r) => r.id === v)?.name || '' }));
+  };
+  return (
+    <Field label="Room">
+      <select className="input" value={value} onChange={(x) => pick(x.target.value)}>
+        <option value="">Not set</option>
+        {levels.map((l) => (
+          <optgroup key={l} label={levels.length > 1 ? l : 'Rooms'}>
+            {rooms.filter((r) => (r.level || 'Rooms') === l).map((r) => <option key={r.id} value={r.id}>{r.name}{r.capacity ? ` (${r.capacity})` : ''}</option>)}
+          </optgroup>
+        ))}
+        <optgroup label="Other">
+          {bookings.map((n) => <option key={n} value={`name:${n}`}>{n}</option>)}
+          <option value="other">Somewhere else…</option>
+        </optgroup>
+      </select>
+      {other && <input className="input" style={{ marginTop: 6 }} value={e.room} autoFocus={typing} placeholder="e.g. Patio and Library" onChange={(x) => setE((c) => ({ ...c, roomId: '', room: x.target.value }))} />}
+    </Field>
   );
 }
 

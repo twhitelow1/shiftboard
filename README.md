@@ -23,7 +23,7 @@ Built by DubLow Digital.
 | **Notifications** | In-app notifications for schedule posted, shift changes, swap requests and approvals, open shifts, BEO updates, and comments. |
 | **Branding & theme** | Settings → Branding & theme: upload the restaurant's logo (resized in the browser; PNG, JPG, SVG or WebP), pick a ready-made theme (Berry, Ocean, Forest, Sunset, Rose, Gold, Mono, Bright…) or set the brand, sidebar and background colors yourself, with a live preview and a "use logo color" shortcut, and choose light, dark or auto mode for everyone (each person can pick their own in My Shifts). The logo and colors show in the app, on phones, on the sign-in page, in the browser tab and at the top of emails. |
 | **People & sign-in** | Team & Job Codes shows everyone's role and sign-in status (Active, Invited, Not invited, No email). Send an invite link to one person or to everyone who hasn't signed in, email a password reset link, or set a temporary password for someone without email. |
-| **Venue & floor plans** | Locations (for multi-location groups; a one-room place needs no setup), levels, and rooms marked as dining, bar or event space with capacity. Draw each room's floor plan: round, square and long tables with seats, booths, bars with stools, stages, dance floors, DJ booth, host stand, walls, doors and labels. An event's BEO shows its room's floor plan. |
+| **Venue & floor plans** | Locations (for multi-location groups; a one-room place needs no setup), levels, and rooms marked as dining, bar or event space with capacity. Draw each room's floor plan: round, square and long tables with seats, booths, bars with stools, stages, dance floors, DJ booth, host stand, walls, doors and labels. The editor works on phones: pinch to zoom, two fingers to pan, tap to select, long-press or **Select** to pick several, drag to move them together, undo and redo. **Sections**: for any day, managers tap tables on a room's plan and pick who of the people working gets them (or set the room and tables in the shift editor); each section shows in that person's color with their name, and **Copy last** repeats the same day of last week. Staff see their room and tables on My Shifts and on their shift, highlighted on the plan. An event picks its room from the venue's rooms (or Full Buyout), and its BEO shows the plan with the event staff's sections. |
 
 ### Roles
 Each role can do everything the roles below it can.
@@ -158,6 +158,7 @@ core/       Business logic shared by server + demo (pure JS, no I/O)
   tips.js      tip pools: the split (whole cents, leftover cents by rule), Toast or scheduled hours, week report, locking
   importer.js  schedule parser (pasted spreadsheet, CSV, or a PDF grid), area/position reading, name matching, events from notes
   areas.js     schedule areas (where a shift is worked), kept apart from positions (job codes)
+  venue-links.js  rooms ↔ schedule: an event's room by id, and server sections (each shift's room and tables, per day)
   pdfgrid.js   rebuilds the schedule grid from a PDF's positioned text (read in the browser with pdf.js)
   store.js     in-memory document store + a copy-on-write overlay used per request
   seed.js      demo data (the real week of 9/28/2026)
