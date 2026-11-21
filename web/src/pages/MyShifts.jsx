@@ -10,6 +10,8 @@ export default function MyShifts() {
   const { call, version, today, me, jobs, settings, employees, refresh, toast } = useApp();
   const [data, setData] = useState(null);
   const [dialog, setDialog] = useState(null);
+  const [startIn, setStartIn] = useState(null);
+  const open = (s, how = null) => { setStartIn(how); setDialog(s); };
   const [ical, setIcal] = useState(null);
   const end = addDays(today, 35);
   const thisWeek = weekStart(today, settings.weekStartDow);
@@ -22,7 +24,7 @@ export default function MyShifts() {
   const mine = data.shifts.filter((s) => s.userId === me.id && s.date >= thisWeek).sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
   const upcoming = mine.filter((s) => s.date >= today);
   const myJobs = new Set((me.jobCodes || []).map((j) => j.jobCodeId));
-  const open = data.shifts.filter((s) => !s.userId && s.date >= today && myJobs.has(s.jobCodeId)).sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
+  const openShifts = data.shifts.filter((s) => !s.userId && s.date >= today && myJobs.has(s.jobCodeId)).sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
   const myTimeOff = data.timeOff.filter((t) => t.userId === me.id && t.endDate >= today);
 
   const weeks = {};
@@ -38,17 +40,17 @@ export default function MyShifts() {
           <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-.02em' }}>{prettyDate(nextShift.date)} · {shiftTime(nextShift)}</div>
           <div style={{ opacity: .9 }}>{jobs[nextShift.jobCodeId]?.name}{nextShift.tag ? ` · ${nextShift.tag}` : ''}{nextShift.eventId ? ' · Event shift' : ''}</div>
           <div className="row" style={{ marginTop: 10 }}>
-            <button className="btn sm" style={{ background: 'rgba(255,255,255,.18)', color: '#fff', borderColor: 'transparent' }} onClick={() => setDialog(nextShift)}>Details & swap</button>
+            <button className="btn sm" style={{ background: 'rgba(255,255,255,.18)', color: '#fff', borderColor: 'transparent' }} onClick={() => open(nextShift)}>{nextShift.published ? 'Trade or give away' : 'Details'}</button>
             {nextShift.eventId && <a className="btn sm" style={{ background: 'rgba(255,255,255,.18)', color: '#fff', borderColor: 'transparent' }} href={`#/events/${nextShift.eventId}`}>View BEO</a>}
           </div>
         </div>
       )}
 
-      {open.length > 0 && (
+      {openShifts.length > 0 && (
         <div className="section">
-          <div className="section-title"><h2>Open shifts you can pick up</h2><span className="badge ok">{open.length}</span></div>
+          <div className="section-title"><h2>Open shifts you can pick up</h2><span className="badge ok">{openShifts.length}</span></div>
           <div className="card list">
-            {open.slice(0, 8).map((s) => <ShiftRow key={s.id} s={s} onClick={() => setDialog(s)} right={<span className="badge ok">Pick up</span>} />)}
+            {openShifts.slice(0, 8).map((s) => <ShiftRow key={s.id} s={s} onClick={() => open(s)} right={<span className="badge ok">Pick up</span>} />)}
           </div>
         </div>
       )}
@@ -65,8 +67,9 @@ export default function MyShifts() {
                 <span className="spacer" /><span className="num">{list.length} shifts · ~{hrs.toFixed(1)} hrs</span>
               </div>
               <div className="card list">
-                {list.map((s) => <ShiftRow key={s.id} s={s} past={s.date < today} onClick={() => setDialog(s)}
-                  right={s.pending ? <span className="badge warn">Swap pending</span> : !s.published ? <span className="badge" title="Not posted to staff yet">Draft</span> : s.date < today ? <span className="small faint">Done</span> : null} />)}
+                {list.map((s) => <ShiftRow key={s.id} s={s} past={s.date < today} onClick={() => open(s)}
+                  right={s.pending ? <span className="badge warn">Swap pending</span> : !s.published ? <span className="badge" title="Not posted to staff yet">Draft</span> : s.date < today ? <span className="small faint">Done</span>
+                    : <button className="btn sm" onClick={(e) => { e.stopPropagation(); open(s); }}><Icon name="swap" />Trade</button>} />)}
               </div>
             </div>
           );
@@ -96,7 +99,7 @@ export default function MyShifts() {
       {!IS_DEMO && <EmailPrefCard />}
       {!IS_DEMO && <PasswordCard />}
 
-      {dialog && <ShiftDialog shift={dialog} events={data.events} onClose={(c) => { setDialog(null); if (c) load(); }} />}
+      {dialog && <ShiftDialog shift={dialog} startIn={startIn} events={data.events} onClose={(c) => { setDialog(null); if (c) load(); }} />}
     </div>
   );
 }
