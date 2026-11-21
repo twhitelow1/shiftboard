@@ -11,6 +11,7 @@ import { ROLE_IDS, roleOf, roleLabel, canManageSchedule, canChangeSettings, canM
   offSchedule, assignableRoles, canManageUser } from './roles.js';
 import { channelApi } from './notify-prefs.js';
 import { venueLinks } from './venue-links.js';
+import { trainingApi } from './training.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -1365,6 +1366,8 @@ export function createService(store, opts = {}) {
     ...tipMethods({ store, now, settings, fail, needAuth, needMgr, needAdmin, notify }),
     // ----- phone notifications and text messages (core/notify-prefs.js) -----
     ...channelApi({ store, fail, needAuth, needAdmin, settings, now, channels: opts.channels }),
+    // ----- training: menu study guide, quizzes, leaderboard, employee manual, manager on duty (core/training.js) -----
+    ...trainingApi({ store, now, settings, notify, fail, random: opts.random }),
 
     // ----- notifications -----
     'notifications.list': (actor) => {

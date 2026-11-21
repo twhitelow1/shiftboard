@@ -7,6 +7,7 @@ import { applyBranding, logoUrl, imageToPng, THEMES } from '../theme.js';
 import TipPoolSettings from './TipPoolSettings.jsx';
 import { TextSettingsCard } from './PhoneCards.jsx';
 import { IntegrationsCard } from './ToastSettings.jsx';
+import { TrainingSettingsCard } from './TrainingShared.jsx';
 
 export default function Settings() {
   const { settings, call, emailEnabled, emailFrom, jobCodes } = useApp();
@@ -126,6 +127,7 @@ export default function Settings() {
       <div className="row"><span className="spacer" /><button className="btn primary" disabled={busy} onClick={save}><Icon name="check" />Save settings</button></div>
 
       <TipPoolSettings />
+      <TrainingSettingsCard />
 
       {!IS_DEMO && (
         <div className="card card-pad col" style={{ gap: 12 }}>

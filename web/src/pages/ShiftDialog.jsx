@@ -3,6 +3,7 @@ import { useApp, Modal, Field, Icon, Avatar, Warnings, shiftTime, startTimesOnly
 import { prettyDate, addDays, fmtTime } from '../../../core/time.js';
 import { scheduleAreas, findArea } from '../../../core/areas.js';
 import { ShiftSectionCard, useSectionField } from './Sections.jsx';
+import { CallOutPanel } from './TrainingShared.jsx';
 
 /**
  * Opens the right dialog for the viewer: managers edit other people's shifts; your own shift (any
@@ -234,6 +235,7 @@ function ShiftDetail({ shift, onClose, events, startIn, onEdit }) {
             <div className="help">You keep the shift until the trade or giveaway goes through.{settings.minSwapNoticeHours ? ` Trades need ${settings.minSwapNoticeHours} hours’ notice; closer than that, call your manager.` : ''}</div>
           </div>
         )}
+        {future && mine && <CallOutPanel />}
         {future && isOpen && qualified && <button className="btn primary block" disabled={busy} onClick={() => submit('pickup')}><Icon name="plus" />Request to pick up</button>}
         {future && isOpen && !qualified && <div className="help">You're not set up as {job?.name}, so you can't pick this up.</div>}
       </>}

@@ -5,6 +5,7 @@ import { addDays, dow, range } from './time.js';
 import { DEFAULT_SETTINGS } from './service.js';
 import { findArea } from './areas.js';
 import { seedDemoTips } from './tips.js';
+import { seedTraining } from './training-seed.js';
 
 const WEEK = '2026-09-28'; // Monday
 const D = { MON: 0, TUE: 1, WED: 2, THU: 3, FRI: 4, SAT: 5, SUN: 6 };
@@ -352,6 +353,9 @@ export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password =
 
   // SAMPLE clock-ins (as if synced from Toast) for Forecast & Labor → Labor review: core/labor-demo.js
   seedLaborDemo(store, { week: WEEK });
+  // SAMPLE training: an invented menu with placeholder photos, quizzes and tries, the employee manual (core/training-seed.js)
+  seedTraining(store, { userId, jobId });
+
   return { userId, jobId, eventId };
 }
 
