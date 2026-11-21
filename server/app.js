@@ -94,6 +94,11 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   const appUrl = (req) => (env.APP_URL
     || (env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${env.VERCEL_PROJECT_PRODUCTION_URL}` : `${req.protocol}://${req.get('host')}`)).replace(/\/+$/, '');
   const restaurantName = () => createService(db.store).settings().restaurantName;
+  // The restaurant's color and logo for emails (Settings → Branding).
+  const brandOf = (req) => {
+    const st = createService(db.store).settings();
+    return { color: st.brandColor || '', logoUrl: st.logoVersion ? `${appUrl(req)}/api/branding/logo?v=${st.logoVersion}` : '' };
+  };
 
   // Work that finishes after the response (emails). On Vercel, waitUntil keeps the function alive for it.
   const pending = new Set();
@@ -116,7 +121,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     for (const n of notes) {
       const u = db.store.get('users', n.userId);
       if (!u || u.active === false || u.emailNotifications === false || !deliverable(u.email)) continue;
-      messages.push(notificationEmail({ user: u, note: n, appUrl: url, restaurant: st.restaurantName }));
+      messages.push(notificationEmail({ user: u, note: n, appUrl: url, restaurant: st.restaurantName, brand: brandOf(req) }));
     }
     if (messages.length) background(mailer.sendMany(messages, { idempotencyKey: `ntf-${notes[0].id}` }));
   }
@@ -133,8 +138,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     const token = await db.createToken(user.id, returning ? 'reset' : 'invite', returning ? 24 * 60 : 7 * 24 * 60);
     const link = `${appUrl(req)}/#/reset?token=${token}`;
     await mailer.send(returning
-      ? resetEmail({ user, link, restaurant: restaurantName(), hours: 24, sentBy: invitedBy })
-      : inviteEmail({ user, link, restaurant: restaurantName(), invitedBy }));
+      ? resetEmail({ user, link, restaurant: restaurantName(), hours: 24, sentBy: invitedBy, brand: brandOf(req) })
+      : inviteEmail({ user, link, restaurant: restaurantName(), invitedBy, brand: brandOf(req) }));
     await stamp([user.id], 'invitedAt');
     return true;
   }
@@ -231,7 +236,27 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   });
 
   // ---------- email: setup, invites, password reset ----------
-  app.get('/api/config', (req, res) => res.json({ email: mailer.enabled, emailFrom: mailer.enabled ? mailer.from : null }));
+  // Public: what the sign-in page needs before anyone signs in (email on/off, the restaurant's branding).
+  app.get('/api/config', async (req, res) => {
+    let brand = null;
+    try {
+      await db.sync();
+      const st = createService(db.store).settings();
+      brand = { name: st.restaurantName, color: st.brandColor || '', nav: st.navColor || '', logo: st.logoVersion ? `/api/branding/logo?v=${st.logoVersion}` : '' };
+    } catch { /* the sign-in page still works with ShiftBoard's look */ }
+    res.json({ email: mailer.enabled, emailFrom: mailer.enabled ? mailer.from : null, brand });
+  });
+
+  // The restaurant's logo (public: the sign-in page, emails and the browser tab use it).
+  app.get('/api/branding/logo', async (req, res) => {
+    await db.sync();
+    const logo = db.store.get('assets', 'logo');
+    if (!logo || !/^image\/(png|jpeg|webp)$/.test(logo.mime)) return res.status(404).end();
+    res.set('Content-Type', logo.mime);
+    res.set('Cache-Control', req.query.v ? 'public, max-age=31536000, immutable' : 'public, max-age=300');
+    res.set('Content-Security-Policy', "default-src 'none'");
+    res.send(Buffer.from(logo.data, 'base64'));
+  });
 
   app.post('/api/email/test', async (req, res) => {
     await db.sync();
@@ -241,7 +266,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     if (!mailer.enabled) return res.status(400).json({ error: 'Email isn’t set up yet. Add RESEND_API_KEY and EMAIL_FROM in Vercel, then redeploy.' });
     if (!deliverable(u.email)) return res.status(400).json({ error: 'Your account needs a real email address first.' });
     try {
-      await mailer.send(testEmail({ user: u, restaurant: restaurantName(), appUrl: appUrl(req) }));
+      await mailer.send(testEmail({ user: u, restaurant: restaurantName(), appUrl: appUrl(req), brand: brandOf(req) }));
       res.json({ result: { ok: true, to: u.email } });
     } catch (e) {
       res.status(502).json({ error: e.message }); // Resend's reason (e.g. domain not verified) helps the admin fix setup
@@ -281,7 +306,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     const messages = [];
     for (const u of ready) {
       const token = await db.createToken(u.id, 'invite', 7 * 24 * 60);
-      messages.push(inviteEmail({ user: u, link: `${base}/#/reset?token=${token}`, restaurant, invitedBy: actor.name }));
+      messages.push(inviteEmail({ user: u, link: `${base}/#/reset?token=${token}`, restaurant, invitedBy: actor.name, brand: brandOf(req) }));
     }
     try {
       await mailer.sendMany(messages, { idempotencyKey: `invite-all-${actor.id}-${Date.now()}` });
@@ -305,7 +330,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
       // Sent in the background so the reply takes the same time whether or not the account exists.
       background((async () => {
         const token = await db.createToken(u.id, 'reset', 60);
-        await mailer.send(resetEmail({ user: u, link: `${appUrl(req)}/#/reset?token=${token}`, restaurant: restaurantName() }));
+        await mailer.send(resetEmail({ user: u, link: `${appUrl(req)}/#/reset?token=${token}`, restaurant: restaurantName(), brand: brandOf(req) }));
       })());
     }
     res.json({ ok: true }); // same answer either way, so this can't be used to find accounts

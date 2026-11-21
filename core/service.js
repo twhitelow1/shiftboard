@@ -32,6 +32,9 @@ export const DEFAULT_SETTINGS = {
   requirePickupApproval: true,
   supervisorsCanApprove: true,
   startTimesOnly: false, // show only the in time (4PM), never an end time or CL
+  brandColor: '', // the restaurant's color for buttons, links and highlights ('' = ShiftBoard's)
+  navColor: '', // sidebar color ('' = default)
+  logoVersion: 0, // set when a logo is uploaded; the logo itself is the 'assets/logo' document
   emailNotifications: true,
   minSwapNoticeHours: 12,
   tags: ['LIB', 'RH', 'FR', 'BC', 'MOON', 'PATIO', 'PASSED', 'BACK HOST', 'CLOSE', 'OPEN'],
@@ -328,13 +331,36 @@ export function createService(store, opts = {}) {
     'settings.update': (actor, patch) => {
       needAdmin(actor);
       const allowed = ['restaurantName', 'weekStartDow', 'closedDays', 'hours', 'openEndHours', 'overtimeHours', 'requireSwapApproval',
-        'requirePickupApproval', 'supervisorsCanApprove', 'startTimesOnly', 'emailNotifications', 'minSwapNoticeHours', 'tags', 'rooms', 'areas', 'areaColors', 'departments', 'dayparts', 'forecastWeeks', 'targetLaborPct', 'laborRules'];
+        'requirePickupApproval', 'supervisorsCanApprove', 'startTimesOnly', 'emailNotifications', 'minSwapNoticeHours', 'tags', 'rooms', 'areas', 'areaColors', 'brandColor', 'navColor', 'departments', 'dayparts', 'forecastWeeks', 'targetLaborPct', 'laborRules'];
       const clean = {};
       for (const k of allowed) if (k in patch) clean[k] = patch[k];
       if ('areas' in clean) clean.areas = uniqueAreas(Array.isArray(clean.areas) ? clean.areas : []);
       if ('areaColors' in clean) clean.areaColors = cleanColors(clean.areaColors);
+      for (const k of ['brandColor', 'navColor']) {
+        if (k in clean) clean[k] = /^#[0-9a-f]{6}$/i.test(String(clean[k] || '')) ? String(clean[k]).toLowerCase() : '';
+      }
       const cur = store.get('settings', 'settings');
       return cur ? store.update('settings', 'settings', clean) : store.insert('settings', { ...DEFAULT_SETTINGS, ...clean });
+    },
+    // The restaurant's logo: a PNG, JPEG or WebP (the app resizes it before upload), served to
+    // everyone at /api/branding/logo, including the sign-in page and emails.
+    'branding.setLogo': (actor, { dataUrl }) => {
+      needAdmin(actor);
+      const m = String(dataUrl || '').match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/);
+      if (!m) fail(400, 'Upload a PNG, JPG or WebP image');
+      if (m[2].length > 600000) fail(400, 'That logo is too large. Try a smaller image (under about 400 KB).');
+      const doc = { id: 'logo', mime: m[1], data: m[2], updatedAt: now().toISOString(), updatedBy: actor.id };
+      if (store.get('assets', 'logo')) store.update('assets', 'logo', doc); else store.insert('assets', doc);
+      const logoVersion = Date.now();
+      if (store.get('settings', 'settings')) store.update('settings', 'settings', { logoVersion });
+      else store.insert('settings', { ...DEFAULT_SETTINGS, logoVersion });
+      return { logoVersion };
+    },
+    'branding.removeLogo': (actor) => {
+      needAdmin(actor);
+      store.remove('assets', 'logo');
+      if (store.get('settings', 'settings')) store.update('settings', 'settings', { logoVersion: 0 });
+      return { logoVersion: 0 };
     },
     'settings.laborRules': (actor, { laborRules }) => {
       needMgr(actor);

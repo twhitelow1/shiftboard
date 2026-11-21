@@ -58,15 +58,19 @@ export function createMailer(env = process.env, { fetchImpl = globalThis.fetch }
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-function layout({ restaurant, heading, paragraphs, button, footer }) {
+// brand: { color, logoUrl } from the restaurant's settings (Settings → Branding); both optional.
+function layout({ restaurant, heading, paragraphs, button, footer, brand = {} }) {
+  const head = /^#[0-9a-f]{6}$/i.test(brand.color || '') ? brand.color : '#0f172a';
+  const buttonColor = /^#[0-9a-f]{6}$/i.test(brand.color || '') ? brand.color : '#4f46e5';
+  const logo = /^https:\/\//.test(brand.logoUrl || '') ? `<img src="${esc(brand.logoUrl)}" alt="" height="32" style="height:32px;max-width:160px;vertical-align:middle;margin-right:10px;border-radius:4px;background:#fff">` : '';
   const html = `<!doctype html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#0f172a">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:24px 12px"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:12px;overflow:hidden">
-<tr><td style="background:#0f172a;color:#ffffff;padding:16px 24px;font-weight:700;font-size:16px">${esc(restaurant)} · ShiftBoard</td></tr>
+<tr><td style="background:${head};color:#ffffff;padding:16px 24px;font-weight:700;font-size:16px">${logo}${esc(restaurant)} · ShiftBoard</td></tr>
 <tr><td style="padding:24px">
 ${heading ? `<h1 style="margin:0 0 12px;font-size:20px;line-height:1.3">${esc(heading)}</h1>` : ''}
 ${paragraphs.map((p) => `<p style="margin:0 0 14px;font-size:15px;line-height:1.5">${esc(p)}</p>`).join('\n')}
-${button ? `<p style="margin:22px 0 6px"><a href="${esc(button.url)}" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;font-weight:600;padding:11px 20px;border-radius:8px">${esc(button.label)}</a></p>` : ''}
+${button ? `<p style="margin:22px 0 6px"><a href="${esc(button.url)}" style="display:inline-block;background:${buttonColor};color:#ffffff;text-decoration:none;font-weight:600;padding:11px 20px;border-radius:8px">${esc(button.label)}</a></p>` : ''}
 </td></tr>
 <tr><td style="padding:14px 24px 20px;color:#64748b;font-size:12px;line-height:1.5;border-top:1px solid #e2e8f0">${esc(footer)}</td></tr>
 </table></td></tr></table></body></html>`;
@@ -76,10 +80,10 @@ ${button ? `<p style="margin:22px 0 6px"><a href="${esc(button.url)}" style="dis
 
 const firstName = (name) => String(name || '').trim().split(/\s+/)[0] || 'there';
 
-export function notificationEmail({ user, note, appUrl, restaurant }) {
+export function notificationEmail({ user, note, appUrl, restaurant, brand }) {
   const subject = note.text.length > 90 ? `${note.text.slice(0, 87)}…` : note.text;
   const { html, text } = layout({
-    restaurant,
+    restaurant, brand,
     heading: null,
     paragraphs: [`Hi ${firstName(user.name)},`, note.text],
     button: { label: 'Open ShiftBoard', url: `${appUrl}/${note.link || '#/my'}` },
@@ -88,9 +92,9 @@ export function notificationEmail({ user, note, appUrl, restaurant }) {
   return { to: user.email, subject, html, text };
 }
 
-export function inviteEmail({ user, link, restaurant, invitedBy }) {
+export function inviteEmail({ user, link, restaurant, brand, invitedBy }) {
   const { html, text } = layout({
-    restaurant,
+    restaurant, brand,
     heading: `You're on the ${restaurant} schedule`,
     paragraphs: [
       `Hi ${firstName(user.name)},`,
@@ -103,9 +107,9 @@ export function inviteEmail({ user, link, restaurant, invitedBy }) {
   return { to: user.email, subject: `Set up your ${restaurant} schedule account`, html, text };
 }
 
-export function resetEmail({ user, link, restaurant, hours = 1, sentBy }) {
+export function resetEmail({ user, link, restaurant, brand, hours = 1, sentBy }) {
   const { html, text } = layout({
-    restaurant,
+    restaurant, brand,
     heading: 'Reset your password',
     paragraphs: [`Hi ${firstName(user.name)},`,
       `${sentBy ? `${sentBy} sent you a link to reset your ShiftBoard password.` : 'Someone asked to reset the password for your ShiftBoard account.'} This link works for ${hours === 1 ? '1 hour' : `${hours} hours`} and can be used once.`],
@@ -115,9 +119,9 @@ export function resetEmail({ user, link, restaurant, hours = 1, sentBy }) {
   return { to: user.email, subject: `Reset your ${restaurant} ShiftBoard password`, html, text };
 }
 
-export function testEmail({ user, restaurant, appUrl }) {
+export function testEmail({ user, restaurant, brand, appUrl }) {
   const { html, text } = layout({
-    restaurant,
+    restaurant, brand,
     heading: 'Email is working',
     paragraphs: [`Hi ${firstName(user.name)},`, 'This is a test from ShiftBoard. Staff will now get emails for schedule updates, trades, time off and event changes, and new people get a link to set their password.'],
     button: { label: 'Open ShiftBoard', url: appUrl },

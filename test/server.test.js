@@ -367,7 +367,9 @@ test('without Resend configured, email features stay off', async () => {
   const { dbs: [db], close } = await instances(1);
   const A = await startApp(db, DEMO);
   try {
-    assert.deepEqual(await (await fetch(`${A.base}/api/config`)).json(), { email: false, emailFrom: null });
+    const cfg = await (await fetch(`${A.base}/api/config`)).json();
+    assert.deepEqual([cfg.email, cfg.emailFrom], [false, null]);
+    assert.deepEqual(cfg.brand, { name: 'Our Restaurant', color: '', nav: '', logo: '' }, 'branding for the sign-in page');
     assert.equal((await client(A.base).post('/api/auth/forgot', { email: 'moe@demo.shiftboard' })).status, 400);
     const mgr = await client(A.base).login('moe@demo.shiftboard');
     const r = await mgr.rpc('employees.save', { name: 'No Mail', email: 'nomail@rabbits.co', role: 'employee' });
@@ -403,5 +405,33 @@ test('sign-ins are tracked; invite everyone reaches only people who never signed
 
     const styves = await client(A.base).login('styves@rabbits.co');
     assert.equal((await styves.post('/api/users/invite-all')).status, 403);
+  } finally { await A.close(); await close(); }
+});
+
+test('branding: admins upload a logo that everyone (and the sign-in page) can load; colors are validated', async () => {
+  const { dbs: [db], close } = await instances(1);
+  const A = await startApp(db, DEMO);
+  try {
+    const admin = await client(A.base).login('moe@demo.shiftboard');
+    const staff = await client(A.base).login('styves@demo.shiftboard');
+    // A 1×1 transparent PNG.
+    const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+    assert.equal((await staff.rpc('branding.setLogo', { dataUrl: `data:image/png;base64,${png}` })).status, 403);
+    assert.equal((await admin.rpc('branding.setLogo', { dataUrl: 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=' })).status, 400, 'no SVG (scripts)');
+    const up = await admin.rpc('branding.setLogo', { dataUrl: `data:image/png;base64,${png}` });
+    assert.equal(up.status, 200);
+    const cfg = await (await fetch(`${A.base}/api/config`)).json();
+    assert.equal(cfg.brand.logo, `/api/branding/logo?v=${up.body.result.logoVersion}`);
+    const img = await fetch(`${A.base}${cfg.brand.logo}`);
+    assert.equal(img.status, 200);
+    assert.equal(img.headers.get('content-type'), 'image/png');
+    assert.match(img.headers.get('cache-control'), /immutable/);
+    assert.deepEqual([...new Uint8Array(await img.arrayBuffer())].slice(1, 4), [80, 78, 71], 'PNG bytes');
+    // Colors: valid hex kept, anything else cleared.
+    await admin.rpc('settings.update', { brandColor: '#AA3300', navColor: 'red' });
+    const st = (await staff.rpc('app.bootstrap')).body.result.settings;
+    assert.deepEqual([st.brandColor, st.navColor, st.logoVersion], ['#aa3300', '', up.body.result.logoVersion]);
+    assert.equal((await admin.rpc('branding.removeLogo', {})).status, 200);
+    assert.equal((await fetch(`${A.base}/api/branding/logo`)).status, 404);
   } finally { await A.close(); await close(); }
 });

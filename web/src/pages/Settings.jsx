@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useApp, Icon, Field, useAction } from '../ui.jsx';
 import { DOW_LONG, DOW_SHORT } from '../../../core/time.js';
 import { IS_DEMO, sendTestEmail } from '../api.js';
 import { scheduleAreas, uniqueAreas, bannerColor, textOn, sameArea } from '../../../core/areas.js';
+import { applyBranding, logoUrl, imageToPng } from '../theme.js';
 
 export default function Settings() {
   const { settings, call, emailEnabled, emailFrom, jobCodes } = useApp();
@@ -17,7 +18,8 @@ export default function Settings() {
   const setDp = (i, k, v) => setS({ ...s, dayparts: s.dayparts.map((d, j) => (j === i ? { ...d, [k]: v } : d)) });
   const shareTotal = s.dayparts.reduce((t, d) => t + Number(d.share || 0), 0);
 
-  const save = () => run(() => call('settings.update', { ...s, weekStartDow: Number(s.weekStartDow), dayparts: s.dayparts.map((d) => ({ ...d, share: Number(d.share) })) }), 'Settings saved');
+  // Branding saves on its own (BrandingCard), so this Save never overwrites the colors.
+  const save = () => run(() => call('settings.update', { ...s, brandColor: undefined, navColor: undefined, weekStartDow: Number(s.weekStartDow), dayparts: s.dayparts.map((d) => ({ ...d, share: Number(d.share) })) }), 'Settings saved');
 
   return (
     <div style={{ maxWidth: 820 }} className="col">
@@ -45,6 +47,8 @@ export default function Settings() {
           </div>
         </Field>
       </div>
+
+      <BrandingCard />
 
       <div className="card card-pad col" style={{ gap: 12 }}>
         <h2>Scheduling rules</h2>
@@ -122,6 +126,96 @@ export default function Settings() {
             <button className="btn" disabled={busy || pw.length < 6} onClick={() => run(() => call('employees.changePassword', { password: pw }), 'Password changed').then(() => setPw(''))}>Change</button></div>
         </div>
       )}
+    </div>
+  );
+}
+
+const BRAND_PRESETS = ['#4f46e5', '#2563eb', '#0891b2', '#059669', '#65a30d', '#d97706', '#dc2626', '#db2777', '#9333ea', '#111827'];
+const NAV_PRESETS = ['#0f172a', '#111827', '#1e1b4b', '#14532d', '#3f1d0b', '#ffffff'];
+
+/** Logo and colors. Colors preview live and save with their own button; a logo saves as soon as it's picked. */
+function BrandingCard() {
+  const { settings, call, refresh, toast } = useApp();
+  const [color, setColor] = useState(settings.brandColor || '');
+  const [nav, setNav] = useState(settings.navColor || '');
+  const [suggested, setSuggested] = useState('');
+  const [run, busy] = useAction();
+  const [uploading, setUploading] = useState(false);
+  const saved = useRef(settings);
+  saved.current = settings;
+  const logo = logoUrl(settings, IS_DEMO);
+
+  // Preview while picking; put the saved look back when leaving the page.
+  useEffect(() => { applyBranding({ color, nav, logo }); }, [color, nav, logo]);
+  useEffect(() => () => { const st = saved.current; applyBranding({ color: st.brandColor, nav: st.navColor, logo: logoUrl(st, IS_DEMO) }); }, []);
+
+  const changed = color !== (settings.brandColor || '') || nav !== (settings.navColor || '');
+  const saveColors = async () => {
+    const r = await run(() => call('settings.update', { brandColor: color, navColor: nav }), 'Branding saved');
+    if (r) refresh();
+  };
+  const upload = async (file) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const { dataUrl, color: found } = await imageToPng(file);
+      await call('branding.setLogo', { dataUrl });
+      toast('Logo saved');
+      if (found && found !== color) setSuggested(found);
+      refresh();
+    } catch (e) {
+      toast(e.message, 'bad');
+    } finally {
+      setUploading(false);
+    }
+  };
+  const removeLogo = async () => { const r = await run(() => call('branding.removeLogo', {}), 'Logo removed'); if (r) refresh(); };
+  const shown = color || '#4f46e5';
+  const navShown = nav || '#0f172a';
+
+  return (
+    <div className="card card-pad col" style={{ gap: 12 }}>
+      <h2>Branding</h2>
+      <div className="small muted" style={{ marginTop: -6 }}>Your logo and colors on the app, the sign-in page, the browser tab and emails.</div>
+      <Field label="Logo" help={IS_DEMO ? 'Logo upload works in the hosted app.' : 'PNG, JPG, SVG or WebP. It’s resized to fit; a square or wide logo on a transparent background looks best.'}>
+        <div className="row wrap" style={{ gap: 12, alignItems: 'center' }}>
+          <div className="brand-preview" style={{ background: navShown }}>
+            {logo ? <img src={logo} alt="Logo" className="brand-logo" style={{ height: 40, maxWidth: 160 }} />
+              : <div className="brand-mark" style={{ width: 40, height: 40, background: shown, color: textOn(shown) }}>{(settings.restaurantName || 'S').trim()[0]?.toUpperCase()}</div>}
+            <span style={{ color: textOn(navShown) === '#000' ? '#0f172a' : '#fff', fontWeight: 800 }}>{settings.restaurantName}</span>
+          </div>
+          {!IS_DEMO && (
+            <div className="row wrap">
+              <label className="btn sm primary"><Icon name="upload" />{uploading ? 'Uploading…' : logo ? 'Replace logo' : 'Upload logo'}
+                <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden disabled={uploading} onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ''; }} />
+              </label>
+              {logo && <button type="button" className="btn sm ghost" disabled={busy} onClick={removeLogo}><Icon name="trash" />Remove</button>}
+            </div>
+          )}
+        </div>
+      </Field>
+      <div className="grid2">
+        <Field label="Brand color" help="Buttons, links, highlights and the top of emails.">
+          <div className="row wrap" style={{ gap: 6 }}>
+            <input type="color" className="color-input" value={shown} onChange={(e) => setColor(e.target.value)} aria-label="Brand color" />
+            {BRAND_PRESETS.map((c) => <button key={c} type="button" className={`swatch-btn ${color === c ? 'on' : ''}`} style={{ background: c }} onClick={() => setColor(c)} aria-label={c} />)}
+            {suggested && <button type="button" className="btn sm" onClick={() => { setColor(suggested); setSuggested(''); }}><span className="swatch-btn" style={{ background: suggested, width: 14, height: 14 }} />Use logo color</button>}
+            {color && <button type="button" className="btn sm ghost" onClick={() => setColor('')}>Default</button>}
+          </div>
+        </Field>
+        <Field label="Sidebar color">
+          <div className="row wrap" style={{ gap: 6 }}>
+            <input type="color" className="color-input" value={navShown} onChange={(e) => setNav(e.target.value)} aria-label="Sidebar color" />
+            {NAV_PRESETS.map((c) => <button key={c} type="button" className={`swatch-btn ${nav === c ? 'on' : ''}`} style={{ background: c }} onClick={() => setNav(c)} aria-label={c} />)}
+            {nav && <button type="button" className="btn sm ghost" onClick={() => setNav('')}>Default</button>}
+          </div>
+        </Field>
+      </div>
+      <div className="row wrap" style={{ gap: 8 }}>
+        <button type="button" className="btn primary" disabled={!changed || busy} onClick={saveColors}><Icon name="check" />Save colors</button>
+        {changed && <button type="button" className="btn ghost" onClick={() => { setColor(settings.brandColor || ''); setNav(settings.navColor || ''); }}>Undo</button>}
+        {changed && <span className="small muted">Previewing: the whole app shows these colors until you save or leave this page.</span>}
+      </div>
     </div>
   );
 }
