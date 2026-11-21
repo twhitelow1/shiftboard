@@ -1,0 +1,135 @@
+// Shapes of what the ShiftBoard API returns (see core/service.js). Only the fields the app uses.
+
+export type Role = 'super_admin' | 'admin' | 'manager' | 'supervisor' | 'employee';
+
+export interface JobCode {
+  id: string;
+  name: string;
+  short?: string;
+  color?: string;
+  department?: string;
+  order?: number;
+  archived?: boolean;
+}
+
+export interface Person {
+  id: string;
+  name: string;
+  role: Role;
+  active?: boolean;
+  color?: string;
+  order?: number;
+  onSchedule?: boolean;
+  email?: string;
+  phone?: string;
+  jobCodes?: { jobCodeId: string; areas?: string[] }[];
+}
+
+export interface Me extends Person {
+  appearance?: '' | 'auto' | 'light' | 'dark';
+  language?: '' | 'en' | 'es';
+  emailNotifications?: boolean;
+  deletionRequestedAt?: string;
+}
+
+export interface Settings {
+  restaurantName: string;
+  weekStartDow: number;
+  closedDays: number[];
+  areas?: string[];
+  rooms?: string[];
+  areaColors?: Record<string, string>;
+  startTimesOnly?: boolean;
+  requireSwapApproval?: boolean;
+  requirePickupApproval?: boolean;
+  supervisorsCanApprove?: boolean;
+  minSwapNoticeHours?: number;
+  openEndHours?: number;
+  appearance?: 'auto' | 'light' | 'dark';
+  brandColor?: string;
+  logoVersion?: number;
+}
+
+export interface Boot {
+  settings: Settings;
+  jobCodes: JobCode[];
+  employees: Person[];
+  me: Me;
+  unread: number;
+  pendingApprovals: number;
+  openOffers: number;
+  today: string;
+}
+
+export interface Shift {
+  id: string;
+  date: string;
+  start: string;
+  end: string | null;
+  jobCodeId: string;
+  userId: string | null;
+  area?: string;
+  tag?: string;
+  notes?: string;
+  published?: boolean;
+  eventId?: string | null;
+  hours?: number;
+  pending?: 'swap' | 'drop' | 'pickup' | null;
+}
+
+export interface TimeOff {
+  id: string;
+  userId: string;
+  startDate: string;
+  endDate: string;
+  reason?: string;
+  status: 'pending' | 'approved' | 'denied' | 'cancelled';
+  note?: string;
+}
+
+export interface ShiftsList {
+  shifts: Shift[];
+  timeOff: TimeOff[];
+  events: { id: string; name: string; date: string; start: string; room?: string; guestCount?: number }[];
+  notes: { id: string; kind: 'day' | 'week'; date: string; text: string }[];
+}
+
+export type RequestStatus = 'open' | 'pending_approval' | 'approved' | 'denied' | 'declined' | 'cancelled';
+
+export interface SwapRequest {
+  id: string;
+  type: 'swap' | 'drop' | 'pickup';
+  status: RequestStatus;
+  requesterId: string;
+  targetUserId?: string;
+  pickupUserId?: string;
+  note?: string;
+  resolution?: string;
+  createdAt: string;
+  shift: Shift | null;
+  targetShift: Shift | null;
+  warnings?: string[];
+  myConflicts?: string[];
+}
+
+export interface SwapsList {
+  approvals: SwapRequest[];
+  mine: SwapRequest[];
+  offers: SwapRequest[];
+  history: SwapRequest[];
+  openPending: SwapRequest[];
+}
+
+export interface AppNotification {
+  id: string;
+  text: string;
+  link?: string;
+  read: boolean;
+  at: string;
+}
+
+/** GET /api/config: what the sign-in screen needs before anyone signs in. */
+export interface ServerConfig {
+  email: boolean;
+  brand: { name: string; color: string; nav?: string; bg?: string; mode?: 'auto' | 'light' | 'dark'; logo: string } | null;
+}

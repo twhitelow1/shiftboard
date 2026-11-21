@@ -551,12 +551,13 @@ export function createService(store, opts = {}) {
       store.update('users', u.id, { passwordHash: hashPassword(tempPassword), sessionVersion: (u.sessionVersion || 0) + 1, passwordResetAt: now().toISOString(), passwordResetBy: actor.id });
       return { tempPassword };
     },
-    // Each person's own choices: email copies of notifications, and light/dark mode ('' = the company's).
+    // Each person's own choices: email copies of notifications, light/dark mode ('' = the company's), and language (en/es).
     'account.preferences': (actor, a = {}) => {
       needAuth(actor);
       const patch = {};
       if ('emailNotifications' in a) patch.emailNotifications = a.emailNotifications !== false;
       if ('appearance' in a) patch.appearance = ['auto', 'light', 'dark'].includes(a.appearance) ? a.appearance : '';
+      if ('language' in a) patch.language = ['en', 'es'].includes(a.language) ? a.language : ''; // '' = follow the phone/browser
       return userView(store.update('users', actor.id, patch));
     },
     'employees.changePassword': (actor, { password }) => {
@@ -1364,6 +1365,42 @@ export function createService(store, opts = {}) {
       needAuth(actor);
       store.transaction(() => store.list('notifications', (n) => n.userId === actor.id && !n.read).forEach((n) => store.update('notifications', n.id, { read: true })));
       return { ok: true };
+    },
+
+    // ----- phone app (mobile/): push tokens and account deletion requests -----
+    // A phone's Expo push token. One phone belongs to one person: signing in as someone else moves it.
+    // v is the session version, so a password change or reset stops pushes to phones signed in before it.
+    'devices.register': (actor, { token, platform } = {}) => {
+      needAuth(actor);
+      if (typeof token !== 'string' || token.length > 200 || !/^Expo(nent)?PushToken\[[A-Za-z0-9_-]+\]$/.test(token)) fail(400, 'Not a push token');
+      if (!['ios', 'android'].includes(platform)) fail(400, 'Platform must be ios or android');
+      const v = userById(actor.id)?.sessionVersion || 0;
+      for (const d of store.list('deviceTokens', (x) => x.token === token && x.userId !== actor.id)) store.remove('deviceTokens', d.id);
+      const mine = store.list('deviceTokens', (x) => x.userId === actor.id).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      const cur = mine.find((x) => x.token === token);
+      if (cur) store.update('deviceTokens', cur.id, { platform, v, seenAt: now().toISOString() });
+      else store.insert('deviceTokens', { id: uid('dev'), userId: actor.id, token, platform, v, createdAt: now().toISOString() });
+      for (const old of mine.filter((x) => x !== cur).slice(9)) store.remove('deviceTokens', old.id); // keep 10 phones at most
+      return { ok: true };
+    },
+    'devices.unregister': (actor, { token } = {}) => {
+      needAuth(actor);
+      const mine = store.list('deviceTokens', (x) => x.userId === actor.id && x.token === token);
+      for (const d of mine) store.remove('deviceTokens', d.id);
+      return { ok: true, removed: mine.length };
+    },
+    // "Delete my account" in the app: tells the managers who look after this person, who remove the
+    // account in Team. Schedule and payroll records the restaurant must keep by law stay.
+    'account.requestDeletion': (actor) => {
+      needAuth(actor);
+      const me = userById(actor.id);
+      const at = now().toISOString();
+      if (me.deletionRequestedAt && Date.parse(at) - Date.parse(me.deletionRequestedAt) < 24 * 3600 * 1000) return { ok: true, requestedAt: me.deletionRequestedAt };
+      store.update('users', me.id, { deletionRequestedAt: at });
+      const mine = users().filter((u) => u.id !== me.id && u.active !== false && canManageUser(u, me));
+      notify((mine.length ? mine : managers().filter((u) => u.id !== me.id)).map((u) => u.id),
+        `${me.name} asked to delete their ShiftBoard account. Remove their sign-in and personal details in Team.`, '#/team');
+      return { ok: true, requestedAt: at };
     },
   };
 

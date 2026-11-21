@@ -118,6 +118,10 @@ Put it behind HTTPS (Caddy, Cloudflare, or the platform's TLS). Session cookies 
 
 Back up with `pg_dump "$DATABASE_URL" -n shiftboard > backup.sql`, or use your database provider's backups.
 
+## Phone app (iPhone and Android)
+
+`mobile/` is the staff app, built with Expo (React Native), in English and Spanish. One app in the App Store and Google Play serves every restaurant: people enter their restaurant's ShiftBoard address once (or open an invite link) and sign in. It uses the same API with a bearer token, and gets push notifications through Expo. Every deployment serves draft `/privacy` and `/support` pages for the store listings. See [docs/mobile-app/](docs/mobile-app/README.md): the decision, the store registration runbook, the store listing and how to develop it.
+
 ## Architecture
 
 ```
