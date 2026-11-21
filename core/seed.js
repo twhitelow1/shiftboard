@@ -340,5 +340,9 @@ export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password =
   // SAMPLE tips: a house pool and a Rabbit Hole pool, with tips entered for the demo week (core/tips.js).
   seedDemoTips(store, { week: WEEK, jobId, userId });
 
+  // SAMPLE clock-ins (as if synced from Toast) for Forecast & Labor → Labor review: core/labor-demo.js
+  seedLaborDemo(store, { week: WEEK });
   return { userId, jobId, eventId };
 }
+
+import { seedLaborDemo } from './labor-demo.js';

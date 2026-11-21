@@ -6,6 +6,7 @@ import { scheduleAreas, uniqueAreas, bannerColor, textOn, sameArea } from '../..
 import { applyBranding, logoUrl, imageToPng, THEMES } from '../theme.js';
 import TipPoolSettings from './TipPoolSettings.jsx';
 import { TextSettingsCard } from './PhoneCards.jsx';
+import { IntegrationsCard } from './ToastSettings.jsx';
 
 export default function Settings() {
   const { settings, call, emailEnabled, emailFrom, jobCodes } = useApp();
@@ -97,6 +98,7 @@ export default function Settings() {
       </div>
 
       <TextSettingsCard />
+      <IntegrationsCard />
 
       <div className="card card-pad col" style={{ gap: 12 }}>
         <h2>Forecasting</h2>

@@ -2,8 +2,23 @@ import React, { useEffect, useState } from 'react';
 import { useApp, Icon, Field, Modal, money, useAction, JobDot, Empty } from '../ui.jsx';
 import { addDays, dow, DOW_SHORT, parseDate, prettyDate, range } from '../../../core/time.js';
 import { useWeek, WeekNav } from './Schedule.jsx';
+import LaborReview from './LaborReview.jsx';
 
-export default function Forecast() {
+// Two tabs: the week ahead (forecast & scheduled labor), and Labor review of past weeks (#/forecast/labor).
+export default function Forecast({ parts }) {
+  const tab = parts?.[1] === 'labor' ? 'labor' : 'forecast';
+  return (
+    <div>
+      <div className="tabs">
+        <button className={tab === 'forecast' ? 'on' : ''} onClick={() => { location.hash = '#/forecast'; }}><Icon name="chart" size={16} />Forecast</button>
+        <button className={tab === 'labor' ? 'on' : ''} onClick={() => { location.hash = '#/forecast/labor'; }}><Icon name="clock" size={16} />Labor review</button>
+      </div>
+      {tab === 'labor' ? <LaborReview /> : <ForecastWeek />}
+    </div>
+  );
+}
+
+function ForecastWeek() {
   const { call, version, jobs, settings, isAdmin } = useApp();
   const [ws, setWs] = useWeek();
   const [f, setF] = useState(null);
