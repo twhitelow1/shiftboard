@@ -7,6 +7,7 @@ import { suggestStaffing } from './beo.js';
 import { cleanArea, uniqueAreas, findArea, scheduleAreas } from './areas.js';
 import { ROLE_IDS, roleOf, roleLabel, canManageSchedule, canChangeSettings, canManageEvents, canSeeContacts, canApprove,
   offSchedule, assignableRoles, canManageUser } from './roles.js';
+import { channelApi } from './notify-prefs.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -1348,6 +1349,9 @@ export function createService(store, opts = {}) {
         },
       };
     })(),
+
+    // ----- phone notifications and text messages (core/notify-prefs.js) -----
+    ...channelApi({ store, fail, needAuth, needAdmin, settings, now, channels: opts.channels }),
 
     // ----- notifications -----
     'notifications.list': (actor) => {

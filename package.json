@@ -9,7 +9,8 @@
     "build:demo": "DEMO=1 vite build",
     "start": "node server/index.js",
     "test": "node --test test/*.test.js",
-    "db:import-sqlite": "node scripts/import-sqlite.js"
+    "db:import-sqlite": "node scripts/import-sqlite.js",
+    "vapid-keys": "node scripts/vapid-keys.js"
   },
   "license": "UNLICENSED",
   "dependencies": {
@@ -18,7 +19,8 @@
     "cookie-parser": "^1.4.7",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
-    "pg": "^8.23.1"
+    "pg": "^8.23.1",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.16",
