@@ -5,6 +5,7 @@ import { IS_DEMO, sendTestEmail } from '../api.js';
 import { scheduleAreas, uniqueAreas, bannerColor, textOn, sameArea } from '../../../core/areas.js';
 import { applyBranding, logoUrl, imageToPng, THEMES } from '../theme.js';
 import TipPoolSettings from './TipPoolSettings.jsx';
+import { TextSettingsCard } from './PhoneCards.jsx';
 
 export default function Settings() {
   const { settings, call, emailEnabled, emailFrom, jobCodes } = useApp();
@@ -94,6 +95,8 @@ export default function Settings() {
         <div className="help">People you add with an email get a link to set their password, and anyone can reset a forgotten password from the sign-in page. Each person can turn notification emails off in My Shifts.</div>
         {emailEnabled && <div><button className="btn sm" disabled={busy} onClick={() => run(() => sendTestEmail(), (r) => `Test email sent to ${r.to}`)}><Icon name="send" />Send me a test email</button></div>}
       </div>
+
+      <TextSettingsCard />
 
       <div className="card card-pad col" style={{ gap: 12 }}>
         <h2>Forecasting</h2>

@@ -81,6 +81,25 @@ Setup:
 
 Emails are sent after the change is saved, so a failed request never emails anyone. Batches go through Resend's batch API with idempotency keys.
 
+### Phone notifications and text messages
+
+Both are optional and work like email: each new in-app notification is also sent as a phone notification and/or a text, after the change is saved. A failed or slow send never fails or slows anyone's request; it's logged and skipped. Each person turns them on for themselves in **My Shifts**. Code: `server/channels.js` (sending after the commit), `server/push.js`, `server/sms.js`, `core/notify-prefs.js` (the rules and RPCs), `web/public/sw.js` (the service worker).
+
+**Phone notifications (Web Push)** work on Android (Chrome) and on iPhone (iOS 16.4+) once the app is added to the Home Screen (Share → Add to Home Screen, then open it from there). My Shifts explains this on an iPhone.
+1. Run `npm run vapid-keys` (or `node scripts/vapid-keys.js`) once. It prints a key pair.
+2. In Vercel, add `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` (mark it **Sensitive**) and `VAPID_SUBJECT` (`mailto:` one of your addresses, or your site's `https://` URL). Redeploy.
+3. Keep the same keys afterwards: new keys mean everyone has to turn notifications on again.
+
+Phones the push service reports as gone are removed automatically. Signing out stops notifications on that phone.
+
+**Text messages (Twilio)** are off for everyone until each person turns them on with their own mobile number (managers can't do it for them). Admins have a restaurant-wide switch and a **Send me a test text** button in Settings.
+1. Create a Twilio account and buy a phone number (or a toll-free number).
+2. **Register for A2P 10DLC** (Twilio Console → Messaging → Regulatory Compliance): a brand, then a campaign for staff notifications, and add the number to the campaign's Messaging Service. US carriers block or filter business texts from unregistered 10-digit numbers. A toll-free number needs toll-free verification instead. Approval can take days to a few weeks. Describe opt-in as "employees turn on texts in the app's My Shifts page with their own mobile number".
+3. In Vercel, add `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` (**Sensitive**), and `TWILIO_MESSAGING_SERVICE_SID` (recommended) or `TWILIO_FROM_NUMBER` (e.g. `+17205550100`). Redeploy, then use **Settings → Texts & phone notifications → Send me a test text**; Twilio's error, if any, is shown there.
+4. For STOP/START replies, set the number's (or Messaging Service's) incoming message webhook to `POST https://<your app>/api/twilio/inbound`. It checks Twilio's signature with the auth token. STOP turns that person's texts off in the app and START turns them back on; Twilio itself sends the replies and won't deliver to anyone who replied STOP. If the app sits behind a different public URL than `APP_URL`, set `TWILIO_WEBHOOK_URL` to the exact URL configured in Twilio.
+
+Numbers are stored in E.164; numbers typed without a country code are taken as US/Canada (+1). Texts are kept short (one 160-character segment when possible) and end with the app link (`APP_URL`).
+
 ### Moving data from the old SQLite version
 
 If ShiftBoard has been running on Render or Docker with SQLite, copy its `shiftboard.db` file locally, then:
@@ -147,8 +166,6 @@ The API is `POST /api/rpc/<method>` with a JSON body. Every method enforces its 
 
 **How data is stored.** Each record (shift, user, event…) is a JSON document in one Postgres table, `shiftboard.docs`, stamped with an ever-increasing sequence number. Each running instance keeps a cache and, before every request, pulls only the rows that changed since its last look (usually none: one indexed query). Writes run in a transaction that holds a single lock: the instance catches up, re-runs the operation on the latest data, and saves every change in one statement. That keeps check-then-act operations correct when Vercel runs several instances at once, for example two people grabbing the same open shift. The business logic stays synchronous and unchanged, and a failed request never leaves partial writes.
 ## Roadmap ideas
-- SMS/email notifications (Twilio / SendGrid) alongside the in-app ones
 - POS integration (Toast / Square) to pull daily sales automatically
 - Time clock and tip pooling
 - Multi-location
-- Push notifications via PWA

@@ -5,6 +5,7 @@ import { addDays, weekStart, parseDate, MONTHS, DOW_SHORT, dow, prettyDate, fmtT
 import { hoursOf } from '../../../core/forecast.js';
 import { icalLink, IS_DEMO } from '../api.js';
 import ShiftDialog from './ShiftDialog.jsx';
+import { PhoneCards } from './PhoneCards.jsx';
 
 export default function MyShifts() {
   const { call, version, today, me, jobs, settings, employees, refresh, toast } = useApp();
@@ -103,6 +104,7 @@ export default function MyShifts() {
 
       <AppearanceCard />
       {!IS_DEMO && <EmailPrefCard />}
+      <PhoneCards />
       {!IS_DEMO && <PasswordCard />}
 
       {dialog && <ShiftDialog shift={dialog} startIn={startIn} events={data.events} onClose={(c) => { setDialog(null); if (c) load(); }} />}

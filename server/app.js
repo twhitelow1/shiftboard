@@ -10,6 +10,7 @@ import crypto from 'node:crypto';
 import { waitUntil } from '@vercel/functions';
 import { canChangeSettings, canManageUser, canManageSchedule } from '../core/roles.js';
 import { createMailer, deliverable, notificationEmail, inviteEmail, resetEmail, testEmail } from './email.js';
+import { createChannels } from './channels.js';
 import { uid } from '../core/store.js';
 import { createService, AppError } from '../core/service.js';
 import { seedDemo } from '../core/seed.js';
@@ -20,7 +21,7 @@ const COOKIE = 'sb_session';
 const MAX_LOGIN_ATTEMPTS = 10; // per IP + email, per 15 minutes
 // Methods that only read. Purely a speed hint: if one of these ever writes, DocDb
 // notices and redoes it under the write lock.
-const READ_ONLY = /\.(bootstrap|list|get|eligible|week|summary|suggestStaffing|covers)$/;
+const READ_ONLY = /\.(bootstrap|list|get|eligible|week|summary|suggestStaffing|covers|publicKey)$/;
 
 const hashPassword = (p) => bcrypt.hashSync(p, 10);
 const sameString = (a, b) => {
@@ -35,8 +36,10 @@ const sameString = (a, b) => {
  * @param {object} [opts.env]       defaults to process.env
  * @param {string} [opts.staticDir] serve the built web app from here (not used on Vercel, where the CDN serves dist/)
  * @param {object} [opts.mailer]    email sender (defaults to Resend, configured from env)
+ * @param {object} [opts.pusher]    phone notification sender (defaults to server/push.js, configured from env)
+ * @param {object} [opts.texter]    text message sender (defaults to server/sms.js, configured from env)
  */
-export function createApp({ db, env = process.env, staticDir, mailer = createMailer(env) } = {}) {
+export function createApp({ db, env = process.env, staticDir, mailer = createMailer(env), pusher, texter } = {}) {
   const PROD = env.NODE_ENV === 'production';
   const cookieOpts = { httpOnly: true, sameSite: 'lax', secure: PROD, maxAge: 1000 * 60 * 60 * 24 * 30 };
   let secret = null;
@@ -126,6 +129,9 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     if (messages.length) background(mailer.sendMany(messages, { idempotencyKey: `ntf-${notes[0].id}` }));
   }
 
+  // Phone notifications and text messages (server/channels.js): sent after the commit too, never failing the request.
+  const channels = createChannels({ db, env, pusher, texter, background, appUrl, signedIn: (req) => userFromToken(db.store, req.cookies[COOKIE]) });
+
   const stamp = (userIds, field) => userIds.length && db.run((s) => { for (const id of userIds) s.update('users', id, { [field]: new Date().toISOString() }); }, { write: true });
 
   /**
@@ -209,13 +215,13 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
       const out = await db.run((store) => {
         const actor = userFromToken(store, token);
         if (!actor) throw new AppError(401, 'Please sign in');
-        const result = createService(store, { hashPassword }).call(actor, method, structuredClone(body));
+        const result = createService(store, { hashPassword, channels: channels.info }).call(actor, method, structuredClone(body));
         // Changing your password signs out other devices; this one gets a fresh cookie.
         const rotated = method === 'employees.changePassword'
           ? store.update('users', actor.id, { sessionVersion: (actor.sessionVersion || 0) + 1 })
           : null;
         return { result, rotated };
-      }, { write: !READ_ONLY.test(method), synced: true, onCommit: (changes) => emailNotifications(changes, req) });
+      }, { write: !READ_ONLY.test(method), synced: true, onCommit: (changes) => { channels.afterCommit(changes, req); emailNotifications(changes, req); } });
 
       // A new person with an email gets a link to set their own password.
       if (method === 'employees.save' && out.result?.tempPassword && out.result.email) {
@@ -245,7 +251,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
       brand = { name: st.restaurantName, color: st.brandColor || '', nav: st.navColor || '', bg: st.bgColor || '', mode: st.appearance || 'auto',
         logo: st.logoVersion ? `/api/branding/logo?v=${st.logoVersion}` : '' };
     } catch { /* the sign-in page still works with ShiftBoard's look */ }
-    res.json({ email: mailer.enabled, emailFrom: mailer.enabled ? mailer.from : null, brand });
+    res.json({ email: mailer.enabled, emailFrom: mailer.enabled ? mailer.from : null, brand, ...channels.config() });
   });
 
   // The restaurant's logo (public: the sign-in page, emails and the browser tab use it).
@@ -389,6 +395,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     if (!u) return res.status(401).json({ error: 'Please sign in' });
     res.json({ result: `/api/ical/${u.id}/${icalToken(u.id)}.ics` });
   });
+
+  channels.routes(app); // /api/push/test, /api/sms/test, /api/twilio/inbound
 
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
