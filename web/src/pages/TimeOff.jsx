@@ -2,11 +2,17 @@ import React, { useEffect, useState } from 'react';
 import { useApp, Icon, Avatar, Field, Empty, useAction, Modal } from '../ui.jsx';
 import { prettyDate, addDays, DOW_LONG, fmtTime } from '../../../core/time.js';
 
-export default function TimeOff() {
+export default function TimeOff({ parts = [] }) {
   const { call, version, canApprove, isMgr, people, me, today } = useApp();
   const [list, setList] = useState(null);
-  const [tab, setTab] = useState(canApprove ? 'pending' : 'mine');
-  const [form, setForm] = useState(false);
+  const [tab, setTab] = useState(parts[1] === 'availability' ? 'availability' : canApprove ? 'pending' : 'mine');
+  const [form, setForm] = useState(parts[1] === 'new');
+  // Links like #/timeoff/new (from My Shifts) open the form; the address goes back to #/timeoff after.
+  useEffect(() => {
+    if (parts[1] === 'new') setForm(true);
+    if (parts[1] === 'availability') setTab('availability');
+    if (parts[1]) history.replaceState(null, '', '#/timeoff');
+  }, [parts[1]]);
   const [run, busy] = useAction();
   useEffect(() => { call('timeOff.list').then(setList); }, [version]);
 
@@ -20,11 +26,11 @@ export default function TimeOff() {
 
   return (
     <div style={{ maxWidth: 820 }}>
-      <div className="toolbar">
+      <div className="toolbar to-toolbar">
         <div className="tabs" style={{ margin: 0, flex: 1, borderBottom: 0 }}>
           {tabs.map((t) => <button key={t.key} className={tab === t.key ? 'on' : ''} onClick={() => setTab(t.key)}>{t.label}{t.key === 'pending' && pendingCount > 0 && <span className="count">{pendingCount}</span>}</button>)}
         </div>
-        <button className="btn primary sm" onClick={() => setForm(true)}><Icon name="plus" />Request time off</button>
+        <button className="btn primary" onClick={() => setForm(true)}><Icon name="plus" />Request time off</button>
       </div>
 
       {tab === 'availability' ? <Availability /> : (
@@ -48,7 +54,7 @@ export default function TimeOff() {
           ))}
         </div>
       )}
-      {form && <RequestForm onClose={() => setForm(false)} />}
+      {form && <RequestForm onClose={() => { setForm(false); if (tab === 'availability') setTab(canApprove ? 'pending' : 'mine'); }} />}
     </div>
   );
 }

@@ -93,6 +93,13 @@ test('forecast produces covers, labor % and staffing gaps', () => {
   const dinner = sat.dayparts.find((d) => d.name === 'Dinner');
   assert.ok(dinner.rows.find((r) => r.recommended != null));
   assert.throws(() => svc.call(u('Alex D'), 'forecast.week', { weekStart: '2026-09-28' }), /Managers only/);
+  // Staff see projected covers (like the house sheet), but never sales or labor.
+  const c = svc.call(u('Alex D'), 'forecast.covers', { weekStart: '2026-09-28' });
+  assert.equal(c.days.length, 7);
+  const mgr = svc.call(u('Moe'), 'forecast.summary', { weekStart: '2026-09-28' });
+  assert.deepEqual(c.days.map((d) => d.totalCovers), mgr.days.map((d) => d.totalCovers));
+  for (const d of c.days) assert.deepEqual(Object.keys(d).sort(), ['closed', 'date', 'totalCovers']);
+  assert.throws(() => svc.call(u('Alex D'), 'forecast.summary', { weekStart: '2026-09-28' }), /Managers only/);
 });
 
 test('events: suggest staffing, generate shifts, comments notify staff', () => {

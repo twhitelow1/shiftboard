@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useApp, Icon, Avatar, shiftTime, Empty, useAction, Warnings, JobDot } from '../ui.jsx';
-import { prettyDate } from '../../../core/time.js';
+import { prettyDate, addDays } from '../../../core/time.js';
+import ShiftDialog from './ShiftDialog.jsx';
 
 const TYPE = { swap: 'Trade', drop: 'Giveaway', pickup: 'Open shift pickup' };
 const STATUS = {
@@ -27,16 +28,54 @@ export default function Swaps() {
 
   return (
     <div style={{ maxWidth: 860 }}>
+      <StartTrade onDone={load} />
       <div className="tabs">
         {tabs.map((t) => <button key={t.key} className={cur === t.key ? 'on' : ''} onClick={() => setTab(t.key)}>{t.label}{t.n > 0 && <span className="count" style={{ background: cur === t.key ? 'var(--brand)' : 'var(--text-3)' }}>{t.n}</span>}</button>)}
       </div>
       {cur === 'offers' && <p className="small muted" style={{ marginTop: -4 }}>Shifts coworkers are giving away that you're trained for, plus trades offered directly to you.{settings.requireSwapApproval ? ' A manager approves before it’s final.' : ''}</p>}
       <div className="card">
         {!list.length && <Empty icon="swap" title={cur === 'approvals' ? 'Nothing to approve' : cur === 'offers' ? 'Nothing up for grabs right now' : 'No requests'}>
-          {cur === 'mine' && 'Open any of your shifts to give it away or trade it.'}
+          {cur === 'mine' && 'Pick one of your shifts above to trade it or give it away.'}
         </Empty>}
         {list.map((r) => <RequestCard key={r.id} r={r} mode={cur} onDone={load} />)}
       </div>
+    </div>
+  );
+}
+
+/** The obvious way in: your upcoming posted shifts, each with Trade and Give away. */
+function StartTrade({ onDone }) {
+  const { call, me, today, jobs, settings, version } = useApp();
+  const [shifts, setShifts] = useState(null);
+  const [all, setAll] = useState(false);
+  const [dialog, setDialog] = useState(null);
+  const load = () => call('shifts.list', { start: today, end: addDays(today, 28) })
+    .then((r) => setShifts(r.shifts.filter((s) => s.userId === me.id && s.published && s.date >= today).sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start))));
+  useEffect(() => { load(); }, [version]);
+  const approval = settings.requireSwapApproval !== false;
+  const list = shifts ? (all ? shifts : shifts.slice(0, 4)) : [];
+  return (
+    <div className="card card-pad section col" style={{ gap: 10 }}>
+      <div className="row wrap" style={{ gap: 8 }}>
+        <h3 style={{ flex: 1 }}>Trade or give away a shift</h3>
+        <span className="small muted">1. Pick your shift · 2. Trade it or give it away · 3. A coworker accepts{approval ? ' · 4. A manager approves' : ''}</span>
+      </div>
+      {!shifts && <div className="small muted">Loading your shifts…</div>}
+      {shifts?.length === 0 && <div className="small muted">You don’t have any posted shifts coming up. When the schedule is published, they’ll be here.</div>}
+      {list.map((s) => (
+        <div key={s.id} className="row wrap trade-row">
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <b>{prettyDate(s.date)} · {shiftTime(s)}</b>
+            <div className="small muted row" style={{ gap: 5 }}><JobDot job={jobs[s.jobCodeId]} />{jobs[s.jobCodeId]?.name}{s.area ? ` · ${s.area}` : ''}</div>
+          </div>
+          {s.pending ? <span className="badge warn">Request in progress</span> : <>
+            <button className="btn sm primary" onClick={() => setDialog({ shift: s, startIn: 'swap' })}><Icon name="swap" />Trade</button>
+            <button className="btn sm" onClick={() => setDialog({ shift: s, startIn: 'drop' })}><Icon name="hand" />Give away</button>
+          </>}
+        </div>
+      ))}
+      {shifts?.length > 4 && <button className="btn sm ghost" onClick={() => setAll(!all)}>{all ? 'Show fewer' : `Show all ${shifts.length}`}</button>}
+      {dialog && <ShiftDialog shift={dialog.shift} startIn={dialog.startIn} onClose={(c) => { setDialog(null); if (c) { load(); onDone?.(); } }} />}
     </div>
   );
 }
