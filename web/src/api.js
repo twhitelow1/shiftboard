@@ -4,6 +4,11 @@ import { MemoryStore } from '../../core/store.js';
 import { createService } from '../../core/service.js';
 import { seedDemo } from '../../core/seed.js';
 import { startServiceWorker, forgetThisDevice } from './push.js';
+import { getLang, translateError } from './i18n/index.js';
+
+// The server answers errors in the caller's language; this tells it the app's language (which it uses
+// when the person hasn't picked one, and before sign-in). See server/app.js and core/errors.js.
+const langHeader = () => ({ 'X-ShiftBoard-Language': getLang() });
 
 export const IS_DEMO = __DEMO__;
 // Phone notifications need the service worker (web/public/sw.js). The demo has no server, so no worker.
@@ -33,24 +38,24 @@ export async function call(method, args = {}) {
       // Clone to mimic a network boundary (no shared references into the store).
       return JSON.parse(JSON.stringify(d.service.call(actor, method, args) ?? null));
     } catch (e) {
-      throw new ApiError(e.status || 500, e.message);
+      throw new ApiError(e.status || 500, translateError(e.message)); // the demo has no server to translate it
     }
   }
   const res = await fetch(`/api/rpc/${method}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...langHeader() },
     credentials: 'same-origin',
     body: JSON.stringify(args),
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, body.error || `Request failed (${res.status})`);
+  if (!res.ok) throw new ApiError(res.status, body.error || translateError(`Request failed (${res.status})`));
   return body.result;
 }
 
 export async function login(email, password) {
-  const res = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+  const res = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json', ...langHeader() }, body: JSON.stringify({ email, password }) });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, body.error || 'Sign-in failed');
+  if (!res.ok) throw new ApiError(res.status, body.error || translateError('Sign-in failed'));
   return true;
 }
 
@@ -79,14 +84,14 @@ export function nowDate() { return IS_DEMO ? DEMO_NOW : new Date(); }
 
 // ---------- email features (hosted app only) ----------
 async function post(path, body) {
-  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(body || {}) });
+  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json', ...langHeader() }, credentials: 'same-origin', body: JSON.stringify(body || {}) });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, data.error || `Request failed (${res.status})`);
+  if (!res.ok) throw new ApiError(res.status, data.error || translateError(`Request failed (${res.status})`));
   return data.result ?? data;
 }
 /** Server features the UI adapts to: { email: boolean, emailFrom } */
 export async function getConfig() {
-  if (IS_DEMO) return { email: false, emailFrom: null };
+  if (IS_DEMO) return { email: false, emailFrom: null, language: 'auto' };
   try { return await (await fetch('/api/config')).json(); } catch { return { email: false, emailFrom: null }; }
 }
 export const forgotPassword = (email) => post('/api/auth/forgot', { email });

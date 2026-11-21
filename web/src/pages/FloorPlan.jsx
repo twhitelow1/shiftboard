@@ -8,21 +8,23 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useApp, Icon } from '../ui.jsx';
 import '../venue.css';
+import { useT, t as tr } from '../i18n/index.js';
 
+// label and name are catalog keys (web/src/i18n): the item's kind, and the label a new one gets.
 export const ITEM_DEFS = {
-  'table-round': { label: 'Round table', w: 80, h: 80, seats: 4, prefix: 'T' },
-  'table-square': { label: 'Square table', w: 70, h: 70, seats: 4, prefix: 'T' },
-  'table-rect': { label: 'Long table', w: 140, h: 60, seats: 6, prefix: 'T' },
-  booth: { label: 'Booth', w: 140, h: 70, seats: 4, prefix: 'B' },
-  bar: { label: 'Bar', w: 300, h: 50, seats: 8, name: 'Bar' },
-  stage: { label: 'Stage', w: 260, h: 120, name: 'Stage' },
-  dancefloor: { label: 'Dance floor', w: 220, h: 220, name: 'Dance floor' },
-  dj: { label: 'DJ booth', w: 90, h: 60, name: 'DJ' },
-  host: { label: 'Host stand', w: 80, h: 40, name: 'Host' },
-  wall: { label: 'Wall', w: 200, h: 10 },
-  door: { label: 'Door', w: 60, h: 60 },
-  plant: { label: 'Plant', w: 40, h: 40 },
-  label: { label: 'Text label', w: 160, h: 40, name: 'Label' },
+  'table-round': { label: 'floorPlan.roundTable', w: 80, h: 80, seats: 4, prefix: 'T' },
+  'table-square': { label: 'floorPlan.squareTable', w: 70, h: 70, seats: 4, prefix: 'T' },
+  'table-rect': { label: 'floorPlan.longTable', w: 140, h: 60, seats: 6, prefix: 'T' },
+  booth: { label: 'floorPlan.booth', w: 140, h: 70, seats: 4, prefix: 'B' },
+  bar: { label: 'floorPlan.bar', w: 300, h: 50, seats: 8, name: 'floorPlan.nameBar' },
+  stage: { label: 'floorPlan.stage', w: 260, h: 120, name: 'floorPlan.nameStage' },
+  dancefloor: { label: 'floorPlan.danceFloor', w: 220, h: 220, name: 'floorPlan.nameDanceFloor' },
+  dj: { label: 'floorPlan.djBooth', w: 90, h: 60, name: 'floorPlan.nameDj' },
+  host: { label: 'floorPlan.hostStand', w: 80, h: 40, name: 'floorPlan.nameHost' },
+  wall: { label: 'floorPlan.wall', w: 200, h: 10 },
+  door: { label: 'floorPlan.door', w: 60, h: 60 },
+  plant: { label: 'floorPlan.plant', w: 40, h: 40 },
+  label: { label: 'floorPlan.textLabel', w: 160, h: 40, name: 'floorPlan.nameLabel' },
 };
 /** Items people sit at: tables, booths and bars. These are what server sections are made of. */
 export const SEATED = new Set(['table-round', 'table-square', 'table-rect', 'booth', 'bar']);
@@ -197,13 +199,14 @@ export const fitBox = (plan) => ({ x: -PAD, y: -PAD, w: (plan?.width || 1000) + 
  * - picked: Set of item ids picked for assigning.
  */
 export function FloorPlanView({ plan, title, view, svgRef, handlers, editing, selected, handleR, marks, picked, marquee, touchAction, className = '' }) {
+  const t = useT();
   const ids = usePatternIds();
   const W = plan?.width || 1000, H = plan?.height || 700;
   const items = plan?.items || [];
   const vb = view || fitBox(plan);
   return (
     <svg ref={svgRef} className={`fp-svg ${editing ? 'editing' : ''} ${className}`} viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
-      style={touchAction ? { touchAction } : undefined} role="img" aria-label={title || 'Floor plan'}
+      style={touchAction ? { touchAction } : undefined} role="img" aria-label={title || t('floorPlan.floorPlan')}
       onContextMenu={handlers ? (e) => e.preventDefault() : undefined} {...handlers}>
       <Defs ids={ids} />
       <rect x={-PAD} y={-PAD} width={W + PAD * 2} height={H + PAD * 2} fill="var(--fp-floor)" />
@@ -217,7 +220,7 @@ export function FloorPlanView({ plan, title, view, svgRef, handlers, editing, se
         const withTag = mark?.name && it.h >= 40;
         return (
           <g key={it.id} className={`fp-item ${seated ? 'seated' : ''} ${pick ? 'picked' : ''}`} data-id={it.id}>
-            <title>{[ITEM_DEFS[it.type]?.label, it.label, it.seats ? `${it.seats} seats` : '', mark?.title || mark?.name].filter(Boolean).join(' · ')}</title>
+            <title>{[ITEM_DEFS[it.type] && tr(ITEM_DEFS[it.type].label), it.label, it.seats ? tr('floorPlan.seatsCount', { count: it.seats }) : '', mark?.title || mark?.name].filter(Boolean).join(' · ')}</title>
             <g transform={`translate(${cx} ${cy}) rotate(${it.r || 0})`}>
               {mark && <Halo it={it} mark={mark} />}
               {it.type === 'label' && <rect x={-it.w / 2} y={-it.h / 2} width={it.w} height={it.h} fill="transparent" stroke={editing ? 'var(--fp-edge)' : 'none'} strokeDasharray="4 4" />}
@@ -245,6 +248,7 @@ export function FloorPlanView({ plan, title, view, svgRef, handlers, editing, se
 }
 
 function MiniShape({ type }) {
+  const t = useT();
   const ids = usePatternIds();
   const d = ITEM_DEFS[type];
   const it = { type, w: d.w, h: d.h, seats: Math.min(d.seats || 0, 6), r: 0 };
@@ -253,7 +257,7 @@ function MiniShape({ type }) {
     <svg className="fp-mini" viewBox={`${-m} ${-m * 0.75} ${m * 2} ${m * 1.5}`} aria-hidden="true">
       <Defs ids={ids} />
       <Shape it={it} ids={ids} />
-      {type === 'label' && <text className="fp-text big" x={0} y={0}>Aa</text>}
+      {type === 'label' && <text className="fp-text big" x={0} y={0}>{t('floorPlan.aa')}</text>}
     </svg>
   );
 }
@@ -403,11 +407,12 @@ export function usePlanGestures({ plan, svgRef, onStart, onTap, focus }) {
 }
 
 export function ZoomControls({ gz }) {
+  const t = useT();
   return (
-    <div className="fp-zoom no-print" role="group" aria-label="Zoom">
-      <button type="button" className="btn sm icon" title="Zoom in" aria-label="Zoom in" onClick={() => gz.zoomBy(1.5)}><FpIcon name="zoomIn" /></button>
-      <button type="button" className="btn sm icon" title="Zoom out" aria-label="Zoom out" disabled={!gz.zoomed} onClick={() => gz.zoomBy(1 / 1.5)}><FpIcon name="zoomOut" /></button>
-      {gz.zoomed && <button type="button" className="btn sm icon" title="Show the whole room" aria-label="Show the whole room" onClick={gz.reset}><FpIcon name="fit" /></button>}
+    <div className="fp-zoom no-print" role="group" aria-label={t('floorPlan.zoom')}>
+      <button type="button" className="btn sm icon" title={t('floorPlan.zoomIn')} aria-label={t('floorPlan.zoomIn')} onClick={() => gz.zoomBy(1.5)}><FpIcon name="zoomIn" /></button>
+      <button type="button" className="btn sm icon" title={t('floorPlan.zoomOut')} aria-label={t('floorPlan.zoomOut')} disabled={!gz.zoomed} onClick={() => gz.zoomBy(1 / 1.5)}><FpIcon name="zoomOut" /></button>
+      {gz.zoomed && <button type="button" className="btn sm icon" title={t('floorPlan.showTheWholeRoom')} aria-label={t('floorPlan.showTheWholeRoom')} onClick={gz.reset}><FpIcon name="fit" /></button>}
     </div>
   );
 }
@@ -450,6 +455,7 @@ const boxOf = (a, b) => ({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math
 const HISTORY = 100;
 
 export function FloorPlanEditor({ room, onSaved, onDirtyChange }) {
+  const t = useT();
   const { call, toast } = useApp();
   const coarse = useCoarsePointer();
   const [saved, setSaved] = useState(() => normalize(room.plan));
@@ -549,7 +555,7 @@ export function FloorPlanEditor({ room, onSaved, onDirtyChange }) {
     const cx = Math.max(0, Math.min(p.width, v.x + v.w / 2)), cy = Math.max(0, Math.min(p.height, v.y + v.h / 2));
     let x = snap(cx - d.w / 2), y = snap(cy - d.h / 2);
     for (let n = 0; n < 8 && p.items.some((i) => i.x === x && i.y === y); n++) { x += 20; y += 20; }
-    const item = fit({ id: newId(), type, w: d.w, h: d.h, r: 0, seats: d.seats || 0, x, y, label: d.prefix ? nextLabel(p.items, d.prefix) : d.name || '' }, p);
+    const item = fit({ id: newId(), type, w: d.w, h: d.h, r: 0, seats: d.seats || 0, x, y, label: d.prefix ? nextLabel(p.items, d.prefix) : d.name ? tr(d.name) : '' }, p);
     change((pl) => ({ ...pl, items: [...pl.items, item] }));
     setSel([item.id]);
   };
@@ -697,7 +703,7 @@ export function FloorPlanEditor({ room, onSaved, onDirtyChange }) {
       const r = await call('venue.savePlan', { roomId: room.id, plan: planRef.current });
       const next = normalize(r.plan);
       setSaved(next); setPlan(next); keepSel(next);
-      toast('Floor plan saved');
+      toast(t('floorPlan.floorPlanSaved'));
       onSaved?.(r);
     } catch (e) {
       toast(e.message, 'bad');
@@ -716,69 +722,69 @@ export function FloorPlanEditor({ room, onSaved, onDirtyChange }) {
 
   return (
     <div className="col fp-edit" style={{ gap: 10 }}>
-      <div className="fp-palette" role="toolbar" aria-label="Add to the plan">
+      <div className="fp-palette" role="toolbar" aria-label={t('floorPlan.addToThePlan')}>
         {Object.entries(ITEM_DEFS).map(([type, d]) => (
-          <button key={type} type="button" className="btn sm fp-add" onClick={() => add(type)} title={`Add ${d.label.toLowerCase()}`}><MiniShape type={type} />{d.label}</button>
+          <button key={type} type="button" className="btn sm fp-add" onClick={() => add(type)} title={t('floorPlan.addLabel', { label: t(d.label).toLowerCase() })}><MiniShape type={type} />{t(d.label)}</button>
         ))}
       </div>
-      <div className="fp-actions" role="toolbar" aria-label="Edit">
+      <div className="fp-actions" role="toolbar" aria-label={t('common.edit')}>
         <button type="button" className={`btn sm ${selectMode ? 'primary' : ''}`} aria-pressed={selectMode} onClick={() => setSelectMode(!selectMode)}
-          title="Pick several items: tap each one. You can also long-press an item, or Shift-click.">
-          <FpIcon name="select" />{selectMode ? 'Done' : 'Select'}
+          title={t('floorPlan.pickSeveralItemsTapEach')}>
+          <FpIcon name="select" />{selectMode ? t('common.done') : t('floorPlan.select')}
         </button>
-        <button type="button" className="btn sm icon" title="Undo (Ctrl+Z)" aria-label="Undo" disabled={!history.current.past.length} onClick={undo}><FpIcon name="undo" /></button>
-        <button type="button" className="btn sm icon" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled={!history.current.future.length} onClick={redo}><FpIcon name="redo" /></button>
+        <button type="button" className="btn sm icon" title={t('floorPlan.undoCtrlZ')} aria-label={t('common.undo')} disabled={!history.current.past.length} onClick={undo}><FpIcon name="undo" /></button>
+        <button type="button" className="btn sm icon" title={t('floorPlan.redoCtrlShiftZ')} aria-label={t('floorPlan.redo')} disabled={!history.current.future.length} onClick={redo}><FpIcon name="redo" /></button>
         <span className="spacer" />
-        {dirty ? <span className="badge warn fp-state">Unsaved</span> : <span className="badge ok fp-state">Saved</span>}
-        <button type="button" className="btn sm primary" onClick={save} disabled={busy || !dirty}><Icon name="check" />{busy ? 'Saving…' : 'Save'}</button>
+        {dirty ? <span className="badge warn fp-state">{t('floorPlan.unsaved')}</span> : <span className="badge ok fp-state">{t('common.saved')}</span>}
+        <button type="button" className="btn sm primary" onClick={save} disabled={busy || !dirty}><Icon name="check" />{busy ? t('floorPlan.saving') : t('common.save')}</button>
       </div>
       <div className="fp-editor">
         <div className="col" style={{ gap: 8, minWidth: 0 }}>
           <div className={`fp-stage ${selectMode ? 'selecting' : ''}`}>
             <FloorPlanView plan={plan} editing selected={selected} handleR={handleR} svgRef={svgRef} view={gz.view} handlers={gz.handlers}
-              marquee={marquee} touchAction="none" title={`${room.name} floor plan`} />
+              marquee={marquee} touchAction="none" title={t('floorPlan.nameFloorPlan', { name: room.name })} />
             <ZoomControls gz={gz} />
           </div>
           <div className="fp-selbar" aria-live="polite">
             {sel.length ? <>
-              <span className="fp-selcount"><b>{sel.length}</b> selected{seatsSel ? ` · ${seatsSel} seats` : ''}</span>
+              <span className="fp-selcount">{t('floorPlan.bSelcountBSelected', { selCount: sel.length })}{seatsSel ? t('floorPlan.seatsselSeats', { seatsSel }) : ''}</span>
               <span className="spacer" />
-              <button type="button" className="btn sm icon" title="Rotate left 15°" aria-label="Rotate left" onClick={() => rotateSel(-15)}><Icon name="rotateLeft" /></button>
-              <button type="button" className="btn sm icon" title="Rotate right 15°" aria-label="Rotate right" onClick={() => rotateSel(15)}><Icon name="rotateRight" /></button>
-              <button type="button" className="btn sm icon" title="Duplicate (Ctrl+D)" aria-label="Duplicate" onClick={duplicateSel}><Icon name="copy" /></button>
-              <button type="button" className="btn sm icon danger" title="Delete (Del)" aria-label="Delete" onClick={removeSel}><Icon name="trash" /></button>
-              <button type="button" className="btn sm icon ghost" title="Clear selection (Esc)" aria-label="Clear selection" onClick={() => { setSel([]); setSelectMode(false); }}><Icon name="x" /></button>
-            </> : <span className="small muted">{selectMode ? 'Tap items to pick them. Drag on the floor to pick an area.' : coarse ? 'Tap to select. Long-press to pick more. Pinch to zoom.' : 'Click to select. Shift-click or drag a box to pick more.'}</span>}
+              <button type="button" className="btn sm icon" title={t('floorPlan.rotateLeft15')} aria-label={t('floorPlan.rotateLeft')} onClick={() => rotateSel(-15)}><Icon name="rotateLeft" /></button>
+              <button type="button" className="btn sm icon" title={t('floorPlan.rotateRight15')} aria-label={t('floorPlan.rotateRight')} onClick={() => rotateSel(15)}><Icon name="rotateRight" /></button>
+              <button type="button" className="btn sm icon" title={t('floorPlan.duplicateCtrlD')} aria-label={t('floorPlan.duplicate')} onClick={duplicateSel}><Icon name="copy" /></button>
+              <button type="button" className="btn sm icon danger" title={t('floorPlan.deleteDel')} aria-label={t('common.delete')} onClick={removeSel}><Icon name="trash" /></button>
+              <button type="button" className="btn sm icon ghost" title={t('floorPlan.clearSelectionEsc')} aria-label={t('floorPlan.clearSelection')} onClick={() => { setSel([]); setSelectMode(false); }}><Icon name="x" /></button>
+            </> : <span className="small muted">{selectMode ? t('floorPlan.tapItemsToPickThem') : coarse ? t('floorPlan.tapToSelectLongPress') : t('floorPlan.clickToSelectShiftClick')}</span>}
           </div>
           <div className="row wrap small muted">
             <span>{statsText(stats)}</span>
             <span className="spacer" />
-            <span>Room size</span>
-            <input className="input sm" type="number" step="50" style={{ width: 80 }} value={plan.width} onChange={setSize('width')} aria-label="Plan width" />
+            <span>{t('floorPlan.roomSize')}</span>
+            <input className="input sm" type="number" step="50" style={{ width: 80 }} value={plan.width} onChange={setSize('width')} aria-label={t('floorPlan.planWidth')} />
             <span>×</span>
-            <input className="input sm" type="number" step="50" style={{ width: 80 }} value={plan.height} onChange={setSize('height')} aria-label="Plan height" />
+            <input className="input sm" type="number" step="50" style={{ width: 80 }} value={plan.height} onChange={setSize('height')} aria-label={t('floorPlan.planHeight')} />
           </div>
         </div>
         <div className="fp-panel col">
           {single ? <>
-            <b>{ITEM_DEFS[single.type]?.label}</b>
-            <label className="field"><span>Label</span><input className="input sm" maxLength={40} value={single.label || ''} onChange={(e) => patch(single.id, { label: e.target.value }, `label:${single.id}`)} /></label>
+            <b>{ITEM_DEFS[single.type] && t(ITEM_DEFS[single.type].label)}</b>
+            <label className="field"><span>{t('floorPlan.label')}</span><input className="input sm" maxLength={40} value={single.label || ''} onChange={(e) => patch(single.id, { label: e.target.value }, `label:${single.id}`)} /></label>
             {SEATED.has(single.type) && (
-              <label className="field"><span>{single.type === 'bar' ? 'Bar stools' : 'Seats'}</span>
+              <label className="field"><span>{single.type === 'bar' ? t('floorPlan.barStools') : t('floorPlan.seats')}</span>
                 <input className="input sm" type="number" min="0" max="40" inputMode="numeric" value={single.seats || 0} onChange={(e) => patch(single.id, { seats: Math.max(0, Math.min(40, Number(e.target.value) || 0)) }, `seats:${single.id}`)} /></label>
             )}
             <div className="grid2">
-              <label className="field"><span>Width</span><input className="input sm" type="number" step="10" inputMode="numeric" value={single.w} onChange={(e) => patch(single.id, { w: Number(e.target.value) || 4 }, `w:${single.id}`)} /></label>
-              <label className="field"><span>Depth</span><input className="input sm" type="number" step="10" inputMode="numeric" value={single.h} onChange={(e) => patch(single.id, { h: Number(e.target.value) || 4 }, `h:${single.id}`)} /></label>
+              <label className="field"><span>{t('floorPlan.width')}</span><input className="input sm" type="number" step="10" inputMode="numeric" value={single.w} onChange={(e) => patch(single.id, { w: Number(e.target.value) || 4 }, `w:${single.id}`)} /></label>
+              <label className="field"><span>{t('floorPlan.depth')}</span><input className="input sm" type="number" step="10" inputMode="numeric" value={single.h} onChange={(e) => patch(single.id, { h: Number(e.target.value) || 4 }, `h:${single.id}`)} /></label>
             </div>
-            <div className="small muted">Rotation {single.r || 0}° · drag the corner dot to resize</div>
+            <div className="small muted">{t('floorPlan.rotation')}{' '}{single.r || 0}{t('floorPlan.dragTheCornerDotTo')}</div>
           </> : sel.length > 1
-            ? <div className="small muted">{sel.length} items selected. Drag any of them to move them all. Rotate, duplicate or delete them with the buttons under the plan.</div>
-            : <div className="small muted">Add tables, a bar, a stage and more from the buttons above, then drag them into place. Select an item to label it, set seats, resize or rotate it.</div>}
+            ? <div className="small muted">{t('floorPlan.selcountItemsSelectedDragAny', { selCount: sel.length })}</div>
+            : <div className="small muted">{t('floorPlan.addTablesABarA')}</div>}
           <div className="help">{coarse
-            ? 'Pinch to zoom, two fingers to move around. Long-press or Select to pick several.'
-            : 'Arrow keys nudge · Del removes · Ctrl+Z undoes · Ctrl+wheel zooms.'}</div>
-          {dirty && <button type="button" className="btn sm ghost" style={{ alignSelf: 'flex-start' }} onClick={discard} disabled={busy}>Discard changes</button>}
+            ? t('floorPlan.pinchToZoomTwoFingers')
+            : t('floorPlan.arrowKeysNudgeDelRemoves')}</div>
+          {dirty && <button type="button" className="btn sm ghost" style={{ alignSelf: 'flex-start' }} onClick={discard} disabled={busy}>{t('floorPlan.discardChanges')}</button>}
         </div>
       </div>
     </div>

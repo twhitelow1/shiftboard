@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { useApp, Modal, Field, Icon, useAction, startTimesOnly } from '../ui.jsx';
 import { canTrade } from './TradeHint.jsx';
-import { DOW_LONG, dow, parseDate, prettyDate } from '../../../core/time.js';
+import { dow, parseDate } from '../../../core/time.js';
 import { bannerColor, textOn } from '../../../core/areas.js';
+import { useT, prettyDate , dowLong } from '../i18n/index.js';
 
 // The schedule drawn like the house spreadsheet (and its PDF): a colored banner per area, a
 // header row per position with the day names, names in capitals, yellow OFF cells, the dates and
 // the day's notes and events under the first banner, Projected Covers, and a Notes line at the end.
 // It prints on one page like the PDF.
 
-const DAY_NAMES = DOW_LONG.map((d) => d.toUpperCase());
+/** MONDAY · LUNES: the sheet's day names, in the viewer's language. */
+const dayName = (i) => dowLong(i).toUpperCase();
 
 /** "16:00" → "4PM", "15:30" → "3:30PM"; with an end: "1-9PM", "10AM-6PM". */
 export function sheetTime(s) {
@@ -28,6 +30,7 @@ const plural = (n) => (/man$/i.test(n) ? n.replace(/man$/i, 'men') : /(s|x|ch|sh
 const usDate = (d) => { const x = parseDate(d); return `${x.getUTCMonth() + 1}/${x.getUTCDate()}/${x.getUTCFullYear()}`; };
 
 export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onOpen, onSaved, className = '' }) {
+  const t = useT();
   const { isMgr, me, settings, people, today } = useApp();
   const [editNote, setEditNote] = useState(null); // { kind, date, text }
 
@@ -38,7 +41,7 @@ export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onO
     if (last && last.banner === sec.banner) last.secs.push(sec);
     else groups.push({ banner: sec.banner, secs: [sec] });
   }
-  if (!groups.length) groups.push({ banner: settings.restaurantName || 'Schedule', secs: [] });
+  if (!groups.length) groups.push({ banner: settings.restaurantName || t('scheduleSheet.schedule'), secs: [] });
 
   const note = (kind, date) => data.notes?.find((n) => n.kind === kind && n.date === date)?.text || '';
   const timeOffOn = (userId, date) => data.timeOff?.find((t) => t.userId === userId && t.startDate <= date && t.endDate >= date);
@@ -54,7 +57,7 @@ export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onO
           {shifts.map((s, i) => (
             <React.Fragment key={s.id}>
               {i > 0 && ' / '}
-              <span className={`sh-shift ${s.published ? '' : 'draft'} ${s.userId === me.id ? 'mine' : ''}`} title={[!s.published && 'Draft (not posted yet)', canTrade(s, me, today) && 'Your shift: tap to trade or give it away', ...(data.warnings?.[s.id] || []), s.notes].filter(Boolean).join('\n')}
+              <span className={`sh-shift ${s.published ? '' : 'draft'} ${s.userId === me.id ? 'mine' : ''}`} title={[!s.published && t('scheduleSheet.draftNotPostedYet'), canTrade(s, me, today) && t('schedule.yourShiftTapToTrade'), ...(data.warnings?.[s.id] || []), s.notes].filter(Boolean).join('\n')}
                 onClick={(e) => { e.stopPropagation(); onOpen(s); }}>
                 {sheetTime(s)}{s.tag ? ` ${s.tag}` : ''}{data.warnings?.[s.id] && <sup className="sh-warn">!</sup>}{s.pending && <sup>⇄</sup>}
               </span>
@@ -65,10 +68,10 @@ export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onO
     }
     if (!user) return <td className={add ? 'can-add' : ''} onClick={add} />;
     const to = timeOffOn(user.id, date);
-    if (to) return <td className={`off ${add ? 'can-add' : ''}`} onClick={add} title={to.reason || ''}>{to.status === 'approved' ? 'REQUEST OFF' : 'REQ PENDING'}</td>;
+    if (to) return <td className={`off ${add ? 'can-add' : ''}`} onClick={add} title={to.reason || ''}>{to.status === 'approved' ? t('scheduleSheet.requestOff') : t('scheduleSheet.reqPending')}</td>;
     const other = workingElsewhere(user.id, date);
-    if (other) return <td className={`elsewhere ${add ? 'can-add' : ''}`} onClick={add} title={`Working ${sheetTime(other)}${other.area ? ` · ${other.area}` : ''}`} />;
-    return <td className={`off ${add ? 'can-add' : ''}`} onClick={add}>OFF</td>;
+    if (other) return <td className={`elsewhere ${add ? 'can-add' : ''}`} onClick={add} title={`${t('scheduleSheet.workingTime', { time: sheetTime(other) })}${other.area ? ` · ${other.area}` : ''}`} />;
+    return <td className={`off ${add ? 'can-add' : ''}`} onClick={add}>{t('scheduleSheet.off')}</td>;
   };
 
   return (
@@ -85,7 +88,7 @@ export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onO
                 {gi === 0 && <tr className="sh-dates"><td />{days.map((d) => <td key={d}>{usDate(d)}</td>)}</tr>}
                 {g.secs.map((sec) => (
                   <React.Fragment key={sec.key}>
-                    <tr className="sh-head"><td style={fill} title={sec.label}>{sec.sheetLabel ?? plural(sec.label)}</td>{days.map((d) => <td key={d}>{DAY_NAMES[dow(d)]}</td>)}</tr>
+                    <tr className="sh-head"><td style={fill} title={sec.label}>{sec.sheetLabel ?? plural(sec.label)}</td>{days.map((d) => <td key={d}>{dayName(dow(d))}</td>)}</tr>
                     {sec.rows.map(({ user, shifts }) => (
                       <tr key={user.id} className={user.id === me.id ? 'me' : ''}>
                         <td className="sh-name" title={user.sheetName ? user.name : undefined}>{user.sheetName || user.name}</td>
@@ -94,7 +97,7 @@ export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onO
                     ))}
                     {sec.open.length > 0 && (
                       <tr className="sh-open">
-                        <td className="sh-name">OPEN</td>
+                        <td className="sh-name">{t('scheduleSheet.open')}</td>
                         {days.map((d) => <Cell key={d} date={d} sec={sec} list={sec.open.filter((s) => s.date === d)} />)}
                       </tr>
                     )}
@@ -109,7 +112,7 @@ export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onO
                         const evs = (data.events || []).filter((e) => e.date === d);
                         return (
                           <td key={d} className={isMgr ? 'can-add' : ''} onClick={isMgr ? () => setEditNote({ kind: 'day', date: d, text }) : undefined}
-                            title={isMgr ? 'Click to edit the day note' : undefined}>
+                            title={isMgr ? t('scheduleSheet.clickToEditTheDay') : undefined}>
                             {evs.map((e) => (
                               <a key={e.id} className="sh-evt" href={`#/events/${e.id}`} onClick={(x) => x.stopPropagation()}>
                                 {[e.name, e.room, e.guestCount ? `${e.guestCount} PPL` : ''].filter(Boolean).join(' ')}
@@ -120,14 +123,14 @@ export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onO
                         );
                       })}
                     </tr>
-                    {fc && <tr className="sh-covers"><td>Projected Covers</td>{days.map((d) => <td key={d}>{covers(d) ?? ''}</td>)}</tr>}
+                    {fc && <tr className="sh-covers"><td>{t('scheduleSheet.projectedCovers')}</td>{days.map((d) => <td key={d}>{covers(d) ?? ''}</td>)}</tr>}
                   </>
                 )}
               </React.Fragment>
             );
           })}
           <tr className="sh-weeknote">
-            <td>Notes:</td>
+            <td>{t('scheduleSheet.notes')}</td>
             <td colSpan={7} className={isMgr ? 'can-add' : ''} onClick={isMgr ? () => setEditNote({ kind: 'week', date: ws, text: note('week', ws) }) : undefined}>
               {note('week', ws)}
             </td>
@@ -140,17 +143,18 @@ export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onO
 }
 
 function NoteDialog({ note, onClose }) {
+  const t = useT();
   const { call } = useApp();
   const [text, setText] = useState(note.text || '');
   const [run, busy] = useAction();
   const save = async () => {
-    const r = await run(() => call('notes.save', { kind: note.kind, date: note.date, text }), 'Note saved');
+    const r = await run(() => call('notes.save', { kind: note.kind, date: note.date, text }), t('scheduleSheet.noteSaved'));
     if (r) onClose(true);
   };
   return (
-    <Modal title={note.kind === 'week' ? 'Notes for the week' : `Note for ${prettyDate(note.date)}`} sub="Shows on the schedule for everyone" onClose={() => onClose(false)}
-      footer={<><span className="spacer" /><button className="btn" onClick={() => onClose(false)}>Cancel</button><button className="btn primary" disabled={busy} onClick={save}><Icon name="check" />Save</button></>}>
-      <Field label={note.kind === 'week' ? 'Notes' : 'Day note'} help={note.kind === 'day' ? 'For example CLOSED, MEETING, OPENING DAY or NORMAL SERVICE. Events come from Events & BEOs.' : 'Shown on the Notes line at the bottom of the schedule.'}>
+    <Modal title={note.kind === 'week' ? t('scheduleSheet.notesForTheWeek') : t('scheduleSheet.noteForDate', { date: prettyDate(note.date) })} sub={t('scheduleSheet.showsOnTheScheduleFor')} onClose={() => onClose(false)}
+      footer={<><span className="spacer" /><button className="btn" onClick={() => onClose(false)}>{t('common.cancel')}</button><button className="btn primary" disabled={busy} onClick={save}><Icon name="check" />{t('common.save')}</button></>}>
+      <Field label={note.kind === 'week' ? t('common.notes') : t('scheduleSheet.dayNote')} help={note.kind === 'day' ? t('scheduleSheet.forExampleClosedMeetingOpening') : t('scheduleSheet.shownOnTheNotesLine')}>
         <textarea className="input" style={{ minHeight: 90 }} value={text} onChange={(e) => setText(e.target.value)} autoFocus />
       </Field>
     </Modal>

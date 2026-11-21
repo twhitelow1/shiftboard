@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useApp, Icon, Avatar, shiftTime, JobDot, Empty } from '../ui.jsx';
-import { addDays, weekStart, range, dow, parseDate, fmtDate, MONTHS, DOW_SHORT, toMin, prettyDate, fmtTime } from '../../../core/time.js';
+import { addDays, weekStart, range, dow, parseDate, fmtDate, toMin } from '../../../core/time.js';
 import { effectiveShift } from '../../../core/forecast.js';
 import ShiftDialog from './ShiftDialog.jsx';
 import TradeHint, { canTrade } from './TradeHint.jsx';
+import { useT, dowShort, fmtTime, dateText, prettyDate } from '../i18n/index.js';
 
 export default function CalendarPage() {
+  const t = useT();
   const { call, version, today, settings, me, jobs, people, jobCodes, isMgr } = useApp();
   const [month, setMonth] = useState(() => { const d = parseDate(addDays(today, 1)); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`; });
   const [sel, setSel] = useState(() => addDays(today, 1));
@@ -37,20 +39,20 @@ export default function CalendarPage() {
   }, [data, scope]);
 
   const [y, mo] = month.split('-').map(Number);
-  const heads = range(gridStart, 7).map((d) => DOW_SHORT[dow(d)]);
+  const heads = range(gridStart, 7).map((d) => dowShort(dow(d)));
 
   return (
     <div>
       <div className="toolbar">
         <div className="weeknav">
           <button className="btn icon sm" onClick={() => shiftMonth(-1)}><Icon name="left" /></button>
-          <div className="label">{MONTHS[mo - 1]} {y}</div>
+          <div className="label">{dateText(`${month.slice(0, 7)}-01`, 'monthYear')}</div>
           <button className="btn icon sm" onClick={() => shiftMonth(1)}><Icon name="right" /></button>
         </div>
         <span className="spacer" />
         <div className="seg">
-          <button className={scope === 'mine' ? 'on' : ''} onClick={() => setScope('mine')}>My shifts</button>
-          <button className={scope === 'all' ? 'on' : ''} onClick={() => setScope('all')}>Everyone</button>
+          <button className={scope === 'mine' ? 'on' : ''} onClick={() => setScope('mine')}>{t('calendar.myShifts')}</button>
+          <button className={scope === 'all' ? 'on' : ''} onClick={() => setScope('all')}>{t('calendar.everyone')}</button>
         </div>
       </div>
 
@@ -67,8 +69,8 @@ export default function CalendarPage() {
               {evs.slice(0, 2).map((e) => <div key={e.id} className="ev" title={e.name}>{e.name}</div>)}
               {scope === 'mine'
                 ? list.map((s) => <div key={s.id} className="ms" style={{ '--jc': jobs[s.jobCodeId]?.color }}>{fmtTime(s.start)} {jobs[s.jobCodeId]?.short}</div>)
-                : list.length > 0 && <div className="cnt">{list.filter((s) => s.userId).length} on{list.some((s) => !s.userId) ? ` · ${list.filter((s) => !s.userId).length} open` : ''}</div>}
-              {closed && !list.length && inMonth(d) && <div className="cnt faint">Closed</div>}
+                : list.length > 0 && <div className="cnt">{t('calendar.filtercountOn', { filterCount: list.filter((s) => s.userId).length })}{list.some((s) => !s.userId) ? t('calendar.filtercountOpen', { filterCount: list.filter((s) => !s.userId).length }) : ''}</div>}
+              {closed && !list.length && inMonth(d) && <div className="cnt faint">{t('common.closed')}</div>}
             </div>
           );
         })}
@@ -84,10 +86,10 @@ export default function CalendarPage() {
                 <div key={s.id} className="list-item click" onClick={() => setDialog(s)}>
                   <JobDot job={jobs[s.jobCodeId]} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <b>Your shift · {prettyDate(s.date)} · {shiftTime(s)}</b>
-                    <div className="small muted">{jobs[s.jobCodeId]?.name}{s.area ? ` · ${s.area}` : ''}{s.tag ? ` · ${s.tag}` : ''}{!s.published ? ' · draft' : ''}{s.pending ? ' · request in progress' : ''}</div>
+                    {t('calendar.bYourShiftDateTime', { date: prettyDate(s.date), time: shiftTime(s) })}
+                    <div className="small muted">{jobs[s.jobCodeId]?.name}{s.area ? ` · ${s.area}` : ''}{s.tag ? ` · ${s.tag}` : ''}{!s.published ? t('calendar.draft') : ''}{s.pending ? t('calendar.requestInProgress') : ''}</div>
                   </div>
-                  {canTrade(s, me, today) && <button className="btn sm primary" onClick={(e) => { e.stopPropagation(); setDialog(s); }}><Icon name="swap" />Trade or give away</button>}
+                  {canTrade(s, me, today) && <button className="btn sm primary" onClick={(e) => { e.stopPropagation(); setDialog(s); }}><Icon name="swap" />{t('calendar.tradeOrGiveAway')}</button>}
                 </div>
               ))}
             </div>
@@ -102,6 +104,7 @@ export default function CalendarPage() {
 }
 
 export function DayTimeline({ date, shifts, events, onOpen }) {
+  const t = useT();
   const { jobs, people, jobCodes, settings, me } = useApp();
   const START = 9 * 60, END = 26 * 60; // 9am → 2am
   const span = END - START;
@@ -114,14 +117,14 @@ export function DayTimeline({ date, shifts, events, onOpen }) {
     <div className="card">
       <div className="card-head">
         <h2 style={{ flex: 1 }}>{prettyDate(date)}</h2>
-        <span className="small muted">{shifts.filter((s) => s.userId).length} scheduled</span>
+        <span className="small muted">{t('calendar.filtercountScheduled', { filterCount: shifts.filter((s) => s.userId).length })}</span>
       </div>
       {events.length > 0 && (
         <div className="card-pad row wrap" style={{ paddingBottom: 0 }}>
           {events.map((e) => <a key={e.id} className="badge warn" href={`#/events/${e.id}`}><Icon name="glass" size={12} />{fmtTime(e.start)} {e.name} · {e.guestCount}</a>)}
         </div>
       )}
-      {!groups.length ? <Empty title="No shifts this day" /> : (
+      {!groups.length ? <Empty title={t('calendar.noShiftsThisDay')} /> : (
         <div className="timeline" style={{ padding: '10px 0' }}>
           <div className="tl-inner">
             <div className="tl-hours" style={{ gridTemplateColumns: `repeat(${hours.length}, 1fr)` }}>
@@ -136,7 +139,7 @@ export function DayTimeline({ date, shifts, events, onOpen }) {
                   let b = toMin(e.end); if (b <= a) b += 1440;
                   return (
                     <div key={s.id} className="tl-row">
-                      <div className="tl-name" style={{ color: s.userId === me.id ? 'var(--brand)' : undefined }}>{s.userId ? people[s.userId]?.name : <span className="faint">Open</span>}</div>
+                      <div className="tl-name" style={{ color: s.userId === me.id ? 'var(--brand)' : undefined }}>{s.userId ? people[s.userId]?.name : <span className="faint">{t('common.open')}</span>}</div>
                       <div className="tl-track">
                         <div className={`tl-bar ${s.end ? '' : 'est'}`} style={{ '--jc': g.job.color, left: pos(a), width: `calc(${pos(b)} - ${pos(a)})` }} onClick={() => onOpen(s)} title={shiftTime(s)}>
                           {shiftTime(s)}{s.tag ? ` · ${s.tag}` : ''}

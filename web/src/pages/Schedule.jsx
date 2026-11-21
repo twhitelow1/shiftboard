@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useApp, Icon, Avatar, Modal, Field, shiftTime, money, useAction, JobDot, Empty } from '../ui.jsx';
-import { addDays, weekStart, range, dow, prettyDate, DOW_SHORT, parseDate, MONTHS, fmtTime } from '../../../core/time.js';
+import { addDays, weekStart, range, dow, parseDate } from '../../../core/time.js';
 import { hoursOf } from '../../../core/forecast.js';
 import { scheduleAreas, findArea, sameArea } from '../../../core/areas.js';
 import ShiftDialog from './ShiftDialog.jsx';
@@ -8,6 +8,7 @@ import ImportDialog from './ImportDialog.jsx';
 import ScheduleSheet from './ScheduleSheet.jsx';
 import TradeHint, { canTrade } from './TradeHint.jsx';
 import { IS_DEMO } from '../api.js';
+import { useT, dowShort, fmtTime, monthShort, prettyDate, num , getLang } from '../i18n/index.js';
 
 export function useWeek() {
   const { today, settings } = useApp();
@@ -28,25 +29,29 @@ function initialView() {
 }
 function sessionStorageSet(k, v) { try { sessionStorage.setItem(k, v); } catch { /* ignore */ } }
 
+/** 'Sep 28 – Oct 4', 'Dec 1 – 7' · '28 sep – 4 oct', '1–7 dic'. */
 export function weekLabel(ws) {
   const a = parseDate(ws), b = parseDate(addDays(ws, 6));
-  const m1 = MONTHS[a.getUTCMonth()].slice(0, 3), m2 = MONTHS[b.getUTCMonth()].slice(0, 3);
+  const m1 = monthShort(a.getUTCMonth()), m2 = monthShort(b.getUTCMonth());
+  if (getLang() === 'es') return m1 === m2 ? `${a.getUTCDate()}–${b.getUTCDate()} ${m1}` : `${a.getUTCDate()} ${m1} – ${b.getUTCDate()} ${m2}`;
   return m1 === m2 ? `${m1} ${a.getUTCDate()} – ${b.getUTCDate()}` : `${m1} ${a.getUTCDate()} – ${m2} ${b.getUTCDate()}`;
 }
 
 export function WeekNav({ ws, setWs }) {
+  const t = useT();
   const { today, settings } = useApp();
   return (
     <div className="weeknav">
-      <button className="btn icon sm" onClick={() => setWs(addDays(ws, -7))} aria-label="Previous week"><Icon name="left" /></button>
+      <button className="btn icon sm" onClick={() => setWs(addDays(ws, -7))} aria-label={t('schedule.previousWeek')}><Icon name="left" /></button>
       <div className="label">{weekLabel(ws)}</div>
-      <button className="btn icon sm" onClick={() => setWs(addDays(ws, 7))} aria-label="Next week"><Icon name="right" /></button>
-      <button className="btn sm ghost" onClick={() => setWs(weekStart(today, settings.weekStartDow))}>Today</button>
+      <button className="btn icon sm" onClick={() => setWs(addDays(ws, 7))} aria-label={t('common.nextWeek')}><Icon name="right" /></button>
+      <button className="btn sm ghost" onClick={() => setWs(weekStart(today, settings.weekStartDow))}>{t('common.today')}</button>
     </div>
   );
 }
 
 export default function Schedule() {
+  const t = useT();
   const app = useApp();
   const { isMgr, jobCodes, employees, jobs, people, me, settings, call, version, today } = app;
   const [ws, setWs] = useWeek();
@@ -146,7 +151,7 @@ export default function Schedule() {
         .map((e) => ({ user: e, shifts: shifts.filter((x) => x.userId === e.id && inBanner(bannerOf(x))) }))
         .filter((r) => (!dept || r.shifts.length || worksIn(r.user)) && (!hideEmpty || r.shifts.length || days.some((d) => timeOffOn(r.user.id, d))));
       const open = shifts.filter((x) => !x.userId && inBanner(bannerOf(x)));
-      return [{ key: 'all', label: 'Everyone', rows, open }];
+      return [{ key: 'all', label: t('schedule.everyone'), rows, open }];
     }
     return allSections.filter((x) => inBanner(x.banner)).map((x) => {
       let rows = x.rows;
@@ -159,7 +164,7 @@ export default function Schedule() {
   // The sheet lists everyone on the roster (like the PDF), whatever the grid's filters are.
   const sheetSections = allSections.filter((x) => (!dept || sameArea(x.banner, dept)) && (x.rows.length || x.open.length));
 
-  const publish = () => run(() => call('shifts.publish', { start: ws, end: addDays(ws, 6) }), (r) => `Published ${r.published} shifts · ${r.notified} people notified`).then(load);
+  const publish = () => run(() => call('shifts.publish', { start: ws, end: addDays(ws, 6) }), (r) => t('schedule.publishedPublishedShiftsNotifiedPeople', { published: r.published, notified: r.notified })).then(load);
 
   const exportCsv = () => {
     const rows = [['date', 'employee', 'job', 'area', 'start', 'end', 'tag', 'notes', 'status']];
@@ -181,12 +186,12 @@ export default function Schedule() {
     const w = data?.warnings?.[s.id];
     return (
       <button className={`shift ${s.published ? '' : 'draft'} ${!s.userId ? 'open' : ''} ${s.userId === me.id ? 'mine' : ''}`} style={{ '--jc': j?.color || '#888' }}
-        onClick={(e) => { e.stopPropagation(); openDialog(s); }} title={[...(w || []), canTrade(s, me, today) && 'Your shift: tap to trade or give it away'].filter(Boolean).join('\n')}>
+        onClick={(e) => { e.stopPropagation(); openDialog(s); }} title={[...(w || []), canTrade(s, me, today) && t('schedule.yourShiftTapToTrade')].filter(Boolean).join('\n')}>
         <span className="t">{shiftTime(s)}</span>
         {s.tag && <span className="tag">{s.tag}</span>}
         {w && <span className="warn-ico">!</span>}
-        {s.pending && <span className="pend" title="Swap pending">⇄</span>}
-        {(showJob || !s.userId) && <div className="sub">{!s.userId ? 'Open' : ''}{!s.userId && showJob ? ' · ' : ''}{showJob ? `${j?.name || ''}${s.area ? ` · ${s.area}` : ''}` : ''}</div>}
+        {s.pending && <span className="pend" title={t('schedule.swapPending')}>⇄</span>}
+        {(showJob || !s.userId) && <div className="sub">{!s.userId ? t('common.open') : ''}{!s.userId && showJob ? ' · ' : ''}{showJob ? `${j?.name || ''}${s.area ? ` · ${s.area}` : ''}` : ''}</div>}
       </button>
     );
   };
@@ -202,8 +207,8 @@ export default function Schedule() {
         addAt(date, jobCodeId || entry?.jobCodeId, userId, area ?? entry?.areas?.[0] ?? '');
       }}>
         {list.sort((a, b) => a.start.localeCompare(b.start)).map((s) => <ShiftChip key={s.id} s={s} showJob={groupBy === 'emp'} />)}
-        {!list.length && to && <span className="reqoff" title={to.reason || ''}>{to.status === 'approved' ? 'REQUEST OFF' : 'REQ PENDING'}</span>}
-        {!list.length && !to && !closed && userId && <span className="off">{isMgr ? '' : 'OFF'}</span>}
+        {!list.length && to && <span className="reqoff" title={to.reason || ''}>{to.status === 'approved' ? t('schedule.requestOff') : t('schedule.reqPending')}</span>}
+        {!list.length && !to && !closed && userId && <span className="off">{isMgr ? '' : t('schedule.off')}</span>}
       </td>
     );
   };
@@ -214,49 +219,49 @@ export default function Schedule() {
         <WeekNav ws={ws} setWs={setWs} />
         <span className="spacer" />
         <div className="seg desktop-only">
-          <button className={view === 'sheet' ? 'on' : ''} onClick={() => setView('sheet')} title="Laid out like the schedule PDF">Sheet</button>
-          <button className={view === 'job' ? 'on' : ''} onClick={() => setView('job')}>Grid</button>
-          <button className={view === 'emp' ? 'on' : ''} onClick={() => setView('emp')}>By employee</button>
+          <button className={view === 'sheet' ? 'on' : ''} onClick={() => setView('sheet')} title={t('schedule.laidOutLikeTheSchedule')}>{t('schedule.sheet')}</button>
+          <button className={view === 'job' ? 'on' : ''} onClick={() => setView('job')}>{t('schedule.grid')}</button>
+          <button className={view === 'emp' ? 'on' : ''} onClick={() => setView('emp')}>{t('schedule.byEmployee')}</button>
         </div>
         <div className="seg mobile-only">
-          <button className={view !== 'sheet' ? 'on' : ''} onClick={() => setView('job')}>Day</button>
-          <button className={view === 'sheet' ? 'on' : ''} onClick={() => setView('sheet')}>Sheet</button>
+          <button className={view !== 'sheet' ? 'on' : ''} onClick={() => setView('job')}>{t('common.day')}</button>
+          <button className={view === 'sheet' ? 'on' : ''} onClick={() => setView('sheet')}>{t('schedule.sheet')}</button>
         </div>
         {isMgr && <>
-          <button className="btn sm desktop-only" onClick={() => setDialog({ shift: { date: selDay, start: '16:00' } })}><Icon name="plus" />Add shift</button>
-          <button className={`btn sm ${drafts ? 'primary' : ''}`} onClick={publish} disabled={!drafts || busy}><Icon name="send" />Publish{drafts ? ` (${drafts})` : 'ed'}</button>
+          <button className="btn sm desktop-only" onClick={() => setDialog({ shift: { date: selDay, start: '16:00' } })}><Icon name="plus" />{t('schedule.addShift')}</button>
+          <button className={`btn sm ${drafts ? 'primary' : ''}`} onClick={publish} disabled={!drafts || busy}><Icon name="send" />{drafts ? t('schedule.publishCount', { count: drafts }) : t('schedule.published')}</button>
         </>}
       </div>
       <div className="toolbar" style={{ marginTop: -6 }}>
         <div className="row wrap" style={{ gap: 6 }}>
-          <button className={`chip ${!dept ? 'on' : ''}`} onClick={() => setDept('')}>All</button>
+          <button className={`chip ${!dept ? 'on' : ''}`} onClick={() => setDept('')}>{t('schedule.all')}</button>
           {banners.map((d) => <button key={d} className={`chip ${dept === d ? 'on' : ''}`} onClick={() => setDept(dept === d ? '' : d)}>{d}</button>)}
         </div>
         <span className="spacer" />
         {view !== 'sheet' && <>
-          <label className="check small desktop-only"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />Only me</label>
-          <label className="check small desktop-only"><input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} />Hide people not scheduled</label>
+          <label className="check small desktop-only"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />{t('schedule.onlyMe')}</label>
+          <label className="check small desktop-only"><input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} />{t('schedule.hidePeopleNotScheduled')}</label>
         </>}
         {/* Copy week and Import work on phones too; CSV and Print are desk tasks. */}
         {isMgr && <div className="row wrap" style={{ gap: 4 }}>
-          <button className="btn sm ghost" onClick={() => setCopyOpen(true)} title="Copy a week"><Icon name="copy" />Copy week</button>
-          <button className="btn sm ghost" onClick={() => setImportOpen(true)} title="Import a schedule PDF, Excel paste or CSV"><Icon name="upload" />Import</button>
-          <button className="btn sm ghost" onClick={() => setClearOpen(true)} title="Delete this week's shifts and start over"><Icon name="trash" />Clear week</button>
-          {!IS_DEMO && <button className="btn sm ghost desktop-only" onClick={exportCsv}><Icon name="download" />CSV</button>}
-          {!IS_DEMO && <button className="btn sm ghost desktop-only" onClick={() => window.print()}><Icon name="print" />Print</button>}
+          <button className="btn sm ghost" onClick={() => setCopyOpen(true)} title={t('schedule.copyAWeek')}><Icon name="copy" />{t('schedule.copyWeek')}</button>
+          <button className="btn sm ghost" onClick={() => setImportOpen(true)} title={t('schedule.importASchedulePdfExcel')}><Icon name="upload" />{t('schedule.import')}</button>
+          <button className="btn sm ghost" onClick={() => setClearOpen(true)} title={t('schedule.deleteThisWeeksShiftsAnd')}><Icon name="trash" />{t('schedule.clearWeek')}</button>
+          {!IS_DEMO && <button className="btn sm ghost desktop-only" onClick={exportCsv}><Icon name="download" />{t('schedule.csv')}</button>}
+          {!IS_DEMO && <button className="btn sm ghost desktop-only" onClick={() => window.print()}><Icon name="print" />{t('schedule.print')}</button>}
         </div>}
       </div>
 
       {fc && isMgr && (
         <div className="row wrap small desktop-only no-print" style={{ marginBottom: 10, gap: 14 }}>
-          <span className="muted">Week forecast: <b className="num">{fc.totals.covers.toLocaleString()}</b> covers · <b className="num">{money(fc.totals.sales)}</b> sales</span>
-          <span className="muted">Scheduled: <b className="num">{fc.totals.hours}</b> hrs · <b className="num">{money(fc.totals.cost)}</b></span>
-          <span className={`badge ${fc.totals.laborPct > fc.targetLaborPct ? 'bad' : 'ok'}`}>Labor {fc.totals.laborPct ?? '—'}% (target {fc.targetLaborPct}%)</span>
-          {drafts > 0 && <span className="badge warn">{drafts} draft shift{drafts > 1 ? 's' : ''} not visible to staff yet</span>}
+          <span className="muted">{t('schedule.weekForecastLine', { covers: <b className="num">{num(fc.totals.covers)}</b>, sales: <b className="num">{money(fc.totals.sales)}</b> })}</span>
+          <span className="muted">{t('schedule.scheduledLine', { hours: <b className="num">{fc.totals.hours}</b>, cost: <b className="num">{money(fc.totals.cost)}</b> })}</span>
+          <span className={`badge ${fc.totals.laborPct > fc.targetLaborPct ? 'bad' : 'ok'}`}>{t('schedule.labor')}{' '}{fc.totals.laborPct ?? '—'}{t('schedule.targetTargetlaborpct', { targetLaborPct: fc.targetLaborPct })}</span>
+          {drafts > 0 && <span className="badge warn">{t('schedule.countDraftShiftsNotVisible', { count: drafts })}</span>}
         </div>
       )}
 
-      {!data ? <div className="empty">Loading…</div> : (
+      {!data ? <div className="empty">{t('common.loading')}</div> : (
         <>
           <TradeHint shifts={shifts} />
           {/* Like the house PDF. Print always uses this layout. */}
@@ -269,17 +274,17 @@ export default function Schedule() {
               <thead>
                 <tr>
                   <th className="namecol">
-                    <div className="small faint">{shifts.filter((s) => s.userId).length} shifts · {shifts.filter((s) => !s.userId).length} open</div>
+                    <div className="small faint">{t('schedule.filtercountShiftsFiltercount2Open', { count: shifts.filter((s) => s.userId).length, open: shifts.filter((s) => !s.userId).length })}</div>
                   </th>
                   {days.map((d) => {
                     const f = fcDay(d);
                     const evs = data.events.filter((e) => e.date === d);
                     return (
                       <th key={d} className={`dayhead ${d === today ? 'today' : ''}`}>
-                        <div className="d1">{DOW_SHORT[dow(d)]}</div>
+                        <div className="d1">{dowShort(dow(d))}</div>
                         <div className="d2">{parseDate(d).getUTCMonth() + 1}/{parseDate(d).getUTCDate()}</div>
-                        {isClosed(d) ? <div className="meta">Closed</div> : f && <div className="meta num">~{f.totalCovers} cvrs{isMgr ? ` · ${f.laborPct ?? '—'}%` : ''}</div>}
-                        {evs.map((e) => <a key={e.id} className="evt-pill" href={`#/events/${e.id}`} title={`${e.name} · ${fmtTime(e.start)} · ${e.guestCount} guests`}>{fmtTime(e.start)} {e.name}{e.guestCount ? ` (${e.guestCount})` : ''}</a>)}
+                        {isClosed(d) ? <div className="meta">{t('common.closed')}</div> : f && <div className="meta num">{t('schedule.totalcoversCvrs', { totalCovers: f.totalCovers })}{isMgr ? ` · ${f.laborPct ?? '—'}%` : ''}</div>}
+                        {evs.map((e) => <a key={e.id} className="evt-pill" href={`#/events/${e.id}`} title={t('schedule.nameTimeGuestcountGuests', { name: e.name, time: fmtTime(e.start), guestCount: e.guestCount })}>{fmtTime(e.start)} {e.name}{e.guestCount ? ` (${e.guestCount})` : ''}</a>)}
                       </th>
                     );
                   })}
@@ -304,7 +309,7 @@ export default function Schedule() {
                               <Avatar user={user} size="sm" />
                               <div style={{ minWidth: 0 }}>
                                 <div className="emp-name">{user.name}</div>
-                                {(isMgr || user.id === me.id) && <div className={`emp-hrs ${hrs > settings.overtimeHours ? 'ot' : ''}`}>{hrs ? `${hrs.toFixed(1)} hrs` : '—'}</div>}
+                                {(isMgr || user.id === me.id) && <div className={`emp-hrs ${hrs > settings.overtimeHours ? 'ot' : ''}`}>{hrs ? t('schedule.hrsHrs', { hrs: hrs.toFixed(1) }) : '—'}</div>}
                               </div>
                             </div>
                           </td>
@@ -314,22 +319,22 @@ export default function Schedule() {
                     })}
                     {sec.open.length > 0 && (
                       <tr>
-                        <td className="namecol"><div className="emp"><span className="avatar sm" style={{ background: 'var(--surface-3)', color: 'var(--text-3)' }}>+</span><div className="emp-name faint">Open shifts</div></div></td>
+                        <td className="namecol"><div className="emp"><span className="avatar sm" style={{ background: 'var(--surface-3)', color: 'var(--text-3)' }}>+</span><div className="emp-name faint">{t('schedule.openShifts')}</div></div></td>
                         {days.map((d) => <Cell key={d} date={d} jobCodeId={sec.job?.id} area={sec.area} list={sec.open.filter((s) => s.date === d)} />)}
                       </tr>
                     )}
                   </React.Fragment>
                 ))}
-                {!sections.length && <tr><td colSpan={8}><Empty title="Nothing scheduled">{isMgr ? 'Click any cell to add a shift, copy last week, or import your spreadsheet.' : 'The schedule for this week hasn’t been posted yet.'}</Empty></td></tr>}
+                {!sections.length && <tr><td colSpan={8}><Empty title={t('schedule.nothingScheduled')}>{isMgr ? t('schedule.clickAnyCellToAdd') : t('schedule.theScheduleForThisWeek')}</Empty></td></tr>}
               </tbody>
               {isMgr && (
                 <tfoot>
                   <tr className="totals">
-                    <td className="namecol">Scheduled</td>
+                    <td className="namecol">{t('schedule.scheduled2')}</td>
                     {days.map((d) => {
                       const f = fcDay(d);
                       const n = shifts.filter((s) => s.date === d).length;
-                      return <td key={d} className="num">{n ? `${n} shifts · ${f?.hours ?? 0}h · ${money(f?.laborCost)}` : '—'}</td>;
+                      return <td key={d} className="num">{n ? t('schedule.nShiftsValueHAmount', { count: n, value: f?.hours ?? 0, amount: money(f?.laborCost) }) : '—'}</td>;
                     })}
                   </tr>
                 </tfoot>
@@ -353,6 +358,7 @@ export default function Schedule() {
 }
 
 function MobileDay({ days, selDay, setSelDay, data, sections, mine, setMine, openDialog, isClosed, fcDay, addAt }) {
+  const t = useT();
   const { jobs, people, me, isMgr, today } = useApp();
   const evs = data.events.filter((e) => e.date === selDay);
   const f = fcDay(selDay);
@@ -366,7 +372,7 @@ function MobileDay({ days, selDay, setSelDay, data, sections, mine, setMine, ope
       <div className="daystrip">
         {days.map((d) => (
           <button key={d} className={`${d === selDay ? 'on' : ''} ${isClosed(d) ? 'closed' : ''}`} onClick={() => setSelDay(d)}>
-            <span className="a">{DOW_SHORT[dow(d)]}</span>
+            <span className="a">{dowShort(dow(d))}</span>
             <span className="b">{parseDate(d).getUTCDate()}</span>
             {data.shifts.some((s) => s.date === d && s.userId === me.id) ? <span className="c" /> : <span style={{ height: 7 }} />}
           </button>
@@ -374,22 +380,22 @@ function MobileDay({ days, selDay, setSelDay, data, sections, mine, setMine, ope
       </div>
       <div className="row" style={{ marginBottom: 12 }}>
         <div className="seg">
-          <button className={!mine ? 'on' : ''} onClick={() => setMine(false)}>Everyone</button>
-          <button className={mine ? 'on' : ''} onClick={() => setMine(true)}>Just me</button>
+          <button className={!mine ? 'on' : ''} onClick={() => setMine(false)}>{t('schedule.everyone')}</button>
+          <button className={mine ? 'on' : ''} onClick={() => setMine(true)}>{t('schedule.justMe')}</button>
         </div>
         <span className="spacer" />
-        {f && !f.closed && <span className="small muted num">~{f.totalCovers} cvrs{isMgr ? ` · ${f.laborPct ?? '—'}%` : ''}</span>}
-        {isMgr && !isClosed(selDay) && <button className="btn sm primary" onClick={() => addAt(selDay)}><Icon name="plus" />Add</button>}
+        {f && !f.closed && <span className="small muted num">{t('schedule.totalcoversCvrs', { totalCovers: f.totalCovers })}{isMgr ? ` · ${f.laborPct ?? '—'}%` : ''}</span>}
+        {isMgr && !isClosed(selDay) && <button className="btn sm primary" onClick={() => addAt(selDay)}><Icon name="plus" />{t('schedule.add')}</button>}
       </div>
       {evs.map((e) => (
         <a key={e.id} href={`#/events/${e.id}`} className="alert warn" style={{ marginBottom: 8 }}>
           <Icon name="glass" size={16} />
-          <div><b>{e.name}</b><div className="small">{fmtTime(e.start)} · {e.room} · {e.guestCount} guests</div></div>
+          <div><b>{e.name}</b><div className="small">{t('schedule.timeRoomGuestcountGuests', { time: fmtTime(e.start), room: e.room, guestCount: e.guestCount })}</div></div>
         </a>
       ))}
       {(data.notes || []).filter((n) => n.kind === 'day' && n.date === selDay).map((n) => <div key={n.id} className="alert info" style={{ marginBottom: 8 }}><Icon name="alert" size={16} /><b>{n.text}</b></div>)}
-      {isClosed(selDay) && <Empty title="Closed" />}
-      {!isClosed(selDay) && !daySecs.length && <Empty title={mine ? 'You’re off' : 'No shifts'} />}
+      {isClosed(selDay) && <Empty title={t('common.closed')} />}
+      {!isClosed(selDay) && !daySecs.length && <Empty title={mine ? t('schedule.youreOff') : t('schedule.noShifts')} />}
       {daySecs.map((sec, i) => (
         <div key={sec.key} className="dgroup">
           {sec.banner && sec.banner !== daySecs[i - 1]?.banner && <div className="dbanner">{sec.banner}</div>}
@@ -398,23 +404,24 @@ function MobileDay({ days, selDay, setSelDay, data, sections, mine, setMine, ope
             <div key={s.id} className={`mshift ${s.userId === me.id ? 'mine' : ''} ${!s.userId ? 'open' : ''}`} style={{ '--jc': jobs[s.jobCodeId]?.color }} onClick={() => openDialog(s)}>
               <Avatar user={people[s.userId]} size="sm" />
               <div className="who">
-                {s.userId ? people[s.userId]?.name : 'Open shift'}
-                <div className="small muted" style={{ fontWeight: 500 }}>{jobs[s.jobCodeId]?.short}{s.area && !sec.area ? ` · ${s.area}` : ''}{s.tag ? ` · ${s.tag}` : ''}{!s.published ? ' · draft' : ''}{s.pending ? ' · swap pending' : ''}</div>
+                {s.userId ? people[s.userId]?.name : t('common.openShift')}
+                <div className="small muted" style={{ fontWeight: 500 }}>{jobs[s.jobCodeId]?.short}{s.area && !sec.area ? ` · ${s.area}` : ''}{s.tag ? ` · ${s.tag}` : ''}{!s.published ? t('schedule.draft') : ''}{s.pending ? t('schedule.swapPending2') : ''}</div>
               </div>
               <div className="when">{shiftTime(s)}</div>
-              {canTrade(s, me, today) && <button className="btn sm" onClick={(e) => { e.stopPropagation(); openDialog(s); }}><Icon name="swap" />Trade</button>}
+              {canTrade(s, me, today) && <button className="btn sm" onClick={(e) => { e.stopPropagation(); openDialog(s); }}><Icon name="swap" />{t('common.trade')}</button>}
             </div>
           ))}
         </div>
       ))}
       {!mine && offToday.length > 0 && (
-        <div className="small muted" style={{ marginTop: 8 }}>Off (requested): {offToday.map((t) => people[t.userId]?.name).filter(Boolean).join(', ')}</div>
+        <div className="small muted" style={{ marginTop: 8 }}>{t('schedule.offRequested')}{' '}{offToday.map((t) => people[t.userId]?.name).filter(Boolean).join(', ')}</div>
       )}
     </div>
   );
 }
 
 function ClearWeekDialog({ ws, data, onClose }) {
+  const t = useT();
   const { call } = useApp();
   const [published, setPublished] = useState(false);
   const [notes, setNotes] = useState(false);
@@ -431,24 +438,25 @@ function ClearWeekDialog({ ws, data, onClose }) {
     if (r) onClose(true);
   };
   return (
-    <Modal title={`Clear ${weekLabel(ws)}`} sub="Delete this week's shifts and start over, for example before importing the schedule again" onClose={() => onClose(false)}
-      footer={<><button className="btn" onClick={() => onClose(false)}>Cancel</button>
-        <button className="btn danger solid" disabled={busy || (!count && !(notes && noteCount))} onClick={go}><Icon name="trash" />{count ? `Delete ${count} shift${count === 1 ? '' : 's'}` : 'Clear'}</button></>}>
+    <Modal title={t('schedule.clearWeek2', { week: weekLabel(ws) })} sub={t('schedule.deleteThisWeeksShiftsAnd2')} onClose={() => onClose(false)}
+      footer={<><button className="btn" onClick={() => onClose(false)}>{t('common.cancel')}</button>
+        <button className="btn danger solid" disabled={busy || (!count && !(notes && noteCount))} onClick={go}><Icon name="trash" />{count ? t('schedule.deleteCountShifts', { count }) : t('schedule.clear')}</button></>}>
       <div className="col" style={{ gap: 10 }}>
-        <div><b>{drafts}</b> draft shift{drafts === 1 ? '' : 's'} will be deleted.{!drafts && ' (There are none.)'}</div>
+        <div>{t('schedule.bCountBDraftShifts', { count: drafts })}{!drafts && t('schedule.thereAreNone')}</div>
         {posted > 0 && (
           <label className="check"><input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} />
-            <span>Also delete the <b>{posted}</b> posted shift{posted === 1 ? '' : 's'}. Everyone who had one gets a notification.</span></label>
+            <span>{t('schedule.alsoDeleteTheBCount', { count: posted })}</span></label>
         )}
-        {noteCount > 0 && <label className="check"><input type="checkbox" checked={notes} onChange={(e) => setNotes(e.target.checked)} />Also clear this week's day notes and Notes line ({noteCount})</label>}
-        {eventShifts > 0 && <div className="help">{eventShifts} event shift{eventShifts === 1 ? '' : 's'} from BEOs stay; change those on the event.</div>}
-        <div className="help">People, job codes, events, time off and the forecast aren't touched. This can't be undone.</div>
+        {noteCount > 0 && <label className="check"><input type="checkbox" checked={notes} onChange={(e) => setNotes(e.target.checked)} />{t('schedule.alsoClearThisWeeksDay', { noteCount })}</label>}
+        {eventShifts > 0 && <div className="help">{t('schedule.countEventShiftsFromBeos', { count: eventShifts })}</div>}
+        <div className="help">{t('schedule.peopleJobCodesEventsTime')}</div>
       </div>
     </Modal>
   );
 }
 
 function CopyWeekDialog({ ws, onClose }) {
+  const t = useT();
   const { call } = useApp();
   const [mode, setMode] = useState('forward'); // forward: this week → another week; into: another week → this week
   const [other, setOther] = useState(addDays(ws, 7));
@@ -459,27 +467,27 @@ function CopyWeekDialog({ ws, onClose }) {
   const to = mode === 'forward' ? other : ws;
   const go = async () => {
     const r = await run(() => call('shifts.copyWeek', { fromWeek: from, toWeek: to, replace }),
-      (r) => `Copied ${r.copied} shifts as drafts into ${weekLabel(to)}${r.skipped ? ` · ${r.skipped} skipped (inactive people)` : ''}`);
+      (r) => `${t('schedule.copiedShifts', { count: r.copied, week: weekLabel(to) })}${r.skipped ? t('schedule.skippedInactive', { count: r.skipped }) : ''}`);
     if (r) onClose(true, to);
   };
   return (
-    <Modal title="Copy a week" sub="Build a new week in the same layout, then adjust it" onClose={() => onClose(false)}
-      footer={<><button className="btn" onClick={() => onClose(false)}>Cancel</button><button className="btn primary" disabled={busy || from === to} onClick={go}><Icon name="copy" />Copy as drafts</button></>}>
+    <Modal title={t('schedule.copyAWeek')} sub={t('schedule.buildANewWeekIn')} onClose={() => onClose(false)}
+      footer={<><button className="btn" onClick={() => onClose(false)}>{t('common.cancel')}</button><button className="btn primary" disabled={busy || from === to} onClick={go}><Icon name="copy" />{t('schedule.copyAsDrafts')}</button></>}>
       <div className="tabs" style={{ marginBottom: 4 }}>
-        <button className={mode === 'forward' ? 'on' : ''} onClick={() => switchMode('forward')}>This week → another week</button>
-        <button className={mode === 'into' ? 'on' : ''} onClick={() => switchMode('into')}>Another week → this week</button>
+        <button className={mode === 'forward' ? 'on' : ''} onClick={() => switchMode('forward')}>{t('schedule.thisWeekAnotherWeek')}</button>
+        <button className={mode === 'into' ? 'on' : ''} onClick={() => switchMode('into')}>{t('schedule.anotherWeekThisWeek')}</button>
       </div>
-      <Field label={mode === 'forward' ? `Copy ${weekLabel(ws)} into the week of` : `Copy into ${weekLabel(ws)} from the week of`}
-        help="Everyone keeps the same job codes, times and notes. Event shifts aren't copied — they come from each event's BEO. People who are no longer active are skipped.">
+      <Field label={mode === 'forward' ? t('schedule.copyWeekIntoTheWeek', { week: weekLabel(ws) }) : t('schedule.copyIntoWeekFromThe', { week: weekLabel(ws) })}
+        help={t('schedule.everyoneKeepsTheSameJob')}>
         <div className="row">
           <button className="btn icon sm" onClick={() => setOther(addDays(other, -7))}><Icon name="left" /></button>
           <div style={{ fontWeight: 700, minWidth: 140, textAlign: 'center' }}>{weekLabel(other)}</div>
           <button className="btn icon sm" onClick={() => setOther(addDays(other, 7))}><Icon name="right" /></button>
         </div>
       </Field>
-      {from === to && <div className="alert warn"><Icon name="alert" size={16} />Pick a different week.</div>}
-      <label className="check"><input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} />Replace draft shifts already in {weekLabel(to)}</label>
-      <div className="help">Copied shifts stay as drafts until you publish. Conflicts with approved time off are flagged in red.</div>
+      {from === to && <div className="alert warn"><Icon name="alert" size={16} />{t('schedule.pickADifferentWeek')}</div>}
+      <label className="check"><input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} />{t('schedule.replaceDraftShiftsAlreadyIn', { week: weekLabel(to) })}</label>
+      <div className="help">{t('schedule.copiedShiftsStayAsDrafts')}</div>
     </Modal>
   );
 }
