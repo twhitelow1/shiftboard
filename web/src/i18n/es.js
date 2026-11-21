@@ -79,7 +79,7 @@ const catalog = {
     more: 'Más',
     menu: 'Menú',
     liveDemo: 'Demo en vivo',
-    clockSetToDateThe: 'Reloj en {date} · el horario del 28 de sep es el real; las ventas, las tarifas de pago y los menús de los BEO son de ejemplo.',
+    clockSetToDateThe: 'Reloj en {date} · el horario de la semana del 28 de septiembre es el real; las ventas, las tarifas de pago y los menús de los BEO son de ejemplo.',
     viewAs: 'Ver como',
     viewingAs: 'Viendo como',
     phoneTitleSwaps: 'Cambios',
