@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useApp, Modal, Field, Icon, Avatar, Warnings, shiftTime, useAction, JobDot } from '../ui.jsx';
+import { useApp, Modal, Field, Icon, Avatar, Warnings, shiftTime, startTimesOnly, useAction, JobDot } from '../ui.jsx';
 import { prettyDate, addDays, fmtTime } from '../../../core/time.js';
 import { scheduleAreas, findArea } from '../../../core/areas.js';
 
@@ -151,7 +151,7 @@ function ShiftDetail({ shift, onClose, events }) {
   };
 
   return (
-    <Modal title={`${job?.name || 'Shift'}${shift.tag ? ' · ' + shift.tag : ''}`} sub={`${prettyDate(shift.date)} · ${shiftTime(shift)}${!shift.end ? ' (until close)' : ''}${shift.area ? ` · ${shift.area}` : ''}`} onClose={() => onClose(false)}
+    <Modal title={`${job?.name || 'Shift'}${shift.tag ? ' · ' + shift.tag : ''}`} sub={`${prettyDate(shift.date)} · ${shiftTime(shift)}${!shift.end && !startTimesOnly() ? ' (until close)' : ''}${shift.area ? ` · ${shift.area}` : ''}`} onClose={() => onClose(false)}
       footer={mode ? <>
         <button className="btn" onClick={() => { setMode(null); setTarget(null); }}>Back</button>
         <span className="spacer" />

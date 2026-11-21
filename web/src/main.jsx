@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { call, login, logout, IS_DEMO, demoPersonas, demoSwitch, demoCurrent, getConfig, forgotPassword, resetPassword } from './api.js';
-import { Ctx, Icon, Avatar, useToasts, Modal } from './ui.jsx';
+import { Ctx, Icon, Avatar, useToasts, Modal, setStartTimesOnly } from './ui.jsx';
 import { canManageSchedule, canChangeSettings, canManageEvents, canApprove, roleLabel } from '../../core/roles.js';
 import Schedule from './pages/Schedule.jsx';
 import CalendarPage from './pages/Calendar.jsx';
@@ -166,6 +166,7 @@ function App() {
     const jobs = Object.fromEntries(boot.jobCodes.map((j) => [j.id, j]));
     const people = Object.fromEntries(boot.employees.map((e) => [e.id, e]));
     const isMgr = canManageSchedule(boot.me);
+    setStartTimesOnly(boot.settings?.startTimesOnly);
     return { ...boot, jobs, people, isMgr, emailEnabled: config.email, emailFrom: config.emailFrom, isAdmin: canChangeSettings(boot.me), isEvents: canManageEvents(boot.me),
       canApprove: canApprove(boot.me, boot.settings), call, toast, refresh, version, go };
   }, [boot, toast, refresh, version, config]);

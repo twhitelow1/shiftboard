@@ -350,7 +350,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
       const s = effectiveShift(raw, st);
       const endDate = s.end <= s.start ? addDays(s.date, 1) : s.date;
       lines.push('BEGIN:VEVENT', `UID:${s.id}@shiftboard`, `DTSTAMP:${dt(s.date, s.start)}`, `DTSTART:${dt(s.date, s.start)}`, `DTEND:${dt(endDate, s.end)}`,
-        `SUMMARY:${icalText(jobs[s.jobCodeId] || 'Shift')}${s.tag ? ' · ' + icalText(s.tag) : ''}${raw.end ? '' : ' (until close)'}`,
+        `SUMMARY:${icalText(jobs[s.jobCodeId] || 'Shift')}${s.tag ? ' · ' + icalText(s.tag) : ''}${raw.end || st.startTimesOnly ? '' : ' (until close)'}`,
         ...(s.area ? [`LOCATION:${icalText(s.area)}`] : []), 'END:VEVENT');
     }
     lines.push('END:VCALENDAR');

@@ -31,6 +31,7 @@ export const DEFAULT_SETTINGS = {
   requireSwapApproval: true,
   requirePickupApproval: true,
   supervisorsCanApprove: true,
+  startTimesOnly: false, // show only the in time (4PM), never an end time or CL
   emailNotifications: true,
   minSwapNoticeHours: 12,
   tags: ['LIB', 'RH', 'FR', 'BC', 'MOON', 'PATIO', 'PASSED', 'BACK HOST', 'CLOSE', 'OPEN'],
@@ -83,7 +84,7 @@ export function createService(store, opts = {}) {
   const qualified = (user, jobCodeId) => !!user?.jobCodes?.some((j) => j.jobCodeId === jobCodeId);
   const managers = () => users().filter((u) => u.active !== false && canManageSchedule(u));
   const approvers = () => users().filter((u) => u.active !== false && canApprove(u, settings()));
-  const describe = (s) => `${jobName(s.jobCodeId)}${s.area ? ` (${s.area})` : ''} ${prettyDate(s.date)} ${fmtTime(s.start)}${s.end ? '–' + fmtTime(s.end) : ''}`;
+  const describe = (s) => `${jobName(s.jobCodeId)}${s.area ? ` (${s.area})` : ''} ${prettyDate(s.date)} ${fmtTime(s.start)}${s.end && !settings().startTimesOnly ? '–' + fmtTime(s.end) : ''}`;
   const isFuture = (s) => {
     const [start] = shiftSpan(s);
     const n = now();
@@ -327,7 +328,7 @@ export function createService(store, opts = {}) {
     'settings.update': (actor, patch) => {
       needAdmin(actor);
       const allowed = ['restaurantName', 'weekStartDow', 'closedDays', 'hours', 'openEndHours', 'overtimeHours', 'requireSwapApproval',
-        'requirePickupApproval', 'supervisorsCanApprove', 'emailNotifications', 'minSwapNoticeHours', 'tags', 'rooms', 'areas', 'areaColors', 'departments', 'dayparts', 'forecastWeeks', 'targetLaborPct', 'laborRules'];
+        'requirePickupApproval', 'supervisorsCanApprove', 'startTimesOnly', 'emailNotifications', 'minSwapNoticeHours', 'tags', 'rooms', 'areas', 'areaColors', 'departments', 'dayparts', 'forecastWeeks', 'targetLaborPct', 'laborRules'];
       const clean = {};
       for (const k of allowed) if (k in patch) clean[k] = patch[k];
       if ('areas' in clean) clean.areas = uniqueAreas(Array.isArray(clean.areas) ? clean.areas : []);
@@ -408,7 +409,8 @@ export function createService(store, opts = {}) {
       if (!a.name?.trim()) fail(400, 'Name is required');
       const email = (a.email || '').trim().toLowerCase();
       if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail(400, 'That email doesn’t look right');
-      if (email && users().some((u) => u.email === email && u.id !== a.id)) fail(400, 'That email is already in use');
+      const emailOwner = email && users().find((u) => u.email === email && u.id !== a.id);
+      if (emailOwner) fail(400, `That email is already ${emailOwner.name}'s sign-in. If they're the same person, connect the two instead.`);
       const cur = a.id ? userById(a.id) : null;
       if (a.id && !cur) fail(404, 'User not found');
       const self = cur?.id === actor.id;
@@ -500,6 +502,7 @@ export function createService(store, opts = {}) {
       if (!into.email && from.email) patch.email = from.email;
       if (!into.phone && from.phone) patch.phone = from.phone;
       if (into.order == null && from.order != null) patch.order = from.order;
+      if (from.onSchedule !== false && into.onSchedule === false) patch.onSchedule = true; // they work shifts
       store.remove('users', from.id);
       store.update('users', into.id, patch);
       return { ...out, into: userView(userById(into.id)) };

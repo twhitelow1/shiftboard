@@ -56,6 +56,8 @@ export default function Settings() {
         <label className="check"><input type="checkbox" checked={s.requireSwapApproval} onChange={set('requireSwapApproval')} />Managers must approve trades & giveaways</label>
         <label className="check"><input type="checkbox" checked={s.requirePickupApproval} onChange={set('requirePickupApproval')} />Managers must approve open-shift pickups</label>
         <label className="check"><input type="checkbox" checked={s.supervisorsCanApprove !== false} onChange={set('supervisorsCanApprove')} />Supervisors can approve trades, pickups and time off (never their own)</label>
+        <label className="check"><input type="checkbox" checked={!!s.startTimesOnly} onChange={set('startTimesOnly')} />
+          <span>Show start times only: the schedule, My Shifts, trades and notifications show just the in time (4PM), with no end time or “CL”. End times you enter are still used for hours and labor.</span></label>
         <Field label="Shift tags (comma separated)" help="Quick picks when adding a shift — sections, rooms, roles for the night"><input className="input" {...listField('tags')} /></Field>
         <Field label="Rooms / areas for events"><input className="input" {...listField('rooms')} /></Field>
         <Field label="Schedule areas (comma separated, in order)" help="Where people work: rooms, bars, host stands. The schedule groups shifts under these, in this order, like the banners on your sheet. The rooms above are offered too. Importing a schedule adds its banners here."><input className="input" {...listField('areas')} /></Field>
