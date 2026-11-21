@@ -90,7 +90,7 @@
 
 /* Sections (Venue page, shift details, BEOs) */
 .sec-day { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.sec-day .input[type="date"] { width: auto; min-width: 0; flex: 0 1 160px; }
+.sec-day .input[type="date"] { width: auto; min-width: 0; flex: 1 1 120px; max-width: 170px; }
 .sec-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 44px; padding: 6px 6px 6px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
 .sec-bar.on { border-color: var(--brand); background: var(--brand-soft); }
 .sec-info { padding: 8px 12px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border); }
