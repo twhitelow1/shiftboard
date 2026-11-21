@@ -6,6 +6,7 @@ import { scheduleAreas, findArea, sameArea } from '../../../core/areas.js';
 import ShiftDialog from './ShiftDialog.jsx';
 import ImportDialog from './ImportDialog.jsx';
 import ScheduleSheet from './ScheduleSheet.jsx';
+import TradeHint, { canTrade } from './TradeHint.jsx';
 import { IS_DEMO } from '../api.js';
 
 export function useWeek() {
@@ -85,7 +86,7 @@ export default function Schedule() {
     return m;
   }, [shifts, settings]);
 
-  const openDialog = (shift) => setDialog({ shift, warnings: data?.warnings?.[shift.id] });
+  const openDialog = (shift, startIn) => setDialog({ shift, startIn, warnings: data?.warnings?.[shift.id] });
   const addAt = (date, jobCodeId, userId, area = '') => isMgr && setDialog({ shift: { date, jobCodeId, userId, area, start: '16:00' } });
   const closeDialog = (changed) => { setDialog(null); if (changed) load(); };
 
@@ -180,7 +181,7 @@ export default function Schedule() {
     const w = data?.warnings?.[s.id];
     return (
       <button className={`shift ${s.published ? '' : 'draft'} ${!s.userId ? 'open' : ''} ${s.userId === me.id ? 'mine' : ''}`} style={{ '--jc': j?.color || '#888' }}
-        onClick={(e) => { e.stopPropagation(); openDialog(s); }} title={w?.join('\n') || ''}>
+        onClick={(e) => { e.stopPropagation(); openDialog(s); }} title={[...(w || []), canTrade(s, me, today) && 'Your shift: tap to trade or give it away'].filter(Boolean).join('\n')}>
         <span className="t">{shiftTime(s)}</span>
         {s.tag && <span className="tag">{s.tag}</span>}
         {w && <span className="warn-ico">!</span>}
@@ -257,6 +258,7 @@ export default function Schedule() {
 
       {!data ? <div className="empty">Loading…</div> : (
         <>
+          <TradeHint shifts={shifts} />
           {/* Like the house PDF. Print always uses this layout. */}
           <ScheduleSheet className={view === 'sheet' ? 'sheet-print' : 'sheet-print print-only'} sections={sheetSections} days={days} data={data} fc={isMgr ? fc : null} ws={ws}
             onAdd={addAt} onOpen={openDialog} onSaved={load} />
@@ -342,7 +344,7 @@ export default function Schedule() {
         </>
       )}
 
-      {dialog && <ShiftDialog shift={dialog.shift} warnings={dialog.warnings} events={data?.events || []} onClose={closeDialog} />}
+      {dialog && <ShiftDialog shift={dialog.shift} startIn={dialog.startIn} warnings={dialog.warnings} events={data?.events || []} onClose={closeDialog} />}
       {importOpen && <ImportDialog ws={ws} onClose={(changed) => { setImportOpen(false); if (changed) load(); }} />}
       {clearOpen && <ClearWeekDialog ws={ws} data={data} onClose={(changed) => { setClearOpen(false); if (changed) load(); }} />}
       {copyOpen && <CopyWeekDialog ws={ws} onClose={(changed, goTo) => { setCopyOpen(false); if (goTo && goTo !== ws) setWs(goTo); else if (changed) load(); }} />}
@@ -400,6 +402,7 @@ function MobileDay({ days, selDay, setSelDay, data, sections, mine, setMine, ope
                 <div className="small muted" style={{ fontWeight: 500 }}>{jobs[s.jobCodeId]?.short}{s.area && !sec.area ? ` · ${s.area}` : ''}{s.tag ? ` · ${s.tag}` : ''}{!s.published ? ' · draft' : ''}{s.pending ? ' · swap pending' : ''}</div>
               </div>
               <div className="when">{shiftTime(s)}</div>
+              {canTrade(s, me, today) && <button className="btn sm" onClick={(e) => { e.stopPropagation(); openDialog(s); }}><Icon name="swap" />Trade</button>}
             </div>
           ))}
         </div>
