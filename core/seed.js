@@ -335,6 +335,16 @@ export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password =
   ].forEach(([id, name, level, kinds, capacity, p], order) => store.insert('rooms', {
     id, locationId: 'loc_main', name, level, kinds, capacity, order, plan: p || { width: 1000, height: 700, items: [] },
   }));
+  // SAMPLE server sections (see core/venue-links.js): Friday dinner and the Saturday wedding in the
+  // Restaurant, and Tuesday's happy hour in the Moon Rabbit. Table numbers are the plans' item numbers.
+  const shiftOn = (person, d) => store.list('shifts', (s) => s.userId === userId[person] && s.date === day(d))[0];
+  const sections = (roomId, d, list) => store.insert('sections', {
+    id: `${roomId}|${day(d)}`, roomId, date: day(d), updatedAt: now, updatedBy: userId.Moe,
+    entries: list.map(([person, items]) => ({ shiftId: shiftOn(person, d).id, tableIds: items.map((n) => `itm_${n}`) })),
+  });
+  sections('room_restaurant', 'FRI', [['Alex D', [4, 7, 10]], ['Styves', [5, 8, 11]], ['Andrea', [6, 9, 12]], ['Jonathan', [13, 14, 15, 16, 17]], ['Karen', [3]]]);
+  sections('room_restaurant', 'SAT', [['Styves', [4, 5, 6]], ['Victor', [7, 8, 9]], ['Tori', [10, 11, 12]], ['Andrea', [13, 14, 15]], ['Jonathan', [16, 17]], ['Karen', [3]], ['Alex D', []]]);
+  sections('room_moonrabbit', 'TUE', [['Todd', [4]], ['Romina', []], ['Agustina', [6, 7, 8]], ['Andrea', [9, 10, 11]], ['Alex D', []]]);
 
   return { userId, jobId, eventId };
 }
