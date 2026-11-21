@@ -1,0 +1,224 @@
+// Error messages people see, in Spanish. The code writes every error in English (fail(400, '…') in
+// core/, res.status(…).json({ error: '…' }) in server/); they're translated in one place for Spanish
+// speakers: server/app.js does it for every API response (using the caller's language), and the demo
+// build does it in web/src/api.js. A message that isn't listed here stays as it is (English), so a new
+// message never breaks anything; add it here when you add it to the code.
+//
+// Spanish: neutral Latin American, "tú". See docs/i18n/GLOSSARY.md.
+
+const ROLES_ES = { 'Super Admin': 'superadministrador', Admin: 'administrador', Manager: 'gerente', Supervisor: 'supervisor', Employee: 'empleado' };
+const roleEs = (r) => ROLES_ES[r] || r;
+const TIP_LABELS_ES = { 'Card tips': 'Propinas con tarjeta', 'Cash tips': 'Propinas en efectivo', Sales: 'Ventas' };
+const tipLabelEs = (l) => TIP_LABELS_ES[l] || (/^(.+) sales$/.test(l) ? `Ventas de ${l.replace(/ sales$/, '')}` : l.replace(/: sales$/, ': ventas'));
+
+/** Exact messages. Keys are the English text exactly as the code writes it. */
+export const ERRORS_ES = {
+  // ----- sign-in and accounts -----
+  'Please sign in': 'Inicia sesión',
+  'Wrong email or password': 'Correo o contraseña incorrectos',
+  'Too many attempts. Try again in 15 minutes.': 'Demasiados intentos. Inténtalo de nuevo en 15 minutos.',
+  'Too many requests. Try again in 15 minutes.': 'Demasiadas solicitudes. Inténtalo de nuevo en 15 minutos.',
+  'Password must be at least 6 characters': 'La contraseña debe tener al menos 6 caracteres',
+  'This link has expired or was already used. Ask for a new one.': 'Este enlace ya venció o ya se usó. Pide uno nuevo.',
+  'This account is inactive. Ask a manager.': 'Esta cuenta está inactiva. Habla con un gerente.',
+  'Password reset by email isn’t set up. Ask a manager to reset it.': 'Restablecer la contraseña por correo no está configurado. Pídele a un gerente que la cambie.',
+  'Sign-in failed': 'No se pudo iniciar sesión',
+  'Unauthorized': 'No autorizado',
+  'Managers only': 'Solo para gerentes',
+  'Admins only': 'Solo para administradores',
+  'Managers and supervisors only': 'Solo para gerentes y supervisores',
+  'Events team or managers only': 'Solo para el equipo de eventos o los gerentes',
+  'Something went wrong': 'Algo salió mal',
+  'Not found': 'No se encontró',
+  'Invalid JSON': 'JSON no válido',
+  'That upload is too large': 'Ese archivo es demasiado grande',
+  'The database is not reachable right now. Try again in a minute.': 'Ahorita no podemos conectar con la base de datos. Inténtalo de nuevo en un minuto.',
+  // ----- people -----
+  'Name is required': 'Falta el nombre',
+  'User not found': 'No encontramos a esa persona',
+  'Person not found': 'No encontramos a esa persona',
+  'Unknown employee': 'Empleado desconocido',
+  'Unknown role': 'Rol desconocido',
+  'That email doesn’t look right': 'Ese correo no parece correcto',
+  'You can’t change your own role. Ask another admin.': 'No puedes cambiar tu propio rol. Pídeselo a otro administrador.',
+  'You can’t deactivate yourself.': 'No puedes desactivar tu propia cuenta.',
+  'There must always be at least one active Super Admin. Make someone else a Super Admin first.': 'Siempre debe haber al menos un superadministrador activo. Primero haz superadministrador a otra persona.',
+  'Pick a different person': 'Elige a otra persona',
+  'You can’t merge yourself into someone else': 'No puedes unir tu cuenta a la de otra persona',
+  'A Super Admin can’t be merged away': 'No se puede unir la cuenta de un superadministrador con otra',
+  'Only a higher role can merge these people': 'Solo alguien con un rol más alto puede unir a estas personas',
+  'You can only edit your own availability': 'Solo puedes editar tu propia disponibilidad',
+  'Add a real email address first': 'Primero agrega un correo real',
+  'Your account needs a real email address first.': 'Primero tu cuenta necesita un correo real.',
+  'This person is inactive': 'Esta persona está inactiva',
+  'You can’t send a sign-in link to this person': 'No puedes mandarle un enlace para iniciar sesión a esta persona',
+  'Email isn’t set up yet': 'El correo todavía no está configurado',
+  'Email isn’t set up yet. Add RESEND_API_KEY and EMAIL_FROM in Vercel, then redeploy.': 'El correo todavía no está configurado. Agrega RESEND_API_KEY y EMAIL_FROM en Vercel y vuelve a publicar.',
+  'The email could not be sent. Try again in a minute.': 'No se pudo enviar el correo. Inténtalo de nuevo en un minuto.',
+  'The emails could not be sent. Try again in a minute.': 'No se pudieron enviar los correos. Inténtalo de nuevo en un minuto.',
+  'The welcome email could not be sent. Share the temporary password instead.': 'No se pudo enviar el correo de bienvenida. Mejor comparte la contraseña temporal.',
+  // ----- job codes -----
+  'Job code not found': 'No encontramos ese puesto',
+  'Choose a job code': 'Elige un puesto',
+  'Pick a different job code to merge into': 'Elige otro puesto para unirlos',
+  'Every new job code needs a name': 'Cada puesto nuevo necesita un nombre',
+  'One of the positions no longer exists': 'Uno de los puestos ya no existe',
+  // ----- shifts and the schedule -----
+  'Shift not found': 'No encontramos ese turno',
+  'Date is required': 'Falta la fecha',
+  'Start time is required': 'Falta la hora de entrada',
+  'End time must be HH:MM': 'La hora de salida debe tener el formato HH:MM',
+  'Pick a date': 'Elige una fecha',
+  'Pick a day': 'Elige un día',
+  'Pick a different day': 'Elige otro día',
+  'Pick a week': 'Elige una semana',
+  'Pick the weeks to copy': 'Elige las semanas que quieres copiar',
+  'Pick a different week to copy into': 'Elige otra semana para copiar',
+  'Pick a day to copy from': 'Elige el día del que quieres copiar',
+  'Pick a day to copy to': 'Elige el día al que quieres copiar',
+  'Unknown note': 'Nota desconocida',
+  // ----- trades -----
+  'That shift has already started': 'Ese turno ya empezó',
+  'There is already an active request on this shift': 'Ya hay una solicitud en curso para este turno',
+  'That shift is not open': 'Ese turno no está disponible',
+  'You already requested this shift': 'Ya pediste este turno',
+  'You can only trade your own shifts': 'Solo puedes cambiar tus propios turnos',
+  'Pick a coworker shift to trade for': 'Elige el turno de un compañero para intercambiar',
+  'That is your own shift': 'Ese es tu propio turno',
+  'Unknown request type': 'Tipo de solicitud desconocido',
+  'This request is no longer open': 'Esta solicitud ya no está abierta',
+  "You can't pick up your own shift": 'No puedes recoger tu propio turno',
+  'This trade was offered to someone else': 'Este intercambio se le ofreció a otra persona',
+  'Nothing to accept': 'No hay nada que aceptar',
+  'Nothing to decline': 'No hay nada que rechazar',
+  'Request is already closed': 'La solicitud ya está cerrada',
+  'Not your request': 'No es tu solicitud',
+  'Request is not waiting on approval': 'Esta solicitud no está esperando aprobación',
+  'A manager or another supervisor has to approve your own request': 'Tu propia solicitud la tiene que aprobar un gerente u otro supervisor',
+  'Shift no longer exists': 'El turno ya no existe',
+  'The other shift no longer exists': 'El otro turno ya no existe',
+  'Shifts changed since this request was made': 'Los turnos cambiaron desde que se hizo esta solicitud',
+  'Shift changed since this request was made': 'El turno cambió desde que se hizo esta solicitud',
+  'Shift was already filled': 'Ese turno ya se cubrió',
+  // ----- time off -----
+  'Start date required': 'Falta la fecha de inicio',
+  'Invalid status': 'Estado no válido',
+  'Not yours': 'No es tuyo',
+  // ----- events -----
+  'Event not found': 'No encontramos ese evento',
+  'Event name is required': 'Falta el nombre del evento',
+  'Event date is required': 'Falta la fecha del evento',
+  'Write something first': 'Primero escribe algo',
+  // ----- venue, floor plans and sections -----
+  'The venue is already set up': 'El local ya está configurado',
+  'Location name is required': 'Falta el nombre de la sucursal',
+  'Location not found': 'No encontramos esa sucursal',
+  'Room name is required': 'Falta el nombre del salón',
+  'Room not found': 'No encontramos ese salón',
+  'Level name is required': 'Falta el nombre del piso',
+  'A floor plan can have at most 500 items': 'Un plano puede tener 500 elementos como máximo',
+  'That room is gone. Pick another one.': 'Ese salón ya no existe. Elige otro.',
+  'Pick a room for these tables': 'Elige un salón para estas mesas',
+  'Too many tables': 'Demasiadas mesas',
+  'Pick a manager or supervisor': 'Elige a un gerente o supervisor',
+  // ----- settings and branding -----
+  'Upload a PNG, JPG or WebP image': 'Sube una imagen PNG, JPG o WebP',
+  'That logo is too large. Try a smaller image (under about 400 KB).': 'Ese logo es demasiado grande. Prueba con una imagen más pequeña (menos de unos 400 KB).',
+  // ----- tips -----
+  'Tip pool not found': 'No encontramos ese fondo de propinas',
+  'Give the pool a name': 'Ponle nombre al fondo',
+  'Add at least one position that shares the pool': 'Agrega al menos un puesto que comparta el fondo',
+  'Each “what goes in” line needs a percent from 0.01 to 100': 'Cada línea de “qué entra” necesita un porcentaje de 0.01 a 100',
+  'Choose what goes into the pool': 'Elige qué entra al fondo',
+  'This week is final. An admin can unlock it.': 'Esta semana ya es definitiva. Un administrador puede desbloquearla.',
+  'This week is already final': 'Esta semana ya es definitiva',
+  'This week isn’t final': 'Esta semana todavía no es definitiva',
+  'Too many adjustments for one day': 'Demasiados ajustes para un solo día',
+  'Pick a person for each adjustment': 'Elige a una persona para cada ajuste',
+  'No tips entered for this week yet': 'Todavía no hay propinas registradas para esta semana',
+  // ----- phone notifications and texts -----
+  'Phone notifications aren’t set up for this restaurant yet': 'Las notificaciones al teléfono todavía no están configuradas para este restaurante',
+  'Phone notifications aren’t set up yet': 'Las notificaciones al teléfono todavía no están configuradas',
+  'Turn on phone notifications first': 'Primero activa las notificaciones al teléfono',
+  'This phone’s sign-up expired. Turn notifications on again.': 'El registro de este teléfono venció. Vuelve a activar las notificaciones.',
+  'The notification could not be sent. Try again in a minute.': 'No se pudo enviar la notificación. Inténtalo de nuevo en un minuto.',
+  'That isn’t a push subscription': 'Eso no es una suscripción de notificaciones',
+  'This browser’s push service isn’t supported': 'El servicio de notificaciones de este navegador no es compatible',
+  'That push subscription is missing its keys': 'A esa suscripción de notificaciones le faltan sus claves',
+  'Text messages aren’t set up for this restaurant yet': 'Los mensajes de texto todavía no están configurados para este restaurante',
+  'Text messages aren’t set up yet. Add the TWILIO_ settings in Vercel, then redeploy.': 'Los mensajes de texto todavía no están configurados. Agrega los ajustes TWILIO_ en Vercel y vuelve a publicar.',
+  'Your restaurant has text messages turned off': 'Tu restaurante tiene apagados los mensajes de texto',
+  'Enter your mobile number, like (303) 555-0123': 'Escribe tu número de celular, por ejemplo (303) 555-0123',
+  'That phone number doesn’t look right': 'Ese número de teléfono no parece correcto',
+  'Not a push token': 'No es un token de notificaciones',
+  'Platform must be ios or android': 'La plataforma debe ser ios o android',
+  // ----- Toast -----
+  'That Toast employee is gone. Sync again.': 'Ese empleado de Toast ya no existe. Sincroniza otra vez.',
+  'That Toast job is gone. Sync again.': 'Ese puesto de Toast ya no existe. Sincroniza otra vez.',
+  // ----- training -----
+  'Menu item not found': 'No encontramos ese platillo',
+  'Photo not found': 'No encontramos esa foto',
+  'Those photos don’t match this item': 'Esas fotos no son de este platillo',
+  'Upload a JPG, PNG or WebP photo': 'Sube una foto JPG, PNG o WebP',
+  'That photo is empty': 'Esa foto está vacía',
+  'That file isn’t the kind of image it says it is': 'Ese archivo no es el tipo de imagen que dice ser',
+  'Price must be a number': 'El precio debe ser un número',
+  'Quiz not found': 'No encontramos ese cuestionario',
+  'Give the quiz a name': 'Ponle nombre al cuestionario',
+  'Pick a due date': 'Elige una fecha límite',
+  'Passing score must be 1 to 100': 'La calificación para aprobar debe ser de 1 a 100',
+  'This quiz has no questions yet. A manager needs to add menu items (or questions) first.': 'Este cuestionario todavía no tiene preguntas. Primero un gerente tiene que agregar platillos (o preguntas).',
+  'This quiz was already handed in': 'Este cuestionario ya se entregó',
+  'You already answered this one': 'Ya contestaste esta pregunta',
+  'Pick one of the answers': 'Elige una de las respuestas',
+  'Question not found': 'No encontramos esa pregunta',
+  'Write the question': 'Escribe la pregunta',
+  'Add at least two answers': 'Agrega al menos dos respuestas',
+  'Mark the right answer': 'Marca la respuesta correcta',
+  'Section not found': 'No encontramos esa sección',
+  'Pick a section': 'Elige una sección',
+  'Give the section a name': 'Ponle nombre a la sección',
+  'Page not found': 'No encontramos esa página',
+  'Give the page a title': 'Ponle título a la página',
+};
+
+/** Messages with names or numbers in them: [English pattern, Spanish]. */
+export const ERROR_PATTERNS_ES = [
+  [/^Request failed \((\d+)\)$/, (m) => `La solicitud falló (${m[1]})`],
+  [/^Unknown method (.+)$/, (m) => `Método desconocido: ${m[1]}`],
+  [/^You can’t give someone the (.+) role$/, (m) => `No puedes darle a nadie el rol de ${roleEs(m[1])}`],
+  [/^Only a higher role can edit an? (.+)$/, (m) => `Solo alguien con un rol más alto puede editar a un ${roleEs(m[1])}`],
+  [/^Only a higher role can reset an? (.+)'s password$/, (m) => `Solo alguien con un rol más alto puede restablecer la contraseña de un ${roleEs(m[1])}`],
+  [/^That email is already (.+)'s sign-in\. If they're the same person, connect the two instead\.$/, (m) => `Ese correo ya lo usa ${m[1]} para iniciar sesión. Si es la misma persona, mejor une las dos cuentas.`],
+  [/^(.+) already goes by (.+) on the schedule$/, (m) => `${m[1]} ya aparece como ${m[2]} en el horario`],
+  [/^Swaps need at least (\d+) hours notice — call your manager$/, (m) => `Los cambios necesitan al menos ${m[1]} horas de anticipación. Si falta menos, llama a tu gerente.`],
+  [/^You aren't (?:set up|trained) as (.+)$/, (m) => `No tienes el puesto de ${m[1]}`],
+  [/^(.+) isn't trained as (.+)$/, (m) => `${m[1]} no tiene el puesto de ${m[2]}`],
+  [/^Unknown floor plan item "(.*)"$/, (m) => `Elemento del plano desconocido: "${m[1]}"`],
+  [/^Move or delete its (\d+) rooms? first$/, (m) => (m[1] === '1' ? 'Primero mueve o borra su salón' : `Primero mueve o borra sus ${m[1]} salones`)],
+  [/^Move or delete its (\d+) pages? first$/, (m) => (m[1] === '1' ? 'Primero mueve o borra su página' : `Primero mueve o borra sus ${m[1]} páginas`)],
+  [/^There's already a room called (.+) here$/, (m) => `Ya hay un salón llamado ${m[1]} aquí`],
+  [/^Pick at most (\d+) days$/, (m) => `Elige ${m[1]} días como máximo`],
+  [/^That table isn’t on the (.+) floor plan$/, (m) => `Esa mesa no está en el plano de ${m[1]}`],
+  [/^(.+) is already matched to another Toast employee$/, (m) => `${m[1]} ya está vinculado a otro empleado de Toast`],
+  [/^Toast isn’t set up yet\. Add (.+) in Vercel, then redeploy\.$/, (m) => `Toast todavía no está configurado. Agrega ${m[1]} en Vercel y vuelve a publicar.`],
+  [/^Points for (.+) must be between 0\.01 and 10$/, (m) => `Los puntos de ${m[1]} deben estar entre 0.01 y 10`],
+  [/^(.+): enter an amount of \$0 or more$/, (m) => `${tipLabelEs(m[1])}: escribe una cantidad de $0 o más`],
+  [/^Enter an amount for (.+)’s adjustment$/, (m) => `Escribe la cantidad del ajuste de ${m[1]}`],
+  [/^Add a note to (.+)’s adjustment so everyone knows why$/, (m) => `Agrega una nota al ajuste de ${m[1]} para que todos sepan por qué`],
+  [/^(.+) \((Super Admin|Admin|Manager|Supervisor|Employee)\) can’t get money from this tip pool$/, (m) => `${m[1]} (${roleEs(m[2]).replace(/^./, (c) => c.toUpperCase())}) no puede recibir dinero de este fondo de propinas`],
+  [/^That photo is too large \((\d+) KB\)\. Photos can be up to (\d+) KB\.$/, (m) => `Esa foto es demasiado grande (${m[1]} KB). Las fotos pueden pesar hasta ${m[2]} KB.`],
+  [/^An item can have up to (\d+) photos\. Delete one first\.$/, (m) => `Un platillo puede tener hasta ${m[1]} fotos. Primero borra una.`],
+];
+
+/** An error message in a language: Spanish from the lists above, otherwise as it is. */
+export function translateError(message, lang) {
+  const text = String(message ?? '');
+  if (lang !== 'es' || !text) return text;
+  if (Object.prototype.hasOwnProperty.call(ERRORS_ES, text)) return ERRORS_ES[text];
+  for (const [re, make] of ERROR_PATTERNS_ES) {
+    const m = text.match(re);
+    if (m) return make(m);
+  }
+  return text;
+}

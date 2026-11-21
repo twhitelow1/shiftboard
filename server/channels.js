@@ -6,8 +6,10 @@
 import express from 'express';
 import { createService } from '../core/service.js';
 import { canChangeSettings } from '../core/roles.js';
-import { normalizePhone, formatPhone, maskPhone, plainText, textMessage, welcomeText, linkFor, smsAllowed,
+import { normalizePhone, formatPhone, maskPhone, textMessage, welcomeText, testText, linkFor, smsAllowed,
   replyKeyword, applyTextReply } from '../core/notify-prefs.js';
+import { langOf } from '../core/i18n.js';
+import { msg } from '../core/messages.js';
 import { createPusher } from './push.js';
 import { createTexter, UNSUBSCRIBED } from './sms.js';
 
@@ -100,16 +102,17 @@ export function createChannels({ db, env = process.env, pusher = createPusher(en
         if (!u || u.active === false) continue;
         const [first] = list;
         const more = list.length - 1;
+        const lang = langOf(u, st); // each notification's text is already in the person's language
         if (pusher.enabled) {
-          const message = pushMessage(name, more ? `${first.text} (+${more} more)` : first.text, first.link);
+          const message = pushMessage(name, more ? `${first.text}${msg(lang).more(more)}` : first.text, first.link);
           for (const sub of db.store.list('pushSubscriptions', (s) => s.userId === userId)) pushes.push({ sub, message });
         }
         if (texter.enabled && smsAllowed(u, st)) {
-          texts.push({ to: u.smsPhone, body: textMessage({ restaurant: name, text: first.text, url: linkFor(url, first.link), more }) });
+          texts.push({ to: u.smsPhone, body: textMessage({ restaurant: name, text: first.text, url: linkFor(url, first.link), more, lang }) });
         }
       }
       if (texter.enabled && st.smsNotifications !== false) {
-        for (const u of optIns) texts.push({ to: u.smsPhone, body: welcomeText({ restaurant: name, url }) });
+        for (const u of optIns) texts.push({ to: u.smsPhone, body: welcomeText({ restaurant: name, url, lang: langOf(u, st) }) });
       }
       if (pushes.length || texts.length) background(deliver(pushes, texts));
     } catch (e) {
@@ -126,7 +129,7 @@ export function createChannels({ db, env = process.env, pusher = createPusher(en
       if (!pusher.enabled) return res.status(400).json({ error: 'Phone notifications aren’t set up yet' });
       const subs = db.store.list('pushSubscriptions', (s) => s.userId === u.id);
       if (!subs.length) return res.status(400).json({ error: 'Turn on phone notifications first' });
-      const message = pushMessage(restaurant(), 'Test: phone notifications are working.', '#/my');
+      const message = pushMessage(restaurant(), msg(langOf(u, settings())).pushTest, '#/my');
       const r = await deliver(subs.map((sub) => ({ sub, message })), []);
       if (!r.sent) {
         return res.status(502).json({ error: r.removed ? 'This phone’s sign-up expired. Turn notifications on again.' : 'The notification could not be sent. Try again in a minute.' });
@@ -144,7 +147,7 @@ export function createChannels({ db, env = process.env, pusher = createPusher(en
       const to = normalizePhone(req.body?.phone || u.smsPhone || u.phone);
       if (!to) return res.status(400).json({ error: 'Enter your mobile number, like (303) 555-0123' });
       try {
-        await texter.send(to, plainText(`${restaurant()}: Test text from ShiftBoard. Texts are working. Reply STOP to opt out.`));
+        await texter.send(to, testText({ restaurant: restaurant(), lang: langOf(u, settings()) }));
         res.json({ result: { ok: true, to: formatPhone(to) } });
       } catch (e) {
         res.status(502).json({ error: e.message }); // Twilio's reason (unverified number, 10DLC…) helps the admin fix setup

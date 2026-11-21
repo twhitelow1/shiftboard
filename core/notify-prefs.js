@@ -10,6 +10,7 @@
 //   users.smsStoppedAt         when they replied STOP
 //   settings.smsNotifications  the restaurant-wide switch (on unless an admin turns it off)
 import { uid } from './store.js';
+import { msg } from './messages.js';
 
 // ---------- phone numbers ----------
 
@@ -58,9 +59,9 @@ export function linkFor(appUrl, link) {
 
 const SMS_LIMIT = 160;
 /** "Chasing Rabbits: New shift: Server Tue, Sep 29 4p-10p https://…/#/my", kept to one text when it can be. */
-export function textMessage({ restaurant, text, url, more = 0 }) {
+export function textMessage({ restaurant, text, url, more = 0, lang = 'en' }) {
   const name = plainText(restaurant) || 'ShiftBoard';
-  const extra = more > 0 ? ` (+${more} more)` : '';
+  const extra = more > 0 ? msg(lang).more(more) : '';
   let body = plainText(text);
   const room = SMS_LIMIT - name.length - 2 - extra.length - (url ? url.length + 1 : 0);
   const max = Math.max(room, 60);
@@ -68,10 +69,13 @@ export function textMessage({ restaurant, text, url, more = 0 }) {
   return `${name}: ${body}${extra}${url ? ` ${url}` : ''}`;
 }
 
-/** The text sent right after someone turns texts on (carriers expect one). */
-export const welcomeText = ({ restaurant, url }) => plainText(
-  `${restaurant || 'ShiftBoard'}: You'll get texts about your schedule, trades and time off. Msg & data rates may apply. Reply STOP to opt out, HELP for help.${url ? ` ${url}` : ''}`,
-);
+/**
+ * The text sent right after someone turns texts on (carriers expect one), in their language. The STOP and
+ * HELP keywords stay in English in Spanish too: carriers only act on those words.
+ */
+export const welcomeText = ({ restaurant, url, lang = 'en' }) => plainText(`${msg(lang).smsWelcome(restaurant || 'ShiftBoard')}${url ? ` ${url}` : ''}`);
+/** The test text from Settings, in the admin's language. */
+export const testText = ({ restaurant, lang = 'en' }) => plainText(msg(lang).smsTest(restaurant || 'ShiftBoard'));
 
 /** May this person get texts right now? */
 export function smsAllowed(user, settings) {

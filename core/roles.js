@@ -40,7 +40,14 @@ export function roleOf(user) {
   const r = user?.role;
   return BY_ID[r] ? r : 'employee';
 }
-export const roleLabel = (userOrId) => BY_ID[typeof userOrId === 'string' ? userOrId : roleOf(userOrId)]?.label || 'Employee';
+// Role names in Spanish (the same words the phone app uses), singular and plural.
+const ROLE_ES = { super_admin: ['Superadministrador', 'Superadministradores'], admin: ['Administrador', 'Administradores'],
+  manager: ['Gerente', 'Gerentes'], supervisor: ['Supervisor', 'Supervisores'], employee: ['Empleado', 'Empleados'] };
+const roleId = (userOrId) => (typeof userOrId === 'string' ? (BY_ID[userOrId] ? userOrId : 'employee') : roleOf(userOrId));
+/** 'Manager' · 'Gerente'. */
+export const roleLabel = (userOrId, lang = 'en') => (lang === 'es' ? ROLE_ES[roleId(userOrId)][0] : BY_ID[roleId(userOrId)]?.label || 'Employee');
+/** 'Managers' · 'Gerentes'. */
+export const roleLabelPlural = (userOrId, lang = 'en') => (lang === 'es' ? ROLE_ES[roleId(userOrId)][1] : `${roleLabel(userOrId)}s`);
 export const rankOf = (user) => (user ? BY_ID[roleOf(user)].rank : 0);
 /** At least the given role (e.g. atLeast(u, 'manager') is true for managers, admins and super admins). */
 export const atLeast = (user, role) => !!user && rankOf(user) >= BY_ID[role].rank;

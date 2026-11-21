@@ -18,6 +18,8 @@ import { createService, AppError } from '../core/service.js';
 import { seedDemo } from '../core/seed.js';
 import { effectiveShift } from '../core/forecast.js';
 import { addDays } from '../core/time.js';
+import { langOf, isLang } from '../core/i18n.js';
+import { translateError } from '../core/errors.js';
 import { mountToast } from './toast-routes.js';
 
 const COOKIE = 'sb_session';
@@ -105,6 +107,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   const appUrl = (req) => (env.APP_URL
     || (env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${env.VERCEL_PROJECT_PRODUCTION_URL}` : `${req.protocol}://${req.get('host')}`)).replace(/\/+$/, '');
   const restaurantName = () => createService(db.store).settings().restaurantName;
+  // The language to write to someone in: theirs, else the restaurant's default, else English (core/i18n.js).
+  const langFor = (u) => langOf(u, createService(db.store).settings());
   // The restaurant's color and logo for emails (Settings → Branding).
   const brandOf = (req) => {
     const st = createService(db.store).settings();
@@ -132,7 +136,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     for (const n of notes) {
       const u = db.store.get('users', n.userId);
       if (!u || u.active === false || u.emailNotifications === false || !deliverable(u.email)) continue;
-      messages.push(notificationEmail({ user: u, note: n, appUrl: url, restaurant: st.restaurantName, brand: brandOf(req) }));
+      messages.push(notificationEmail({ user: u, note: n, appUrl: url, restaurant: st.restaurantName, brand: brandOf(req), lang: langOf(u, st) }));
     }
     if (messages.length) background(mailer.sendMany(messages, { idempotencyKey: `ntf-${notes[0].id}` }));
   }
@@ -156,9 +160,10 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     const returning = !!user.lastLoginAt;
     const token = await db.createToken(user.id, returning ? 'reset' : 'invite', returning ? 24 * 60 : 7 * 24 * 60);
     const link = `${appUrl(req)}/#/reset?token=${token}`;
+    const lang = langFor(user);
     await mailer.send(returning
-      ? resetEmail({ user, link, restaurant: restaurantName(), hours: 24, sentBy: invitedBy, brand: brandOf(req) })
-      : inviteEmail({ user, link, restaurant: restaurantName(), invitedBy, brand: brandOf(req) }));
+      ? resetEmail({ user, link, restaurant: restaurantName(), hours: 24, sentBy: invitedBy, brand: brandOf(req), lang })
+      : inviteEmail({ user, link, restaurant: restaurantName(), invitedBy, brand: brandOf(req), lang }));
     await stamp([user.id], 'invitedAt');
     return true;
   }
@@ -177,6 +182,35 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   app.set('trust proxy', 1);
   app.use(express.json({ limit: '2mb' }));
   app.use(cookieParser());
+  // Error messages in the caller's language (core/errors.js): every API answer with an `error` goes through here.
+  // Signed in: their language (or, if they haven't picked one, the app's, sent as X-ShiftBoard-Language).
+  // Signed out: the app's language, else the restaurant's default, else the browser's (Accept-Language).
+  const requestLang = (req) => {
+    if (req.sbLang) return req.sbLang;
+    let user = null;
+    let st = null;
+    try { user = secret ? userFromToken(db.store, sessionToken(req)) : null; } catch { /* signed out */ }
+    if (isLang(user?.language)) return user.language;
+    const asked = String(req.get('x-shiftboard-language') || '').toLowerCase();
+    if (isLang(asked)) return asked;
+    try { st = createService(db.store).settings(); } catch { /* no settings yet */ }
+    if (isLang(st?.language)) return st.language;
+    return /^es\b/i.test(String(req.get('accept-language') || '').trim()) ? 'es' : 'en';
+  };
+  app.use('/api', (req, res, next) => {
+    const json = res.json.bind(res);
+    res.json = (body) => {
+      if (body && typeof body === 'object' && (typeof body.error === 'string' || typeof body.result?.inviteError === 'string')) {
+        const lang = requestLang(req);
+        if (lang !== 'en') {
+          if (typeof body.error === 'string') body = { ...body, error: translateError(body.error, lang) };
+          if (typeof body.result?.inviteError === 'string') body = { ...body, result: { ...body.result, inviteError: translateError(body.result.inviteError, lang) } };
+        }
+      }
+      return json(body);
+    };
+    next();
+  });
   app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
@@ -227,6 +261,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
       const caller = userFromToken(db.store, token);
       if (!caller) throw new AppError(401, 'Please sign in');
 
+      if (isLang(caller.language)) req.sbLang = caller.language; // errors in the caller's language
       const out = await db.run((store) => {
         const actor = userFromToken(store, token);
         if (!actor) throw new AppError(401, 'Please sign in');
@@ -268,13 +303,15 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   // Public: what the sign-in page needs before anyone signs in (email on/off, the restaurant's branding).
   app.get('/api/config', async (req, res) => {
     let brand = null;
+    let language = 'auto';
     try {
       await db.sync();
       const st = createService(db.store).settings();
       brand = { name: st.restaurantName, color: st.brandColor || '', nav: st.navColor || '', bg: st.bgColor || '', mode: st.appearance || 'auto',
         logo: st.logoVersion ? `/api/branding/logo?v=${st.logoVersion}` : '' };
+      language = isLang(st.language) ? st.language : 'auto'; // the restaurant's default language, for the sign-in page
     } catch { /* the sign-in page still works with ShiftBoard's look */ }
-    res.json({ email: mailer.enabled, emailFrom: mailer.enabled ? mailer.from : null, brand, ...channels.config() });
+    res.json({ email: mailer.enabled, emailFrom: mailer.enabled ? mailer.from : null, brand, language, ...channels.config() });
   });
 
   // The restaurant's logo (public: the sign-in page, emails and the browser tab use it).
@@ -296,7 +333,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     if (!mailer.enabled) return res.status(400).json({ error: 'Email isn’t set up yet. Add RESEND_API_KEY and EMAIL_FROM in Vercel, then redeploy.' });
     if (!deliverable(u.email)) return res.status(400).json({ error: 'Your account needs a real email address first.' });
     try {
-      await mailer.send(testEmail({ user: u, restaurant: restaurantName(), appUrl: appUrl(req), brand: brandOf(req) }));
+      await mailer.send(testEmail({ user: u, restaurant: restaurantName(), appUrl: appUrl(req), brand: brandOf(req), lang: langFor(u) }));
       res.json({ result: { ok: true, to: u.email } });
     } catch (e) {
       res.status(502).json({ error: e.message }); // Resend's reason (e.g. domain not verified) helps the admin fix setup
@@ -336,7 +373,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     const messages = [];
     for (const u of ready) {
       const token = await db.createToken(u.id, 'invite', 7 * 24 * 60);
-      messages.push(inviteEmail({ user: u, link: `${base}/#/reset?token=${token}`, restaurant, invitedBy: actor.name, brand: brandOf(req) }));
+      messages.push(inviteEmail({ user: u, link: `${base}/#/reset?token=${token}`, restaurant, invitedBy: actor.name, brand: brandOf(req), lang: langFor(u) }));
     }
     try {
       await mailer.sendMany(messages, { idempotencyKey: `invite-all-${actor.id}-${Date.now()}` });
@@ -360,7 +397,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
       // Sent in the background so the reply takes the same time whether or not the account exists.
       background((async () => {
         const token = await db.createToken(u.id, 'reset', 60);
-        await mailer.send(resetEmail({ user: u, link: `${appUrl(req)}/#/reset?token=${token}`, restaurant: restaurantName(), brand: brandOf(req) }));
+        await mailer.send(resetEmail({ user: u, link: `${appUrl(req)}/#/reset?token=${token}`, restaurant: restaurantName(), brand: brandOf(req), lang: langFor(u) }));
       })());
     }
     res.json({ ok: true }); // same answer either way, so this can't be used to find accounts

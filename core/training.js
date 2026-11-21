@@ -28,7 +28,8 @@ import { addDays, todayStr, daysBetween, shiftSpan, parseDate, MONTHS, DOW_SHORT
 import { effectiveShift } from './forecast.js';
 
 export const LANGS = ['en', 'es'];
-export const langOf = (u) => (u?.language === 'es' ? 'es' : 'en');
+/** A person's language: their own choice, else the restaurant's default (settings.language), else English. */
+export const langOf = (u, settings) => (u?.language === 'es' || u?.language === 'en' ? u.language : settings?.language === 'es' ? 'es' : 'en');
 
 export const MAJOR_ALLERGENS = [
   { id: 'milk', label: 'Milk', es: 'Leche' }, { id: 'eggs', label: 'Eggs', es: 'Huevo' }, { id: 'fish', label: 'Fish', es: 'Pescado' },
@@ -169,7 +170,7 @@ export function checkPhoto(dataUrl, fail) {
   return { mime, data, bytes };
 }
 
-export function trainingApi({ store, now, settings, notify, fail, random = Math.random }) {
+export function trainingApi({ store, now, settings, notify, fail, random = Math.random, langOf: userLang = (u) => langOf(u, settings()) }) {
   const today = () => todayStr(now());
   const isMgr = (a) => canManageSchedule(a);
   const needAuth = (a) => { if (!a) fail(401, 'Please sign in'); };
@@ -188,10 +189,7 @@ export function trainingApi({ store, now, settings, notify, fail, random = Math.
   const pct = (n, d) => (d ? Math.round((n * 100) / d) : 0);
   /** Notify people, each in their own language: make(T, lang) builds the text. */
   const notifyEach = (users, make, link) => {
-    for (const lang of LANGS) {
-      const ids = users.filter((u) => langOf(u) === lang).map((u) => u.id);
-      if (ids.length) notify(ids, make(TEXT[lang], lang), link);
-    }
+    if (users.length) notify(users.map((u) => u.id), (lang) => make(TEXT[lang] || TEXT.en, lang), link);
   };
 
   // ---------- settings ----------
@@ -359,7 +357,7 @@ export function trainingApi({ store, now, settings, notify, fail, random = Math.
    * Each has its choices in a random order with neutral ids (a, b, c…); which one is right stays on the server.
    */
   function generate(actor, quiz) {
-    const lang = langOf(actor);
+    const lang = userLang(actor);
     const T = TEXT[lang];
     const cfg = config();
     const menu = store.list('menuItems').sort(byOrder);
@@ -697,7 +695,7 @@ export function trainingApi({ store, now, settings, notify, fail, random = Math.
     // What's waiting for me: assigned quizzes not passed yet, manual pages to read.
     'training.summary': (actor) => {
       needAuth(actor);
-      const lang = langOf(actor);
+      const lang = userLang(actor);
       const mine = submitted((t) => t.userId === actor.id);
       const quizzes = store.list('quizzes', (q) => q.active !== false && assignedTo(q, actor) && !mine.some((t) => t.quizId === q.id && t.passed))
         .map((q) => ({ id: q.id, title: localize(q, lang).title, dueDate: q.dueDate || null, overdue: !!q.dueDate && q.dueDate < today() }))
@@ -900,7 +898,7 @@ export function trainingApi({ store, now, settings, notify, fail, random = Math.
       for (const t of open) store.remove('quizAttempts', t.id);
       const questions = generate(actor, quiz);
       if (!questions.length) fail(400, 'This quiz has no questions yet. A manager needs to add menu items (or questions) first.');
-      const lang = langOf(actor);
+      const lang = userLang(actor);
       const att = store.insert('quizAttempts', {
         id: uid('qat'), quizId, userId: actor.id, title: localize(quiz, lang).title, lang, feedback: quiz.feedback || 'each', passingScore: quiz.passingScore ?? null,
         startedAt: now().toISOString(), submittedAt: null, questions,
@@ -974,7 +972,7 @@ export function trainingApi({ store, now, settings, notify, fail, random = Math.
       if (id !== actor.id && !isMgr(actor)) fail(403, 'Managers only');
       const u = store.get('users', id);
       if (!u) fail(404, 'Person not found');
-      const lang = langOf(actor);
+      const lang = userLang(actor);
       const attempts = submitted((t) => t.userId === id);
       const items = new Map(store.list('menuItems').map((i) => [i.id, i]));
       const byItem = new Map(), byCat = new Map();
