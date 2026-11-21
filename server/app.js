@@ -10,6 +10,7 @@ import crypto from 'node:crypto';
 import { waitUntil } from '@vercel/functions';
 import { canChangeSettings, canManageUser, canManageSchedule } from '../core/roles.js';
 import { createMailer, deliverable, notificationEmail, inviteEmail, resetEmail, testEmail } from './email.js';
+import { trainingRoutes } from './training-routes.js';
 import { uid } from '../core/store.js';
 import { createService, AppError } from '../core/service.js';
 import { seedDemo } from '../core/seed.js';
@@ -389,6 +390,9 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     if (!u) return res.status(401).json({ error: 'Please sign in' });
     res.json({ result: `/api/ical/${u.id}/${icalToken(u.id)}.ics` });
   });
+
+  // Training photos (menu study guide, quizzes), for signed-in staff only.
+  trainingRoutes(app, { db, signedIn: (req) => userFromToken(db.store, req.cookies[COOKIE]) });
 
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
