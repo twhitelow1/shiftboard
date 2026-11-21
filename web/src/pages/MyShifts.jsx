@@ -55,6 +55,12 @@ export default function MyShifts() {
         </div>
       )}
 
+      <div className="quick-actions section no-print">
+        <a className="btn" href="#/timeoff/new"><Icon name="sun" />Request time off</a>
+        <a className="btn" href="#/swaps"><Icon name="swap" />Trade a shift</a>
+        <a className="btn" href="#/timeoff/availability"><Icon name="clock" />My availability</a>
+      </div>
+
       <div className="section">
         <div className="section-title"><h2>My shifts</h2></div>
         {!mine.length && <div className="card"><Empty title="No shifts yet">Once your manager publishes the schedule, your shifts show up here.</Empty></div>}
@@ -78,7 +84,7 @@ export default function MyShifts() {
 
       {myTimeOff.length > 0 && (
         <div className="section">
-          <div className="section-title"><h2>My time off</h2><a className="btn sm ghost" href="#/timeoff">Manage</a></div>
+          <div className="section-title"><h2>My time off</h2><a className="btn sm ghost" href="#/timeoff">See all</a></div>
           <div className="card list">
             {myTimeOff.map((t) => (
               <div key={t.id} className="list-item"><Icon name="sun" size={18} /><div style={{ flex: 1 }}>{prettyDate(t.startDate)}{t.endDate !== t.startDate ? ` – ${prettyDate(t.endDate)}` : ''}</div><span className={`badge ${t.status === 'approved' ? 'ok' : 'warn'}`}>{t.status}</span></div>

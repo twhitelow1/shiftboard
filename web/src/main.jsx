@@ -258,7 +258,7 @@ function App() {
             { key: ctx.isMgr ? 'schedule' : 'my', label: ctx.isMgr ? 'Schedule' : 'My Shifts', icon: ctx.isMgr ? 'grid' : 'user' },
             { key: ctx.isMgr ? 'my' : 'schedule', label: ctx.isMgr ? 'Mine' : 'Schedule', icon: ctx.isMgr ? 'user' : 'grid' },
             { key: 'swaps', label: 'Swaps', icon: 'swap', badge: badges.swaps },
-            { key: 'events', label: 'Events', icon: 'glass' },
+            ctx.isMgr ? { key: 'events', label: 'Events', icon: 'glass' } : { key: 'timeoff', label: 'Time Off', icon: 'sun' },
           ].map((n) => (
             <button key={n.key} className={route === n.key ? 'active' : ''} onClick={() => go(n.key)}>
               <Icon name={n.icon} />{n.label}

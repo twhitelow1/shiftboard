@@ -1093,6 +1093,12 @@ export function createService(store, opts = {}) {
       const f = computeForecastWeek(ws);
       return { days: f.days.map((d) => ({ date: d.date, covers: d.covers, totalCovers: d.totalCovers, sales: d.totalSales, laborPct: d.laborPct, laborCost: d.laborCost, hours: d.hours, closed: d.closed })), totals: f.totals, targetLaborPct: f.targetLaborPct };
     },
+    // Projected covers only (no sales or labor), for everyone: the house sheet shows them to all staff.
+    'forecast.covers': (actor, { weekStart: ws }) => {
+      needAuth(actor);
+      const f = computeForecastWeek(ws);
+      return { days: f.days.map((d) => ({ date: d.date, totalCovers: d.totalCovers, closed: d.closed })) };
+    },
     'forecast.override': (actor, { date, covers, sales, clear }) => {
       needMgr(actor);
       if (clear) { store.remove('forecastOverrides', date); return { ok: true }; }

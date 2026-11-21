@@ -528,3 +528,36 @@ table.sheet { width: 100%; min-width: 860px; border-collapse: collapse; table-la
 .trade-hint { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; padding: 9px 12px; margin-bottom: 12px; border-radius: 10px; background: var(--brand-soft); color: var(--text); border: 1px solid color-mix(in srgb, var(--brand) 25%, transparent); font-size: 13.5px; }
 .trade-hint > svg { color: var(--brand); flex: none; }
 .mshift .btn.sm { margin-left: 8px; flex: none; }
+
+/* ---------- phones: nothing cut off ---------- */
+.quick-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.quick-actions .btn { flex: 1 1 auto; justify-content: center; }
+.grid2 > *, .grid3 > * { min-width: 0; }
+.beo { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.beo > * { min-width: 0; }
+.kv > * { min-width: 0; overflow-wrap: anywhere; }
+.modal { max-height: calc(100dvh - 40px); }
+@media (max-width: 800px) { .beo { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) {
+  /* 92vh can reach under the phone's browser bar; dvh is the part you can actually see. */
+  .modal, .modal.wide { max-height: 92vh; max-height: 92dvh; }
+  .tabs { flex-wrap: wrap; overflow-x: visible; }
+  .tabs button { padding: 9px 10px; }
+  .to-toolbar { flex-direction: column-reverse; align-items: stretch; }
+  .to-toolbar .tabs { width: 100%; }
+  .to-toolbar > .btn { justify-content: center; }
+  .hours-row { flex-wrap: wrap; }
+  .hours-row .input { flex: 1 1 100px; width: auto !important; min-width: 0; }
+  .quick-actions .btn { flex: 1 1 calc(50% - 4px); }
+}
+/* iPhones zoom the page when you tap a field under 16px, which leaves it looking cut off. */
+@media (max-width: 900px), (pointer: coarse) {
+  .input, select.input, textarea.input, .input.sm { font-size: 16px; }
+  .input.sm { height: 36px; }
+}
+/* iPhone date and time fields ignore width and spill out of their box unless reset. */
+@supports (-webkit-touch-callout: none) {
+  input[type="date"].input, input[type="time"].input { -webkit-appearance: none; appearance: none; min-width: 0; line-height: 36px; }
+  input[type="date"].input::-webkit-date-and-time-value, input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
+}
+@media (max-width: 640px) { .table th, .table td { padding: 8px 8px; } }

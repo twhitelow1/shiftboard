@@ -34,7 +34,7 @@ export default function Settings() {
         <Field label="Hours & closed days" help="Close time is used to estimate “until close” shifts for labor cost.">
           <div className="col" style={{ gap: 6 }}>
             {order.map((d) => (
-              <div key={d} className="row">
+              <div key={d} className="row hours-row">
                 <span style={{ width: 44, fontWeight: 700 }}>{DOW_SHORT[d]}</span>
                 <label className="check small" style={{ width: 90 }}><input type="checkbox" checked={s.closedDays.includes(d)} onChange={() => toggleClosed(d)} />Closed</label>
                 {!s.closedDays.includes(d) && <>

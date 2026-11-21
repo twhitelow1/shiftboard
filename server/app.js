@@ -20,7 +20,7 @@ const COOKIE = 'sb_session';
 const MAX_LOGIN_ATTEMPTS = 10; // per IP + email, per 15 minutes
 // Methods that only read. Purely a speed hint: if one of these ever writes, DocDb
 // notices and redoes it under the write lock.
-const READ_ONLY = /\.(bootstrap|list|get|eligible|week|summary|suggestStaffing)$/;
+const READ_ONLY = /\.(bootstrap|list|get|eligible|week|summary|suggestStaffing|covers)$/;
 
 const hashPassword = (p) => bcrypt.hashSync(p, 10);
 const sameString = (a, b) => {

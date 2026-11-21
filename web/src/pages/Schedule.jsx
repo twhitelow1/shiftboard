@@ -68,7 +68,7 @@ export default function Schedule() {
 
   const load = () => {
     call('shifts.list', { start: ws, end: addDays(ws, 6) }).then(setData).catch((e) => app.toast(e.message, 'bad'));
-    if (isMgr) call('forecast.summary', { weekStart: ws }).then(setFc).catch(() => setFc(null));
+    call(isMgr ? 'forecast.summary' : 'forecast.covers', { weekStart: ws }).then(setFc).catch(() => setFc(null));
   };
   useEffect(load, [ws, version]);
   useEffect(() => { if (!(selDay >= ws && selDay <= addDays(ws, 6))) setSelDay(today >= ws && today <= addDays(ws, 6) ? today : days.find((d) => !settings.closedDays.includes(dow(d))) || ws); }, [ws]);
@@ -260,7 +260,7 @@ export default function Schedule() {
         <>
           <TradeHint shifts={shifts} />
           {/* Like the house PDF. Print always uses this layout. */}
-          <ScheduleSheet className={view === 'sheet' ? 'sheet-print' : 'sheet-print print-only'} sections={sheetSections} days={days} data={data} fc={isMgr ? fc : null} ws={ws}
+          <ScheduleSheet className={view === 'sheet' ? 'sheet-print' : 'sheet-print print-only'} sections={sheetSections} days={days} data={data} fc={fc} ws={ws}
             onAdd={addAt} onOpen={openDialog} onSaved={load} />
 
           {/* Desktop grid */}
@@ -278,7 +278,7 @@ export default function Schedule() {
                       <th key={d} className={`dayhead ${d === today ? 'today' : ''}`}>
                         <div className="d1">{DOW_SHORT[dow(d)]}</div>
                         <div className="d2">{parseDate(d).getUTCMonth() + 1}/{parseDate(d).getUTCDate()}</div>
-                        {isClosed(d) ? <div className="meta">Closed</div> : f && <div className="meta num">~{f.totalCovers} cvrs · {f.laborPct ?? '—'}%</div>}
+                        {isClosed(d) ? <div className="meta">Closed</div> : f && <div className="meta num">~{f.totalCovers} cvrs{isMgr ? ` · ${f.laborPct ?? '—'}%` : ''}</div>}
                         {evs.map((e) => <a key={e.id} className="evt-pill" href={`#/events/${e.id}`} title={`${e.name} · ${fmtTime(e.start)} · ${e.guestCount} guests`}>{fmtTime(e.start)} {e.name}{e.guestCount ? ` (${e.guestCount})` : ''}</a>)}
                       </th>
                     );
@@ -378,7 +378,7 @@ function MobileDay({ days, selDay, setSelDay, data, sections, mine, setMine, ope
           <button className={mine ? 'on' : ''} onClick={() => setMine(true)}>Just me</button>
         </div>
         <span className="spacer" />
-        {isMgr && f && !f.closed && <span className="small muted num">~{f.totalCovers} cvrs · {f.laborPct ?? '—'}%</span>}
+        {f && !f.closed && <span className="small muted num">~{f.totalCovers} cvrs{isMgr ? ` · ${f.laborPct ?? '—'}%` : ''}</span>}
         {isMgr && !isClosed(selDay) && <button className="btn sm primary" onClick={() => addAt(selDay)}><Icon name="plus" />Add</button>}
       </div>
       {evs.map((e) => (
