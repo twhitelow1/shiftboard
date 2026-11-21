@@ -1,7 +1,8 @@
 // Demo seed: the real week of 9/28/2026 transcribed from the house schedule PDF,
 // plus SAMPLE sales history, pay rates and BEO details for demonstrating forecasting & events.
 import { uid } from './store.js';
-import { addDays, dow, range } from './time.js';
+import { addDays, dow, range, prettyDate } from './time.js';
+import { MSG } from './messages.js';
 import { DEFAULT_SETTINGS } from './service.js';
 import { findArea } from './areas.js';
 import { seedDemoTips } from './tips.js';
@@ -294,9 +295,10 @@ export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password =
   }
   for (const r of rows) store.insert('sales', r);
 
-  // Welcome notifications
+  // Welcome notifications, in both languages like the ones the app writes (core/service.js notify)
+  const posted = { en: MSG.en.schedulePosted('Sep 28', 'Oct 4'), es: MSG.es.schedulePosted(prettyDate('2026-09-28', { lang: 'es', dow: false }), prettyDate('2026-10-04', { lang: 'es', dow: false })) };
   for (const id of Object.values(userId)) {
-    store.insert('notifications', { id: uid('ntf'), userId: id, text: 'The schedule for Sep 28 – Oct 4 is posted. Check your shifts.', link: '#/my', read: false, at: now });
+    store.insert('notifications', { id: uid('ntf'), userId: id, text: posted.en, i18n: posted, link: '#/my', read: false, at: now });
   }
   // SAMPLE venue: one location, rooms on three levels, floor plans for the Restaurant and Moon Rabbit
   store.insert('locations', { id: 'loc_main', name: 'Our Restaurant', address: '', order: 0 });
