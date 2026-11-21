@@ -12,6 +12,7 @@ import { canChangeSettings, canManageUser, canManageSchedule } from '../core/rol
 import { createMailer, deliverable, notificationEmail, inviteEmail, resetEmail, testEmail } from './email.js';
 import { createChannels } from './channels.js';
 import { trainingRoutes } from './training-routes.js';
+import { createExpoPush, pushNotifications } from './expo-push.js';
 import { uid } from '../core/store.js';
 import { createService, AppError } from '../core/service.js';
 import { seedDemo } from '../core/seed.js';
@@ -40,8 +41,9 @@ const sameString = (a, b) => {
  * @param {object} [opts.mailer]    email sender (defaults to Resend, configured from env)
  * @param {object} [opts.pusher]    phone notification sender (defaults to server/push.js, configured from env)
  * @param {object} [opts.texter]    text message sender (defaults to server/sms.js, configured from env)
+ * @param {object} [opts.expoPush]  phone app push sender (defaults to the Expo Push API, see expo-push.js)
  */
-export function createApp({ db, env = process.env, staticDir, mailer = createMailer(env), pusher, texter } = {}) {
+export function createApp({ db, env = process.env, staticDir, mailer = createMailer(env), pusher, texter, expoPush = createExpoPush(env) } = {}) {
   const PROD = env.NODE_ENV === 'production';
   const cookieOpts = { httpOnly: true, sameSite: 'lax', secure: PROD, maxAge: 1000 * 60 * 60 * 24 * 30 };
   let secret = null;
@@ -93,6 +95,10 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
       return null;
     }
   }
+  // The phone app (mobile/) sends the same signed session as a header, Authorization: Bearer <token>,
+  // instead of the cookie. Same JWT, same 30-day expiry, same sign-out on password change.
+  const bearer = (req) => /^Bearer\s+(\S+)$/i.exec(req.get('authorization') || '')?.[1] || null;
+  const sessionToken = (req) => bearer(req) || req.cookies[COOKIE];
 
   // ---------- email ----------
   // Links in emails point at APP_URL, else the production domain, else this request's host.
@@ -133,6 +139,11 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
 
   // Phone notifications and text messages (server/channels.js): sent after the commit too, never failing the request.
   const channels = createChannels({ db, env, pusher, texter, background, appUrl, signedIn: (req) => userFromToken(db.store, req.cookies[COOKIE]) });
+  // Push each new in-app notification to the person's phones (the ShiftBoard app), after the commit.
+  function pushToPhones(changes) {
+    if (!expoPush.enabled || !changes.some((c) => c.col === 'notifications' && c.isNew)) return;
+    background(pushNotifications({ changes, db, push: expoPush, title: restaurantName() }).catch((e) => console.error('Push failed:', e.message)));
+  }
 
   const stamp = (userIds, field) => userIds.length && db.run((s) => { for (const id of userIds) s.update('users', id, { [field]: new Date().toISOString() }); }, { write: true });
 
@@ -197,6 +208,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     }
     await db.clearAttempts(key);
     await stamp([u.id], 'lastLoginAt');
+    // The phone app asks for the session as a token ({ client: 'mobile' }) and keeps it in the phone's secure storage.
+    if (req.body?.client === 'mobile') return res.json({ ok: true, token: sign(u), expiresIn: 30 * 24 * 60 * 60 });
     res.cookie(COOKIE, sign(u), cookieOpts).json({ ok: true });
   });
 
@@ -206,7 +219,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
 
   app.post('/api/rpc/:method', async (req, res) => {
     const method = req.params.method;
-    const token = req.cookies[COOKIE];
+    const token = sessionToken(req);
     const body = req.body && typeof req.body === 'object' ? req.body : {};
     try {
       // Reject signed-out callers before they can take the write lock.
@@ -223,7 +236,14 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
           ? store.update('users', actor.id, { sessionVersion: (actor.sessionVersion || 0) + 1 })
           : null;
         return { result, rotated };
-      }, { write: !READ_ONLY.test(method), synced: true, onCommit: (changes) => { channels.afterCommit(changes, req); emailNotifications(changes, req); } });
+      }, {
+        write: !READ_ONLY.test(method), synced: true,
+        onCommit: (changes) => {
+          channels.afterCommit(changes, req); // web push and text messages (server/channels.js)
+          emailNotifications(changes, req);
+          pushToPhones(changes); // the phone app (Expo push)
+        },
+      });
 
       // A new person with an email gets a link to set their own password.
       if (method === 'employees.save' && out.result?.tempPassword && out.result.email) {
@@ -236,7 +256,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
         }
       }
 
-      if (out.rotated) res.cookie(COOKIE, sign(out.rotated), cookieOpts);
+      if (out.rotated && bearer(req)) res.set('X-Session-Token', sign(out.rotated)); // the phone app swaps in the new token
+      else if (out.rotated) res.cookie(COOKIE, sign(out.rotated), cookieOpts);
       res.json({ result: out.result === undefined ? null : out.result });
     } catch (e) {
       sendError(res, e, method);
@@ -393,7 +414,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
 
   app.post('/api/rpc-ical-link', async (req, res) => {
     await db.sync();
-    const u = userFromToken(db.store, req.cookies[COOKIE]);
+    const u = userFromToken(db.store, sessionToken(req));
     if (!u) return res.status(401).json({ error: 'Please sign in' });
     res.json({ result: `/api/ical/${u.id}/${icalToken(u.id)}.ics` });
   });
@@ -408,7 +429,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
 
   // ---------- static web app (standalone server only) ----------
   if (staticDir && fs.existsSync(staticDir)) {
-    app.use(express.static(staticDir, { index: false, maxAge: '1h' }));
+    app.use(express.static(staticDir, { index: false, maxAge: '1h', extensions: ['html'] })); // /privacy → privacy.html
     app.get(/^\/(?!api\/).*/, (req, res) => res.sendFile(path.join(staticDir, 'index.html')));
   }
 
