@@ -67,6 +67,32 @@ function useAction() {
 }
 
 // ---------- sign-in ----------
+/** Signed in with a temporary password: set your own before anything else (then save it in your password manager). */
+function FirstPassword({ admin, onDone }) {
+  const [pw, setPw] = useState('');
+  const [again, setAgain] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const submit = async (e) => {
+    e.preventDefault();
+    if (pw !== again) { setErr('The two passwords don’t match'); return; }
+    setBusy(true); setErr('');
+    try { await api('/password', { method: 'POST', body: { password: pw } }); onDone(); } catch (x) { setErr(x.message); } finally { setBusy(false); }
+  };
+  return (
+    <div className="login">
+      <form className="card login-card" onSubmit={submit}>
+        <h2>Set your own password</h2>
+        <div className="muted small">You signed in as {admin.email} with a temporary password. Choose your own (12+ characters) and save it in your password manager.</div>
+        <label className="field"><span>New password</span><input className="input" type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} autoFocus /></label>
+        <label className="field"><span>Type it again</span><input className="input" type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} /></label>
+        {err && <div className="note warn small">{err}</div>}
+        <button className="btn primary" disabled={busy || pw.length < 12}>Save password</button>
+      </form>
+    </div>
+  );
+}
+
 function Login({ onDone }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -523,7 +549,7 @@ function AdminsPage({ admin }) {
           <form className="form-grid" onSubmit={(e) => { e.preventDefault(); run(() => api('/admins', { method: 'POST', body: f }), 'Admin added').then((r) => { if (r) { setF({ name: '', email: '', password: '' }); load(); } }); }}>
             <Field label="Name"><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
             <Field label="Email"><input className="input" type="email" required value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></Field>
-            <Field label="Temporary password" help="At least 12 characters."><input className="input" type="password" autoComplete="new-password" required minLength={12} value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /></Field>
+            <Field label="Temporary password" help="At least 12 characters. They choose their own when they first sign in."><input className="input" type="password" autoComplete="new-password" required minLength={12} value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /></Field>
             <div className="row end wide"><button className="btn primary" disabled={busy}>Add admin</button></div>
           </form>
         </div>
@@ -555,6 +581,7 @@ function App() {
   if (admin === undefined) return <div className="center muted pad-xl">Loading…</div>;
   if (admin === 'elsewhere') return <div className="login"><div className="card login-card"><h2>Not here</h2><div className="muted">The platform console isn’t available at this address.</div></div></div>;
   if (!admin) return <Flash.Provider value={flash}><Login onDone={setAdmin} /></Flash.Provider>;
+  if (admin.mustChange) return <Flash.Provider value={flash}><FirstPassword admin={admin} onDone={() => setAdmin({ ...admin, mustChange: false })} /></Flash.Provider>;
 
   const signOut = async () => { await api('/logout', { method: 'POST', body: {} }).catch(() => {}); setAdmin(null); };
   const [page, arg] = parts;

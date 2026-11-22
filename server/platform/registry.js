@@ -89,6 +89,8 @@ const MIGRATIONS = [
    )`,
   `CREATE TABLE IF NOT EXISTS ${P}.login_attempts (key text NOT NULL, at timestamptz NOT NULL DEFAULT now())`,
   `CREATE INDEX IF NOT EXISTS platform_login_attempts_idx ON ${P}.login_attempts (key, at)`,
+  // A temporary password (the first admin's from env, or one an admin set for a new admin) must be changed at first sign-in.
+  `ALTER TABLE ${P}.admins ADD COLUMN IF NOT EXISTS must_change boolean NOT NULL DEFAULT false`,
   ...['meta', 'tenants', 'tenant_secrets', 'admins', 'audit_log', 'support_grants', 'login_attempts']
     .map((t) => `ALTER TABLE ${P}.${t} ENABLE ROW LEVEL SECURITY`),
 ];
@@ -355,15 +357,15 @@ export class Registry {
     return rows.map((r) => ({ id: r.id, email: r.email, name: r.name, createdAt: iso(r.created_at), lastLoginAt: iso(r.last_login_at) }));
   }
 
-  async createAdmin({ email, name = '', passwordHash }) {
+  async createAdmin({ email, name = '', passwordHash, mustChange = true }) {
     const id = `adm_${crypto.randomBytes(6).toString('hex')}`;
-    await this.query(`INSERT INTO ${P}.admins (id, email, name, password_hash) VALUES ($1, $2, $3, $4)`,
-      [id, String(email).trim().toLowerCase(), name, passwordHash]);
+    await this.query(`INSERT INTO ${P}.admins (id, email, name, password_hash, must_change) VALUES ($1, $2, $3, $4, $5)`,
+      [id, String(email).trim().toLowerCase(), name, passwordHash, !!mustChange]);
     return this.adminById(id);
   }
 
   async setAdminPassword(id, passwordHash) {
-    await this.query(`UPDATE ${P}.admins SET password_hash = $2, session_version = session_version + 1 WHERE id = $1`, [id, passwordHash]);
+    await this.query(`UPDATE ${P}.admins SET password_hash = $2, must_change = false, session_version = session_version + 1 WHERE id = $1`, [id, passwordHash]);
   }
 
   async stampAdminLogin(id) {
@@ -375,7 +377,7 @@ export class Registry {
     const email = String(this.env.PLATFORM_ADMIN_EMAIL || '').trim().toLowerCase();
     const password = String(this.env.PLATFORM_ADMIN_PASSWORD || '');
     if (!email || !password || (await this.adminCount())) return;
-    await this.query(`INSERT INTO ${P}.admins (id, email, name, password_hash) VALUES ($1, $2, $3, $4) ON CONFLICT (email) DO NOTHING`,
+    await this.query(`INSERT INTO ${P}.admins (id, email, name, password_hash, must_change) VALUES ($1, $2, $3, $4, true) ON CONFLICT (email) DO NOTHING`,
       [`adm_${crypto.randomBytes(6).toString('hex')}`, email, String(this.env.PLATFORM_ADMIN_NAME || 'DubLow Digital'), hashPassword(password)]);
     console.log(`Created platform admin ${email} (from PLATFORM_ADMIN_PASSWORD)`);
   }

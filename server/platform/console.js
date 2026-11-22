@@ -74,12 +74,14 @@ export function consoleRouter({ platform }) {
       if (claims.kind !== 'platform') return null;
       const a = await registry.adminById(claims.sub);
       if (!a || Number(a.session_version) !== Number(claims.v)) return null;
-      return { id: a.id, email: a.email, name: a.name };
+      return { id: a.id, email: a.email, name: a.name, mustChange: !!a.must_change };
     } catch { return null; }
   }
-  const signedIn = async (req) => {
+  // Everything but /session and /password waits until a temporary password has been replaced.
+  const signedIn = async (req, { allowTemporary = false } = {}) => {
     const a = await adminOf(req);
     if (!a) throw new HttpError(401, 'Please sign in');
+    if (a.mustChange && !allowTemporary) throw new HttpError(403, 'Set your own password first');
     return a;
   };
 
@@ -98,12 +100,12 @@ export function consoleRouter({ platform }) {
     await registry.audit({ admin: a, action: 'admin.signin', details: {} });
     const token = jwt.sign({ sub: a.id, v: Number(a.session_version), kind: 'platform' }, await platform.consoleSecret(), { expiresIn: `${SESSION_HOURS}h` });
     res.cookie(COOKIE, token, cookieOpts);
-    return { email: a.email, name: a.name };
+    return { email: a.email, name: a.name, mustChange: !!a.must_change };
   }));
 
   r.post('/logout', (req, res) => { res.clearCookie(COOKIE, { ...cookieOpts, maxAge: undefined }).json({ ok: true }); });
 
-  r.get('/session', wrap(async (req) => signedIn(req)));
+  r.get('/session', wrap(async (req) => signedIn(req, { allowTemporary: true })));
 
   // ---------- reference data ----------
   r.get('/meta', wrap(async (req) => {
@@ -313,7 +315,7 @@ export function consoleRouter({ platform }) {
   }));
 
   r.post('/password', wrap(async (req, res) => {
-    const admin = await signedIn(req);
+    const admin = await signedIn(req, { allowTemporary: true });
     const password = String(req.body?.password || '');
     if (password.length < 12) throw new HttpError(400, 'Use a password of at least 12 characters');
     await registry.setAdminPassword(admin.id, bcrypt.hashSync(password, 10));

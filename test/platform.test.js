@@ -68,6 +68,8 @@ async function startPlatform({ env = {}, conn } = {}) {
       const c = at('admin.lvh.test');
       const r = await c.post('/api/platform/login', { email: 'ops@dublow.test', password: 'console-password-1' });
       assert.equal(r.status, 200, r.text);
+      // The first admin's password comes from env, so it's temporary: set one (the same, for these tests) to go on.
+      if (r.body.result?.mustChange) assert.equal((await c.post('/api/platform/password', { password: 'console-password-1' })).status, 200);
       return c;
     },
     close: async () => { server.closeAllConnections(); await new Promise((r) => server.close(r)); if (ownConn) await conn.end(); },
@@ -712,5 +714,26 @@ test('unknown restaurants: JSON 404 for the API, a page for browsers; reserved s
     }
     assert.equal((await p.at('old.example.test').get('/api/config')).body.restaurant, 'chasing-rabbits', 'every legacy host is the default restaurant');
     assert.equal((await p.at('admin.lvh.test').get('/')).status, 302);
+  } finally { await p.close(); }
+});
+
+test('platform console: a temporary password must be replaced before anything else', async () => {
+  const p = await startPlatform();
+  try {
+    const c = p.at('admin.lvh.test');
+    const r = await c.post('/api/platform/login', { email: 'ops@dublow.test', password: 'console-password-1' });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.result.mustChange, true, 'the first admin from env has a temporary password');
+    assert.equal((await c.get('/api/platform/session')).body.result.mustChange, true);
+    const blocked = await c.get('/api/platform/tenants');
+    assert.equal(blocked.status, 403);
+    assert.match(blocked.text, /Set your own password first/);
+    assert.equal((await c.post('/api/platform/password', { password: 'short' })).status, 400);
+    assert.equal((await c.post('/api/platform/password', { password: 'my-own-long-password' })).status, 200);
+    assert.equal((await c.get('/api/platform/tenants')).status, 200);
+    // An admin added by another admin also starts with a temporary password.
+    assert.equal((await c.post('/api/platform/admins', { email: 'new@dublow.test', name: 'New', password: 'temporary-pass-123' })).status, 200);
+    const n = p.at('admin.lvh.test');
+    assert.equal((await n.post('/api/platform/login', { email: 'new@dublow.test', password: 'temporary-pass-123' })).body.result.mustChange, true);
   } finally { await p.close(); }
 });
