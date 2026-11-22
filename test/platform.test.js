@@ -375,6 +375,7 @@ test('creating a restaurant: its own schema with row-level security, its owner a
     const boot = (await owner.rpc('app.bootstrap')).body.result;
     assert.equal(boot.me.role, 'super_admin');
     assert.equal(boot.me.email, 'pat@bistro.local');
+    assert.deepEqual([boot.me.emailConsent, boot.me.smsConsent, boot.me.needsTerms], [false, false, false], 'a new restaurant’s owner agreed in the wizard, nothing grandfathered');
     assert.equal(boot.settings.restaurantName, 'Bistro Test');
     assert.ok(!boot.settings.rooms.includes('Rabbit Hole'), 'none of the first restaurant’s room names');
     assert.equal(boot.employees.length, 1, 'just the owner, no demo data');

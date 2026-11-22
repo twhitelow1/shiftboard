@@ -98,8 +98,10 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     const password = env.ADMIN_PASSWORD || crypto.randomBytes(6).toString('base64url');
     store.insert('users', {
       id: uid('usr'), name: env.ADMIN_NAME || 'Admin', email, role: 'admin', jobCodes: [], active: true, availability: {},
-      passwordHash: hashPassword(password), createdAt: new Date().toISOString(),
+      passwordHash: hashPassword(password), smsConsent: false, emailConsent: false, createdAt: new Date().toISOString(),
     });
+    // A new install has nobody from before consent records (the demo data is treated as if it had).
+    store.insert('migrations', { id: CONSENT_MIGRATION, at: new Date().toISOString(), users: 0 });
     console.log(`Created admin account: ${email} / ${env.ADMIN_PASSWORD ? '(from ADMIN_PASSWORD)' : password}`);
   }
 

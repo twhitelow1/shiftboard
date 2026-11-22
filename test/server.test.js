@@ -181,6 +181,7 @@ test('first run without demo data creates the admin from env', async () => {
     const boot = await c.rpc('app.bootstrap');
     assert.equal(boot.body.result.me.role, 'admin');
     assert.equal(boot.body.result.me.passwordHash, undefined);
+    assert.deepEqual([boot.body.result.me.needsTerms, boot.body.result.me.emailConsent], [true, false], 'a new install: the consent screen, nothing grandfathered');
   } finally { await app.close(); await close(); }
 });
 
