@@ -4,7 +4,6 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { waitUntil } from '@vercel/functions';
@@ -21,10 +20,15 @@ import { effectiveShift } from '../core/forecast.js';
 import { addDays } from '../core/time.js';
 import { langOf, isLang } from '../core/i18n.js';
 import { translateError } from '../core/errors.js';
-import { mountToast } from './toast-routes.js';
+import { mountToast, toastCron } from './toast-routes.js';
+import { featureForMethod, ROUTE_FEATURES, NOT_IN_PLAN, PAUSED, isPaused, billingBanner } from './platform/plans.js';
+import { billingPortal } from './billing.js';
+import { mountAdp } from './adp-routes.js';
 
 const COOKIE = 'sb_session';
 const MAX_LOGIN_ATTEMPTS = 10; // per IP + email, per 15 minutes
+// Not allowed while DubLow staff are signed in as the owner for support ("Sign in as owner").
+const NOT_IN_SUPPORT = new Set(['employees.changePassword', 'account.requestDeletion']);
 // Methods that only read. Purely a speed hint: if one of these ever writes, DocDb
 // notices and redoes it under the write lock.
 const READ_ONLY = /\.(bootstrap|list|get|eligible|week|summary|suggestStaffing|covers|publicKey)$/;
@@ -45,11 +49,18 @@ const sameString = (a, b) => {
  * @param {object} [opts.pusher]    phone notification sender (defaults to server/push.js, configured from env)
  * @param {object} [opts.texter]    text message sender (defaults to server/sms.js, configured from env)
  * @param {object} [opts.expoPush]  phone app push sender (defaults to the Expo Push API, see expo-push.js)
+ * @param {object} [opts.tenant]    on the multi-restaurant platform (server/platform/), the restaurant this app serves:
+ *   { id, slug, name, isDefault, status, plan, features: { training: true, … }, trialEndsAt, billing,
+ *     consumeSupportGrant(token) }. Without it the app serves one restaurant with every feature, as it always has.
+ * @param {Function} [opts.now]     clock in ms (tests)
  */
-export function createApp({ db, env = process.env, staticDir, mailer = createMailer(env), pusher, texter, expoPush = createExpoPush(env) } = {}) {
+export function createApp({ db, env = process.env, staticDir, mailer = createMailer(env), pusher, texter, expoPush = createExpoPush(env), tenant = null, now = () => Date.now() } = {}) {
   const PROD = env.NODE_ENV === 'production';
   const cookieOpts = { httpOnly: true, sameSite: 'lax', secure: PROD, maxAge: 1000 * 60 * 60 * 24 * 30 };
   let secret = null;
+  // Platform: the restaurant's features (all on without a tenant) and whether its account is paused.
+  const has = (feature) => !tenant || tenant.features?.[feature] !== false;
+  const paused = !!tenant && isPaused(tenant.status);
 
   // ---------- startup: schema, signing secret, first account ----------
   let booting = null;
@@ -58,7 +69,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
       await db.migrate();
       secret = env.JWT_SECRET || (await db.ensureMeta('jwt_secret', () => crypto.randomBytes(48).toString('hex')));
       await db.sync();
-      if (!db.store.col('users').size) await db.run(createFirstAccount, { write: true });
+      // A restaurant created in the platform console already has its owner; only the default one is set up from env.
+      if (!db.store.col('users').size && (!tenant || tenant.isDefault)) await db.run(createFirstAccount, { write: true });
     })().catch((e) => {
       booting = null; // try again on the next request
       throw e;
@@ -83,21 +95,28 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   }
 
   // ---------- sessions ----------
-  const sign = (u) => jwt.sign({ sub: u.id, v: u.sessionVersion || 0 }, secret, { expiresIn: '30d' });
+  // On the platform a session carries its restaurant (t) and works on that restaurant's host only. A session
+  // with no t is from before the platform existed: it belongs to the default restaurant (Chasing Rabbits).
+  // "Sign in as owner" sessions also carry sup: { by: the DubLow admin's email, until: ms }.
+  const sign = (u, extra = {}, expiresIn = '30d') => jwt.sign({ sub: u.id, v: u.sessionVersion || 0, ...(tenant ? { t: tenant.id } : {}), ...extra }, secret, { expiresIn });
   const icalToken = (userId) => crypto.createHmac('sha256', secret).update(`ical:${userId}`).digest('hex').slice(0, 24);
 
-  function userFromToken(store, token) {
+  /** The signed-in person and the session's claims, or null. */
+  function session(store, token) {
     if (!token) return null;
     try {
-      const { sub, v } = jwt.verify(token, secret);
-      const u = store.get('users', sub);
+      const claims = jwt.verify(token, secret);
+      if (tenant && (claims.t ?? (tenant.isDefault ? tenant.id : null)) !== tenant.id) return null; // another restaurant's session
+      if (claims.sup && !(Number(claims.sup.until) > now())) return null; // support session over
+      const u = store.get('users', claims.sub);
       if (!u || u.active === false) return null;
-      if ((u.sessionVersion || 0) !== (v || 0)) return null; // password change invalidates sessions
-      return u;
+      if ((u.sessionVersion || 0) !== (claims.v || 0)) return null; // password change invalidates sessions
+      return { user: u, claims };
     } catch {
       return null;
     }
   }
+  const userFromToken = (store, token) => session(store, token)?.user || null;
   // The phone app (mobile/) sends the same signed session as a header, Authorization: Bearer <token>,
   // instead of the cookie. Same JWT, same 30-day expiry, same sign-out on password change.
   const bearer = (req) => /^Bearer\s+(\S+)$/i.exec(req.get('authorization') || '')?.[1] || null;
@@ -106,7 +125,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   // ---------- email ----------
   // Links in emails point at APP_URL, else the production domain, else this request's host.
   const appUrl = (req) => (env.APP_URL
-    || (env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${env.VERCEL_PROJECT_PRODUCTION_URL}` : `${req.protocol}://${req.get('host')}`)).replace(/\/+$/, '');
+    || (env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${env.VERCEL_PROJECT_PRODUCTION_URL}` : req ? `${req.protocol}://${req.get('host')}` : '')).replace(/\/+$/, '');
   const restaurantName = () => createService(db.store).settings().restaurantName;
   // The language to write to someone in: theirs, else the restaurant's default, else English (core/i18n.js).
   const langFor = (u) => langOf(u, createService(db.store).settings());
@@ -169,6 +188,17 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     return true;
   }
 
+  /** What the web app needs to know about the restaurant on the platform (null without a tenant). */
+  function tenantInfo(user, claims = {}) {
+    if (!tenant) return null;
+    return {
+      slug: tenant.slug, plan: tenant.plan, status: tenant.status, features: { ...tenant.features }, managed: !tenant.isDefault,
+      support: claims.sup ? { by: claims.sup.by, until: new Date(Number(claims.sup.until)).toISOString() } : null,
+      // Billing banners are for the restaurant's admins only, never staff.
+      billing: user && canChangeSettings(user) ? billingBanner({ status: tenant.status, trial_ends_at: tenant.trialEndsAt }, now()) : null,
+    };
+  }
+
   const sendError = (res, e, label) => {
     const status = e instanceof AppError ? e.status : 500;
     if (status === 500) console.error(label, e);
@@ -179,6 +209,26 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   const app = express();
   app.locals.ready = ready;
   app.locals.settled = () => Promise.all([...pending]); // for tests and graceful shutdown
+  // For the platform (server/platform/): the daily Toast sync for this restaurant, and the owner's invite.
+  app.locals.toastCron = async ({ budgetMs } = {}) => { await ready(); return toastCron({ db, env, budgetMs }); };
+  /**
+   * Invite someone to set their password: by email when email is set up, otherwise a link to show once.
+   * base is the restaurant's address (the platform console passes it; links from requests use their own host).
+   */
+  app.locals.invite = async (userId, { invitedBy = 'DubLow Digital', base = '', linkOnly = false } = {}) => {
+    await ready();
+    await db.sync();
+    const user = db.store.get('users', userId);
+    if (!user) throw new Error('No such person');
+    const fakeReq = base ? { protocol: new URL(base).protocol.replace(':', ''), get: () => new URL(base).host } : null;
+    if (!linkOnly && mailer.enabled && deliverable(user.email)) {
+      await sendInvite(user, invitedBy, fakeReq);
+      return { emailed: true, to: user.email };
+    }
+    const token = await db.createToken(user.id, 'invite', 7 * 24 * 60);
+    await stamp([user.id], 'invitedAt');
+    return { emailed: false, link: `${appUrl(fakeReq)}/#/reset?token=${token}` };
+  };
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
   app.use(express.json({ limit: '2mb' }));
@@ -229,6 +279,17 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     }
   });
 
+  // A suspended or canceled restaurant: nobody signs in, nothing is read or written; the data is kept.
+  // The sign-in page still gets its branding (/api/config says paused) and can show why.
+  if (paused) {
+    const open = new Set(['/config', '/health', '/branding/logo', '/auth/logout']);
+    app.use('/api', (req, res, next) => (open.has(req.path) ? next() : res.status(403).json({ error: PAUSED, paused: true })));
+  }
+  // Routes of features the restaurant's plan doesn't include (the RPCs are checked in /api/rpc below).
+  for (const [prefix, feature] of ROUTE_FEATURES) {
+    app.use(prefix, (req, res, next) => (has(feature) ? next() : res.status(403).json({ error: NOT_IN_PLAN })));
+  }
+
   app.post('/api/auth/login', async (req, res) => {
     const email = String(req.body?.email || '').trim().toLowerCase();
     const password = String(req.body?.password || '');
@@ -259,8 +320,12 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     try {
       // Reject signed-out callers before they can take the write lock.
       await db.sync();
-      const caller = userFromToken(db.store, token);
+      const sess = session(db.store, token);
+      const caller = sess?.user;
       if (!caller) throw new AppError(401, 'Please sign in');
+      const feature = featureForMethod(method);
+      if (feature && !has(feature)) throw new AppError(403, NOT_IN_PLAN);
+      if (sess.claims.sup && NOT_IN_SUPPORT.has(method)) throw new AppError(403, 'Not available while DubLow Digital is signed in for support');
 
       if (isLang(caller.language)) req.sbLang = caller.language; // errors in the caller's language
       const out = await db.run((store) => {
@@ -292,6 +357,9 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
         }
       }
 
+      // On the platform, the app learns the restaurant's features, the support banner and (admins only) the billing banner.
+      if (method === 'app.bootstrap' && tenant && out.result) out.result = { ...out.result, tenant: tenantInfo(caller, sess.claims) };
+
       if (out.rotated && bearer(req)) res.set('X-Session-Token', sign(out.rotated)); // the phone app swaps in the new token
       else if (out.rotated) res.cookie(COOKIE, sign(out.rotated), cookieOpts);
       res.json({ result: out.result === undefined ? null : out.result });
@@ -312,7 +380,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
         logo: st.logoVersion ? `/api/branding/logo?v=${st.logoVersion}` : '' };
       language = isLang(st.language) ? st.language : 'auto'; // the restaurant's default language, for the sign-in page
     } catch { /* the sign-in page still works with ShiftBoard's look */ }
-    res.json({ email: mailer.enabled, emailFrom: mailer.enabled ? mailer.from : null, brand, language, ...channels.config() });
+    res.json({ email: mailer.enabled, emailFrom: mailer.enabled ? mailer.from : null, brand, language, ...channels.config(),
+      ...(tenant ? { restaurant: tenant.slug, features: { ...tenant.features }, managed: !tenant.isDefault, ...(paused ? { paused: true } : {}) } : {}) });
   });
 
   // The restaurant's logo (public: the sign-in page, emails and the browser tab use it).
@@ -423,6 +492,34 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     }
   });
 
+  // "Sign in as owner" from the platform console: a one-time link (a few minutes) opens a session as the
+  // owner that ends after the minutes DubLow picked. The app shows a banner the whole time, and the
+  // sign-in is in the platform's audit log. Only for this restaurant (the grant names it).
+  app.get('/api/auth/support', async (req, res) => {
+    const fail = () => res.status(400).type('html').send('<!doctype html><meta charset="utf-8"><title>Support link</title>'
+      + '<p style="font:16px system-ui;margin:40px">This support link has expired or was already used. Start a new one from the platform console.</p>');
+    if (!tenant?.consumeSupportGrant) return fail();
+    const grant = await tenant.consumeSupportGrant(String(req.query.token || ''));
+    if (!grant) return fail();
+    await db.sync();
+    const u = db.store.get('users', grant.userId);
+    if (!u || u.active === false) return fail();
+    const until = now() + grant.sessionMinutes * 60_000;
+    res.cookie(COOKIE, sign(u, { sup: { by: grant.adminEmail, until } }, `${grant.sessionMinutes}m`), { ...cookieOpts, maxAge: grant.sessionMinutes * 60_000 });
+    res.redirect(302, '/#/');
+  });
+
+  // The billing banner's button (admins). Phase 2 sends them to Stripe's billing portal (server/billing.js);
+  // until then there's no portal, and the app says to contact DubLow Digital.
+  app.post('/api/billing/portal', async (req, res) => {
+    await db.sync();
+    const u = userFromToken(db.store, sessionToken(req));
+    if (!u) return res.status(401).json({ error: 'Please sign in' });
+    if (!canChangeSettings(u)) return res.status(403).json({ error: 'Admins only' });
+    const portal = await billingPortal({ tenant, returnUrl: `${appUrl(req)}/#/settings` });
+    res.json({ result: { url: portal?.url || null } });
+  });
+
   app.get('/api/health', async (req, res) => {
     await db.sync();
     res.json({ ok: true });
@@ -459,7 +556,9 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
 
   channels.routes(app); // /api/push/test, /api/sms/test, /api/twilio/inbound
   // Toast POS: status, Sync now, and the daily Vercel Cron (server/toast-routes.js).
-  mountToast(app, { db, env, userOf: (req) => userFromToken(db.store, req.cookies[COOKIE]) });
+  mountToast(app, { db, env, userOf: (req) => userFromToken(db.store, req.cookies[COOKIE]), managed: !!tenant && !tenant.isDefault });
+  // ADP: status, Sync now, and its daily Vercel Cron (server/adp-routes.js). The CSV import is plain RPC.
+  mountAdp(app, { db, env, userOf: (req) => userFromToken(db.store, req.cookies[COOKIE]) });
   // Training photos (menu study guide, quizzes), for signed-in staff only.
   trainingRoutes(app, { db, signedIn: (req) => userFromToken(db.store, req.cookies[COOKIE]) });
   // 86 List photos, for people who can see the item's list (cookie on the web, bearer token in the phone app).
@@ -470,7 +569,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   // ---------- static web app (standalone server only) ----------
   if (staticDir && fs.existsSync(staticDir)) {
     app.use(express.static(staticDir, { index: false, maxAge: '1h', extensions: ['html'] })); // /privacy → privacy.html
-    app.get(/^\/(?!api\/).*/, (req, res) => res.sendFile(path.join(staticDir, 'index.html')));
+    // root: send() refuses absolute paths that go through a dot-directory; relative to root it checks only 'index.html'.
+    app.get(/^\/(?!api\/).*/, (req, res) => res.sendFile('index.html', { root: staticDir }));
   }
 
   app.use((err, req, res, next) => {

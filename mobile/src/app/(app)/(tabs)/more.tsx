@@ -19,7 +19,8 @@ import type { EightySixSummary } from '@/lib/types';
 
 export default function More() {
   const { t, chosen, setLang, date } = useI18n();
-  const { me, settings, server, client, signOut, setServer, colors } = useApp();
+  const { me, settings, server, client, signOut, setServer, colors, boot } = useApp();
+  const has86 = boot.tenant?.features?.eightySix !== false; // the 86 List is a plan feature on the platform
   const toast = useToast();
   const errorText = useErrorText();
   const [run, busy] = useAction();
@@ -61,10 +62,12 @@ export default function More() {
 
   return (
     <Screen title={t('more.title')}>
-      <Card pad={false} style={{ overflow: 'hidden' }}>
-        <ListRow icon="ban" title={t('more.eightySix')} sub={t('more.eightySixHelp')} onPress={() => router.push('/eighty-six')}
-          right={out86 ? <Badge tone="bad" text={String(out86)} /> : null} />
-      </Card>
+      {has86 && (
+        <Card pad={false} style={{ overflow: 'hidden' }}>
+          <ListRow icon="ban" title={t('more.eightySix')} sub={t('more.eightySixHelp')} onPress={() => router.push('/eighty-six')}
+            right={out86 ? <Badge tone="bad" text={String(out86)} /> : null} />
+        </Card>
+      )}
 
       <Card style={{ gap: 4 }}>
         <Txt v="h2">{me.name}</Txt>

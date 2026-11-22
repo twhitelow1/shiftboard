@@ -11,12 +11,14 @@
     }
   },
   "crons": [
-    { "path": "/api/cron/toast", "schedule": "0 12 * * *" }
+    { "path": "/api/cron/toast", "schedule": "0 12 * * *" },
+    { "path": "/api/cron/adp", "schedule": "30 12 * * *" }
   ],
   "rewrites": [
     { "source": "/api/:path*", "destination": "/api" },
     { "source": "/privacy", "destination": "/privacy.html" },
     { "source": "/support", "destination": "/support.html" },
+    { "source": "/platform", "destination": "/platform.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [

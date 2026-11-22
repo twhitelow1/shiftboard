@@ -14,7 +14,7 @@ import { STATUS } from './TimeOff.jsx';
 
 export default function MyShifts() {
   const t = useT();
-  const { call, version, today, me, jobs, settings, employees, refresh, toast } = useApp();
+  const { call, version, today, me, jobs, settings, employees, refresh, toast, has } = useApp();
   const [data, setData] = useState(null);
   const [dialog, setDialog] = useState(null);
   const [startIn, setStartIn] = useState(null);
@@ -54,8 +54,8 @@ export default function MyShifts() {
         </div>
       )}
 
-      <div className="section"><ModCard compact /></div>
-      <EightySixBanner className="section" />
+      {has('training') && <div className="section"><ModCard compact /></div>}
+      {has('eightySix') && <EightySixBanner className="section" />}
 
       {openShifts.length > 0 && (
         <div className="section">

@@ -175,12 +175,13 @@ function shiftLine(mod, t, lang) {
 }
 /** Who to call: name, shift, Call (tel:) and Text (sms:) buttons, and the restaurant's call-out line. */
 export function ModCard({ compact = false, mod: given = null }) {
-  const { call, version, isMgr } = useApp();
+  const { call, version, isMgr, has } = useApp();
   const t = useT();
   const lang = useLang();
   const [mod, setMod] = useState(given);
   const [editing, setEditing] = useState(false);
-  useEffect(() => { if (!given) call('mod.get').then(setMod).catch(() => setMod(false)); }, [version, given]);
+  // The manager on duty is part of Training (not in every plan).
+  useEffect(() => { if (!given && (!has || has('training'))) call('mod.get').then(setMod).catch(() => setMod(false)); }, [version, given]);
   if (!mod) return null;
   const p = mod.person;
   return (

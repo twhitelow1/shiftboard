@@ -43,6 +43,7 @@ export default function Tips({ parts = [] }) {
 // ---------- staff ----------
 function sourceText(me) {
   if (me.source === 'toast') return tr('tips.hoursFromToast');
+  if (me.source === 'adp') return tr('tips.hoursFromAdp');
   if (me.source === 'mixed') return tr('tips.hoursFromToastAndSchedule');
   if (me.source === 'schedule') return me.estimated ? tr('tips.hoursFromScheduleEstimated') : tr('tips.hoursFromSchedule');
   return '';
@@ -293,6 +294,7 @@ function MoneyInput({ value, onChange, small, allowMinus }) {
 function sourceBadge(p) {
   const out = [];
   if (p.source === 'toast') out.push(<span key="s" className="badge ok">{t('tips.toast')}</span>);
+  else if (p.source === 'adp') out.push(<span key="s" className="badge ok">ADP</span>);
   else if (p.source === 'mixed') out.push(<span key="s" className="badge ok">{t('tips.toastSched')}</span>);
   else if (p.source === 'schedule') out.push(<span key="s" className="badge">{t('tips.schedule')}{p.estimated ? t('tips.est') : ''}</span>);
   if (p.noPunch?.length) out.push(<span key="n" className="badge warn">{t('tips.noToastPunch')}</span>);

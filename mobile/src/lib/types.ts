@@ -59,6 +59,8 @@ export interface Boot {
   pendingApprovals: number;
   openOffers: number;
   today: string;
+  /** On the platform (one server for many restaurants): the restaurant's plan features. Absent on a single-restaurant server. */
+  tenant?: { slug: string; plan: string; features: Record<string, boolean> } | null;
 }
 
 export interface Shift {
