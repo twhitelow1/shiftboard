@@ -630,6 +630,7 @@ table.sheet { width: 100%; min-width: 860px; border-collapse: collapse; table-la
 .pos-row.is-hidden .pos-name b { color: var(--text-3); text-decoration: line-through; text-decoration-thickness: 1px; }
 .pos-top { display: flex; align-items: center; gap: 6px; }
 .pos-name { flex: 1; min-width: 0; }
+.pos-title { min-width: 0; overflow-wrap: anywhere; }
 .pos-actions { display: flex; flex: none; gap: 2px; }
 .pos-label { display: flex; align-items: center; gap: 8px; }
 .pos-label .input { flex: 1; min-width: 0; max-width: 280px; }

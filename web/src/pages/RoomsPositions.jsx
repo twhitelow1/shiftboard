@@ -193,8 +193,8 @@ function RoomBody({ lay, index, jobs, busy, apply, save, rooms, canRemove = fals
               <div key={p.jobCodeId} className={`pos-row ${p.hidden ? 'is-hidden' : ''}`}>
                 <div className="pos-top">
                   <div className="pos-name">
-                    <div className="row" style={{ gap: 6, minWidth: 0 }}>
-                      <JobDot job={job} /><b className="ellipsis">{job?.name || '?'}</b>
+                    <div className="row wrap" style={{ gap: 6, minWidth: 0 }}>
+                      <JobDot job={job} /><b className="pos-title">{job?.name || '?'}</b>
                       {p.hidden && <span className="badge">{t('rooms.hidden')}</span>}
                       {job?.archived && <span className="badge">{t('team.archived')}</span>}
                     </div>
