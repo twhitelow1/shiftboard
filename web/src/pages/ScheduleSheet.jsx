@@ -29,7 +29,7 @@ export function sheetTime(s) {
 const plural = (n) => (/man$/i.test(n) ? n.replace(/man$/i, 'men') : /(s|x|ch|sh)$/i.test(n) ? `${n}es` : /[^aeiou]y$/i.test(n) ? `${n.slice(0, -1)}ies` : `${n}s`);
 const usDate = (d) => { const x = parseDate(d); return `${x.getUTCMonth() + 1}/${x.getUTCDate()}/${x.getUTCFullYear()}`; };
 
-export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onOpen, onSaved, className = '' }) {
+export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onOpen, onSaved, onEditSection, className = '' }) {
   const t = useT();
   const { isMgr, me, settings, people, today } = useApp();
   const [editNote, setEditNote] = useState(null); // { kind, date, text }
@@ -88,7 +88,9 @@ export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onO
                 {gi === 0 && <tr className="sh-dates"><td />{days.map((d) => <td key={d}>{usDate(d)}</td>)}</tr>}
                 {g.secs.map((sec) => (
                   <React.Fragment key={sec.key}>
-                    <tr className="sh-head"><td style={fill} title={sec.label}>{sec.sheetLabel ?? plural(sec.label)}</td>{days.map((d) => <td key={d}>{dayName(dow(d))}</td>)}</tr>
+                    <tr className="sh-head"><td style={fill} title={onEditSection && sec.job ? t('sectionPeople.editTitle') : sec.label}
+                      className={onEditSection && sec.job ? 'sh-edit' : undefined} onClick={onEditSection && sec.job ? () => onEditSection(sec) : undefined}>
+                      {sec.sheetLabel ?? plural(sec.label)}{onEditSection && sec.job && <span className="sh-edit-ic no-print" aria-hidden="true"><Icon name="users" size={12} /></span>}</td>{days.map((d) => <td key={d}>{dayName(dow(d))}</td>)}</tr>
                     {sec.rows.map(({ user, shifts }) => (
                       <tr key={user.id} className={user.id === me.id ? 'me' : ''}>
                         <td className="sh-name" title={user.sheetName ? user.name : undefined}>{user.sheetName || user.name}</td>

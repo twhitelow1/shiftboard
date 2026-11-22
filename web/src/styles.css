@@ -592,3 +592,8 @@ table.sheet { width: 100%; min-width: 860px; border-collapse: collapse; table-la
   .topbar { gap: 6px; }
   .topbar-bell { width: 44px; height: 44px; }
 }
+
+/* Schedule sections: managers tap a section's label to edit who's listed (web/src/pages/SectionPeople.jsx). */
+.sheet td.sh-edit { cursor: pointer; }
+.sheet td.sh-edit:hover { box-shadow: inset 0 0 0 2px #4f46e5; }
+.sheet .sh-edit-ic { margin-left: 4px; opacity: .55; vertical-align: -1px; }

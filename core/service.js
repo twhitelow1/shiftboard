@@ -15,6 +15,7 @@ import { channelApi } from './notify-prefs.js';
 import { venueLinks } from './venue-links.js';
 import { trainingApi } from './training.js';
 import { eightySixApi } from './eighty-six.js';
+import { rosterApi } from './roster.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -1416,6 +1417,8 @@ export function createService(store, opts = {}) {
     ...trainingApi({ store, now, settings, notify, fail, random: opts.random, langOf: L }),
     // ----- 86 List: what's out or running low, per list; the bar separate (core/eighty-six.js) -----
     ...eightySixApi({ store, now, settings, notify, fail }),
+    // ----- who is listed in each schedule section, and in what order (core/roster.js) -----
+    ...rosterApi({ store, settings, fail, needMgr, today }),
 
     // ----- notifications -----
     'notifications.list': (actor) => {

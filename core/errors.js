@@ -13,6 +13,12 @@ const tipLabelEs = (l) => TIP_LABELS_ES[l] || (/^(.+) sales$/.test(l) ? `Ventas 
 
 /** Exact messages. Keys are the English text exactly as the code writes it. */
 export const ERRORS_ES = {
+  'That position doesn’t exist': 'Ese puesto no existe',
+  'That person doesn’t exist': 'Esa persona no existe',
+  'Only a higher role can change this person’s positions': 'Solo un rol más alto puede cambiar los puestos de esta persona',
+  'That position is archived': 'Ese puesto está archivado',
+  'Pick a different section to move the shifts to': 'Elige otra sección para pasar los turnos',
+  'Pick the order of names': 'Elige el orden de los nombres',
   // ----- sign-in and accounts -----
   'Please sign in': 'Inicia sesión',
   'Wrong email or password': 'Correo o contraseña incorrectos',

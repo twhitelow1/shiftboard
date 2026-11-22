@@ -1495,6 +1495,28 @@ const catalog = {
     levelMainFloor: 'Main floor',
     levelSuggestions: 'Main floor|Lower level|Upstairs|Rooftop',
   },
+  sectionPeople: {
+    editTitle: 'Edit who’s listed in this section',
+    people: 'People',
+    sub: 'Who’s listed here on the schedule. Anyone with a shift here that week shows up too.',
+    empty: 'No one is listed here yet.',
+    shiftsThisWeek: { one: '{count} shift here this week', other: '{count} shifts here this week' },
+    moveUp: 'Move up',
+    moveDown: 'Move down',
+    addSomeone: 'Add someone…',
+    add: 'Add',
+    added: '{name} added',
+    how: 'Removing someone here only takes them off this section. Their other positions and areas stay.',
+    removeTitle: 'Remove {name}',
+    removed: '{name} removed',
+    loadFailed: 'Couldn’t load this person’s details. Try again.',
+    losesPosition: '{name} will no longer have the {position} position.',
+    keepsAreas: '{position} stays for: {areas}.',
+    onlyShifts: '{name} is listed here only because of shifts here.',
+    shiftsHere: { one: '{count} shift here from this week on:', other: '{count} shifts here from this week on:' },
+    moveThem: 'Move them to',
+    keepThem: 'Keep them here (they’ll still show here)',
+  },
 };
 
 export default catalog;
