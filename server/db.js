@@ -23,17 +23,36 @@ import path from 'node:path';
 import { attachDatabasePool } from '@vercel/functions';
 import { MemoryStore, OverlayStore } from '../core/store.js';
 
+/** The first restaurant's schema (Chasing Rabbits). Other restaurants get their own (see server/platform/). */
 export const SCHEMA = 'shiftboard';
 const SCHEMA_VERSION = '2';
-const LOCK_KEY = 5_810_442_771; // any constant; identifies ShiftBoard's write lock
+const LOCK_KEY = 5_810_442_771; // identifies the shiftboard schema's write lock; never change it
+
+/** A schema name that can go into SQL: lowercase letters, digits and underscores, never a system schema. */
+export function validSchemaName(name) {
+  return typeof name === 'string' && /^[a-z_][a-z0-9_]{0,62}$/.test(name) && !/^pg_/.test(name)
+    && !['public', 'information_schema', 'platform'].includes(name);
+}
+
+/**
+ * The advisory lock that serializes writers to one schema. The shiftboard schema keeps the key it has
+ * always used (so instances running the previous version and this one take the same lock during a
+ * deploy); any other schema gets a 64-bit key from a hash of its name, so restaurants never wait on each other.
+ */
+export function lockKeyFor(schema) {
+  if (schema === SCHEMA) return String(LOCK_KEY);
+  const h = crypto.createHash('sha256').update(`shiftboard-lock:${schema}`).digest();
+  return BigInt.asIntN(64, h.readBigUInt64BE(0)).toString();
+}
 
 // The tables live in their own schema with row-level security on and no policies.
 // ShiftBoard connects as the table owner (which bypasses RLS), while Supabase's public
 // REST API roles (anon / authenticated) can't read anything, including password hashes.
-const MIGRATIONS = [
-  `CREATE SCHEMA IF NOT EXISTS ${SCHEMA}`,
-  `CREATE SEQUENCE IF NOT EXISTS ${SCHEMA}.docs_seq`,
-  `CREATE TABLE IF NOT EXISTS ${SCHEMA}.docs (
+// S is the quoted schema name, e.g. "shiftboard" or "t_bistro".
+const migrations = (S) => [
+  `CREATE SCHEMA IF NOT EXISTS ${S}`,
+  `CREATE SEQUENCE IF NOT EXISTS ${S}.docs_seq`,
+  `CREATE TABLE IF NOT EXISTS ${S}.docs (
      col        text        NOT NULL,
      id         text        NOT NULL,
      data       jsonb,
@@ -42,12 +61,12 @@ const MIGRATIONS = [
      updated_at timestamptz NOT NULL DEFAULT now(),
      PRIMARY KEY (col, id)
    )`,
-  `CREATE INDEX IF NOT EXISTS docs_seq_idx ON ${SCHEMA}.docs (seq)`,
-  `CREATE TABLE IF NOT EXISTS ${SCHEMA}.meta (key text PRIMARY KEY, value text NOT NULL)`,
-  `CREATE TABLE IF NOT EXISTS ${SCHEMA}.login_attempts (key text NOT NULL, at timestamptz NOT NULL DEFAULT now())`,
-  `CREATE INDEX IF NOT EXISTS login_attempts_key_at_idx ON ${SCHEMA}.login_attempts (key, at)`,
+  `CREATE INDEX IF NOT EXISTS docs_seq_idx ON ${S}.docs (seq)`,
+  `CREATE TABLE IF NOT EXISTS ${S}.meta (key text PRIMARY KEY, value text NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS ${S}.login_attempts (key text NOT NULL, at timestamptz NOT NULL DEFAULT now())`,
+  `CREATE INDEX IF NOT EXISTS login_attempts_key_at_idx ON ${S}.login_attempts (key, at)`,
   // One-time links for setting/resetting a password. Only a hash of the token is stored.
-  `CREATE TABLE IF NOT EXISTS ${SCHEMA}.auth_tokens (
+  `CREATE TABLE IF NOT EXISTS ${S}.auth_tokens (
      token_hash text        PRIMARY KEY,
      user_id    text        NOT NULL,
      purpose    text        NOT NULL,
@@ -55,10 +74,10 @@ const MIGRATIONS = [
      used_at    timestamptz,
      created_at timestamptz NOT NULL DEFAULT now()
    )`,
-  `ALTER TABLE ${SCHEMA}.docs ENABLE ROW LEVEL SECURITY`,
-  `ALTER TABLE ${SCHEMA}.auth_tokens ENABLE ROW LEVEL SECURITY`,
-  `ALTER TABLE ${SCHEMA}.meta ENABLE ROW LEVEL SECURITY`,
-  `ALTER TABLE ${SCHEMA}.login_attempts ENABLE ROW LEVEL SECURITY`,
+  `ALTER TABLE ${S}.docs ENABLE ROW LEVEL SECURITY`,
+  `ALTER TABLE ${S}.auth_tokens ENABLE ROW LEVEL SECURITY`,
+  `ALTER TABLE ${S}.meta ENABLE ROW LEVEL SECURITY`,
+  `ALTER TABLE ${S}.login_attempts ENABLE ROW LEVEL SECURITY`,
 ];
 
 /**
@@ -70,14 +89,14 @@ export const LAZY_DATA = ['menuPhotos', 'eightySixPhotos'];
 const LAZY_SQL = `ARRAY[${LAZY_DATA.map((c) => `'${c}'`).join(',')}]::text[]`;
 
 // A cached lazy document has no `data`; saving it again keeps the bytes already stored.
-const UPSERT_DOCS = `
-  INSERT INTO ${SCHEMA}.docs (col, id, data, deleted, seq, updated_at)
-  SELECT t.c, t.i, t.d, t.x, nextval('${SCHEMA}.docs_seq'), now()
+const upsertDocs = (S) => `
+  INSERT INTO ${S}.docs (col, id, data, deleted, seq, updated_at)
+  SELECT t.c, t.i, t.d, t.x, nextval('${S}.docs_seq'), now()
     FROM jsonb_to_recordset($1::text::jsonb) AS t(c text, i text, d jsonb, x boolean)
   ON CONFLICT (col, id) DO UPDATE
     SET data = CASE
-          WHEN EXCLUDED.col = ANY(${LAZY_SQL}) AND NOT (EXCLUDED.data ? 'data') AND ${SCHEMA}.docs.data ? 'data'
-            THEN EXCLUDED.data || jsonb_build_object('data', ${SCHEMA}.docs.data -> 'data')
+          WHEN EXCLUDED.col = ANY(${LAZY_SQL}) AND NOT (EXCLUDED.data ? 'data') AND ${S}.docs.data ? 'data'
+            THEN EXCLUDED.data || jsonb_build_object('data', ${S}.docs.data -> 'data')
           ELSE EXCLUDED.data END,
         deleted = EXCLUDED.deleted, seq = EXCLUDED.seq, updated_at = EXCLUDED.updated_at
   RETURNING col, id, seq`;
@@ -87,9 +106,18 @@ const docKey = (col, id) => `${col}\u0000${id}`;
 const stripNul = (_k, v) => (typeof v === 'string' && v.includes('\u0000') ? v.replaceAll('\u0000', '') : v);
 
 export class DocDb {
-  /** @param conn anything with query(text, params) and connect() -> { query, release } (a pg.Pool, or the dev adapter) */
-  constructor(conn) {
+  /**
+   * @param conn anything with query(text, params) and connect() -> { query, release } (a pg.Pool, or the dev adapter)
+   * @param {object} [o]
+   * @param {string} [o.schema] the restaurant's schema (default: shiftboard, the first restaurant's)
+   */
+  constructor(conn, { schema = SCHEMA } = {}) {
+    if (!validSchemaName(schema)) throw new Error(`Not a usable schema name: ${schema}`);
     this.conn = conn;
+    this.schema = schema;
+    this.S = `"${schema}"`; // quoted, for SQL
+    this.lockKey = lockKeyFor(schema);
+    this.upsertSql = upsertDocs(this.S);
     this.store = new MemoryStore(); // committed state as of lastSeq; never holds uncommitted writes
     this.seqs = new Map(); // docKey -> seq of the version in the cache (tombstones included)
     this.lastSeq = 0;
@@ -106,15 +134,15 @@ export class DocDb {
   /** Create or upgrade the schema. Cheap when it's current (one SELECT). */
   async migrate() {
     try {
-      const { rows } = await this.query(`SELECT value FROM ${SCHEMA}.meta WHERE key = 'schema_version'`);
+      const { rows } = await this.query(`SELECT value FROM ${this.S}.meta WHERE key = 'schema_version'`);
       if (rows[0]?.value === SCHEMA_VERSION) return;
     } catch (e) {
       if (e.code !== '42P01' && e.code !== '3F000') throw e; // undefined table / schema: first run
     }
     await this.withLock(async (client) => {
-      for (const sql of MIGRATIONS) await client.query(sql);
+      for (const sql of migrations(this.S)) await client.query(sql);
       await client.query(
-        `INSERT INTO ${SCHEMA}.meta (key, value) VALUES ('schema_version', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+        `INSERT INTO ${this.S}.meta (key, value) VALUES ('schema_version', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
         [SCHEMA_VERSION],
       );
     });
@@ -122,10 +150,10 @@ export class DocDb {
 
   /** Read a meta value, creating it with make() if it doesn't exist yet (race-safe). */
   async ensureMeta(key, make) {
-    const read = async () => (await this.query(`SELECT value FROM ${SCHEMA}.meta WHERE key = $1`, [key])).rows[0]?.value;
+    const read = async () => (await this.query(`SELECT value FROM ${this.S}.meta WHERE key = $1`, [key])).rows[0]?.value;
     const existing = await read();
     if (existing != null) return existing;
-    await this.query(`INSERT INTO ${SCHEMA}.meta (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING`, [key, make()]);
+    await this.query(`INSERT INTO ${this.S}.meta (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING`, [key, make()]);
     return read();
   }
 
@@ -134,7 +162,7 @@ export class DocDb {
     const since = this.lastSeq;
     const { rows } = await client.query(
       `SELECT col, id, CASE WHEN col = ANY(${LAZY_SQL}) THEN data - 'data' ELSE data END AS data, deleted, seq
-         FROM ${SCHEMA}.docs WHERE seq > $1::bigint${since ? '' : ' AND NOT deleted'} ORDER BY seq`,
+         FROM ${this.S}.docs WHERE seq > $1::bigint${since ? '' : ' AND NOT deleted'} ORDER BY seq`,
       [since],
     );
     let max = since;
@@ -160,17 +188,17 @@ export class DocDb {
   /** The `data` field of a lazy document (see LAZY_DATA), read straight from Postgres, or null. */
   async lazyData(col, id) {
     if (!LAZY_DATA.includes(col)) throw new Error(`${col} isn't a lazy collection`);
-    const { rows } = await this.query(`SELECT data ->> 'data' AS d FROM ${SCHEMA}.docs WHERE col = $1 AND id = $2 AND NOT deleted`, [col, id]);
+    const { rows } = await this.query(`SELECT data ->> 'data' AS d FROM ${this.S}.docs WHERE col = $1 AND id = $2 AND NOT deleted`, [col, id]);
     return rows[0]?.d ?? null;
   }
 
-  /** Run fn(client) in a transaction holding ShiftBoard's write lock. */
+  /** Run fn(client) in a transaction holding this schema's write lock. */
   async withLock(fn) {
     const client = await this.conn.connect();
     let broken = false;
     try {
       await client.query('BEGIN');
-      await client.query('SELECT pg_advisory_xact_lock($1::bigint)', [LOCK_KEY]);
+      await client.query('SELECT pg_advisory_xact_lock($1::bigint)', [this.lockKey]);
       const out = await fn(client);
       await client.query('COMMIT');
       return out;
@@ -188,7 +216,7 @@ export class DocDb {
     const rows = changes.filter((c) => c.doc || this.store.col(c.col).has(c.id));
     if (!rows.length) return [];
     const payload = JSON.stringify(rows.map((c) => ({ c: c.col, i: c.id, d: c.doc, x: !c.doc })), stripNul);
-    return (await client.query(UPSERT_DOCS, [payload])).rows;
+    return (await client.query(this.upsertSql, [payload])).rows;
   }
 
   /**
@@ -241,10 +269,10 @@ export class DocDb {
     const token = crypto.randomBytes(32).toString('base64url');
     const hash = crypto.createHash('sha256').update(token).digest('hex');
     await this.query(
-      `INSERT INTO ${SCHEMA}.auth_tokens (token_hash, user_id, purpose, expires_at) VALUES ($1, $2, $3, now() + make_interval(mins => $4::int))`,
+      `INSERT INTO ${this.S}.auth_tokens (token_hash, user_id, purpose, expires_at) VALUES ($1, $2, $3, now() + make_interval(mins => $4::int))`,
       [hash, userId, purpose, minutes],
     );
-    await this.query(`DELETE FROM ${SCHEMA}.auth_tokens WHERE expires_at < now() - interval '7 days'`);
+    await this.query(`DELETE FROM ${this.S}.auth_tokens WHERE expires_at < now() - interval '7 days'`);
     return token;
   }
 
@@ -252,7 +280,7 @@ export class DocDb {
   async consumeToken(token) {
     const hash = crypto.createHash('sha256').update(String(token || '')).digest('hex');
     const { rows } = await this.query(
-      `UPDATE ${SCHEMA}.auth_tokens SET used_at = now() WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now() RETURNING user_id, purpose`,
+      `UPDATE ${this.S}.auth_tokens SET used_at = now() WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now() RETURNING user_id, purpose`,
       [hash],
     );
     return rows[0] ? { userId: rows[0].user_id, purpose: rows[0].purpose } : null;
@@ -260,25 +288,25 @@ export class DocDb {
 
   /** Cancel a user's outstanding links (after a password change). */
   async revokeTokens(userId) {
-    await this.query(`UPDATE ${SCHEMA}.auth_tokens SET used_at = now() WHERE user_id = $1 AND used_at IS NULL`, [userId]);
+    await this.query(`UPDATE ${this.S}.auth_tokens SET used_at = now() WHERE user_id = $1 AND used_at IS NULL`, [userId]);
   }
 
   // ----- login rate limiting (shared across instances) -----
   async countAttempts(key, minutes = 15) {
     const { rows } = await this.query(
-      `SELECT count(*)::int AS n FROM ${SCHEMA}.login_attempts WHERE key = $1 AND at > now() - make_interval(mins => $2::int)`,
+      `SELECT count(*)::int AS n FROM ${this.S}.login_attempts WHERE key = $1 AND at > now() - make_interval(mins => $2::int)`,
       [key, minutes],
     );
     return Number(rows[0].n);
   }
 
   async recordAttempt(key) {
-    await this.query(`INSERT INTO ${SCHEMA}.login_attempts (key) VALUES ($1)`, [key]);
-    await this.query(`DELETE FROM ${SCHEMA}.login_attempts WHERE at < now() - interval '1 day'`);
+    await this.query(`INSERT INTO ${this.S}.login_attempts (key) VALUES ($1)`, [key]);
+    await this.query(`DELETE FROM ${this.S}.login_attempts WHERE at < now() - interval '1 day'`);
   }
 
   async clearAttempts(key) {
-    await this.query(`DELETE FROM ${SCHEMA}.login_attempts WHERE key = $1`, [key]);
+    await this.query(`DELETE FROM ${this.S}.login_attempts WHERE key = $1`, [key]);
   }
 }
 
@@ -351,6 +379,6 @@ export function openConnection(env = process.env) {
   return devPglite(dir);
 }
 
-export function createDatabase(env = process.env) {
-  return new DocDb(openConnection(env));
+export function createDatabase(env = process.env, { schema } = {}) {
+  return new DocDb(openConnection(env), { schema });
 }
