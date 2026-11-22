@@ -218,14 +218,18 @@ test('the status rules: Definite → confirmed, Tentative → tentative; Prospec
   const r = restaurant();
   assert.equal(r.apply(tsEvent(1)).action, 'added');
   assert.equal(r.store.get('events', eventDocId(1)).status, 'confirmed');
-  assert.equal(r.apply(tsEvent(2, { status: 'TENTATIVE' })).action, 'added');
+  assert.equal(r.apply(tsEvent(2, { status: 'TENTATIVE', date: '2026-12-20' })).action, 'added'); // four weeks out
   assert.equal(r.apply(tsEvent(3, { status: 'PROSPECT' })).action, 'skipped');
   assert.equal(r.apply(tsEvent(4, { status: 'LOST' })).action, 'skipped');
   assert.equal(r.apply(tsEvent(5, { status: 'CLOSED', date: '2026-11-18' })).action, 'added');
   assert.equal(r.store.get('events', eventDocId(5)).status, 'completed');
-  // Tentative events are for managers and the events team only, as ShiftBoard already does.
+  // Tentative events are for managers and the events team only, as ShiftBoard already does, until they're
+  // within two weeks: then they count as confirmed (core/beo.js eventStatus).
+  assert.equal(r.apply(tsEvent(7, { status: 'TENTATIVE', date: '2026-12-01' })).action, 'added'); // nine days out
   const staff = r.call('u_ben', 'events.list', { start: '2026-11-01' }).map((e) => e.id);
   assert.ok(staff.includes(eventDocId(1)) && !staff.includes(eventDocId(2)));
+  assert.ok(staff.includes(eventDocId(7)), 'a tentative event within two weeks is confirmed for staff');
+  assert.equal(r.store.get('events', eventDocId(7)).status, 'tentative', 'Tripleseat’s own status is kept');
   assert.ok(r.call('u_evt', 'events.list', { start: '2026-11-01' }).some((e) => e.id === eventDocId(2) && e.source === 'tripleseat'));
   // Prospect brought in as tentative when the rule says so; another venue's events stay out.
   assert.equal(r.apply(tsEvent(3, { status: 'PROSPECT' }), { rules: { prospect: 'tentative' } }).action, 'added');
