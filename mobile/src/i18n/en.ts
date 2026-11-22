@@ -272,6 +272,9 @@ const en = {
     requestedToast: 'Pickup requested',
     yoursToast: 'It’s yours. The schedule is updated.',
     resolution: 'Note: {text}',
+    waitingOnCoworkers: 'Waiting on coworkers',
+    waitingHelp: 'Trades and giveaways nobody has accepted yet. They come here to approve once someone does.',
+    recent: 'Recently decided',
   },
   timeOff: {
     title: 'Time Off',

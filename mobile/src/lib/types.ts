@@ -83,6 +83,7 @@ export interface Shift {
   notes?: string;
   published?: boolean;
   eventId?: string | null;
+  staffingLineId?: string | null;
   hours?: number;
   pending?: 'swap' | 'drop' | 'pickup' | null;
 }

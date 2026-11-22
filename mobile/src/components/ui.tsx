@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
   sectionTitle: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 20, marginBottom: 8 },
   listRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52, paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   seg: { flexDirection: 'row', borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, padding: 2 },
-  segItem: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 9, borderWidth: StyleSheet.hairlineWidth, borderColor: 'transparent', paddingHorizontal: 8 },
+  segItem: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 9, borderWidth: StyleSheet.hairlineWidth, borderColor: 'transparent', paddingHorizontal: 8 },
   tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
   tab: { minHeight: 44, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
   count: { minWidth: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },

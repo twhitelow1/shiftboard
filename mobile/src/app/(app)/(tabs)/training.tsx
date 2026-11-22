@@ -3,16 +3,16 @@
 // Spanish version. Like the website's Training page (web/src/pages/Training.jsx); editing stays on the website.
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Icon } from '@/components/Icon';
+import { Icon, type IconName } from '@/components/Icon';
 import { ModCard } from '@/components/ModCard';
 import { Screen } from '@/components/Screen';
 import { Leaderboard } from '@/components/training/Leaderboard';
 import { ManualList } from '@/components/training/ManualList';
 import { MenuGuide } from '@/components/training/MenuGuide';
 import { QuizList } from '@/components/training/QuizList';
-import { Card, Tabs, Txt, useColors } from '@/components/ui';
+import { Card, Txt, useColors } from '@/components/ui';
 import { useI18n } from '@/i18n';
 import { useRpc } from '@/lib/hooks';
 import type { ModInfo, TrainingSummary } from '@/lib/types';
@@ -33,14 +33,35 @@ export default function Training() {
     <Screen title={t('training.title')} onRefresh={() => Promise.all([summary.reload(), mod.reload()])}>
       <ModCard mod={mod.data} />
       <ToDo s={summary.data} onTab={setTab} />
-      <Tabs value={tab} onChange={setTab} tabs={[
-        { value: 'menu', label: t('training.tabs.menu') },
-        { value: 'quizzes', label: t('training.tabs.quizzes'), count: summary.data?.quizzes.length },
-        { value: 'board', label: t('training.tabs.board') },
-        { value: 'manual', label: t('training.tabs.manual'), count: summary.data?.pages.length },
+      <GridTabs value={tab} onChange={setTab} tabs={[
+        { value: 'menu', label: t('training.tabs.menu'), icon: 'book' },
+        { value: 'quizzes', label: t('training.tabs.quizzes'), icon: 'quiz', count: summary.data?.quizzes.length },
+        { value: 'board', label: t('training.tabs.board'), icon: 'trophy' },
+        { value: 'manual', label: t('training.tabs.manual'), icon: 'cards', count: summary.data?.pages.length },
       ]} />
       {tab === 'menu' ? <MenuGuide /> : tab === 'quizzes' ? <QuizList /> : tab === 'board' ? <Leaderboard /> : <ManualList />}
     </Screen>
+  );
+}
+
+/** Menu · Quizzes · Leaderboard · Manual as a 2 × 2 grid: every label fits at 360 px in both languages. */
+function GridTabs({ tabs, value, onChange }: { tabs: { value: Tab; label: string; icon: IconName; count?: number }[]; value: Tab; onChange: (t: Tab) => void }) {
+  const c = useColors();
+  return (
+    <View style={styles.grid} accessibilityRole="tablist">
+      {tabs.map((tb) => {
+        const on = tb.value === value;
+        return (
+          <Pressable key={tb.value} onPress={() => onChange(tb.value)} accessibilityRole="tab" accessibilityState={{ selected: on }}
+            accessibilityLabel={tb.count ? `${tb.label}, ${tb.count}` : tb.label}
+            style={({ pressed }) => [styles.gridTab, { borderColor: on ? c.brand : c.border, backgroundColor: on ? c.brandSoft : pressed ? c.surface2 : c.surface }]}>
+            <Icon name={tb.icon} size={18} color={on ? c.brand : c.text2} />
+            <Text style={{ color: on ? c.brand : c.text2, fontWeight: '700', fontSize: 14, flexShrink: 1 }} numberOfLines={1}>{tb.label}</Text>
+            {tb.count ? <View style={[styles.count, { backgroundColor: on ? c.brand : c.warn }]}><Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>{tb.count}</Text></View> : null}
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -70,5 +91,8 @@ function ToDo({ s, onTab }: { s: TrainingSummary | null; onTab: (t: Tab) => void
 }
 
 const styles = StyleSheet.create({
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  gridTab: { width: '48.7%', flexGrow: 1, minHeight: 48, borderWidth: 1, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 8 },
+  count: { minWidth: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
   todo: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, minHeight: 48 },
 });

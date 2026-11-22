@@ -4,7 +4,7 @@
 // web/src/pages/FloorPlan.jsx (Shape, Halo, NameTag); keep the two in step. "My tables" frames your tables, like
 // the website's focus view; "Whole room" shows everything.
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 import Svg, { Circle, Ellipse, G, Line, Path, Rect, Text as SvgText } from 'react-native-svg';
 
 import type { PlanItem } from '@/lib/types';
@@ -13,6 +13,8 @@ import { Segmented, useColors } from './ui';
 export const SEATED = new Set(['table-round', 'table-square', 'table-rect', 'booth', 'bar']);
 const DARK = new Set(['bar', 'stage', 'dj']);
 const PAD = 24;
+// SVG text falls back to a serif font in browsers (the web preview): use the system font there.
+const FONT = Platform.OS === 'web' ? 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' : undefined;
 
 export interface Mark { color: string; name: string; strong?: boolean; faded?: boolean }
 type Plan = { width: number; height: number; items: PlanItem[] };
@@ -118,7 +120,7 @@ function NameTag({ x, y, mark }: { x: number; y: number; mark: Mark }) {
   return (
     <G opacity={mark.faded ? 0.55 : 1}>
       <Rect x={x - w / 2} y={y - 11} width={w} height={22} rx={11} fill={mark.color} stroke="#fff" strokeWidth={1.5} />
-      <SvgText x={x} y={y + 4.5} fill="#fff" fontSize={13} fontWeight="700" textAnchor="middle">{text}</SvgText>
+      <SvgText x={x} y={y + 4.5} fill="#fff" fontSize={13} fontWeight="700" textAnchor="middle" fontFamily={FONT}>{text}</SvgText>
     </G>
   );
 }
@@ -171,7 +173,7 @@ export function FloorPlan({ plan, marks, focus = [], title, labels }: {
                 </G>
                 {it.label && it.type !== 'wall' ? (
                   <SvgText x={cx} y={(it.type === 'door' ? cy + it.h / 2 + 14 : withTag ? cy - 11 : cy) + (big ? 7 : 5)} textAnchor="middle"
-                    fill={DARK.has(it.type) ? '#ffffff' : fp.text} fontSize={big ? 20 : 15} fontWeight={big ? '700' : '600'}>{it.label}</SvgText>
+                    fill={DARK.has(it.type) ? '#ffffff' : fp.text} fontSize={big ? 20 : 15} fontWeight={big ? '700' : '600'} fontFamily={FONT}>{it.label}</SvgText>
                 ) : null}
                 {withTag ? <NameTag x={cx} y={it.label ? cy + 12 : cy} mark={mark!} /> : null}
               </G>

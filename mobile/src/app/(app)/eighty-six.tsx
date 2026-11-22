@@ -1,7 +1,7 @@
 // The 86 List: what's out or running low, list by list, the bar's lists first and in their own color.
 // Report opens the report screen; tapping an item updates it; Back in stock clears it, with undo. Photos show as
 // thumbnails under an item; tap one for full screen.
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -19,6 +19,7 @@ const report = (params: { listId?: string; itemId?: string }) => router.push({ p
 
 export default function EightySixScreen() {
   const { t, lang } = useI18n();
+  const { item: focus } = useLocalSearchParams<{ item?: string }>(); // from a notification: '#/86/<item or list id>'
   const { client, bump } = useApp();
   const toast = useToast();
   const errorText = useErrorText();
@@ -70,8 +71,8 @@ export default function EightySixScreen() {
               <Button small title={t('eightySix.undo')} onPress={restore} style={{ alignSelf: 'flex-start' }} />
             </Notice>
           ) : null}
-          {bar.length ? <Group kind="bar" title={t('eightySix.barColumn')} lists={bar} onClear={clear} onPhoto={openPhoto} /> : null}
-          {floor.length ? <Group kind="kitchen" title={t('eightySix.floorColumn')} lists={floor} onClear={clear} onPhoto={openPhoto} /> : null}
+          {bar.length ? <Group kind="bar" title={t('eightySix.barColumn')} lists={bar} onClear={clear} onPhoto={openPhoto} focus={focus} /> : null}
+          {floor.length ? <Group kind="kitchen" title={t('eightySix.floorColumn')} lists={floor} onClear={clear} onPhoto={openPhoto} focus={focus} /> : null}
         </>
       ) : null}
       {viewer ? <PhotoViewer name={nameIn(viewer.item, lang)} photos={viewer.item.photos} start={viewer.start} onClose={() => setViewer(null)} onRemove={(p) => removePhoto(viewer.item, p.id)} /> : null}
@@ -81,7 +82,7 @@ export default function EightySixScreen() {
 
 type OnPhoto = (item: EightySixItem, start: number) => void;
 
-function Group({ kind, title, lists, onClear, onPhoto }: { kind: string; title: string; lists: EightySixList[]; onClear: (it: EightySixItem, name: string) => void; onPhoto: OnPhoto }) {
+function Group({ kind, title, lists, onClear, onPhoto, focus }: { kind: string; title: string; lists: EightySixList[]; onClear: (it: EightySixItem, name: string) => void; onPhoto: OnPhoto; focus?: string }) {
   const c = useColors();
   const col = listColors(kind, c.dark);
   return (
@@ -90,12 +91,12 @@ function Group({ kind, title, lists, onClear, onPhoto }: { kind: string; title: 
         <Icon name={kind === 'bar' ? 'glass' : 'ban'} size={15} color={col.main} />
         <Text style={[styles.groupText, { color: col.main }]}>{title.toUpperCase()}</Text>
       </View>
-      {lists.map((l) => <ListCard key={l.id} list={l} onClear={onClear} onPhoto={onPhoto} />)}
+      {lists.map((l) => <ListCard key={l.id} list={l} onClear={onClear} onPhoto={onPhoto} focus={focus} />)}
     </View>
   );
 }
 
-function ListCard({ list, onClear, onPhoto }: { list: EightySixList; onClear: (it: EightySixItem, name: string) => void; onPhoto: OnPhoto }) {
+function ListCard({ list, onClear, onPhoto, focus }: { list: EightySixList; onClear: (it: EightySixItem, name: string) => void; onPhoto: OnPhoto; focus?: string }) {
   const { t, tn, lang, time } = useI18n();
   const c = useColors();
   const col = listColors(list.kind, c.dark);
@@ -103,7 +104,7 @@ function ListCard({ list, onClear, onPhoto }: { list: EightySixList; onClear: (i
   const low = list.items.length - out;
   const name = nameIn(list, lang);
   return (
-    <Card pad={false} style={{ overflow: 'hidden', borderTopWidth: 3, borderTopColor: col.main }}>
+    <Card pad={false} style={[{ overflow: 'hidden', borderTopWidth: 3, borderTopColor: col.main }, focus === list.id && { borderWidth: 2, borderColor: c.brand }]}>
       <View style={[styles.listH, { backgroundColor: col.soft, borderColor: c.border }]}>
         <View style={{ flex: 1, gap: 2 }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
@@ -114,7 +115,7 @@ function ListCard({ list, onClear, onPhoto }: { list: EightySixList; onClear: (i
         </View>
         {list.canReport ? <Button small icon="plus" title={t('eightySix.report')} label={t('eightySix.reportOn', { list: name })} onPress={() => report({ listId: list.id })} /> : null}
       </View>
-      {list.items.map((it) => <ItemRow key={it.id} it={it} list={list} onClear={onClear} onPhoto={onPhoto} />)}
+      {list.items.map((it) => <ItemRow key={it.id} it={it} list={list} onClear={onClear} onPhoto={onPhoto} focus={focus === it.id} />)}
       {list.resetAt ? (
         <View style={[styles.foot, { borderColor: c.border }]}>
           <Icon name="clock" size={13} color={c.text3} />
@@ -125,7 +126,7 @@ function ListCard({ list, onClear, onPhoto }: { list: EightySixList; onClear: (i
   );
 }
 
-function ItemRow({ it, list, onClear, onPhoto }: { it: EightySixItem; list: EightySixList; onClear: (it: EightySixItem, name: string) => void; onPhoto: OnPhoto }) {
+function ItemRow({ it, list, onClear, onPhoto, focus }: { it: EightySixItem; list: EightySixList; onClear: (it: EightySixItem, name: string) => void; onPhoto: OnPhoto; focus?: boolean }) {
   const { t, tn, lang } = useI18n();
   const c = useColors();
   const name = nameIn(it, lang);
@@ -143,7 +144,7 @@ function ItemRow({ it, list, onClear, onPhoto }: { it: EightySixItem; list: Eigh
     </>
   );
   return (
-    <View style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderColor: c.border }}>
+    <View style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderColor: c.border, backgroundColor: focus ? c.brandSoft : 'transparent' }}>
     <View style={styles.item}>
       {list.canReport ? (
         <Pressable onPress={() => report({ listId: list.id, itemId: it.id })} accessibilityRole="button" accessibilityLabel={t('eightySix.updateTitle', { name })}

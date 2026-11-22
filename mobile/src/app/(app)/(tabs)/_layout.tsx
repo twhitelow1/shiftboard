@@ -21,7 +21,7 @@ export default function TabsLayout() {
         tabBarInactiveTintColor: colors.text3,
         tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border, height: 64 + insets.bottom, paddingTop: 4, paddingBottom: insets.bottom + 4 },
         // Spanish labels run longer ("Capacitación"): a point smaller so five fit at 360 px.
-        tabBarLabelStyle: { fontSize: lang === 'es' ? 10.5 : 11, lineHeight: 14, fontWeight: '600' },
+        tabBarLabelStyle: { fontSize: lang === 'es' ? 10 : 11, letterSpacing: lang === 'es' ? -0.2 : 0, lineHeight: 14, fontWeight: '600' },
         tabBarItemStyle: { paddingHorizontal: 0 },
         tabBarAllowFontScaling: true,
         sceneStyle: { backgroundColor: colors.bg },

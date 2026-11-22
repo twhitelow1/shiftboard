@@ -1,7 +1,7 @@
 // The manager on duty (mod.get, worked out on the server from today's posted schedule): name, shift, and Call
 // (tel:) and Text (sms:) buttons, plus the restaurant's call-out line. Like the website's ModCard. It's the one
 // coworker phone number staff can get; everyone else's stays with shift leads and managers.
-import { Linking, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, View } from 'react-native';
 
 import { useI18n } from '@/i18n';
 import { useRpc } from '@/lib/hooks';
@@ -40,6 +40,37 @@ export function ModCard({ mod: given, compact = false }: { mod?: ModInfo | null;
     : mod.status === 'next' && s ? t('mod.inAt', { time: time(s.start) })
       : mod.status === 'planned' && s ? t('mod.planned', { date: date(mod.date), time: time(s.start) })
         : mod.status === 'override' ? (s ? `${t('mod.today')} · ${time(s.start)}${s.end ? `–${time(s.end)}` : ''}` : t('mod.today')) : '';
+  if (compact) {
+    // One row: who and when, then round Call and Text buttons (My Shifts, the call-out panel).
+    return (
+      <Card style={{ gap: 8, paddingVertical: 12 }}>
+        <View style={styles.main}>
+          <View style={{ flex: 1, gap: 1 }} accessible accessibilityLabel={[t('mod.title'), p?.name || t('mod.none'), line].filter(Boolean).join(', ')}>
+            <Txt v="tiny" tone="muted" bold style={styles.kicker}>{t('mod.title')}</Txt>
+            {p ? <Txt bold>{p.name}</Txt> : <Txt v="small" tone="muted">{t('mod.none')}</Txt>}
+            {line ? <Txt v="small" tone="muted">{line}</Txt> : null}
+          </View>
+          {p?.phone ? (
+            <>
+              <Pressable onPress={() => phone('tel', p.phone)} accessibilityRole="button" accessibilityLabel={t('mod.callName', { name: p.name })}
+                style={({ pressed }) => [styles.round, { backgroundColor: c.brand, opacity: pressed ? 0.8 : 1 }]}>
+                <Icon name="phone" size={20} color={c.onBrand} />
+              </Pressable>
+              <Pressable onPress={() => phone('sms', p.phone)} accessibilityRole="button" accessibilityLabel={t('mod.textName', { name: p.name })}
+                style={({ pressed }) => [styles.round, { backgroundColor: c.brandSoft, opacity: pressed ? 0.8 : 1 }]}>
+                <Icon name="message" size={20} color={c.brand} />
+              </Pressable>
+            </>
+          ) : null}
+        </View>
+        {p && !p.phone ? <Txt v="small" tone="muted">{t('mod.noPhone', { name: p.name })}</Txt> : null}
+        {mod.callOutPhone && !p?.phone ? (
+          <Button small icon="phone" title={`${t('mod.callOutLine')} · ${mod.callOutPhone}`} label={t('mod.callOutLineNumber', { number: mod.callOutPhone })}
+            onPress={() => phone('tel', mod.callOutPhone)} style={{ alignSelf: 'flex-start' }} />
+        ) : null}
+      </Card>
+    );
+  }
   return (
     <Card style={{ gap: 12 }}>
       <View style={styles.main} accessible accessibilityLabel={[t('mod.title'), p?.name || t('mod.none'), line].filter(Boolean).join(', ')}>
@@ -52,7 +83,7 @@ export function ModCard({ mod: given, compact = false }: { mod?: ModInfo | null;
               {line ? <Txt v="small" tone="muted">{line}</Txt> : null}
             </>
           ) : <Txt v="small" tone="muted">{t('mod.none')}</Txt>}
-          {!compact && mod.alsoOn?.length ? <Txt v="tiny" tone="faint">{t('mod.alsoOn', { names: mod.alsoOn.map((x) => x.name).join(', ') })}</Txt> : null}
+          {mod.alsoOn?.length ? <Txt v="tiny" tone="faint">{t('mod.alsoOn', { names: mod.alsoOn.map((x) => x.name).join(', ') })}</Txt> : null}
         </View>
       </View>
       {p?.phone ? (
@@ -74,4 +105,5 @@ const styles = StyleSheet.create({
   icon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   kicker: { textTransform: 'uppercase', letterSpacing: 0.6 },
   actions: { flexDirection: 'row', gap: 8 },
+  round: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
 });

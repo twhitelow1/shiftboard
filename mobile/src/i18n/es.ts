@@ -272,6 +272,9 @@ const es: Messages = {
     requestedToast: 'Pediste el turno',
     yoursToast: 'Es tuyo. El horario ya se actualizó.',
     resolution: 'Nota: {text}',
+    waitingOnCoworkers: 'Esperando a los compañeros',
+    waitingHelp: 'Cambios y cesiones que nadie ha aceptado todavía. Llegan aquí para aprobarse cuando alguien acepte.',
+    recent: 'Decididos hace poco',
   },
   timeOff: {
     title: 'Días libres',
