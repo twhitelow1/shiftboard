@@ -18,7 +18,7 @@ const openShift = (s: Shift) => router.push({ pathname: '/shift/[id]', params: {
 export default function MyShifts() {
   const { t, tn, date } = useI18n();
   const c = useColors();
-  const { me, today, settings, people } = useApp();
+  const { me, today, settings, people, boot } = useApp();
   const shiftTime = useShiftTime();
   const what = useShiftWhat();
   const thisWeek = weekStart(today, settings.weekStartDow);
@@ -60,7 +60,7 @@ export default function MyShifts() {
         </View>
       ) : null}
 
-      <EightySixBanner />
+      {boot.tenant?.features?.eightySix !== false && <EightySixBanner />}
 
       <Row style={{ flexWrap: 'wrap' }}>
         <Button icon="sun" title={t('myShifts.requestOff')} onPress={() => router.push('/request-time-off')} style={{ flexGrow: 1 }} />
