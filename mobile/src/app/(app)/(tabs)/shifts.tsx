@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { View } from 'react-native';
 
 import { Screen } from '@/components/Screen';
+import { EightySixBanner } from '@/components/EightySixBanner';
 import { ShiftRow, useShiftTime, useShiftWhat } from '@/components/ShiftRow';
 import { Badge, Button, Card, Empty, Loading, Row, SectionTitle, Txt, useColors } from '@/components/ui';
 import { useI18n } from '@/i18n';
@@ -58,6 +59,8 @@ export default function MyShifts() {
           ) : null}
         </View>
       ) : null}
+
+      <EightySixBanner />
 
       <Row style={{ flexWrap: 'wrap' }}>
         <Button icon="sun" title={t('myShifts.requestOff')} onPress={() => router.push('/request-time-off')} style={{ flexGrow: 1 }} />

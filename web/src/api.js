@@ -19,7 +19,7 @@ let demo = null;
 function getDemo() {
   if (!demo) {
     const store = new MemoryStore();
-    const ids = seedDemo(store);
+    const ids = seedDemo(store, { now: DEMO_NOW }); // the demo clock, so the 86 List's sample items are from "today"
     const service = createService(store, { now: () => DEMO_NOW });
     demo = { store, ids, service, userId: ids.userId['Moe'] };
   }

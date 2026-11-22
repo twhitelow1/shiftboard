@@ -17,6 +17,7 @@ import TimeOff from './pages/TimeOff.jsx';
 import Settings from './pages/Settings.jsx';
 import Venue from './pages/Venue.jsx';
 import Training from './pages/Training.jsx';
+import EightySix from './pages/EightySix.jsx';
 import { t as tr, useT, I18nCtx, setCurrentLang, resolveLang, saveDeviceLang, deviceLang, unsavedDeviceLang, clearUnsaved, isLang, prettyDate, stamp } from './i18n/index.js';
 import LanguageSwitch from './LanguageSwitch.jsx';
 
@@ -36,6 +37,7 @@ const NAV = [
   { key: 'schedule', label: 'main.schedule', icon: 'grid' },
   { key: 'calendar', label: 'main.calendar', icon: 'calendar' },
   { key: 'my', label: 'main.myShifts', icon: 'user' },
+  { key: '86', label: 'main.eightySix', icon: 'ban' },
   { key: 'swaps', label: 'main.swapsTrades', short: 'main.swaps', icon: 'swap', badge: 'swaps' },
   { key: 'events', label: 'main.eventsBeos', short: 'common.events', icon: 'glass' },
   { key: 'timeoff', label: 'main.timeOff', icon: 'sun', badge: 'timeoff' },
@@ -249,7 +251,7 @@ function App() {
   const Page = {
     schedule: Schedule, calendar: CalendarPage, my: MyShifts, swaps: Swaps, events: Events,
     forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue, tips: Tips,
-    forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue, training: Training,
+    forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue, training: Training, 86: EightySix,
   }[route] || Schedule;
 
   const signOut = async () => { await logout(); setBoot(null); setAuthed(false); };

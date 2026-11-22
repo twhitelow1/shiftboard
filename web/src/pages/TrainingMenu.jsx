@@ -5,6 +5,8 @@ import { useApp, Icon, Modal, Field, Empty, useAction } from '../ui.jsx';
 import { IS_DEMO } from '../api.js';
 import { localizeItem, categoryLabel, dietaryLabel, DIETARY_TAGS, MAJOR_ALLERGENS, FIELD_GROUPS, PHOTOS_PER_ITEM } from '../../../core/training.js';
 import { Photo, TIcon, Chips, LangTabs, photoFromFile, useT, useLang } from './TrainingShared.jsx';
+import { useEightySix } from './EightySix.jsx';
+import { tx } from '../i18n/index.js';
 
 const money = (n) => (n == null || n === '' ? '' : `$${Number(n) % 1 ? Number(n).toFixed(2) : Number(n)}`);
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -38,6 +40,7 @@ export function MenuGuide() {
   const [filters, setFilters] = useState(false);
   const [open, setOpen] = useState(null);
   const [editing, setEditing] = useState(null);
+  const out86 = new Set(useEightySix()?.outMenuItemIds || []); // on today's 86 List (lists this person can see)
   if (!menu) return <div className="empty">{t.loading}</div>;
 
   const words = norm(q).split(/\s+/).filter(Boolean);
@@ -84,22 +87,22 @@ export function MenuGuide() {
         <div key={c} className="section">
           <div className="tr-cat-title">{menu.cat(c)}<span className="faint"> · {list.length}</span></div>
           <div className="tr-grid">
-            {list.map((it) => <ItemCard key={it.id} it={it} menu={menu} onClick={() => setOpen(it.id)} />)}
+            {list.map((it) => <ItemCard key={it.id} it={it} menu={menu} out86={out86.has(it.id)} onClick={() => setOpen(it.id)} />)}
           </div>
         </div>
       ))}
-      {openItem && <ItemDetail it={openItem} menu={menu} onClose={() => setOpen(null)} onEdit={isMgr ? () => { setEditing(openItem.raw); setOpen(null); } : null} />}
+      {openItem && <ItemDetail it={openItem} menu={menu} out86={out86.has(openItem.id)} onClose={() => setOpen(null)} onEdit={isMgr ? () => { setEditing(openItem.raw); setOpen(null); } : null} />}
       {editing && <ItemEditor item={editing} menu={menu} onClose={(changed) => { setEditing(null); if (changed) reload(); }} />}
     </div>
   );
 }
-function ItemCard({ it, menu, onClick }) {
+function ItemCard({ it, menu, out86, onClick }) {
   const t = useT();
   return (
     <button type="button" className={`tr-item ${it.eightySixed ? 'is86' : ''}`} onClick={onClick}>
       <div className="tr-item-photo">
         {it.photos[0] ? <Photo id={it.photos[0].id} alt={it.name} /> : <div className="tr-photo-ph"><TIcon name="camera" size={24} /></div>}
-        {it.eightySixed && <span className="tr-86">{t.eightySixed}</span>}
+        {it.eightySixed ? <span className="tr-86">{t.eightySixed}</span> : out86 && <span className="tr-86">{tx('eightySix.outToday')}</span>}
         {it.photos.length > 1 && <span className="tr-count">{it.photos.length}</span>}
       </div>
       <div className="tr-item-body">
@@ -111,7 +114,7 @@ function ItemCard({ it, menu, onClick }) {
   );
 }
 
-function ItemDetail({ it, menu, onClose, onEdit }) {
+function ItemDetail({ it, menu, out86, onClose, onEdit }) {
   const t = useT();
   const lang = useLang();
   return (
@@ -119,6 +122,7 @@ function ItemDetail({ it, menu, onClose, onEdit }) {
       footer={onEdit ? <><button className="btn" onClick={onEdit}><Icon name="edit" />{t.edit}</button><span className="spacer" /><button className="btn" onClick={onClose}>{t.close}</button></> : null}>
       {it.photos.length > 0 && <Gallery photos={it.photos} name={it.name} />}
       {it.eightySixed && <div className="alert bad"><Icon name="alert" size={16} />{t.is86}</div>}
+      {!it.eightySixed && out86 && <a className="alert bad" href="#/86"><Icon name="alert" size={16} />{tx('eightySix.outTodayDetail')}</a>}
       {it.description && <div className="tr-desc">{it.description}</div>}
       <div className="tr-facts">
         <div>

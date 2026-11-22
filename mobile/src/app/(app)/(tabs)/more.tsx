@@ -1,4 +1,4 @@
-// More: profile, language, notifications, calendar, Training (coming soon), the full website,
+// More: the 86 List (first: the tab bar has no room for it at 360 px), profile, language, notifications, calendar, Training (coming soon), the full website,
 // change restaurant, privacy and help, delete my account, sign out.
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
@@ -12,9 +12,10 @@ import { Badge, Card, ListRow, Txt, useToast } from '@/components/ui';
 import { useI18n, type Lang } from '@/i18n';
 import { displayServer } from '@/lib/api';
 import { confirm } from '@/lib/confirm';
-import { useAction, useErrorText } from '@/lib/hooks';
+import { useAction, useErrorText, useRpc } from '@/lib/hooks';
 import { pushStatus, registerForPush, type PushStatus } from '@/lib/push';
 import { useApp } from '@/lib/session';
+import type { EightySixSummary } from '@/lib/types';
 
 export default function More() {
   const { t, chosen, setLang, date } = useI18n();
@@ -56,9 +57,15 @@ export default function More() {
     router.replace('/sign-in');
   };
   const langValue: Lang | 'phone' = chosen ?? 'phone';
+  const out86 = useRpc<EightySixSummary>('eightySix.summary').data?.out || 0;
 
   return (
     <Screen title={t('more.title')}>
+      <Card pad={false} style={{ overflow: 'hidden' }}>
+        <ListRow icon="ban" title={t('more.eightySix')} sub={t('more.eightySixHelp')} onPress={() => router.push('/eighty-six')}
+          right={out86 ? <Badge tone="bad" text={String(out86)} /> : null} />
+      </Card>
+
       <Card style={{ gap: 4 }}>
         <Txt v="h2">{me.name}</Txt>
         <View style={{ flexDirection: 'row' }}><Badge tone="brand" text={t(`more.role.${me.role}` as const)} /></View>

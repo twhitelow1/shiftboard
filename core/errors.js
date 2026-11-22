@@ -185,6 +185,19 @@ export const ERRORS_ES = {
   'Give the section a name': 'Ponle nombre a la sección',
   'Page not found': 'No encontramos esa página',
   'Give the page a title': 'Ponle título a la página',
+  // ----- 86 List -----
+  'List not found': 'No encontramos esa lista',
+  'You can’t report on this list': 'No puedes reportar en esta lista',
+  'Say what’s out': 'Escribe qué se acabó',
+  'The count must be a whole number': 'La cantidad debe ser un número entero',
+  'That item isn’t on the list anymore': 'Eso ya no está en la lista',
+  'That can’t be undone anymore': 'Eso ya no se puede deshacer',
+  'It’s already back on the list': 'Ya está otra vez en la lista',
+  'Give the list a name': 'Ponle nombre a la lista',
+  'Pick a time like 04:00': 'Elige una hora, por ejemplo 04:00',
+  'Keep at least one list': 'Debe quedar al menos una lista',
+  'A report can have up to 3 photos': 'Un reporte puede tener hasta 3 fotos',
+  'Only the person who reported it or a manager can remove a photo': 'Solo quien lo reportó o un gerente puede quitar una foto',
 };
 
 /** Messages with names or numbers in them: [English pattern, Spanish]. */

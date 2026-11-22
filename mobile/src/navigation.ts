@@ -1,6 +1,7 @@
 // The bottom tabs, in order. New areas of the app slot in here: the Training portal (menu study
 // guide, quizzes, employee manual, manager on duty) gets a tab when it ships. Until then it is a
-// "Coming soon" row in More (src/app/(app)/training.tsx).
+// "Coming soon" row in More (src/app/(app)/training.tsx). The 86 List (src/app/(app)/eighty-six.tsx) is the
+// first row in More, since a sixth tab doesn't fit at 360 px, and a banner on My Shifts when something's out.
 import type { IconName } from '@/components/Icon';
 import type { MsgKey } from '@/i18n';
 import type { Boot } from '@/lib/types';
