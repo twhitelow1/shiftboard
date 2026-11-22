@@ -78,6 +78,8 @@ The key must be **unencrypted** (`-nodes`). If ADP gives a `.pfx`/`.p12`, extrac
 
 ### Env vars (Vercel → Settings → Environment Variables)
 
+On the platform, a restaurant's admin pastes the same values in **Settings → Integrations → ADP → Connection** instead (stored encrypted; see the platform README). The table is for a single-restaurant install, or Chasing Rabbits' env fallback.
+
 | Env var | Notes |
 |---|---|
 | `ADP_CLIENT_ID` | From the API Central project (or the partner app) |

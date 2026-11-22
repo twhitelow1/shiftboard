@@ -36,12 +36,12 @@ Defined in one place, `server/platform/plans.js` (also where phase 2 maps Stripe
 | Plan | Price (working) | Features |
 |---|---|---|
 | `starter` | $49 / month | Training, Tip pool, 86 List |
-| `pro` | $99 / month | Starter + Events & BEOs, Forecast & labor, Toast, Text messages, Venue & floor plans |
+| `pro` | $99 / month | Starter + Events & BEOs, Forecast & labor, Toast, ADP, Tripleseat, Text messages, Venue & floor plans |
 | `beta` | free | everything (Chasing Rabbits) |
 
 Scheduling, trades, time off, notifications, email, phone notifications, team and settings are in every plan. `multiLocation` is a placeholder (no plan has it except beta; nothing uses it yet). The console can switch any feature on or off for one restaurant on top of its plan.
 
-Enforced on the server: an RPC of a feature the restaurant doesn't have answers **403 "Not included in your plan"** (in Spanish too), and so do its routes (Toast, Training photos, 86 photos, test text, Twilio webhook). The web app hides those pages, nav items and cards, and a link to one goes to the schedule.
+Enforced on the server: an RPC of a feature the restaurant doesn't have answers **403 "Not included in your plan"** (in Spanish too), and so do its routes (Toast, ADP, Tripleseat and its webhook, Training photos, 86 photos, test text, Twilio webhook). The web app hides those pages, nav items and cards, and a link to one goes to the schedule.
 
 ### Statuses
 
@@ -56,13 +56,17 @@ Each restaurant's app gets its own copy of the platform's env with its own setti
 | | Per restaurant (console) | Platform-wide (env) |
 |---|---|---|
 | Toast | client ID and secret (encrypted), restaurant GUID, API host | — |
+| ADP | client ID and secret, certificate and key (encrypted), manager AOID | — |
+| Tripleseat | client ID and secret, webhook signing key, old OAuth 1.0 keys (encrypted), location ID, site ID, API host | — |
 | Texts | sender: Messaging Service SID or From number | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` (DubLow's one Twilio account; each restaurant is its own brand and campaign) |
 | Email | From name and address, reply-to | `RESEND_API_KEY`; `PLATFORM_EMAIL_FROM` as the default address ("<Restaurant> <schedule@…>") |
 | Phone notifications | — | `VAPID_*`, Expo push |
 
+The restaurant's own admins (Admin and up) set these in **Settings → Integrations** (`GET`/`PUT /api/integrations`, `server/integrations-routes.js`): the same storage as the console (`server/platform/integrations.js` `saveIntegrations()` serves both), only for the integrations in its plan (anything else is a 403), audited with the restaurant user as the actor (`tenant.integrations`, `details.via: 'restaurant settings'`), and the restaurant runs with the new settings from its next request. A single-restaurant install has no registry, so its page shows what env sets, read-only.
+
 Secrets are encrypted with AES-256-GCM (`PLATFORM_ENCRYPTION_KEY`; each value is bound to its restaurant and setting) and never sent to a browser: the console shows "set" and the last 4 characters. The default restaurant falls back to the env vars it uses today for anything not set in the console, so production keeps working unchanged. No other restaurant ever sees those env values (its admin account, Toast keys, sender, From address, `APP_URL`). A feature not in the plan is switched off at the source too (no Toast or Twilio settings at all).
 
-The daily Toast cron (`/api/cron/toast`, `CRON_SECRET`) now loops over every active restaurant with Toast in its plan and set up, each with its share of the time budget, starting at a different restaurant each hour and skipping any already synced in the last 20 hours. A restaurant left out of one run catches up on the next (the sync reaches back up to 14 days).
+The daily crons (`/api/cron/toast`, `/api/cron/adp`, `/api/cron/tripleseat`, `CRON_SECRET`) loop over every active restaurant with that integration in its plan and set up, each with its share of the time budget, starting at a different restaurant each hour and skipping any already synced in the last 20 hours. A restaurant left out of one run catches up on the next (the sync reaches back up to 14 days).
 
 ### The platform console
 
@@ -133,9 +137,10 @@ Selling ShiftBoard is commercial use, which Vercel's Hobby plan doesn't allow; u
 2. The owner opens the link, sets a password, and is the Super Admin. From there it's the app as always: job codes, people, import the first schedule.
 3. **Toast** (Pro): their Toast admin creates Standard API credentials (read-only) for the location; enter the client ID, client secret and the location's GUID on the restaurant's page. The owner runs **Settings → Integrations → Sync now**; the daily cron takes over.
 4. **Texts** (Pro): in DubLow's Twilio account, register the restaurant's A2P 10DLC brand and campaign and create a Messaging Service for it (or verify a toll-free number). Set its incoming webhook to `https://<slug>.<PLATFORM_DOMAIN>/api/twilio/inbound`, then enter the Messaging Service SID on the restaurant's page.
-5. **Email**: by default email comes from "<Restaurant> <PLATFORM_EMAIL_FROM's address>". For the restaurant's own address, verify its domain in DubLow's Resend account and set the From address (and name, reply-to) on its page.
-6. **Phone app**: staff enter `https://<slug>.<PLATFORM_DOMAIN>` (or the custom domain) as the restaurant address, or open an invite link.
-7. Need to look at something as them? **Sign in as owner** (logged, with a banner they see).
+5. **Tripleseat** (Pro): their Tripleseat account admin creates an OAuth 2.0 application (Settings → API) and the owner pastes the client ID and secret (and location ID) in **Settings → Integrations → Tripleseat**, or you enter them on the restaurant's page. Then Sync now, rooms and status rules; optionally the webhook link shown there. See [docs/integrations/TRIPLESEAT.md](../integrations/TRIPLESEAT.md).
+6. **Email**: by default email comes from "<Restaurant> <PLATFORM_EMAIL_FROM's address>". For the restaurant's own address, verify its domain in DubLow's Resend account and set the From address (and name, reply-to) on its page.
+7. **Phone app**: staff enter `https://<slug>.<PLATFORM_DOMAIN>` (or the custom domain) as the restaurant address, or open an invite link.
+8. Need to look at something as them? **Sign in as owner** (logged, with a banner they see).
 
 ## Backups
 
@@ -174,11 +179,12 @@ Decided: restaurants sign up on their own, start a free trial, and pay monthly b
 
 ```
 server/platform/
-  index.js        createPlatformApp: host routing, the LRU of restaurant runtimes, the console, the Toast cron loop
+  index.js        createPlatformApp: host routing, the LRU of restaurant runtimes, the console, the per-restaurant cron loops (Toast, ADP, Tripleseat)
   hosts.js        which restaurant a host is; domains; a restaurant's address
   slugs.js        slug rules, reserved names, schema names
   registry.js     the platform schema: tenants, encrypted secrets, admins, audit log, support grants
   tenant-env.js   each restaurant's integration settings as the env server/app.js reads
+  integrations.js saving them (console and Settings → Integrations alike) and what a restaurant's Settings page sees
   plans.js        plans, prices, statuses, features, which RPCs and routes need which feature, billing banners
   onboard.js      createTenant(): schema, settings, owner, invite
   console.js      the console's API (/api/platform/*)

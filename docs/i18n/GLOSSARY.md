@@ -127,6 +127,10 @@ The words ShiftBoard uses in Spanish, so the phone app, the website and emails s
 | attire / all black | vestimenta / todo negro | |
 | team thread | conversación del equipo | |
 | course (menu) | tiempo | "Plato fuerte" for entrée |
+| From Tripleseat: edit it there | De Tripleseat: cámbialo allá | Tripleseat status names (Definite, Tentative, Prospect, Closed, Lost) stay in English, with the Spanish in parentheses in Settings |
+| sales manager | gerente de ventas | the event's owner in Tripleseat |
+| integrations / connection / not set up | integraciones / conexión / sin configurar | Settings → Integrations |
+| webhook / signing key | webhook / clave de firma | |
 
 ## Forecast and labor
 
