@@ -359,9 +359,62 @@ export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password =
   seedTraining(store, { userId, jobId });
   // SAMPLE 86 List: Bar, Moon Rabbit bar and Kitchen, a few items out or low now, and a month of history (core/eighty-six.js)
   seedEightySix(store, { userId, now: clock });
+  // SAMPLE ADP clock-ins for two days, from a pretend timecard import (seedAdpDemo, at the end of this file)
+  seedAdpDemo(store, { week: WEEK });
 
   return { userId, jobId, eventId };
 }
 
 import { seedLaborDemo } from './labor-demo.js';
 import { seedEightySix } from './eighty-six.js';
+
+// ---------- SAMPLE ADP time entries (Forecast & Labor, Settings → Integrations → ADP) ----------
+// As if last Friday's and Saturday's ADP timecard export had been imported (core/adp.js): demo people
+// only, invented employee IDs, punches rounded to the quarter hour the way time clocks round them,
+// no tips (ADP time data has none; Toast's tips still count). The clock-in source is "both (ADP
+// wins)", so these replace those people's Toast clock-ins on those two days and Toast covers the rest.
+function seedAdpDemo(store, { week }) {
+  const days = [addDays(week, -3), addDays(week, -2)]; // Fri and Sat of the week before
+  const people = ['Alex D', 'Styves', 'Andrea', 'Jonathan', 'Karen', 'Victor', 'Tori', 'Chef Lucas'];
+  const users = store.list('users').filter((u) => people.includes(u.name));
+  const q = (stamp) => { // round a local 'YYYY-MM-DDTHH:MM' to the quarter hour
+    const [d, t] = stamp.split('T');
+    let m = Math.round((Number(t.slice(0, 2)) * 60 + Number(t.slice(3))) / 15) * 15;
+    const day = m >= 1440 ? addDays(d, 1) : d;
+    m %= 1440;
+    return `${day}T${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  };
+  const mins = (a, b) => (Date.parse(`${b}:00Z`) - Date.parse(`${a}:00Z`)) / 60000;
+  const at = `${addDays(week, -1)}T15:00:00.000Z`;
+  const depts = new Map();
+  let n = 0;
+  for (const [i, u] of users.entries()) {
+    const fileNo = String(1001 + i * 7).padStart(6, '0');
+    const workerId = `id:${Number(fileNo)}`;
+    store.update('users', u.id, { adpId: fileNo });
+    store.insert('adpWorkers', { id: workerId, origin: 'csv', aoid: null, name: u.name, first: u.name.split(' ')[0], last: u.name.split(' ')[1] || '',
+      email: '', ids: [String(Number(fileNo))], employeeId: fileNo, department: '', deleted: false, userId: u.id, matchedBy: 'id', seenAt: at });
+    for (const date of days) {
+      const toast = store.list('timeEntries', (t) => t.source === 'toast' && t.userId === u.id && t.date === date)[0];
+      if (!toast?.inLocal || !toast?.outLocal) continue;
+      const job = store.get('jobCodes', toast.jobCodeId);
+      const dept = job ? `${job.name}s` : '';
+      if (dept && !depts.has(dept)) depts.set(dept, { id: `dept:${dept.toLowerCase()}`, title: dept, jobCodeId: job.id, matchedBy: 'name', seenAt: at });
+      const inLocal = q(toast.inLocal), outLocal = q(toast.outLocal);
+      const breakMinutes = mins(inLocal, outLocal) > 6 * 60 ? 30 : 0;
+      const hours = Math.round(((mins(inLocal, outLocal) - breakMinutes) / 60) * 100) / 100;
+      store.insert('timeEntries', {
+        id: `adp_demo_${++n}`, source: 'adp', origin: 'csv', externalId: `demo-${n}`, demo: true, date, userId: u.id, jobCodeId: toast.jobCodeId, jobFrom: dept ? 'dept' : 'schedule',
+        adpWorkerId: workerId, adpName: u.name, adpEmployeeId: fileNo, adpJobId: dept ? `dept:${dept.toLowerCase()}` : null, adpDept: dept, payCode: 'REG',
+        inAt: null, outAt: null, inLocal, outLocal, regularHours: hours, overtimeHours: null, hourlyWage: null,
+        declaredCashTips: null, nonCashTips: null, breakMinutes, autoClockedOut: false, noClockOut: false, importId: 'imp_demo', syncedAt: at,
+      });
+    }
+  }
+  for (const d of depts.values()) store.insert('adpJobs', d);
+  const counts = { rows: n, new: n, updated: 0, same: 0, duplicate: 0, fromApi: 0, unmatched: 0, noPosition: 0, overnight: 0, noClockOut: 0, removed: 0 };
+  const lastImport = { id: 'imp_demo', at, by: null, fileName: 'timecard-report-demo.csv', from: days[0], to: days[1], counts };
+  store.insert('integrations', { id: 'adp', lastImport, imports: [lastImport] });
+  store.update('settings', 'settings', { clockSource: 'both' });
+  return { entries: n };
+}
