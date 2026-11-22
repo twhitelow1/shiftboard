@@ -7,6 +7,7 @@ import TipPoolSettings from './TipPoolSettings.jsx';
 import { TextSettingsCard } from './PhoneCards.jsx';
 import { IntegrationsCard } from './ToastSettings.jsx';
 import { TrainingSettingsCard } from './TrainingShared.jsx';
+import EightySixSettings from './EightySixSettings.jsx';
 import { tx, useT, dowLong, dowShort , LANGUAGE_NAMES } from '../i18n/index.js';
 
 export default function Settings() {
@@ -136,6 +137,7 @@ export default function Settings() {
 
       <TipPoolSettings />
       <TrainingSettingsCard />
+      <EightySixSettings />
 
       {!IS_DEMO && (
         <div className="card card-pad col" style={{ gap: 12 }}>

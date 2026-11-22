@@ -8,6 +8,7 @@ import ShiftDialog from './ShiftDialog.jsx';
 import { PhoneCards } from './PhoneCards.jsx';
 import { ShiftSection } from './Sections.jsx';
 import { ModCard } from './TrainingShared.jsx';
+import { EightySixBanner } from './EightySix.jsx';
 import { useT, tx, dowShort, fmtTime, prettyDate, LANGUAGE_NAMES } from '../i18n/index.js';
 import { STATUS } from './TimeOff.jsx';
 
@@ -54,6 +55,7 @@ export default function MyShifts() {
       )}
 
       <div className="section"><ModCard compact /></div>
+      <EightySixBanner className="section" />
 
       {openShifts.length > 0 && (
         <div className="section">

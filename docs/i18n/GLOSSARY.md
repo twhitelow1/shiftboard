@@ -177,6 +177,23 @@ The words ShiftBoard uses in Spanish, so the phone app, the website and emails s
 | stage / dance floor / DJ booth / host stand | escenario / pista de baile / cabina del DJ / puesto del anfitrión | |
 | sections (server sections) | secciones | |
 
+## 86 List
+
+| English | Español | Notes |
+|---|---|---|
+| 86 / 86 List | 86 / Lista 86 | "86" stays "86" |
+| 86'd (out) | agotado · se acabó | pill reads "86"; button "Se acabó (86)"; notification "Bar: se acabó Mezcal (…)" |
+| running low | queda poco | button and status; counts in banners read "2 por acabarse" |
+| 3 left | quedan 3 · queda 1 | |
+| back in stock | ya hay | button; "Ya hay Mezcal" after tapping it |
+| report (something 86'd) | reportar | |
+| undo | deshacer | |
+| list (Bar, Kitchen) | lista (Bar, Cocina) | the default Kitchen list is "Cocina"; admins can give any list a Spanish name |
+| Kitchen & floor | Cocina y salón | the column next to the bar's lists |
+| clear the list each night at… | vaciar la lista cada noche a las… | the nightly reset |
+| history / log | historial / registro | |
+| most 86'd | lo que más se acabó | |
+
 ## App words
 
 | English | Español | Notes |

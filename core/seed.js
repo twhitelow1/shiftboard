@@ -171,7 +171,7 @@ function mulberry(seed) {
   return () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
 
-export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password = 'demo1234' } = {}) {
+export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password = 'demo1234', now: clock = new Date() } = {}) {
   const rand = mulberry(42);
   const jobId = {};
   JOBS.forEach(([key, name, short, department, color, rate, eventRole], i) => {
@@ -357,8 +357,11 @@ export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password =
   seedLaborDemo(store, { week: WEEK });
   // SAMPLE training: an invented menu with placeholder photos, quizzes and tries, the employee manual (core/training-seed.js)
   seedTraining(store, { userId, jobId });
+  // SAMPLE 86 List: Bar, Moon Rabbit bar and Kitchen, a few items out or low now, and a month of history (core/eighty-six.js)
+  seedEightySix(store, { userId, now: clock });
 
   return { userId, jobId, eventId };
 }
 
 import { seedLaborDemo } from './labor-demo.js';
+import { seedEightySix } from './eighty-six.js';

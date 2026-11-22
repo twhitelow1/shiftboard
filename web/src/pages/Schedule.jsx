@@ -7,6 +7,7 @@ import ShiftDialog from './ShiftDialog.jsx';
 import ImportDialog from './ImportDialog.jsx';
 import ScheduleSheet from './ScheduleSheet.jsx';
 import TradeHint, { canTrade } from './TradeHint.jsx';
+import { EightySixBanner } from './EightySix.jsx';
 import { IS_DEMO } from '../api.js';
 import { useT, dowShort, fmtTime, monthShort, prettyDate, num , getLang } from '../i18n/index.js';
 
@@ -387,6 +388,7 @@ function MobileDay({ days, selDay, setSelDay, data, sections, mine, setMine, ope
         {f && !f.closed && <span className="small muted num">{t('schedule.totalcoversCvrs', { totalCovers: f.totalCovers })}{isMgr ? ` · ${f.laborPct ?? '—'}%` : ''}</span>}
         {isMgr && !isClosed(selDay) && <button className="btn sm primary" onClick={() => addAt(selDay)}><Icon name="plus" />{t('schedule.add')}</button>}
       </div>
+      {selDay === today && <EightySixBanner />}
       {evs.map((e) => (
         <a key={e.id} href={`#/events/${e.id}`} className="alert warn" style={{ marginBottom: 8 }}>
           <Icon name="glass" size={16} />

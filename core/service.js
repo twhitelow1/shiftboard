@@ -14,6 +14,7 @@ import { ROLE_IDS, roleOf, roleLabel, canManageSchedule, canChangeSettings, canM
 import { channelApi } from './notify-prefs.js';
 import { venueLinks } from './venue-links.js';
 import { trainingApi } from './training.js';
+import { eightySixApi } from './eighty-six.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -1413,6 +1414,8 @@ export function createService(store, opts = {}) {
     ...channelApi({ store, fail, needAuth, needAdmin, settings, now, channels: opts.channels }),
     // ----- training: menu study guide, quizzes, leaderboard, employee manual, manager on duty (core/training.js) -----
     ...trainingApi({ store, now, settings, notify, fail, random: opts.random, langOf: L }),
+    // ----- 86 List: what's out or running low, per list; the bar separate (core/eighty-six.js) -----
+    ...eightySixApi({ store, now, settings, notify, fail }),
 
     // ----- notifications -----
     'notifications.list': (actor) => {
