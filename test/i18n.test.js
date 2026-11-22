@@ -16,6 +16,7 @@ import { welcomeText, textMessage } from '../core/notify-prefs.js';
 import { describePool, explainShare, normalizePool, exampleSplit, periodLabel } from '../core/tips.js';
 import { notificationEmail, inviteEmail, resetEmail, testEmail } from '../server/email.js';
 import { DocDb } from '../server/db.js';
+import { signIn } from './helpers/signin.js';
 import { openPglite } from '../server/pglite.js';
 import { createApp } from '../server/app.js';
 import en from '../web/src/i18n/en.js';
@@ -206,10 +207,10 @@ test('conflict warnings and conflict errors are in the reader’s language', () 
 
 // ---------- texts, emails, push ----------
 test('the welcome text in Spanish keeps STOP and HELP in English', () => {
-  const es = welcomeText({ restaurant: 'Chasing Rabbits', url: 'https://x.co', lang: 'es' });
-  assert.match(es, /Responde STOP para dejar de recibir mensajes, HELP para ayuda\./);
-  assert.ok(es.startsWith('Chasing Rabbits: Recibirás mensajes'));
-  assert.equal(welcomeText({ restaurant: 'Chasing Rabbits' }), "Chasing Rabbits: You'll get texts about your schedule, trades and time off. Msg & data rates may apply. Reply STOP to opt out, HELP for help.");
+  const es = welcomeText({ lang: 'es' });
+  assert.match(es, /Responde HELP para ayuda, STOP para cancelar\.$/);
+  assert.ok(es.startsWith('ShiftBoard de DubLow Digital: '));
+  assert.equal(welcomeText({}), "ShiftBoard by DubLow Digital: You're subscribed to shift schedule alerts. Msg freq varies. Msg & data rates may apply. Reply HELP for help, STOP to cancel.");
   assert.match(textMessage({ restaurant: 'R', text: 'Turno nuevo', more: 2, lang: 'es' }), /\(\+2 más\)$/);
   assert.match(textMessage({ restaurant: 'R', text: 'New shift', more: 2 }), /\(\+2 more\)$/);
 });
@@ -285,7 +286,7 @@ test('the API answers errors in the caller’s language', async () => {
     assert.equal((await post('/api/auth/login', { email: 'x@y.co', password: 'nope' }, { 'Accept-Language': 'es-MX,es;q=0.9' })).body.error, 'Correo o contraseña incorrectos');
     assert.equal((await post('/api/auth/login', { email: 'x@y.co', password: 'nope' })).body.error, 'Wrong email or password');
     // Signed in: the person's own language.
-    const { cookie } = await post('/api/auth/login', { email: 'alexd@demo.shiftboard', password: 'demo1234' });
+    const { cookie } = await signIn(post, 'alexd@demo.shiftboard');
     const rpc = (m, args, h = {}) => post(`/api/rpc/${m}`, args, { Cookie: cookie, ...h });
     assert.equal((await rpc('shifts.save', {})).body.error, 'Managers only');
     await rpc('account.preferences', { language: 'es' });

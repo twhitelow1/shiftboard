@@ -18,6 +18,9 @@ import { venueLinks } from './venue-links.js';
 import { trainingApi } from './training.js';
 import { eightySixApi } from './eighty-six.js';
 import { rosterApi } from './roster.js';
+import { profileApi } from './profile.js';
+import { consentState, smsConsentOf, emailConsentOf, smsStatusOf, recordConsent, consentText } from './consent.js';
+import { SECRET_FIELDS, twoStepOf, twoStepMap, passwordProblem } from './auth-factors.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -65,7 +68,8 @@ export const DEFAULT_SETTINGS = {
   language: 'auto', // the language for people who haven't picked one: 'auto' (their phone or browser), 'en' or 'es'
 };
 
-const PUBLIC_USER = ({ passwordHash, ...u }) => u;
+// Never sent to anyone: the password hash (and, defensively, any factor secret that ever lands on a user).
+const PUBLIC_USER = (u) => { const out = { ...u }; for (const k of SECRET_FIELDS) delete out[k]; return out; };
 const JOB_ROLES = ['manager', 'supervisor', 'employee']; // roles a job code can suggest
 function randomPassword(len = 10) {
   const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -73,8 +77,16 @@ function randomPassword(len = 10) {
   globalThis.crypto.getRandomValues(bytes);
   return Array.from(bytes, (b) => chars[b % chars.length]).join('');
 }
-// What the client sees for a user: no password hash, and the role in its current form.
-const userView = (u) => ({ ...PUBLIC_USER(u), role: roleOf(u), eventsAccess: !!u.eventsAccess || u.role === 'events', onSchedule: !offSchedule(u), hasPassword: !!u.passwordHash });
+// What the client sees for a user: no password hash, and the role in its current form. smsConsent and
+// emailConsent are the consent flags (core/consent.js); emailNotifications mirrors emailConsent for the phone app.
+const userView = (u, twoStep) => {
+  const { smsNotifications: _oldSms, ...rest } = PUBLIC_USER(u);
+  return {
+    ...rest, role: roleOf(u), eventsAccess: !!u.eventsAccess || u.role === 'events', onSchedule: !offSchedule(u), hasPassword: !!u.passwordHash,
+    smsConsent: smsConsentOf(u), smsStatus: smsStatusOf(u), emailConsent: emailConsentOf(u), emailNotifications: emailConsentOf(u),
+    ...(twoStep !== undefined ? { twoStep: !!twoStep } : {}),
+  };
+};
 
 export function createService(store, opts = {}) {
   const now = opts.now || (() => new Date());
@@ -144,6 +156,13 @@ export function createService(store, opts = {}) {
       const body = all ? all[langOf(userById(id), st)] : render(text);
       store.insert('notifications', { id: uid('ntf'), userId: id, text: body, ...(all ? { i18n: all } : {}), link, read: false, at });
     }
+  }
+
+  /** A consent record for a change to someone's notification emails, made in their settings. */
+  function recordEmailChoice(actor, granted, lang) {
+    const l = lang === 'en' || lang === 'es' ? lang : L(actor);
+    recordConsent(store, { userId: actor.id, channel: 'email', granted, lang: l, text: consentText('email', l),
+      ip: opts.request?.ip, userAgent: opts.request?.userAgent, source: 'settings', at: now().toISOString() });
   }
 
   function shiftsForUser(userId, from, to) {
@@ -364,13 +383,17 @@ export function createService(store, opts = {}) {
       needAuth(actor);
       const st = settings();
       const jobCodes = store.list('jobCodes').sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      const twoStepOn = isMgr(actor) ? twoStepMap(store) : null; // Team shows who has two-step sign-in on
       const employees = users().map((u) => {
-        const pub = userView(u);
+        const pub = userView(u, twoStepOn ? twoStepOn.has(u.id) : undefined);
         if (isMgr(actor) || u.id === actor.id) return pub;
-        const basic = { id: u.id, name: u.name, sheetName: u.sheetName || '', role: pub.role, active: u.active, color: u.color, onSchedule: pub.onSchedule, order: u.order, jobCodes: (u.jobCodes || []).map((j) => ({ jobCodeId: j.jobCodeId, ...(j.areas?.length ? { areas: j.areas } : {}) })) };
+        const basic = { id: u.id, name: u.name, sheetName: u.sheetName || '', role: pub.role, active: u.active, color: u.color, photoId: u.photoId || null, onSchedule: pub.onSchedule, order: u.order, jobCodes: (u.jobCodes || []).map((j) => ({ jobCodeId: j.jobCodeId, ...(j.areas?.length ? { areas: j.areas } : {}) })) };
         return canSeeContacts(actor) ? { ...basic, email: u.email, phone: u.phone } : basic;
       }).sort((a, b) => a.name.localeCompare(b.name));
-      const me = userView(userById(actor.id));
+      // My own consent and two-step status: the app shows the one-time consent screen when terms are missing.
+      const mine = userById(actor.id);
+      const consent = consentState(store, mine);
+      const me = { ...userView(mine), consent, needsTerms: !consent.terms, security: twoStepOf(store, actor.id) };
       const unread = store.list('notifications', (n) => n.userId === actor.id && !n.read).length;
       const pendingApprovals = isApprover(actor) ? store.list('requests', (r) => r.status === 'pending_approval').length
         + store.list('timeOff', (t) => t.status === 'pending').length : 0;
@@ -512,7 +535,10 @@ export function createService(store, opts = {}) {
         && !users().some((u) => u.id !== cur.id && roleOf(u) === 'super_admin' && u.active !== false)) {
         fail(400, 'There must always be at least one active Super Admin. Make someone else a Super Admin first.');
       }
-      if (a.password && String(a.password).length < 6) fail(400, 'Password must be at least 6 characters');
+      if (a.password) {
+        const problem = passwordProblem(a.password, { email, name: a.name });
+        if (problem) fail(400, problem);
+      }
 
       // How the schedule sheet writes their name (MOE for Louis Henson): matched on import, shown on the sheet.
       const sheetName = String(a.sheetName ?? cur?.sheetName ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);
@@ -539,9 +565,13 @@ export function createService(store, opts = {}) {
         if (role !== roleOf(cur)) notify([cur.id], (lang) => msg(lang).roleNow(roleLabel(role, lang)), '#/my');
         return userView(u);
       }
-      const tempPassword = a.password || randomPassword();
-      const u = store.insert('users', { id: uid('usr'), ...doc, availability: {}, passwordHash: hashPassword(tempPassword), createdAt: now().toISOString(), createdBy: actor.id });
-      return { ...userView(u), tempPassword };
+      // Team → Add employee (invite: true, with an email): no password at all; the invitation's wizard sets one.
+      // The full editor still makes a temporary password to share (or the one the manager typed).
+      const invited = a.invite === true && !!email;
+      const tempPassword = invited ? null : a.password || randomPassword();
+      const u = store.insert('users', { id: uid('usr'), ...doc, availability: {}, passwordHash: tempPassword ? hashPassword(tempPassword) : null,
+        smsConsent: false, emailConsent: false, createdAt: now().toISOString(), createdBy: actor.id });
+      return { ...userView(u), created: true, ...(tempPassword ? { tempPassword } : {}) };
     },
     // Two records for one person (e.g. "Moe" made by an import and "Louis Henson" added in Team):
     // everything of `from` moves to `into` (shifts, time off, trades, notifications, event comments,
@@ -603,19 +633,27 @@ export function createService(store, opts = {}) {
       store.update('users', u.id, { passwordHash: hashPassword(tempPassword), sessionVersion: (u.sessionVersion || 0) + 1, passwordResetAt: now().toISOString(), passwordResetBy: actor.id });
       return { tempPassword };
     },
-    // Each person's own choices: email copies of notifications, light/dark mode ('' = the company's), and language (en/es).
+    // Each person's own choices: email copies of notifications (their email consent, recorded), light/dark mode
+    // ('' = the company's), and language (en/es). emailNotifications is the older name for emailConsent.
     'account.preferences': (actor, a = {}) => {
       needAuth(actor);
       const patch = {};
-      if ('emailNotifications' in a) patch.emailNotifications = a.emailNotifications !== false;
+      const emailChoice = 'emailConsent' in a ? a.emailConsent : 'emailNotifications' in a ? a.emailNotifications : undefined;
+      if (emailChoice !== undefined) {
+        const on = emailChoice === true; // only an explicit true turns them on
+        if (on !== emailConsentOf(userById(actor.id))) recordEmailChoice(actor, on, a.lang);
+        patch.emailConsent = on;
+      }
       if ('appearance' in a) patch.appearance = ['auto', 'light', 'dark'].includes(a.appearance) ? a.appearance : '';
       if ('language' in a) patch.language = ['en', 'es'].includes(a.language) ? a.language : ''; // '' = follow the phone/browser
       return userView(store.update('users', actor.id, patch));
     },
     'employees.changePassword': (actor, { password }) => {
       needAuth(actor);
-      if (!password || password.length < 6) fail(400, 'Password must be at least 6 characters');
-      store.update('users', actor.id, { passwordHash: hashPassword(password) });
+      const me = userById(actor.id);
+      const problem = passwordProblem(password, { email: me.email, name: me.name });
+      if (problem) fail(400, problem);
+      store.update('users', actor.id, { passwordHash: hashPassword(password), passwordChangedAt: now().toISOString() });
       return { ok: true };
     },
 
@@ -1417,7 +1455,9 @@ export function createService(store, opts = {}) {
     // ----- tip pooling (core/tips.js) -----
     ...tipMethods({ store, now, settings, fail, needAuth, needMgr, needAdmin, notify, langOf: L }),
     // ----- phone notifications and text messages (core/notify-prefs.js) -----
-    ...channelApi({ store, fail, needAuth, needAdmin, settings, now, channels: opts.channels }),
+    ...channelApi({ store, fail, needAuth, needAdmin, settings, now, channels: opts.channels, request: opts.request, langOf: L }),
+    // ----- my profile (name, phone, photo) and consent (core/profile.js, core/consent.js) -----
+    ...profileApi({ store, now, fail, needAuth, settings, langOf: L, request: opts.request, channels: opts.channels, legal: opts.legal }),
     // ----- training: menu study guide, quizzes, leaderboard, employee manual, manager on duty (core/training.js) -----
     ...trainingApi({ store, now, settings, notify, fail, random: opts.random, langOf: L }),
     // ----- 86 List: what's out or running low, per list; the bar separate (core/eighty-six.js) -----

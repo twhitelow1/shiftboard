@@ -23,6 +23,7 @@ import { DocDb } from '../server/db.js';
 import { openPglite } from '../server/pglite.js';
 import { createApp } from '../server/app.js';
 import { addDays } from '../core/time.js';
+import { cookieFor } from './helpers/signin.js';
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'adp');
 const fixture = (name) => fs.readFileSync(path.join(FIXTURES, name), 'utf8');
@@ -637,10 +638,7 @@ test('HTTP: ADP status and Sync now are for managers; the cron needs CRON_SECRET
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
-  const login = async (email) => {
-    const r = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: 'demo1234' }) });
-    return r.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
-  };
+  const login = (email) => cookieFor(base, email);
   const req = (p, { cookie, method = 'GET', body, auth } = {}) => fetch(base + p, {
     method, headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}), ...(auth ? { Authorization: auth } : {}) }, body: body ? JSON.stringify(body) : undefined,
   }).then(async (r) => ({ status: r.status, body: await r.json().catch(() => null) }));
