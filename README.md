@@ -113,6 +113,14 @@ Pulls each day's net sales and covers from Toast into the sales history the fore
 
 A Vercel Cron (`vercel.json`) calls `/api/cron/toast` every morning and syncs the last 3 days. Syncs run a day at a time within the 30-second limit and can be repeated safely. Days typed in by hand under Sales history are kept unless you choose to replace them. Credentials live only in env vars; the code is in `server/toast*.js`, `core/toast.js`, `core/labor.js` and `core/labor-api.js`.
 
+### ADP (optional): actual worked hours
+
+ADP is the restaurant's real time clock, so worked hours come from it: Labor review, the tip pool's hours, and **Forecast & Labor → From your actual hours** (staffing suggested from what each position really took per cover over the last 4–8 weeks, over- and under-scheduling by weekday, overtime risk; the forecast itself doesn't change). Toast stays the source of sales, covers and tips. Research, both access paths, the certificate steps and what to ask the ADP rep: [docs/integrations/ADP.md](docs/integrations/ADP.md).
+
+- **Any ADP product, today:** export a timecard report as CSV from RUN, Workforce Now, ezLaborManager or Workforce Manager, then **Labor review → Import ADP hours**. Columns are detected (and remembered), people and departments matched, and a preview flags what needs a look. Re-importing the same file or week never doubles anything. Works in the demo too.
+- **API sync (Workforce Now with API Central, or a Marketplace partner app):** add `ADP_CLIENT_ID`, `ADP_CLIENT_SECRET` (Sensitive), `ADP_CERT_PEM` and `ADP_KEY_PEM` (Sensitive; the client certificate ADP signs from your CSR and its key, as PEM text or base64), optionally `ADP_API_HOST`, `ADP_TOKEN_URL` and `ADP_MANAGER_AOID`, and `CRON_SECRET`. Then **Settings → Integrations → ADP → Sync now**; `/api/cron/adp` syncs the last 3 days every morning.
+- **Clock-in source** (Settings → Integrations → ADP): Automatic (ADP once there's ADP data), ADP, Toast, or both with ADP winning per person per day. One shift is never counted twice. Code: `server/adp*.js`, `core/adp*.js`, `core/clock.js`, `core/calibrate.js`.
+
 ### Moving data from the old SQLite version
 
 If ShiftBoard has been running on Render or Docker with SQLite, copy its `shiftboard.db` file locally, then:
@@ -172,21 +180,24 @@ core/       Business logic shared by server + demo (pure JS, no I/O)
   eighty-six.js  the 86 List: lists (Bar, Kitchen…), who reports and sees each, items out or low, the nightly reset, history
   training.js  menu study guide, quizzes, leaderboard, employee manual, manager on duty (training-seed.js: its demo data)
 server/     Express API (one RPC endpoint + auth) and iCal feed
-  app.js       routes, sessions, login rate limiting
-  db.js        Postgres persistence (see below)
+  app.js       one restaurant's API: routes, sessions, login rate limiting, plan features
+  db.js        Postgres persistence (see below), one schema per restaurant
+  platform/    many restaurants on one deployment: host routing, the tenant registry, the console's API (docs/platform)
+  billing.js   phase 2 (Stripe), documented only
   email.js     Resend email sender and email templates
   training-routes.js  menu and quiz photos, for signed-in people only
   eighty-six-routes.js  86 List photos, for people who can see the item's list (cookie or bearer token)
   index.js     standalone server (local, Docker)
-api/        Vercel Function entry point (wraps server/app.js)
+api/        Vercel Function entry point (wraps server/platform/)
 web/        React UI (Vite). DEMO=1 builds a self-contained single-file demo that runs core/ in the browser
+  console/     the platform console for DubLow Digital (platform.html)
 scripts/    one-off tools (SQLite → Postgres import)
 test/       node:test suites for scheduling, swaps, forecast, events, importer, store, database and API
 ```
 
 The API is `POST /api/rpc/<method>` with a JSON body. Every method enforces its own role check in `core/service.js`, so the web app, the demo, and any future mobile app or integration share one set of rules.
 
-**How data is stored.** Each record (shift, user, event…) is a JSON document in one Postgres table, `shiftboard.docs`, stamped with an ever-increasing sequence number. Each running instance keeps a cache and, before every request, pulls only the rows that changed since its last look (usually none: one indexed query). Writes run in a transaction that holds a single lock: the instance catches up, re-runs the operation on the latest data, and saves every change in one statement. That keeps check-then-act operations correct when Vercel runs several instances at once, for example two people grabbing the same open shift. The business logic stays synchronous and unchanged, and a failed request never leaves partial writes.
+**How data is stored.** Each record (shift, user, event…) is a JSON document in one Postgres table, `shiftboard.docs` (each restaurant on the platform has its own schema with the same tables; see [docs/platform](docs/platform/README.md)), stamped with an ever-increasing sequence number. Each running instance keeps a cache and, before every request, pulls only the rows that changed since its last look (usually none: one indexed query). Writes run in a transaction that holds a single lock: the instance catches up, re-runs the operation on the latest data, and saves every change in one statement. That keeps check-then-act operations correct when Vercel runs several instances at once, for example two people grabbing the same open shift. The business logic stays synchronous and unchanged, and a failed request never leaves partial writes.
 ## Roadmap ideas
 - POS integration (Toast / Square) to pull daily sales automatically
 - Time clock and tip pooling

@@ -1,4 +1,4 @@
-// Settings → Integrations → Toast, also opened from Forecast & Labor → Labor review ("Toast setup").
+// Settings → Integrations → Toast (the card is in AdpSettings.jsx), also in Labor review's "Clock-in setup".
 // Shows whether Toast is configured (env vars only), the restaurant, the last sync, Sync now,
 // and how Toast's employees and jobs match ShiftBoard's people and positions.
 import React, { useEffect, useMemo, useState } from 'react';
@@ -14,11 +14,12 @@ const when = (iso) => (iso ? stamp(iso) : '');
 
 /** Toast status + the latest synced info. Reloads when `version` changes. */
 export function useToast() {
-  const { call, version } = useApp();
+  const { call, version, has } = useApp();
   const [status, setStatus] = useState(null);
   const [info, setInfo] = useState(null);
   const [error, setError] = useState('');
   const load = () => {
+    if (has && !has('toast')) { setStatus({ configured: false, missing: [], off: true }); return; } // not in the plan
     toastStatus().then(setStatus).catch((e) => setError(e.message));
     if (!IS_DEMO) call('toast.get').then(setInfo).catch((e) => setError(e.message));
   };
@@ -59,17 +60,6 @@ export function SyncProgress({ progress }) {
   );
 }
 
-/** The card on the Settings page. */
-export function IntegrationsCard() {
-  const t = useT();
-  return (
-    <div className="card card-pad col" style={{ gap: 12 }}>
-      <h2>{t('toastSettings.integrations')}</h2>
-      <ToastPanel />
-    </div>
-  );
-}
-
 /** A button + modal with the same panel, for managers on Labor review. */
 export function ToastSetupButton({ label = tr('toastSettings.toastSetup') }) {
   const t = useT();
@@ -84,7 +74,7 @@ export function ToastSetupButton({ label = tr('toastSettings.toastSetup') }) {
 
 export function ToastPanel({ inModal }) {
   const t = useT();
-  const { today } = useApp();
+  const { today, managed } = useApp();
   const { status, info, error } = useToast();
   const [from, setFrom] = useState(addDays(today, -14));
   const [to, setTo] = useState(addDays(today, -1));
@@ -109,8 +99,10 @@ export function ToastPanel({ inModal }) {
     return (
       <div className="col" style={{ gap: 10 }}>
         {head(<span className="badge warn">{t('toastSettings.notSetUp')}</span>)}{intro}
-        <div className="alert warn"><Icon name="alert" size={16} /><div>{t('toastSettings.add')}{' '}{status.missing.join(', ')}{' '}{t('toastSettings.inVercelSettingsEnvironmentVariables')}</div></div>
-        <SetupHelp />
+        {managed
+          ? <div className="alert warn"><Icon name="alert" size={16} /><div>{t('platform.askDublowToast')}</div></div>
+          : <><div className="alert warn"><Icon name="alert" size={16} /><div>{t('toastSettings.add')}{' '}{status.missing.join(', ')}{' '}{t('toastSettings.inVercelSettingsEnvironmentVariables')}</div></div>
+            <SetupHelp /></>}
       </div>
     );
   }

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { applyBranding, logoUrl } from './theme.js';
-import { call, login, logout, IS_DEMO, demoPersonas, demoSwitch, demoCurrent, getConfig, forgotPassword, resetPassword } from './api.js';
+import { call, login, logout, IS_DEMO, demoPersonas, demoSwitch, demoCurrent, getConfig, forgotPassword, resetPassword, billingPortal } from './api.js';
 import { Ctx, Icon, Avatar, useToasts, Modal, setStartTimesOnly } from './ui.jsx';
 import { canManageSchedule, canChangeSettings, canManageEvents, canApprove, roleLabel } from '../../core/roles.js';
 import Schedule from './pages/Schedule.jsx';
@@ -18,7 +18,7 @@ import Settings from './pages/Settings.jsx';
 import Venue from './pages/Venue.jsx';
 import Training from './pages/Training.jsx';
 import EightySix from './pages/EightySix.jsx';
-import { t as tr, useT, I18nCtx, setCurrentLang, resolveLang, saveDeviceLang, deviceLang, unsavedDeviceLang, clearUnsaved, isLang, prettyDate, stamp } from './i18n/index.js';
+import { t as tr, useT, I18nCtx, setCurrentLang, resolveLang, saveDeviceLang, deviceLang, unsavedDeviceLang, clearUnsaved, isLang, prettyDate, stamp, fmtTime } from './i18n/index.js';
 import LanguageSwitch from './LanguageSwitch.jsx';
 
 function useHashRoute() {
@@ -33,18 +33,19 @@ function useHashRoute() {
 }
 const go = (path) => { location.hash = `#/${path}`; };
 
+// feature: the plan feature a page needs (server/platform/plans.js); pages without one are in every plan.
 const NAV = [
   { key: 'schedule', label: 'main.schedule', icon: 'grid' },
   { key: 'calendar', label: 'main.calendar', icon: 'calendar' },
   { key: 'my', label: 'main.myShifts', icon: 'user' },
-  { key: '86', label: 'main.eightySix', icon: 'ban' },
+  { key: '86', label: 'main.eightySix', icon: 'ban', feature: 'eightySix' },
   { key: 'swaps', label: 'main.swapsTrades', short: 'main.swaps', icon: 'swap', badge: 'swaps' },
-  { key: 'events', label: 'main.eventsBeos', short: 'common.events', icon: 'glass' },
+  { key: 'events', label: 'main.eventsBeos', short: 'common.events', icon: 'glass', feature: 'events' },
   { key: 'timeoff', label: 'main.timeOff', icon: 'sun', badge: 'timeoff' },
-  { key: 'tips', label: 'main.tips', icon: 'dollar' },
-  { key: 'training', label: 'main.training', icon: 'book' },
-  { key: 'forecast', label: 'main.forecastLabor', icon: 'chart', mgr: true },
-  { key: 'venue', label: 'main.venueFloorPlans', short: 'main.venue', icon: 'map', mgr: true },
+  { key: 'tips', label: 'main.tips', icon: 'dollar', feature: 'tips' },
+  { key: 'training', label: 'main.training', icon: 'book', feature: 'training' },
+  { key: 'forecast', label: 'main.forecastLabor', icon: 'chart', mgr: true, feature: 'forecast' },
+  { key: 'venue', label: 'main.venueFloorPlans', short: 'main.venue', icon: 'map', mgr: true, feature: 'venue' },
   { key: 'team', label: 'main.teamJobCodes', icon: 'users', mgr: true },
   { key: 'settings', label: 'main.settings', icon: 'settings', admin: true },
 ];
@@ -115,6 +116,57 @@ function Login({ onDone, emailEnabled }) {
   );
 }
 
+// The address has no restaurant, or the restaurant's account is paused (server/platform/). Signed out or in.
+function NoticeCard({ title, help, icon = 'alert' }) {
+  return (
+    <AuthCard onSubmit={(e) => e.preventDefault()}>
+      <div className="alert warn"><Icon name={icon} size={16} /><b>{title}</b></div>
+      {help && <div className="small muted">{help}</div>}
+    </AuthCard>
+  );
+}
+
+/**
+ * Banners on the platform: support mode (DubLow staff signed in as the owner, for everyone to see), and for the
+ * restaurant's admins only, the free trial ending or a failed payment. The button opens billing (phase 2: Stripe).
+ */
+function TenantBanners({ onEndSupport }) {
+  const t = useT();
+  const { tenant, me, toast } = React.useContext(Ctx);
+  const [hidden, setHidden] = useState(false);
+  if (!tenant) return null;
+  const support = tenant.support;
+  const billing = !hidden && tenant.billing;
+  const openBilling = async () => {
+    try {
+      const r = await billingPortal();
+      if (r?.url) location.href = r.url;
+      else toast(t('platform.billingByDublow'));
+    } catch (e) { toast(e.message, 'bad'); }
+  };
+  const until = support ? (() => { const d = new Date(support.until); return fmtTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`); })() : '';
+  return (
+    <>
+      {support && (
+        <div className="tenant-banner support no-print" role="status">
+          <Icon name="alert" size={16} />
+          <span className="tenant-banner-text">{t('platform.supportBanner', { by: support.by, name: me.name, time: until })}</span>
+          <button className="btn sm" onClick={onEndSupport}>{t('platform.endSupport')}</button>
+        </div>
+      )}
+      {billing && (
+        <div className={`tenant-banner ${billing.kind === 'pastDue' ? 'bad' : 'info'} no-print`} role="status">
+          <Icon name={billing.kind === 'pastDue' ? 'alert' : 'clock'} size={16} />
+          <span className="tenant-banner-text">{billing.kind === 'pastDue' ? t('platform.paymentFailed')
+            : billing.daysLeft > 0 ? t('platform.trialEndsIn', { count: billing.daysLeft }) : t('platform.trialEndsToday')}</span>
+          <button className="btn sm" onClick={openBilling}>{billing.kind === 'pastDue' ? t('platform.updateCard') : t('platform.choosePlan')}</button>
+          <button className="btn ghost icon sm" aria-label={t('platform.dismiss')} onClick={() => setHidden(true)}><Icon name="x" /></button>
+        </div>
+      )}
+    </>
+  );
+}
+
 // Opened from an email link (#/reset?token=…): set a password for a new account or reset a forgotten one.
 function ResetPassword({ token, onDone }) {
   const t = useT();
@@ -174,7 +226,8 @@ function App() {
   const [toast, toasts] = useToasts();
   const parts = useHashRoute();
   const [config, setConfig] = useState({ email: false, emailFrom: null });
-  useEffect(() => { getConfig().then(setConfig); }, []);
+  // admin.<platform domain> is the platform console, not a restaurant: /api/config says where it lives.
+  useEffect(() => { getConfig().then((c) => { if (c?.console) location.replace(c.console); else setConfig(c); }); }, []);
   // The restaurant's colors and logo: from its settings once signed in, from /api/config before.
   useEffect(() => {
     const st = boot?.settings;
@@ -232,9 +285,17 @@ function App() {
     const people = Object.fromEntries(boot.employees.map((e) => [e.id, e]));
     const isMgr = canManageSchedule(boot.me);
     setStartTimesOnly(boot.settings?.startTimesOnly);
+    // On the platform the restaurant's plan decides its features; the demo and a single-restaurant install have them all.
+    const features = boot.tenant?.features || null;
+    const has = (feature) => !features || features[feature] !== false;
     return { ...boot, jobs, people, isMgr, emailEnabled: config.email, emailFrom: config.emailFrom, isAdmin: canChangeSettings(boot.me), isEvents: canManageEvents(boot.me),
-      canApprove: canApprove(boot.me, boot.settings), call, toast, refresh, version, go, lang, setLang };
+      canApprove: canApprove(boot.me, boot.settings), call, toast, refresh, version, go, lang, setLang,
+      tenant: boot.tenant || null, has, managed: !!boot.tenant?.managed };
   }, [boot, toast, refresh, version, config, lang, setLang]);
+
+  const notice = config.notFound ? { title: t('platform.notFoundTitle'), help: t('platform.notFoundHelp') }
+    : config.paused ? { title: t('platform.pausedTitle'), help: t('platform.pausedHelp') } : null;
+  if (notice) return <I18nCtx.Provider value={i18n}><SignInBrand.Provider value={config.brand}><NoticeCard {...notice} /></SignInBrand.Provider></I18nCtx.Provider>;
 
   if (parts[0]?.startsWith('reset')) {
     const token = new URLSearchParams(location.hash.split('?')[1] || '').get('token') || '';
@@ -243,8 +304,10 @@ function App() {
   if (authed === false) return <I18nCtx.Provider value={i18n}><SignInBrand.Provider value={config.brand}><Login emailEnabled={config.email} onDone={() => { setAuthed(true); refresh(); }} /></SignInBrand.Provider></I18nCtx.Provider>;
   if (!ctx) return <div className="empty" style={{ paddingTop: 120 }}>{t('common.loading')}</div>;
 
-  const route = parts[0] || (ctx.isMgr ? 'schedule' : 'my');
-  const nav = NAV.filter((n) => (!n.mgr || ctx.isMgr) && (!n.admin || ctx.isAdmin));
+  const home = ctx.isMgr ? 'schedule' : 'my';
+  const offPlan = (key) => NAV.some((n) => n.key === key && n.feature && !ctx.has(n.feature));
+  const route = parts[0] && !offPlan(parts[0]) ? parts[0] : home;
+  const nav = NAV.filter((n) => (!n.mgr || ctx.isMgr) && (!n.admin || ctx.isAdmin) && (!n.feature || ctx.has(n.feature)));
   const badges = { swaps: (ctx.canApprove ? ctx.pendingApprovals : 0) + ctx.openOffers, timeoff: 0 };
   const current = NAV.find((n) => n.key === route) || NAV[0];
 
@@ -287,6 +350,7 @@ function App() {
 
         <div className="main">
           {IS_DEMO && <DemoBar onSwitch={refresh} />}
+          <TenantBanners onEndSupport={signOut} />
           <header className="topbar">
             <span className="mobile-only topbar-logo"><BrandMark name={ctx.settings.restaurantName} logo={logoUrl(ctx.settings, IS_DEMO)} size={28} /></span>
             <h1 className="topbar-title"><span className="desktop-only">{t(current.label)}</span><span className="mobile-only">{t(PHONE_TITLE[current.key] || current.label)}</span></h1>
@@ -307,7 +371,7 @@ function App() {
             { key: ctx.isMgr ? 'schedule' : 'my', label: ctx.isMgr ? t('main.schedule') : t('main.myShifts'), icon: ctx.isMgr ? 'grid' : 'user' },
             { key: ctx.isMgr ? 'my' : 'schedule', label: ctx.isMgr ? t('main.mine') : t('main.schedule'), icon: ctx.isMgr ? 'user' : 'grid' },
             { key: 'swaps', label: t('main.swaps'), icon: 'swap', badge: badges.swaps },
-            ctx.isMgr ? { key: 'events', label: t('common.events'), icon: 'glass' } : { key: 'timeoff', label: t('main.timeOff'), icon: 'sun' },
+            ctx.isMgr && ctx.has('events') ? { key: 'events', label: t('common.events'), icon: 'glass' } : { key: 'timeoff', label: t('main.timeOff'), icon: 'sun' },
           ].map((n) => (
             <button key={n.key} className={route === n.key ? 'active' : ''} onClick={() => go(n.key)}>
               <Icon name={n.icon} />{n.label}

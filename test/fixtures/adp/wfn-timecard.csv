@@ -1,0 +1,15 @@
+Timecard Report
+Company: Test Bistro (invented data for tests)
+Period: 09/14/2026 - 09/20/2026
+,,,,,,,,,
+Payroll Name,File Number,Home Department,Work Date,In Punch,Out Punch,In Punch,Out Punch,Pay Code,Hours
+"Mendez, Dario",004410,Bartenders,09/18/2026,04:00 PM,08:00 PM,08:30 PM,02:00 AM,REG,9.00
+,,Bartenders,09/19/2026,05:00 PM,11:45 PM,,,REG,6.75
+"Mendez, Dario",004410,,09/19/2026,,,,,OT,1.25
+"Mendez, Dario",004410,,09/20/2026,,,,,PTO,8.00
+Employee Total:,,,,,,,,,17.00
+"Park, Eun",004502,Servers,09/18/2026,10:45 AM,03:15 PM,,,REG,4.50
+"Park, Eun",004502,Servers,09/18/2026,10:45 AM,03:15 PM,,,REG,4.50
+Payroll Name,File Number,Home Department,Work Date,In Punch,Out Punch,In Punch,Out Punch,Pay Code,Hours
+"Park, Eun",004502,Servers,09/19/2026,,,,,REG,5.00
+Grand Total,,,,,,,,,26.50

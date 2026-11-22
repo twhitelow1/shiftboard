@@ -99,10 +99,11 @@ function duration(t, from, to) {
 
 /** What's out and low on the lists this person can see (null while loading). */
 export function useEightySix() {
-  const { call, version } = useApp();
+  const { call, version, has } = useApp();
   const [s, setS] = useState(null);
   useEffect(() => {
     let live = true;
+    if (has && !has('eightySix')) return undefined; // not in the restaurant's plan
     call('eightySix.summary').then((r) => { if (live) setS(r); }).catch(() => {});
     return () => { live = false; };
   }, [version]); // eslint-disable-line react-hooks/exhaustive-deps

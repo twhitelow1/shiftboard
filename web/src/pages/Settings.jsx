@@ -5,14 +5,14 @@ import { scheduleAreas, uniqueAreas, bannerColor, textOn, sameArea } from '../..
 import { applyBranding, logoUrl, imageToPng, THEMES } from '../theme.js';
 import TipPoolSettings from './TipPoolSettings.jsx';
 import { TextSettingsCard } from './PhoneCards.jsx';
-import { IntegrationsCard } from './ToastSettings.jsx';
+import { IntegrationsCard } from './AdpSettings.jsx'; // ADP, the clock-in source, and Toast
 import { TrainingSettingsCard } from './TrainingShared.jsx';
 import EightySixSettings from './EightySixSettings.jsx';
 import { tx, useT, dowLong, dowShort , LANGUAGE_NAMES } from '../i18n/index.js';
 
 export default function Settings() {
   const t = useT();
-  const { settings, call, emailEnabled, emailFrom, jobCodes } = useApp();
+  const { settings, call, emailEnabled, emailFrom, jobCodes, has, managed } = useApp();
   const [s, setS] = useState(() => JSON.parse(JSON.stringify(settings)));
   const [run, busy] = useAction();
   const [pw, setPw] = useState('');
@@ -101,14 +101,14 @@ export default function Settings() {
         <h2>{t('common.email')}</h2>
         {IS_DEMO ? <div className="help">{t('settings.emailIsAvailableInThe')}</div> : emailEnabled
           ? <div className="alert ok"><Icon name="check" size={16} />{t('settings.connectedToResendEmailsCome', { emailFrom })}</div>
-          : <div className="alert warn"><Icon name="alert" size={16} />{t('settings.notSetUpYetAdd')}</div>}
+          : <div className="alert warn"><Icon name="alert" size={16} />{managed ? t('platform.askDublowEmail') : t('settings.notSetUpYetAdd')}</div>}
         <label className="check"><input type="checkbox" checked={s.emailNotifications !== false} onChange={set('emailNotifications')} disabled={!emailEnabled} />{t('settings.emailStaffACopyOf')}</label>
         <div className="help">{t('settings.peopleYouAddWithAn')}</div>
         {emailEnabled && <div><button className="btn sm" disabled={busy} onClick={() => run(() => sendTestEmail(), (r) => t('settings.testEmailSentToTo', { to: r.to }))}><Icon name="send" />{t('settings.sendMeATestEmail')}</button></div>}
       </div>
 
       <TextSettingsCard />
-      <IntegrationsCard />
+      {(has('toast') || has('adp')) && <IntegrationsCard />}
 
       <div className="card card-pad col" style={{ gap: 12 }}>
         <h2>{t('settings.forecasting')}</h2>
@@ -135,9 +135,9 @@ export default function Settings() {
 
       <div className="row"><span className="spacer" /><button className="btn primary" disabled={busy} onClick={save}><Icon name="check" />{t('settings.saveSettings')}</button></div>
 
-      <TipPoolSettings />
-      <TrainingSettingsCard />
-      <EightySixSettings />
+      {has('tips') && <TipPoolSettings />}
+      {has('training') && <TrainingSettingsCard />}
+      {has('eightySix') && <EightySixSettings />}
 
       {!IS_DEMO && (
         <div className="card card-pad col" style={{ gap: 12 }}>

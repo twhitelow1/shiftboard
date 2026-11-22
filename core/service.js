@@ -5,6 +5,8 @@ import { addDays, dow, weekStart, range, overlaps, shiftSpan, todayStr, prettyDa
 import { forecastDay, effectiveShift, hoursOf, activeAt, recommend } from './forecast.js';
 import { suggestStaffing } from './beo.js';
 import { laborMethods } from './labor-api.js';
+import { adpMethods } from './adp-api.js';
+import { calibrationMethods } from './calibrate.js';
 import { cleanArea, uniqueAreas, findArea, scheduleAreas } from './areas.js';
 import { tipMethods } from './tips.js';
 import { langOf, render, renderAll } from './i18n.js';
@@ -1169,6 +1171,9 @@ export function createService(store, opts = {}) {
     },
     // Labor review (scheduled vs. worked) and Toast POS mappings: core/labor-api.js
     ...laborMethods({ store, settings, fail, needMgr, now }),
+    // ADP (CSV import, mappings), the clock-in source, and staffing from actual hours: core/adp-api.js, core/calibrate.js
+    ...adpMethods({ store, settings, fail, needMgr, needAdmin, now }),
+    ...calibrationMethods({ store, settings, needMgr, forecastWeek: computeForecastWeek, now }),
 
     // ----- events / BEOs -----
     'events.list': (actor, { start, end } = {}) => {

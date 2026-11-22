@@ -4,6 +4,8 @@
 import { addDays, weekStart as weekStartOf, todayStr } from './time.js';
 import { laborReview } from './labor.js';
 import { integration, resolveEntries, SOURCE } from './toast.js';
+import { integration as adpIntegration } from './adp.js';
+import { clockEntries } from './clock.js';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -27,17 +29,24 @@ export function laborMethods({ store, settings, fail, needMgr, now = () => new D
       const start = DAY.test(ws || '') ? weekStartOf(ws, st.weekStartDow) : addDays(weekStartOf(today(), st.weekStartDow), -7);
       const end = addDays(start, 6);
       const inWeek = (x) => x.date >= start && x.date <= end;
+      // ADP, Toast, or both with ADP winning (Settings → Integrations): one shift never counts twice.
+      const clock = clockEntries(store, st, inWeek);
       const review = laborReview({
         weekStart: start,
         shifts: store.list('shifts', inWeek),
-        entries: store.list('timeEntries', inWeek),
+        entries: clock.entries,
         sales: store.list('sales', inWeek),
         users: store.list('users').map(({ passwordHash, ...u }) => u),
         jobCodes: store.list('jobCodes'),
         settings: st,
       });
       const anyEntries = store.list('timeEntries', (t) => t.date <= end).length > 0;
-      return { ...review, anyEntries, toast: syncInfo(), today: today() };
+      const a = adpIntegration(store);
+      return {
+        ...review, anyEntries, toast: syncInfo(), today: today(),
+        clock: { source: clock.source, setting: clock.setting, ignored: clock.ignored },
+        adp: { lastSync: a.lastSync || null, lastImport: a.lastImport || null },
+      };
     },
 
     // ----- Toast: what's been synced and how Toast's people and jobs map to ShiftBoard's -----
