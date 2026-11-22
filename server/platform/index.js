@@ -134,7 +134,9 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
   // The daily Toast sync (Vercel Cron), for every restaurant with Toast set up, each within its share of the time.
   app.get('/api/cron/toast', booted, async (req, res) => {
     if (!cronAuthorized(req.get('authorization'), env.CRON_SECRET)) return res.status(401).json({ error: 'Unauthorized' });
-    res.json({ result: await toastCronAll() });
+    const result = await toastCronAll();
+    // A failed sync shows as a failed cron run in Vercel, as it did with one restaurant.
+    res.status(result.tenants.some((t) => t.ok === false) ? 502 : 200).json({ result });
   });
 
   async function toastCronAll() {
