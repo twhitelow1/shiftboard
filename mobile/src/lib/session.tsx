@@ -1,23 +1,44 @@
-// The app's state: which restaurant server this phone uses, the sign-in, and the restaurant's
-// data that every screen needs (app.bootstrap: settings, positions, people, me).
+// The app's state: the restaurants this phone uses (someone may work at two), which one is open, its sign-in,
+// and the restaurant's data every screen needs (app.bootstrap: settings, positions, people, me, plan features).
+//
+// Each restaurant keeps its own session token (secure storage, `token.<address>`), so switching between them in
+// More doesn't sign anyone out, and push notifications keep coming from all of them. The last bootstrap is kept
+// on the phone (lib/cache.ts) so the app opens with no signal, saying when the data is from.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AppState, useColorScheme } from 'react-native';
 
 import { useI18n } from '@/i18n';
 import { ApiError, createClient, fetchConfig, login, type Client } from './api';
+import { clearCache, readCache, writeCache } from './cache';
+import { featureOn, featuresOf, type Feature, type Features } from './features';
 import { registerForPush, unregisterPush, onPushReceived } from './push';
 import { getItem, setItem } from './storage';
 import { palette, type Palette } from './theme';
+import { todayStr } from './time';
 import type { Boot, JobCode, Person, ServerConfig } from './types';
+
+/** A restaurant this phone has opened. The token lives apart, in secure storage. */
+export interface Account {
+  server: string;
+  /** What we knew last: the restaurant's name, color and logo path, and who's signed in there. */
+  name?: string;
+  color?: string;
+  logo?: string;
+  userName?: string;
+  signedIn?: boolean;
+}
 
 interface Session {
   /** Saved values have been read from the phone. */
   ready: boolean;
+  accounts: Account[];
   server: string | null;
   config: ServerConfig | null;
   token: string | null;
   boot: Boot | null;
   bootError: ApiError | null;
+  /** When the restaurant's data on screen is the copy kept on the phone (no connection): when it was saved. */
+  offlineSince: string | null;
   /** The last session ended on its own (expired, or signed out by a password change). */
   expired: boolean;
   client: Client;
@@ -27,8 +48,25 @@ interface Session {
   logoUrl: string | null;
   jobs: Record<string, JobCode>;
   people: Record<string, Person>;
+  /** Shift leads (if allowed) and managers: approve trades and time off. */
   canApprove: boolean;
-  setServer: (origin: string | null, config?: ServerConfig | null) => Promise<void>;
+  /** Managers and up: drafts, publishing. */
+  isMgr: boolean;
+  /** The events team (managers, or people with events access): the whole BEO, client contact included. */
+  isEvents: boolean;
+  /** Supervisors and up: the floor tools (who's working now, approvals). */
+  isLead: boolean;
+  features: Features;
+  /** Is a plan feature on for this restaurant? (Everything is, unless the server says otherwise.) */
+  has: (f: Feature) => boolean;
+  /** Where this restaurant's copies of data are kept on the phone (lib/cache.ts keys start with it). */
+  cachePrefix: string;
+  /** Open a restaurant: add it to the list if it's new and make it the current one. */
+  openRestaurant: (origin: string, config?: ServerConfig | null) => Promise<void>;
+  /** Leave the current restaurant open in the background and show the address screen to add another. */
+  startAdding: () => void;
+  /** Sign out of a restaurant and remove it from this phone. */
+  forget: (origin: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -36,27 +74,50 @@ interface Session {
 }
 
 const Ctx = createContext<Session | null>(null);
-const APPROVER_ROLES = ['super_admin', 'admin', 'manager'];
+const RANK: Record<string, number> = { super_admin: 5, admin: 4, manager: 3, supervisor: 2, employee: 1 };
+const tokenKey = (server: string) => `token.${server}` as const;
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const i18n = useI18n();
   const scheme = useColorScheme();
   const [ready, setReady] = useState(false);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [server, setServerState] = useState<string | null>(null);
   const [config, setConfig] = useState<ServerConfig | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [boot, setBoot] = useState<Boot | null>(null);
   const [bootError, setBootError] = useState<ApiError | null>(null);
+  const [offlineSince, setOfflineSince] = useState<string | null>(null);
   const [expired, setExpired] = useState(false);
   const [version, setVersion] = useState(0);
   const tokenRef = useRef<string | null>(null);
   tokenRef.current = token;
+  const serverRef = useRef<string | null>(null);
+  serverRef.current = server;
+  const accountsRef = useRef<Account[]>([]);
 
+  const saveAccounts = useCallback((next: Account[]) => {
+    accountsRef.current = next;
+    setAccounts(next);
+    setItem('accounts', JSON.stringify(next)).catch(() => {});
+  }, []);
+  const patchAccount = useCallback((origin: string, patch: Partial<Account>) => {
+    const list = accountsRef.current;
+    const i = list.findIndex((a) => a.server === origin);
+    const next = i < 0 ? [...list, { server: origin, ...patch }] : list.map((a, k) => (k === i ? { ...a, ...patch } : a));
+    if (JSON.stringify(next) !== JSON.stringify(list)) saveAccounts(next);
+  }, [saveAccounts]);
+
+  /** The current restaurant's token, in memory and on the phone. */
   const saveToken = useCallback((t: string | null) => {
     tokenRef.current = t;
     setToken(t);
-    setItem('token', t).catch(() => {});
-  }, []);
+    const s = serverRef.current;
+    if (s) {
+      setItem(tokenKey(s), t).catch(() => {});
+      patchAccount(s, { signedIn: !!t });
+    }
+  }, [patchAccount]);
 
   const clientRef = useRef<Client | null>(null);
   const client = useMemo(() => createClient(server || '', () => tokenRef.current, {
@@ -73,10 +134,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }), [server, saveToken]);
   clientRef.current = client;
 
-  // Read what's saved on the phone.
+  // Read what's saved on the phone. Version 1 kept one restaurant and one token: move them into the list.
   useEffect(() => {
     (async () => {
-      const [s, t] = await Promise.all([getItem('server'), getItem('token')]);
+      const [s, raw, old] = await Promise.all([getItem('server'), getItem('accounts'), getItem('token')]);
+      let list: Account[] = [];
+      try { list = (JSON.parse(raw || '[]') as Account[]).filter((a) => a && typeof a.server === 'string'); } catch { list = []; }
+      if (s && !list.some((a) => a.server === s)) list.push({ server: s });
+      if (s && old) {
+        if (!(await getItem(tokenKey(s)))) await setItem(tokenKey(s), old);
+        await setItem('token', null);
+      }
+      const t = s ? await getItem(tokenKey(s)) : null;
+      accountsRef.current = list;
+      setAccounts(list);
+      serverRef.current = s;
       setServerState(s);
       tokenRef.current = t;
       setToken(t);
@@ -86,15 +158,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!server || !tokenRef.current) return;
+    const s = serverRef.current;
+    if (!s || !tokenRef.current) return;
     try {
       const b = await client.call<Boot>('app.bootstrap');
+      if (serverRef.current !== s) return; // switched restaurants meanwhile
       setBoot(b);
       setBootError(null);
+      setOfflineSince(null);
+      writeCache(`${s}|boot`, b);
+      patchAccount(s, { name: b.settings.restaurantName, color: b.settings.brandColor || undefined, userName: b.me.name, signedIn: true });
     } catch (e) {
-      if (e instanceof ApiError && e.status !== 401) setBootError(e);
+      if (!(e instanceof ApiError) || e.status === 401 || serverRef.current !== s) return;
+      setBootError(e);
+      // No connection: open with the copy from last time, saying when it's from.
+      if (e.code === 'network') {
+        const cached = await readCache<Boot>(`${s}|boot`);
+        if (cached && serverRef.current === s) {
+          setBoot((cur) => cur || { ...cached.data, today: [cached.data.today, todayStr()].sort().pop()! });
+          setOfflineSince(cached.at);
+        }
+      }
     }
-  }, [client, server]);
+  }, [client, patchAccount]);
 
   // Signed in: load the restaurant's data, then ask for notifications and register this phone.
   useEffect(() => {
@@ -103,8 +189,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [ready, token, server, refresh]);
   const signedInUser = boot?.me.id;
   useEffect(() => {
-    if (signedInUser) registerForPush(client).catch(() => {});
-  }, [signedInUser, client]);
+    if (signedInUser && !offlineSince) registerForPush(client).catch(() => {});
+  }, [signedInUser, client]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The language: adopt the one saved on the server if this phone hasn't picked one; save the person's choice there.
   useEffect(() => {
@@ -127,33 +213,69 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return () => { sub.remove(); off(); };
   }, [bump]);
 
-  const setServer = useCallback(async (origin: string | null, cfg: ServerConfig | null = null) => {
-    if (tokenRef.current) {
-      await unregisterPush(client).catch(() => {});
-      saveToken(null);
-    }
+  const openRestaurant = useCallback(async (origin: string, cfg: ServerConfig | null = null) => {
+    const t = await getItem(tokenKey(origin));
+    patchAccount(origin, { ...(cfg?.brand?.name ? { name: cfg.brand.name, color: cfg.brand.color || undefined, logo: cfg.brand.logo || undefined } : {}), signedIn: !!t });
+    serverRef.current = origin;
+    tokenRef.current = t;
     setBoot(null);
+    setBootError(null);
+    setOfflineSince(null);
     setExpired(false);
     setServerState(origin);
+    setToken(t);
     setConfig(cfg);
+    setVersion((v) => v + 1);
     await setItem('server', origin);
-    if (origin && !cfg) fetchConfig(origin).then(setConfig).catch(() => {});
-  }, [client, saveToken]);
+    if (!cfg) fetchConfig(origin).then((c) => { if (serverRef.current === origin) setConfig(c); }).catch(() => {});
+  }, [patchAccount]);
+
+  const startAdding = useCallback(() => {
+    serverRef.current = null;
+    tokenRef.current = null;
+    setServerState(null);
+    setToken(null);
+    setBoot(null);
+    setBootError(null);
+    setOfflineSince(null);
+    setConfig(null);
+    setExpired(false);
+  }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    if (!server) throw new ApiError(0, 'No server', 'badAddress');
-    const t = await login(server, email, password);
+    const s = serverRef.current;
+    if (!s) throw new ApiError(0, 'No server', 'badAddress');
+    const t = await login(s, email, password);
     setExpired(false);
     saveToken(t);
-  }, [server, saveToken]);
+  }, [saveToken]);
 
   const signOut = useCallback(async () => {
+    const s = serverRef.current;
     await unregisterPush(client).catch(() => {});
     saveToken(null);
     setBoot(null);
+    setOfflineSince(null);
     setExpired(false);
+    if (s) clearCache(s);
   }, [client, saveToken]);
 
+  const forget = useCallback(async (origin: string) => {
+    const t = await getItem(tokenKey(origin));
+    if (t) {
+      const other = createClient(origin, () => t, { onUnauthorized: () => {}, onToken: () => {} });
+      await unregisterPush(other).catch(() => {});
+    }
+    await setItem(tokenKey(origin), null);
+    clearCache(origin);
+    saveAccounts(accountsRef.current.filter((a) => a.server !== origin));
+    if (serverRef.current === origin) {
+      startAdding();
+      await setItem('server', null);
+    }
+  }, [saveAccounts, startAdding]);
+
+  const features = featuresOf(boot, config);
   const mode = boot?.me.appearance || boot?.settings.appearance || config?.brand?.mode || 'auto';
   const dark = mode === 'dark' || (mode !== 'light' && scheme === 'dark');
   const colors = useMemo(() => palette(dark, boot?.settings.brandColor || config?.brand?.color), [dark, boot?.settings.brandColor, config?.brand?.color]);
@@ -161,15 +283,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const value = useMemo<Session>(() => {
     const me = boot?.me;
     const st = boot?.settings;
+    const rank = me ? RANK[me.role] || 1 : 0;
     return {
-      ready, server, config, token, boot, bootError, expired, client, version, colors,
+      ready, accounts, server, config, token, boot, bootError, offlineSince, expired, client, version, colors,
       logoUrl: server && logoPath ? `${server}${logoPath}` : null,
       jobs: Object.fromEntries((boot?.jobCodes || []).map((j) => [j.id, j])),
       people: Object.fromEntries((boot?.employees || []).map((p) => [p.id, p])),
-      canApprove: !!me && (APPROVER_ROLES.includes(me.role) || (me.role === 'supervisor' && st?.supervisorsCanApprove !== false)),
-      setServer, signIn, signOut, refresh, bump,
+      canApprove: !!me && (rank >= 3 || (me.role === 'supervisor' && st?.supervisorsCanApprove !== false)),
+      isMgr: rank >= 3,
+      isEvents: rank >= 3 || !!me?.eventsAccess || (me?.role as string) === 'events',
+      isLead: rank >= 2,
+      features,
+      has: (f: Feature) => featureOn(features, f),
+      cachePrefix: server || '',
+      openRestaurant, startAdding, forget, signIn, signOut, refresh, bump,
     };
-  }, [ready, server, config, token, boot, bootError, expired, client, version, colors, logoPath, setServer, signIn, signOut, refresh, bump]);
+  }, [ready, accounts, server, config, token, boot, bootError, offlineSince, expired, client, version, colors, logoPath, features, openRestaurant, startAdding, forget, signIn, signOut, refresh, bump]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

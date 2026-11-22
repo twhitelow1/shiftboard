@@ -1,8 +1,8 @@
 // Web preview only (npx expo start --web / expo export --platform web): SecureStore isn't
 // available in browsers, so the web build keeps the same values in localStorage.
-export type StoreKey = 'server' | 'token' | 'pushToken' | 'language';
+export type StoreKey = 'server' | 'token' | 'pushToken' | 'language' | 'accounts' | `token.${string}`;
 
-const name = (k: StoreKey) => `shiftboard.${k}`;
+const name = (k: StoreKey) => `shiftboard.${k}`.replace(/[^A-Za-z0-9._-]/g, '_');
 
 export async function getItem(k: StoreKey): Promise<string | null> {
   try {

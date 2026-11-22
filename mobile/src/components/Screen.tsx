@@ -10,7 +10,7 @@ import { useI18n } from '@/i18n';
 import { useSession } from '@/lib/session';
 import { Icon } from './Icon';
 import { LanguageButton } from './LanguageButton';
-import { Txt, useColors } from './ui';
+import { OfflineNote, Txt, useColors } from './ui';
 
 export function Screen({ title, back, bell = !back, children, onRefresh, scroll = true, bottomInset = false, contentStyle }: {
   title: string;
@@ -27,16 +27,22 @@ export function Screen({ title, back, bell = !back, children, onRefresh, scroll 
 }) {
   const c = useColors();
   const insets = useSafeAreaInsets();
-  const { t, tn } = useI18n();
-  const { logoUrl, boot, token } = useSession();
+  const { t, tn, stamp } = useI18n();
+  const { logoUrl, boot, token, offlineSince, refresh } = useSession();
   const [refreshing, setRefreshing] = useState(false);
   const unread = boot?.unread || 0;
-  const pull = onRefresh ? async () => {
+  // Pulling down also retries the restaurant's data when the app opened without a connection.
+  const pull = onRefresh || offlineSince ? async () => {
     setRefreshing(true);
-    try { await onRefresh(); } finally { setRefreshing(false); }
+    try { await Promise.all([onRefresh?.(), offlineSince ? refresh() : null]); } finally { setRefreshing(false); }
   } : undefined;
 
-  const body = <View style={[styles.content, bottomInset && { paddingBottom: 24 + insets.bottom }, contentStyle]}>{children}</View>;
+  const body = (
+    <View style={[styles.content, bottomInset && { paddingBottom: 24 + insets.bottom }, contentStyle]}>
+      {offlineSince && token ? <OfflineNote text={t('common.offline', { when: stamp(offlineSince) })} /> : null}
+      {children}
+    </View>
+  );
   return (
     <View style={[styles.root, { backgroundColor: c.bg }]}>
       <View style={[styles.header, { paddingTop: insets.top, backgroundColor: c.surface, borderColor: c.border }]}>

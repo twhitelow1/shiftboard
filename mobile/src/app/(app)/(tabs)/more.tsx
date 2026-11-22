@@ -1,5 +1,7 @@
-// More: the 86 List (first: the tab bar has no room for it at 360 px), profile, language, notifications, calendar, Training (coming soon), the full website,
-// change restaurant, privacy and help, delete my account, sign out.
+// More: the floor tools (leads and managers), the 86 List, my tips, events, availability and time off (when
+// Training has the tab), profile, language, notifications, calendar, the full website, the restaurants this phone
+// uses (switch, add another), privacy and help, delete my account, sign out. Rows for features the restaurant's
+// plan doesn't include are hidden (lib/features.ts).
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
@@ -8,18 +10,19 @@ import { Linking, Share, View } from 'react-native';
 
 import { Screen } from '@/components/Screen';
 import { Icon } from '@/components/Icon';
-import { Badge, Card, ListRow, Txt, useToast } from '@/components/ui';
+import { Badge, Card, ListRow, Notice, SectionTitle, Txt, useToast } from '@/components/ui';
 import { useI18n, type Lang } from '@/i18n';
 import { displayServer } from '@/lib/api';
 import { confirm } from '@/lib/confirm';
 import { useAction, useErrorText, useRpc } from '@/lib/hooks';
 import { pushStatus, registerForPush, type PushStatus } from '@/lib/push';
-import { useApp } from '@/lib/session';
+import { useApp, type Account } from '@/lib/session';
 import type { EightySixSummary } from '@/lib/types';
+import { showTimeOffTab } from '@/navigation';
 
 export default function More() {
-  const { t, chosen, setLang, date } = useI18n();
-  const { me, settings, server, client, signOut, setServer, colors } = useApp();
+  const { t, tn, chosen, setLang, date } = useI18n();
+  const { me, boot, settings, server, client, signOut, accounts, openRestaurant, startAdding, colors, has, isLead, canApprove } = useApp();
   const toast = useToast();
   const errorText = useErrorText();
   const [run, busy] = useAction();
@@ -42,9 +45,13 @@ export default function More() {
   const notifications = async () => {
     if (push === 'ask') { await registerForPush(client).catch(() => {}); setPush(await pushStatus()); } else Linking.openSettings();
   };
-  const changeRestaurant = async () => {
-    if (!(await confirm(t('more.changeRestaurant'), t('more.changeRestaurantConfirm', { name: settings.restaurantName }), t('common.continue'), t('common.cancel')))) return;
-    await setServer(null);
+  const switchTo = async (a: Account) => {
+    if (a.server === origin) return;
+    await openRestaurant(a.server);
+    router.replace('/');
+  };
+  const addRestaurant = () => {
+    startAdding();
     router.replace('/welcome');
   };
   const deleteAccount = async () => {
@@ -57,13 +64,36 @@ export default function More() {
     router.replace('/sign-in');
   };
   const langValue: Lang | 'phone' = chosen ?? 'phone';
-  const out86 = useRpc<EightySixSummary>('eightySix.summary').data?.out || 0;
+  const out86 = useRpc<EightySixSummary>('eightySix.summary', {}, [], has('eightySix')).data?.out || 0;
+  const billing = boot.tenant?.billing;
+  const approvals = canApprove ? boot.pendingApprovals : 0;
 
   return (
     <Screen title={t('more.title')}>
+      {billing ? (
+        <Notice tone={billing.kind === 'pastDue' ? 'bad' : 'warn'} icon="alert"
+          text={billing.kind === 'pastDue' ? t('more.pastDue') : billing.daysLeft ? tn('more.trialEnds', billing.daysLeft) : t('more.trialEndsToday')} />
+      ) : null}
+
+      {isLead || has('eightySix') ? (
+        <Card pad={false} style={{ overflow: 'hidden' }}>
+          {isLead ? (
+            <ListRow icon="users" title={t('more.floor')} sub={t('more.floorHelp')} onPress={() => router.push('/floor')}
+              right={approvals ? <Badge tone="warn" text={String(approvals)} /> : null} />
+          ) : null}
+          {has('eightySix') ? (
+            <ListRow icon="ban" title={t('more.eightySix')} sub={t('more.eightySixHelp')} onPress={() => router.push('/eighty-six')}
+              right={out86 ? <Badge tone="bad" text={String(out86)} /> : null} />
+          ) : null}
+        </Card>
+      ) : null}
+
       <Card pad={false} style={{ overflow: 'hidden' }}>
-        <ListRow icon="ban" title={t('more.eightySix')} sub={t('more.eightySixHelp')} onPress={() => router.push('/eighty-six')}
-          right={out86 ? <Badge tone="bad" text={String(out86)} /> : null} />
+        {has('tips') ? <ListRow icon="dollar" title={t('more.myTips')} sub={t('more.myTipsHelp')} onPress={() => router.push('/tips')} /> : null}
+        {has('events') ? <ListRow icon="glass" title={t('more.events')} sub={t('more.eventsHelp')} onPress={() => router.push('/events')} /> : null}
+        {!showTimeOffTab(has) ? <ListRow icon="sun" title={t('more.timeOff')} onPress={() => router.push('/time-off')}
+          right={canApprove && approvals ? <Badge tone="warn" text={String(approvals)} /> : null} /> : null}
+        <ListRow icon="clock" title={t('more.availability')} sub={t('more.availabilityHelp')} onPress={() => router.push('/availability')} />
       </Card>
 
       <Card style={{ gap: 4 }}>
@@ -80,7 +110,7 @@ export default function More() {
           <Txt v="small" tone="faint">{t('lang.help')}</Txt>
         </View>
         {([['es', 'Español'], ['en', 'English'], ['phone', t('lang.phone')]] as [Lang | 'phone', string][]).map(([v, label]) => (
-          <ListRow key={v} title={label} chevron={false} label={label} onPress={() => setLang(v === 'phone' ? null : v)}
+          <ListRow key={v} title={label} chevron={false} label={label} onPress={() => setLang(v === 'phone' ? null : v)} selected={langValue === v}
             right={langValue === v ? <Icon name="check" size={20} color={colors.brand} /> : null} />
         ))}
       </Card>
@@ -91,12 +121,27 @@ export default function More() {
             right={<Badge tone={push === 'on' ? 'ok' : 'warn'} text={push === 'on' ? t('more.notificationsOn') : t('more.notificationsOff')} />} />
         ) : null}
         <ListRow icon="calendar" title={t('more.calendar')} sub={t('more.calendarHelp')} onPress={calendar} />
-        <ListRow icon="book" title={t('more.training')} right={<Badge text={t('more.soon')} />} onPress={() => router.push('/training')} />
         <ListRow icon="external" title={t('more.web')} sub={displayServer(origin)} onPress={() => open('/')} />
       </Card>
 
+      <SectionTitle title={t('more.restaurants')} />
+      <Txt v="small" tone="muted">{t('more.restaurantsHelp')}</Txt>
       <Card pad={false} style={{ overflow: 'hidden' }}>
-        <ListRow icon="store" title={t('more.changeRestaurant')} onPress={changeRestaurant} />
+        {accounts.map((a) => {
+          const here = a.server === origin;
+          const name = here ? settings.restaurantName : a.name || displayServer(a.server);
+          return (
+            <ListRow key={a.server} icon="store" title={name} chevron={!here} selected={here}
+              sub={here ? `${t('more.openNow')} · ${displayServer(a.server)}` : a.signedIn ? displayServer(a.server) : t('more.signedOutTap')}
+              label={here ? `${name}, ${t('more.openNow')}` : t('more.switchTo', { name })}
+              onPress={here ? undefined : () => switchTo(a)}
+              right={here ? <Icon name="check" size={20} color={colors.brand} /> : null} />
+          );
+        })}
+        <ListRow icon="plus" title={t('more.addRestaurant')} onPress={addRestaurant} />
+      </Card>
+
+      <Card pad={false} style={{ overflow: 'hidden' }}>
         <ListRow icon="shield" title={t('more.privacy')} onPress={() => open('/privacy')} />
         <ListRow icon="help" title={t('more.help')} onPress={() => open('/support')} />
         <ListRow icon="trash" title={t('more.delete')} danger onPress={busy ? undefined : deleteAccount} />

@@ -71,12 +71,16 @@ export function onPushReceived(cb: () => void): () => void {
   return () => sub.remove();
 }
 
-/** The link of the notification the person tapped to open the app, if any. */
-export function useTappedNotificationLink(): { id: string; link: string } | null {
+/**
+ * The notification the person tapped to open the app, if any: its link, and its title (the restaurant's name,
+ * which picks the restaurant when the phone has more than one).
+ */
+export function useTappedNotificationLink(): { id: string; link: string; title: string } | null {
   const r = Notifications.useLastNotificationResponse();
   if (!r || r.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return null;
-  const data = r.notification.request.content.data as { link?: string } | undefined;
-  return { id: r.notification.request.identifier, link: data?.link || '' };
+  const content = r.notification.request.content;
+  const data = content.data as { link?: string } | undefined;
+  return { id: r.notification.request.identifier, link: data?.link || '', title: content.title || '' };
 }
 
 export const setBadge = (n: number) => Notifications.setBadgeCountAsync(n).catch(() => {});

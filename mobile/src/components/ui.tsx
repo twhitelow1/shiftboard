@@ -101,12 +101,13 @@ export function Row({ children, style, gap = 8 }: { children: ReactNode; style?:
 }
 
 /** A tappable row for menus: icon, title (and a line under it), something on the right. */
-export function ListRow({ icon, title, sub, right, onPress, danger, chevron = !!onPress, label }: {
-  icon?: IconName; title: string; sub?: string; right?: ReactNode; onPress?: () => void; danger?: boolean; chevron?: boolean; label?: string;
+export function ListRow({ icon, title, sub, right, onPress, danger, chevron = !!onPress, label, selected }: {
+  icon?: IconName; title: string; sub?: string; right?: ReactNode; onPress?: () => void; danger?: boolean; chevron?: boolean; label?: string; selected?: boolean;
 }) {
   const c = useColors();
   return (
     <Pressable onPress={onPress} disabled={!onPress} accessibilityRole={onPress ? 'button' : undefined} accessibilityLabel={label}
+      accessibilityState={selected != null ? { selected } : undefined}
       style={({ pressed }) => [styles.listRow, { borderColor: c.border, backgroundColor: pressed ? c.surface2 : 'transparent' }]}>
       {icon ? <Icon name={icon} size={20} color={danger ? c.bad : c.text2} /> : null}
       <View style={{ flex: 1, gap: 2 }}>
@@ -129,7 +130,7 @@ export function Segmented<T extends string>({ options, value, onChange }: { opti
         return (
           <Pressable key={o.value} onPress={() => onChange(o.value)} accessibilityRole="tab" accessibilityState={{ selected: on }}
             style={[styles.segItem, on && { backgroundColor: c.surface, borderColor: c.border }]}>
-            <Text style={{ color: on ? c.text : c.text2, fontWeight: on ? '700' : '500', fontSize: 14 }} numberOfLines={1}>{o.label}</Text>
+            <Text style={{ color: on ? c.text : c.text2, fontWeight: on ? '700' : '500', fontSize: 14, textAlign: 'center' }} numberOfLines={2}>{o.label}</Text>
           </Pressable>
         );
       })}
@@ -152,6 +153,39 @@ export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { valu
           </Pressable>
         );
       })}
+    </View>
+  );
+}
+
+/** Choices you can turn on and off (filters); they wrap. With `single`, picking one turns the others off. */
+export function Chips<T extends string>({ options, value, onChange, single, label }: {
+  options: { value: T; label: string }[]; value: T[]; onChange: (v: T[]) => void; single?: boolean; label?: string;
+}) {
+  const c = useColors();
+  return (
+    <View style={styles.chips} accessibilityLabel={label}>
+      {options.map((o) => {
+        const on = value.includes(o.value);
+        return (
+          <Pressable key={o.value} onPress={() => onChange(single ? (on ? [] : [o.value]) : on ? value.filter((x) => x !== o.value) : [...value, o.value])}
+            accessibilityRole={single ? 'radio' : 'checkbox'} accessibilityState={single ? { selected: on } : { checked: on }} accessibilityLabel={o.label}
+            style={({ pressed }) => [styles.chip, { borderColor: on ? c.brand : c.border, backgroundColor: on ? c.brandSoft : pressed ? c.surface2 : c.surface }]}>
+            {on ? <Icon name="check" size={14} color={c.brand} /> : null}
+            <Text style={{ color: on ? c.brand : c.text2, fontWeight: '700', fontSize: 14 }}>{o.label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** "No connection. Showing what you last saw (Nov 22, 3:42 PM)." for screens that keep a copy on the phone. */
+export function OfflineNote({ text }: { text: string }) {
+  const c = useColors();
+  return (
+    <View style={[styles.offline, { backgroundColor: c.warnSoft }]} accessibilityLiveRegion="polite" accessibilityLabel={text}>
+      <Icon name="clock" size={16} color={c.warn} />
+      <Text style={{ color: c.warn, fontSize: 13, fontWeight: '600', flex: 1 }}>{text}</Text>
     </View>
   );
 }
@@ -215,11 +249,14 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 32, paddingHorizontal: 16 },
   sectionTitle: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 20, marginBottom: 8 },
   listRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52, paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
-  seg: { flexDirection: 'row', borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, padding: 3 },
-  segItem: { flex: 1, minHeight: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 9, borderWidth: StyleSheet.hairlineWidth, borderColor: 'transparent', paddingHorizontal: 8 },
+  seg: { flexDirection: 'row', borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, padding: 2 },
+  segItem: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 9, borderWidth: StyleSheet.hairlineWidth, borderColor: 'transparent', paddingHorizontal: 8 },
   tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  tab: { minHeight: 40, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  tab: { minHeight: 44, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
   count: { minWidth: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { minHeight: 44, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  offline: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
   input: { minHeight: 48, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 16 },
   toastWrap: { position: 'absolute', left: 16, right: 16, alignItems: 'center' },
   toast: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, maxWidth: 480 },

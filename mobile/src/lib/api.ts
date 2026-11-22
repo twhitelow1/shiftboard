@@ -2,6 +2,7 @@
 // (its own address and database); the app remembers which one this phone uses.
 // Every call is POST <server>/api/rpc/<method> with a JSON body; the session is sent as
 // Authorization: Bearer <token> (see server/app.js).
+import { LINK_SCHEMES } from '@/brand';
 import type { ServerConfig } from './types';
 
 /** status 0 = no answer (offline, wrong address); code is for messages the app words itself. */
@@ -17,6 +18,8 @@ export class ApiError extends Error {
 
 const LOCAL_HOST = /^(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|[\w-]+\.local)$/i;
 
+const INVITE = new RegExp(`^(${LINK_SCHEMES.join('|')}):\\/*`, 'i');
+
 /**
  * Turn what someone typed, pasted or opened (an address, a link to the web app, or an invite
  * link like shiftboard://join?server=…) into the server's origin, e.g. https://rabbits.vercel.app.
@@ -25,9 +28,9 @@ const LOCAL_HOST = /^(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d
 export function parseServerInput(input: string): string | null {
   let s = String(input || '').trim();
   if (!s) return null;
-  if (/^shiftboard:/i.test(s)) {
+  if (INVITE.test(s)) {
     try {
-      const inner = new URL(s.replace(/^shiftboard:\/*/i, 'https://app/')).searchParams.get('server');
+      const inner = new URL(s.replace(INVITE, 'https://app/')).searchParams.get('server');
       return inner ? parseServerInput(inner) : null;
     } catch {
       return null;
@@ -75,7 +78,11 @@ export async function fetchConfig(server: string): Promise<ServerConfig> {
   const res = await request(`${server}/api/config`, { headers: { Accept: 'application/json' } }, 12000);
   const body = await json(res);
   if (!res.ok || !body || typeof body !== 'object' || !('email' in body)) throw new ApiError(res.status, 'Not a ShiftBoard server', 'notShiftBoard');
-  return { email: !!body.email, brand: body.brand || null };
+  return {
+    email: !!body.email, brand: body.brand || null,
+    ...(body.features && typeof body.features === 'object' ? { features: body.features } : {}),
+    ...(body.paused ? { paused: true } : {}),
+  };
 }
 
 /** Sign in. Returns the session token (valid 30 days). */

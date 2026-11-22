@@ -2,6 +2,7 @@
 // screen here sends the person back to sign in.
 import { Redirect, Stack } from 'expo-router';
 
+import { APP_NAME } from '@/brand';
 import { Screen } from '@/components/Screen';
 import { Button, Empty, Loading } from '@/components/ui';
 import { useI18n } from '@/i18n';
@@ -15,7 +16,7 @@ export default function AppLayout() {
   if (!token || !server) return <Redirect href="/" />;
   if (!boot) {
     return (
-      <Screen title="ShiftBoard" bell={false}>
+      <Screen title={APP_NAME} bell={false}>
         {bootError ? (
           <Empty icon="alert" title={errorText(bootError)}><Button kind="primary" title={t('common.retry')} onPress={refresh} /></Empty>
         ) : <Loading label={t('common.loading')} />}

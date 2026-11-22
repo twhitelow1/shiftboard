@@ -1,8 +1,6 @@
 // Schedule helpers shared by the screens. The grouping follows the website's day view
 // (web/src/pages/Schedule.jsx): an area banner (Restaurant, Rabbit Hole…), then each position
 // worked there. Area matching is copied from core/areas.js.
-import type { Href } from 'expo-router';
-
 import type { JobCode, Person, Settings, Shift } from './types';
 
 const BOOKING_ONLY = /full buyout/i;
@@ -57,26 +55,3 @@ export const canTrade = (s: Shift, meId: string, today: string) => s.userId === 
 
 /** Is this person set up for the shift's position? */
 export const qualified = (p: Person | undefined, jobCodeId: string) => !!p?.jobCodes?.some((j) => j.jobCodeId === jobCodeId);
-
-/**
- * Where a notification's link (from the website, like '#/swaps') goes in the app.
- * Links to pages the app doesn't have yet open the notifications list.
- */
-export function routeForLink(link?: string): Href {
-  const path = String(link || '').replace(/^#?\/?/, '').split(/[/?]/)[0];
-  switch (path) {
-    case 'my':
-    case 'calendar':
-      return '/shifts';
-    case 'schedule':
-      return '/schedule';
-    case 'swaps':
-      return '/swaps';
-    case 'timeoff':
-      return '/time-off';
-    case '86':
-      return '/eighty-six';
-    default:
-      return '/notifications';
-  }
-}

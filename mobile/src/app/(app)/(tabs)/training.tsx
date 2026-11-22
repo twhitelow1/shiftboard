@@ -8,7 +8,7 @@ import { useI18n } from '@/i18n';
 export default function Training() {
   const { t } = useI18n();
   return (
-    <Screen title={t('training.title')} back bottomInset>
+    <Screen title={t('training.title')}>
       <Card>
         <Empty icon="book" title={t('training.soon')} body={t('training.body')}>
           <Badge tone="brand" text={t('more.soon')} />

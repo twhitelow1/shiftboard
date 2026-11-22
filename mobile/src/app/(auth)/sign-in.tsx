@@ -16,7 +16,7 @@ export default function SignIn() {
   const { t } = useI18n();
   const c = useColors();
   const errorText = useErrorText();
-  const { server, config, logoUrl, expired, signIn } = useSession();
+  const { server, config, logoUrl, expired, signIn, startAdding } = useSession();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -52,6 +52,7 @@ export default function SignIn() {
         <Txt v="small" tone="faint">{displayServer(server)}</Txt>
       </View>
       {expired ? <Notice tone="warn" icon="clock" text={t('signIn.expired')} /> : null}
+      {config?.paused ? <Notice tone="bad" text={t('welcome.paused')} /> : null}
       <Card style={{ gap: 14 }}>
         <Field label={t('signIn.email')} value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address"
           textContentType="username" autoComplete="email" returnKeyType="next" testID="email" />
@@ -63,7 +64,7 @@ export default function SignIn() {
       </Card>
       <Row style={{ justifyContent: 'center', flexWrap: 'wrap', gap: 4 }}>
         <Txt v="small" tone="muted">{t('signIn.notYou')}</Txt>
-        <Button kind="ghost" small title={t('signIn.change')} onPress={() => router.push('/welcome')} />
+        <Button kind="ghost" small title={t('signIn.change')} onPress={() => { startAdding(); router.replace('/welcome'); }} />
       </Row>
     </Screen>
   );
