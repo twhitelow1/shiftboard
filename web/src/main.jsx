@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { applyBranding, logoUrl } from './theme.js';
-import { call, login, logout, IS_DEMO, demoPersonas, demoSwitch, demoCurrent, getConfig, forgotPassword, resetPassword, billingPortal } from './api.js';
+import { call, logout, IS_DEMO, demoPersonas, demoSwitch, demoCurrent, getConfig, billingPortal } from './api.js';
 import { Ctx, Icon, Avatar, useToasts, Modal, setStartTimesOnly } from './ui.jsx';
 import { canManageSchedule, canChangeSettings, canManageEvents, canApprove, roleLabel } from '../../core/roles.js';
 import Schedule from './pages/Schedule.jsx';
@@ -18,8 +18,13 @@ import Settings from './pages/Settings.jsx';
 import Venue from './pages/Venue.jsx';
 import Training from './pages/Training.jsx';
 import EightySix from './pages/EightySix.jsx';
+import Account from './pages/Security.jsx';
+import { SignIn, ResetPassword, LinkSignIn } from './pages/SignIn.jsx';
+import { Welcome, ConsentGate } from './pages/Onboarding.jsx';
+import { AuthCard, SignInBrand, BrandMark, DEFAULT_NAME } from './pages/AuthCard.jsx';
 import { t as tr, useT, I18nCtx, setCurrentLang, resolveLang, saveDeviceLang, deviceLang, unsavedDeviceLang, clearUnsaved, isLang, prettyDate, stamp, fmtTime } from './i18n/index.js';
 import LanguageSwitch from './LanguageSwitch.jsx';
+export { BrandMark }; // the sign-in card lives in pages/AuthCard.jsx now
 
 function useHashRoute() {
   const get = () => (location.hash.replace(/^#\/?/, '') || '').split('/');
@@ -48,73 +53,11 @@ const NAV = [
   { key: 'venue', label: 'main.venueFloorPlans', short: 'main.venue', icon: 'map', mgr: true, feature: 'venue' },
   { key: 'team', label: 'main.teamJobCodes', icon: 'users', mgr: true },
   { key: 'settings', label: 'main.settings', icon: 'settings', admin: true },
+  { key: 'account', label: 'security.mySettings', icon: 'lock' }, // My settings: profile, Sign-in & security
 ];
 
 // Shorter page titles for the phone's top bar, where the language switch and the bell sit too.
 const PHONE_TITLE = { swaps: 'main.phoneTitleSwaps', events: 'main.phoneTitleEvents', forecast: 'main.phoneTitleForecast', venue: 'main.phoneTitleVenue', team: 'main.phoneTitleTeam' };
-
-// The restaurant's name and logo for the sign-in screens (from /api/config, before anyone signs in).
-const SignInBrand = React.createContext(null);
-
-/** The restaurant's logo, or the first letter of its name in its color. */
-export function BrandMark({ name, logo, size = 32 }) {
-  if (logo) return <img className="brand-logo" src={logo} alt="" style={{ height: size, maxWidth: size * 4 }} />;
-  return <div className="brand-mark" style={{ width: size, height: size }}>{(String(name || 'S').trim()[0] || 'S').toUpperCase()}</div>;
-}
-const DEFAULT_NAME = 'Our Restaurant';
-
-function AuthCard({ children, onSubmit }) {
-  const t = useT();
-  const brand = React.useContext(SignInBrand);
-  const named = brand?.name && brand.name !== DEFAULT_NAME;
-  return (
-    <div className="login">
-      <div className="login-lang"><LanguageSwitch onDark /></div>
-      <form className="card card-pad col" style={{ gap: 14, padding: 26 }} onSubmit={onSubmit}>
-        <div className="brand" style={{ color: 'var(--text)', padding: 0 }}>
-          <BrandMark name={named ? brand.name : 'S'} logo={brand?.logo} size={40} />
-          <div><div className="brand-name">{named ? brand.name : t('main.shiftboard')}</div><div className="small muted">{named ? t('main.scheduleShiftboard') : t('main.restaurantScheduling')}</div></div>
-        </div>
-        {children}
-      </form>
-    </div>
-  );
-}
-
-function Login({ onDone, emailEnabled }) {
-  const t = useT();
-  const [mode, setMode] = useState('login'); // login | forgot | sent
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [err, setErr] = useState('');
-  const [busy, setBusy] = useState(false);
-  const submit = async (e) => {
-    e.preventDefault();
-    setBusy(true); setErr('');
-    try {
-      if (mode === 'forgot') { await forgotPassword(email); setMode('sent'); }
-      else { await login(email, password); onDone(); }
-    } catch (x) { setErr(x.message); } finally { setBusy(false); }
-  };
-  if (mode === 'sent') return (
-    <AuthCard onSubmit={(e) => { e.preventDefault(); setMode('login'); }}>
-      <div className="alert ok"><Icon name="send" size={16} />{t('main.ifEmailHasAnAccount', { email })}</div>
-      <button className="btn block">{t('main.backToSignIn')}</button>
-    </AuthCard>
-  );
-  return (
-    <AuthCard onSubmit={submit}>
-      {mode === 'forgot' && <div className="small muted">{t('main.enterYourSignInEmail')}</div>}
-      <label className="field"><span>{t('common.email')}</span><input className="input" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus /></label>
-      {mode === 'login' && <label className="field"><span>{t('main.password')}</span><input className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>}
-      {err && <div className="alert bad">{err}</div>}
-      <button className="btn primary block" disabled={busy}>{mode === 'forgot' ? (busy ? t('main.sending') : t('main.emailMeAResetLink')) : (busy ? t('main.signingIn') : t('main.signIn'))}</button>
-      {emailEnabled
-        ? <button type="button" className="btn ghost sm" onClick={() => { setErr(''); setMode(mode === 'login' ? 'forgot' : 'login'); }}>{mode === 'login' ? t('main.forgotYourPassword') : t('main.backToSignIn')}</button>
-        : <div className="help">{t('main.forgotYourPasswordAskA')}</div>}
-    </AuthCard>
-  );
-}
 
 // The address has no restaurant, or the restaurant's account is paused (server/platform/). Signed out or in.
 function NoticeCard({ title, help, icon = 'alert' }) {
@@ -164,31 +107,6 @@ function TenantBanners({ onEndSupport }) {
         </div>
       )}
     </>
-  );
-}
-
-// Opened from an email link (#/reset?token=…): set a password for a new account or reset a forgotten one.
-function ResetPassword({ token, onDone }) {
-  const t = useT();
-  const [pw, setPw] = useState('');
-  const [pw2, setPw2] = useState('');
-  const [err, setErr] = useState('');
-  const [busy, setBusy] = useState(false);
-  const submit = async (e) => {
-    e.preventDefault();
-    if (pw !== pw2) return setErr(t('main.theTwoPasswordsDontMatch'));
-    setBusy(true); setErr('');
-    try { await resetPassword(token, pw); onDone(); } catch (x) { setErr(x.message); } finally { setBusy(false); }
-  };
-  return (
-    <AuthCard onSubmit={submit}>
-      <div><b>{t('main.chooseYourPassword')}</b><div className="small muted">{t('main.atLeast6CharactersYoull')}</div></div>
-      <label className="field"><span>{t('main.newPassword')}</span><input className="input" type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} required minLength={6} autoFocus /></label>
-      <label className="field"><span>{t('main.repeatIt')}</span><input className="input" type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} required minLength={6} /></label>
-      {err && <div className="alert bad">{err}</div>}
-      <button className="btn primary block" disabled={busy}>{busy ? t('main.saving') : t('main.saveAndSignIn')}</button>
-      <a className="btn ghost sm" href="#/">{t('main.backToSignIn')}</a>
-    </AuthCard>
   );
 }
 
@@ -297,12 +215,26 @@ function App() {
     : config.paused ? { title: t('platform.pausedTitle'), help: t('platform.pausedHelp') } : null;
   if (notice) return <I18nCtx.Provider value={i18n}><SignInBrand.Provider value={config.brand}><NoticeCard {...notice} /></SignInBrand.Provider></I18nCtx.Provider>;
 
-  if (parts[0]?.startsWith('reset')) {
-    const token = new URLSearchParams(location.hash.split('?')[1] || '').get('token') || '';
-    return <I18nCtx.Provider value={i18n}><SignInBrand.Provider value={config.brand}><ResetPassword token={token} onDone={() => { location.hash = '#/'; setAuthed(true); refresh(); }} /></SignInBrand.Provider></I18nCtx.Provider>;
+  // Links from emails: an invitation (the welcome wizard), a password reset, a sign-in link. The demo can preview
+  // the wizard and the consent screen (#/welcome?preview=1) without any server.
+  const hashParams = new URLSearchParams(location.hash.split('?')[1] || '');
+  const signedOut = (node) => <I18nCtx.Provider value={i18n}><SignInBrand.Provider value={config.brand}>{node}</SignInBrand.Provider></I18nCtx.Provider>;
+  const signedInNow = (to = '#/') => { location.hash = to; setAuthed(true); refresh(); };
+  if (parts[0]?.startsWith('welcome')) {
+    const preview = hashParams.get('preview') === '1';
+    if (preview && !IS_DEMO) { location.hash = '#/'; return null; }
+    return signedOut(<Welcome token={hashParams.get('token') || ''} preview={preview} startAt={hashParams.get('step') || ''} onDone={() => signedInNow('#/my')} />);
   }
-  if (authed === false) return <I18nCtx.Provider value={i18n}><SignInBrand.Provider value={config.brand}><Login emailEnabled={config.email} onDone={() => { setAuthed(true); refresh(); }} /></SignInBrand.Provider></I18nCtx.Provider>;
+  if (parts[0]?.startsWith('reset')) return signedOut(<ResetPassword token={hashParams.get('token') || ''} onDone={() => signedInNow()} />);
+  if (parts[0]?.startsWith('link')) return signedOut(<LinkSignIn token={hashParams.get('token') || ''} onDone={() => signedInNow()} />);
+  if (authed === false) return signedOut(<SignIn emailEnabled={config.email} onDone={() => { setAuthed(true); refresh(); }} />);
   if (!ctx) return <div className="empty" style={{ paddingTop: 120 }}>{t('common.loading')}</div>;
+  // Signed in without having agreed to the terms (people from before consent records): the consent screen, once.
+  // Not in the demo, and not while DubLow Digital is signed in for support (only the person can agree).
+  if (ctx.me.needsTerms && !IS_DEMO && !ctx.tenant?.support) {
+    const sms = !!config.sms && ctx.has('sms') && ctx.settings.smsNotifications !== false;
+    return signedOut(<ConsentGate me={ctx.me} sms={sms} legal={config.legal} call={call} onDone={refresh} onSignOut={async () => { await logout(); setBoot(null); setAuthed(false); }} />);
+  }
 
   const home = ctx.isMgr ? 'schedule' : 'my';
   const offPlan = (key) => NAV.some((n) => n.key === key && n.feature && !ctx.has(n.feature));
@@ -315,6 +247,7 @@ function App() {
     schedule: Schedule, calendar: CalendarPage, my: MyShifts, swaps: Swaps, events: Events,
     forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue, tips: Tips,
     forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue, training: Training, 86: EightySix,
+    account: Account,
   }[route] || Schedule;
 
   const signOut = async () => { await logout(); setBoot(null); setAuthed(false); };
@@ -337,7 +270,7 @@ function App() {
             </button>
           ))}
           <div className="sidebar-foot">
-            <div className="row" style={{ padding: '4px 8px 10px' }}>
+            <div className="row" style={{ padding: '4px 8px 10px', cursor: 'pointer' }} onClick={() => go('account')} title={t('security.mySettings')}>
               <Avatar user={ctx.me} />
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div className="sidebar-user" style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ctx.me.name}</div>
@@ -359,7 +292,7 @@ function App() {
               <Icon name="bell" />
               {ctx.unread > 0 && <span className="count" style={{ position: 'absolute', top: -2, right: -4 }}>{ctx.unread}</span>}
             </button>
-            <span className="mobile-only"><Avatar user={ctx.me} size="sm" /></span>
+            <a className="mobile-only topbar-avatar" href="#/account" aria-label={t('security.mySettings')}><Avatar user={ctx.me} size="sm" /></a>
           </header>
           <main className="content">
             <Page parts={parts} />

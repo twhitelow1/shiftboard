@@ -1,6 +1,7 @@
 // The web app's words in English. Keys are grouped by screen; es.js has the same keys (test/i18n.test.js).
 // Values: a string with {placeholders} and <b>…</b> for bold words, or { one, other } for plurals (by {count}).
 // Restaurant data (names, positions, areas, notes) is passed in as a placeholder and never translated here.
+import auth from './en-auth.js'; // signing in, two-step, the welcome wizard, consent, My settings
 const catalog = {
   lang: {
     change: 'Change language',
@@ -513,7 +514,7 @@ const catalog = {
     emailNotificationsOn: 'Email notifications on',
     emailNotificationsOff: 'Email notifications off',
     changeMyPassword: 'Change my password',
-    newPassword6Characters: 'New password (6+ characters)',
+    newPassword6Characters: 'New password (10+ characters)',
     passwordChanged: 'Password changed',
     isThisYou: 'Is this you? <b>{value}</b> is on the schedule, but isn’t connected to your sign-in, so those shifts don’t show here.',
     isThisYouShifts: { one: 'Is this you? <b>{value}</b> is on the schedule with {count} shift, but isn’t connected to your sign-in, so those shifts don’t show here.', other: 'Is this you? <b>{value}</b> is on the schedule with {count} shifts, but isn’t connected to your sign-in, so those shifts don’t show here.' },
@@ -771,7 +772,7 @@ const catalog = {
     addDaypart: 'Add daypart',
     saveSettings: 'Save settings',
     myPassword: 'My password',
-    newPassword6Characters: 'New password (6+ characters)',
+    newPassword6Characters: 'New password (10+ characters)',
     change: 'Change',
     passwordChanged: 'Password changed',
     themeSaved: 'Theme saved',
@@ -1759,6 +1760,7 @@ const catalog = {
     closeToOt: 'Close',
     unassigned: '{h} clock-in hours have no position yet and aren’t in the suggestions (match ADP departments in Clock-in setup).',
   },
+  ...auth,
 };
 
 export default catalog;

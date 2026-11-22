@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { fmtTime, t as tr, moneyText, translateError } from './i18n/index.js';
 import { useT } from './i18n/index.js';
+import { photoSrc } from './photo.js';
 
 export const Ctx = createContext(null);
 export const useApp = () => useContext(Ctx);
@@ -49,6 +50,11 @@ const P = {
   ban: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM4.93 4.93l14.14 14.14', // the 86 List
   search: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35',
   globe: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z',
+  lock: 'M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2zM7 11V7a5 5 0 0 1 10 0v4',
+  key: 'M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4',
+  shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
+  mail: 'M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM22 6l-10 7L2 6',
+  phone: 'M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM12 18h.01',
 };
 export function Icon({ name, size, style }) {
   return (
@@ -68,8 +74,13 @@ export function initials(name = '?') {
   const p = name.trim().split(/\s+/);
   return ((p[0]?.[0] || '') + (p[1]?.[0] || '')).toUpperCase() || '?';
 }
+/** Someone's profile photo, else their initials in their color. */
 export function Avatar({ user, size = '' }) {
+  const [, setTick] = useState(0); // the demo loads photos from its store, then shows them
+  const [broken, setBroken] = useState(false);
   if (!user) return <span className={`avatar ${size}`} style={{ background: 'var(--surface-3)', color: 'var(--text-3)' }}>?</span>;
+  const src = !broken && photoSrc(user, () => setTick((n) => n + 1));
+  if (src) return <img className={`avatar avatar-photo ${size}`} src={src} alt="" onError={() => setBroken(true)} />;
   return <span className={`avatar ${size}`} style={{ background: user.color || colorFor(user.id) }}>{initials(user.name)}</span>;
 }
 

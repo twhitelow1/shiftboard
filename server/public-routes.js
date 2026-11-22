@@ -82,7 +82,7 @@ ${box(`${esc(CONSENT_TEXT.en.sms)} <em class="muted">(optional)</em>`)}
 ${box(`${esc(CONSENT_TEXT.en.email)} <em class="muted">(optional)</em>`)}
 </div>
 <p>The text message box is <strong>optional</strong>: employees who leave it unchecked use ShiftBoard exactly the same way and get no texts. Checking it needs a mobile number, which the employee types in themselves. Employees can also turn texts on or off later in the app (My Shifts → Text messages), with the same wording and an unchecked box.</p>
-<figure><img src="/sms-opt-in-consent.png" alt="The ShiftBoard consent screen on a phone, with three unchecked checkboxes: the Privacy Policy and Terms, shift schedule text messages, and email notifications" width="390">
+<figure><img src="/sms-opt-in-consent.png" alt="The ShiftBoard consent screen on a phone, with three unchecked checkboxes: the Privacy Policy and Terms, shift schedule text messages, and email notifications" width="350" height="736">
 <figcaption>The consent screen as an employee sees it on a phone (sample data).</figcaption></figure>
 <p>Spanish-speaking employees see the same screen in Spanish:</p>
 <div class="card" lang="es">
@@ -90,6 +90,8 @@ ${box(termsHtml('es', legal))}
 ${box(esc(CONSENT_TEXT.es.sms))}
 ${box(esc(CONSENT_TEXT.es.email))}
 </div>
+<figure lang="es"><img src="/sms-opt-in-consent-es.png" alt="La pantalla de consentimiento de ShiftBoard en español, con las tres casillas sin marcar" width="350" height="776">
+<figcaption>La misma pantalla en español (datos de ejemplo).</figcaption></figure>
 
 <h2>3. Records</h2>
 <p>For every choice ShiftBoard stores a consent record: the person, the channel, yes or no, the exact words shown and their version, the language, the mobile number, the time, the IP address and the browser. Records are never changed or deleted.</p>
