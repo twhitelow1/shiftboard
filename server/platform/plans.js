@@ -18,6 +18,7 @@ export const FEATURES = [
   { key: 'forecast', label: 'Forecast & labor', hint: 'Sales history, forecast, labor rules and labor review' },
   { key: 'toast', label: 'Toast POS', hint: 'Daily sales, covers and clock-ins from Toast' },
   { key: 'adp', label: 'ADP clock-ins', hint: 'Actual hours from ADP: timecard CSV import and daily sync' },
+  { key: 'tripleseat', label: 'Tripleseat (events)', hint: 'Events booked in Tripleseat flow into Events & BEOs: daily sync and webhook' },
   { key: 'sms', label: 'Text messages', hint: 'Notifications by text (Twilio)' },
   { key: 'venue', label: 'Venue & floor plans', hint: 'Rooms, floor plans and server sections' },
   { key: 'multiLocation', label: 'Multiple locations', hint: 'Placeholder for a later phase; nothing uses it yet' },
@@ -36,7 +37,7 @@ export const PLANS = {
   },
   pro: {
     label: 'Pro', priceCents: 9900, interval: 'month', selfServe: true, stripePriceEnv: 'STRIPE_PRICE_PRO',
-    features: ['training', 'tips', 'eightySix', 'events', 'forecast', 'toast', 'adp', 'sms', 'venue'],
+    features: ['training', 'tips', 'eightySix', 'events', 'forecast', 'toast', 'adp', 'tripleseat', 'sms', 'venue'],
   },
   beta: {
     label: 'Beta (everything, free)', priceCents: 0, interval: 'month', selfServe: false, stripePriceEnv: null,
@@ -103,6 +104,7 @@ const NAMESPACE_FEATURE = {
   forecast: 'forecast', sales: 'forecast', labor: 'forecast',
   toast: 'toast',
   adp: 'adp',
+  tripleseat: 'tripleseat',
   clock: 'forecast', calibration: 'forecast',
   sms: 'sms',
   venue: 'venue', sections: 'venue',
@@ -119,6 +121,7 @@ export function featureForMethod(method) {
 export const ROUTE_FEATURES = [
   ['/api/toast', 'toast'],
   ['/api/adp', 'adp'],
+  ['/api/tripleseat', 'tripleseat'],
   ['/api/training', 'training'],
   ['/api/eighty-six', 'eightySix'],
   ['/api/sms', 'sms'],

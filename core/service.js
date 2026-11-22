@@ -15,6 +15,7 @@ import { ROLE_IDS, roleOf, roleLabel, canManageSchedule, canChangeSettings, canM
   offSchedule, assignableRoles, canManageUser } from './roles.js';
 import { channelApi } from './notify-prefs.js';
 import { venueLinks } from './venue-links.js';
+import { tripleseatLinks } from './tripleseat.js';
 import { trainingApi } from './training.js';
 import { eightySixApi } from './eighty-six.js';
 import { rosterApi } from './roster.js';
@@ -1475,6 +1476,8 @@ export function createService(store, opts = {}) {
   };
   // Rooms ↔ schedule: sections.* (who works which tables) and event room links. See core/venue-links.js.
   venueLinks({ store, api, fail, needAuth, needMgr, needEvents, visibleShift, now });
+  // Events booked in Tripleseat: tripleseat.* methods, and what the server's sync writes. See core/tripleseat.js.
+  const tripleseat = tripleseatLinks({ store, api, fail, needAuth, needMgr, needEvents, needAdmin, notify, say, day, now, cancelRequestsForShift });
 
   return {
     api,
@@ -1486,5 +1489,7 @@ export function createService(store, opts = {}) {
     settings,
     /** The language ShiftBoard writes to this person in. */
     langOf: L,
+    /** For server/tripleseat-sync.js: apply Tripleseat events inside a write. */
+    tripleseat,
   };
 }

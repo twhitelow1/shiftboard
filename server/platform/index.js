@@ -21,9 +21,11 @@ import { toastConfig } from '../toast.js';
 import { integration } from '../../core/toast.js';
 import { adpConfig } from '../adp.js';
 import { integration as adpIntegration } from '../../core/adp.js';
+import { tripleseatConfig } from '../tripleseat.js';
+import { integration as tripleseatIntegration } from '../../core/tripleseat.js';
 import { Registry } from './registry.js';
 import { TenantCache } from './tenant-cache.js';
-import { hostConfig, resolveHost, consoleAllowed } from './hosts.js';
+import { hostConfig, resolveHost, consoleAllowed, tenantAddress } from './hosts.js';
 import { tenantEnv } from './tenant-env.js';
 import { consoleRouter } from './console.js';
 import { isPaused } from './plans.js';
@@ -133,88 +135,73 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
     }
   };
 
-  // The daily Toast sync (Vercel Cron), for every restaurant with Toast set up, each within its share of the time.
-  app.get('/api/cron/toast', booted, async (req, res) => {
+  /**
+   * A daily sync (Vercel Cron) for every restaurant with `feature` in its plan and set up, each within its
+   * share of the time. Starts at a different restaurant each hour, so the ones at the end aren't always the
+   * ones left out, and skips a restaurant whose last cron run worked in the last 20 hours.
+   */
+  async function cronAll({ feature, label, configured, lastCron, run }) {
+    const budget = Number(env.CRON_BUDGET_MS) || BUDGET_MS;
+    const started = Date.now();
+    const snap = await registry.snapshot({ fresh: true });
+    const list = snap.list.filter((t) => !isPaused(t.status) && t.resolved[feature]);
+    const offset = list.length ? Math.floor(Date.now() / 3_600_000) % list.length : 0;
+    const order = [...list.slice(offset), ...list.slice(0, offset)];
+    const tenants = [];
+    for (let i = 0; i < order.length; i++) {
+      const t = order[i];
+      const left = budget - (Date.now() - started);
+      if (left < 2500) {
+        for (const r of order.slice(i)) tenants.push({ slug: r.slug, skipped: 'Out of time; the next run picks it up' });
+        break;
+      }
+      let rt;
+      try { rt = await runtime(t); } catch (e) { tenants.push({ slug: t.slug, ok: false, error: e.message }); continue; }
+      if (!configured(rt.env)) { tenants.push({ slug: t.slug, skipped: `${label} is not set up` }); continue; }
+      const release = cache.hold(rt);
+      try {
+        await rt.db.sync();
+        const last = lastCron(rt.db.store);
+        if (last?.ok && Date.now() - Date.parse(last.at) < 20 * 3_600_000) { tenants.push({ slug: t.slug, skipped: 'Already synced today' }); continue; }
+        const share = Math.max(2500, Math.floor(left / (order.length - i)));
+        tenants.push({ slug: t.slug, ...(await run(rt, share, t)) });
+      } catch (e) {
+        console.error(`${label} cron for ${t.slug} failed:`, e);
+        tenants.push({ slug: t.slug, ok: false, error: e.message });
+      } finally { release(); }
+    }
+    return { tenants, ms: Date.now() - started };
+  }
+  const cronRoute = (path, all) => app.get(path, booted, async (req, res) => {
     if (!cronAuthorized(req.get('authorization'), env.CRON_SECRET)) return res.status(401).json({ error: 'Unauthorized' });
-    const result = await toastCronAll();
+    const result = await all();
     // A failed sync shows as a failed cron run in Vercel, as it did with one restaurant.
     res.status(result.tenants.some((t) => t.ok === false) ? 502 : 200).json({ result });
   });
 
-  async function toastCronAll() {
-    const budget = Number(env.CRON_BUDGET_MS) || BUDGET_MS;
-    const started = Date.now();
-    const snap = await registry.snapshot({ fresh: true });
-    const list = snap.list.filter((t) => !isPaused(t.status) && t.resolved.toast);
-    // Start at a different restaurant each hour, so the ones at the end aren't always the ones left out.
-    const offset = list.length ? Math.floor(Date.now() / 3_600_000) % list.length : 0;
-    const order = [...list.slice(offset), ...list.slice(0, offset)];
-    const tenants = [];
-    for (let i = 0; i < order.length; i++) {
-      const t = order[i];
-      const left = budget - (Date.now() - started);
-      if (left < 2500) {
-        for (const r of order.slice(i)) tenants.push({ slug: r.slug, skipped: 'Out of time; the next run picks it up' });
-        break;
-      }
-      let rt;
-      try { rt = await runtime(t); } catch (e) { tenants.push({ slug: t.slug, ok: false, error: e.message }); continue; }
-      if (!toastConfig(rt.env).configured) { tenants.push({ slug: t.slug, skipped: 'Toast is not set up' }); continue; }
-      const release = cache.hold(rt);
-      try {
-        await rt.db.sync();
-        const last = integration(rt.db.store).lastCron;
-        if (last?.ok && Date.now() - Date.parse(last.at) < 20 * 3_600_000) { tenants.push({ slug: t.slug, skipped: 'Already synced today' }); continue; }
-        const share = Math.max(2500, Math.floor(left / (order.length - i)));
-        tenants.push({ slug: t.slug, ...(await rt.app.locals.toastCron({ budgetMs: share })) });
-      } catch (e) {
-        console.error(`Toast cron for ${t.slug} failed:`, e);
-        tenants.push({ slug: t.slug, ok: false, error: e.message });
-      } finally { release(); }
-    }
-    return { tenants, ms: Date.now() - started };
-  }
+  // Toast: daily sales, covers and clock-ins.
+  const toastCronAll = () => cronAll({
+    feature: 'toast', label: 'Toast', configured: (e) => toastConfig(e).configured, lastCron: (store) => integration(store).lastCron,
+    run: (rt, budgetMs) => rt.app.locals.toastCron({ budgetMs }),
+  });
+  cronRoute('/api/cron/toast', toastCronAll);
   app.locals.toastCronAll = toastCronAll;
 
-  // The daily ADP sync (Vercel Cron), the same way: every restaurant with ADP in its plan and set up.
-  app.get('/api/cron/adp', booted, async (req, res) => {
-    if (!cronAuthorized(req.get('authorization'), env.CRON_SECRET)) return res.status(401).json({ error: 'Unauthorized' });
-    const result = await adpCronAll();
-    res.status(result.tenants.some((t) => t.ok === false) ? 502 : 200).json({ result });
+  // ADP: clock-ins from the time clock.
+  const adpCronAll = () => cronAll({
+    feature: 'adp', label: 'ADP', configured: (e) => adpConfig(e).configured, lastCron: (store) => adpIntegration(store).lastCron,
+    run: (rt, budgetMs) => rt.app.locals.adpCron({ budgetMs }),
   });
-  async function adpCronAll() {
-    const budget = Number(env.CRON_BUDGET_MS) || BUDGET_MS;
-    const started = Date.now();
-    const snap = await registry.snapshot({ fresh: true });
-    const list = snap.list.filter((t) => !isPaused(t.status) && t.resolved.adp);
-    const offset = list.length ? Math.floor(Date.now() / 3_600_000) % list.length : 0;
-    const order = [...list.slice(offset), ...list.slice(0, offset)];
-    const tenants = [];
-    for (let i = 0; i < order.length; i++) {
-      const t = order[i];
-      const left = budget - (Date.now() - started);
-      if (left < 2500) {
-        for (const r of order.slice(i)) tenants.push({ slug: r.slug, skipped: 'Out of time; the next run picks it up' });
-        break;
-      }
-      let rt;
-      try { rt = await runtime(t); } catch (e) { tenants.push({ slug: t.slug, ok: false, error: e.message }); continue; }
-      if (!adpConfig(rt.env).configured) { tenants.push({ slug: t.slug, skipped: 'ADP is not set up' }); continue; }
-      const release = cache.hold(rt);
-      try {
-        await rt.db.sync();
-        const last = adpIntegration(rt.db.store).lastCron;
-        if (last?.ok && Date.now() - Date.parse(last.at) < 20 * 3_600_000) { tenants.push({ slug: t.slug, skipped: 'Already synced today' }); continue; }
-        const share = Math.max(2500, Math.floor(left / (order.length - i)));
-        tenants.push({ slug: t.slug, ...(await rt.app.locals.adpCron({ budgetMs: share })) });
-      } catch (e) {
-        console.error(`ADP cron for ${t.slug} failed:`, e);
-        tenants.push({ slug: t.slug, ok: false, error: e.message });
-      } finally { release(); }
-    }
-    return { tenants, ms: Date.now() - started };
-  }
+  cronRoute('/api/cron/adp', adpCronAll);
   app.locals.adpCronAll = adpCronAll;
+
+  // Tripleseat: the events window. Its address goes along, for the links in the emails it sends.
+  const tripleseatCronAll = () => cronAll({
+    feature: 'tripleseat', label: 'Tripleseat', configured: (e) => tripleseatConfig(e).configured, lastCron: (store) => tripleseatIntegration(store).lastCron,
+    run: (rt, budgetMs, t) => rt.app.locals.tripleseatCron({ budgetMs, base: tenantAddress(t, hostCfg) || '' }),
+  });
+  cronRoute('/api/cron/tripleseat', tripleseatCronAll);
+  app.locals.tripleseatCronAll = tripleseatCronAll;
   /** Open the default restaurant (its schema, first account or demo data) before the first request. */
   app.locals.warmDefault = async () => {
     await ready();

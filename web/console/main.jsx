@@ -427,6 +427,7 @@ function IntegrationsCard({ t, meta, onSaved }) {
   const groups = [
     ['toast', 'Toast POS', eff.toast ? 'Connected' : 'Not set up', t.resolved.toast ? '' : 'Toast isn’t in this restaurant’s plan.'],
     ['adp', 'ADP (clock-ins)', eff.adp ? 'Connected' : 'Not set up', t.resolved.adp ? 'ADP Workforce Now with the API Central add-on: the project’s client ID and secret, and the certificate and key from its CSR. Without API access, managers import ADP timecard CSV exports in Labor review.' : 'ADP isn’t in this restaurant’s plan.'],
+    ['tripleseat', 'Tripleseat (events)', eff.tripleseat ? 'Connected' : 'Not set up', t.resolved.tripleseat ? 'An OAuth 2.0 application from Tripleseat (Settings → API, made by a Tripleseat account admin): its client ID and secret. Location ID limits it to one venue. The webhook link is in the restaurant’s Settings → Integrations → Tripleseat (admins); paste the webhook’s signing key here.' : 'Tripleseat isn’t in this restaurant’s plan.'],
     ['twilio', 'Texts (Twilio sender)', eff.sms ? 'Ready' : eff.smsAccount ? 'Needs a sender' : 'No Twilio account on the platform', t.resolved.sms ? 'The account SID and auth token are the platform’s; each restaurant has its own sender (its A2P 10DLC brand and campaign).' : 'Texts aren’t in this restaurant’s plan.'],
     ['email', 'Email', eff.email ? `From ${eff.emailFrom}` : 'Not set up', 'Uses the platform’s Resend key. The From address’s domain must be verified in Resend.'],
   ];

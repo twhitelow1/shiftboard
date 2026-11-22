@@ -361,6 +361,8 @@ export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password =
   seedEightySix(store, { userId, now: clock });
   // SAMPLE ADP clock-ins for two days, from a pretend timecard import (seedAdpDemo, at the end of this file)
   seedAdpDemo(store, { week: WEEK });
+  // SAMPLE event from Tripleseat (Events & BEOs), as a sync brings it in: seedTripleseatDemo, at the end of this file
+  seedTripleseatDemo(store, { week: WEEK, userId });
 
   return { userId, jobId, eventId };
 }
@@ -417,4 +419,33 @@ function seedAdpDemo(store, { week }) {
   store.insert('integrations', { id: 'adp', lastImport, imports: [lastImport] });
   store.update('settings', 'settings', { clockSource: 'both' });
   return { entries: n };
+}
+
+// ---------- SAMPLE event from Tripleseat (Events & BEOs; core/tripleseat.js) ----------
+// One invented booking the way a Tripleseat sync stores it: the booking fields from "Tripleseat" (date,
+// times, guests, room, status, type, menu, drinks, notes), no staffing yet so the BEO offers "Suggest
+// staffing", and no link (there's no real Tripleseat account behind the demo). Demo data only.
+function seedTripleseatDemo(store, { week, userId }) {
+  const at = `${addDays(week, -1)}T16:00:00.000Z`;
+  store.insert('events', {
+    id: 'evt_ts_900001', source: 'tripleseat', externalId: '900001',
+    name: 'Larkspur Book Club Anniversary Dinner', date: addDays(week, 10), start: '18:30', end: '21:30', guestCount: 40, guaranteed: 38,
+    status: 'confirmed', type: 'Private dinner', room: 'Library', roomId: 'room_library', serviceStyle: 'plated', client: '', captainId: null,
+    menu: [
+      { course: 'Passed appetizers', item: 'Seasonal crostini × 40', notes: '' },
+      { course: 'First course', item: 'Little gem salad × 40', notes: '' },
+      { course: 'Entrée', item: 'Roast chicken or mushroom risotto × 40', notes: 'Counts by entrée a week out' },
+      { course: 'Dessert', item: 'Olive oil cake × 40', notes: '' },
+    ],
+    beverage: { package: 'House wine pairing × 40 · Sparkling toast × 40', bar: '', notes: '' },
+    specialDrinks: [], staffing: [], timeline: [], setupNotes: '', dietaryNotes: '', avNotes: '', attire: '', notes: '',
+    tsNotes: 'Anniversary toast at 8:00. Two guests are vegetarian.',
+    createdAt: at, createdBy: 'tripleseat',
+    tripleseat: {
+      id: '900001', status: 'definite', bookingId: '700001', locationId: '1', locationName: 'Our Restaurant', rooms: [{ id: '5001', name: 'Library' }],
+      owner: store.get('users', userId['Kelly'])?.name || '', url: null, updatedAt: at, menuFor: at,
+      owns: ['name', 'date', 'start', 'end', 'guestCount', 'status', 'room', 'guaranteed', 'type', 'tsNotes', 'menu', 'beverage'], review: [], syncedAt: at,
+    },
+  });
+  store.insert('tripleseatRooms', { id: 'tsr_5001', tsId: '5001', name: 'Library', locationId: '1', locationName: 'Our Restaurant', roomId: 'room_library', matchedBy: 'name', seenAt: at });
 }

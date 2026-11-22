@@ -4,6 +4,7 @@ import { parseDate, addDays } from '../../../core/time.js';
 import { SERVICE_STYLES, styleLabel } from '../../../core/beo.js';
 import { IS_DEMO } from '../api.js';
 import { EventPlans, useVenueRooms } from './Sections.jsx';
+import { TripleseatBadge, TripleseatEventCard, TripleseatEditorNote } from './TripleseatSettings.jsx';
 import { useT, dowShort, fmtTime, monthShort, prettyDate, stamp } from '../i18n/index.js';
 
 const STATUS_BADGE = { tentative: 'warn', confirmed: 'ok', completed: '', cancelled: 'bad' };
@@ -43,7 +44,7 @@ function EventList() {
                 <div className="date"><div className="m">{dowShort(d.getUTCDay())}</div><div className="d">{d.getUTCDate()}</div><div className="m">{monthShort(d.getUTCMonth())}</div></div>
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="row wrap" style={{ gap: 6 }}><b style={{ fontSize: 15 }}>{e.name}</b><span className={`badge ${STATUS_BADGE[e.status]}`}>{e.status}</span></div>
+                <div className="row wrap" style={{ gap: 6 }}><b style={{ fontSize: 15 }}>{e.name}</b><span className={`badge ${STATUS_BADGE[e.status]}`}>{e.status}</span>{e.source === 'tripleseat' && <TripleseatBadge review={e.review} />}</div>
                 <div className="small muted">{fmtTime(e.start)}{e.end ? `–${fmtTime(e.end)}` : ''} · {e.room || t('events.tbd')}{e.guestCount ? t('events.guestcountGuests', { guestCount: e.guestCount }) : ''}{e.type ? ` · ${e.type}` : ''}</div>
                 {e.needed > 0 && (
                   <div className="row" style={{ marginTop: 6, maxWidth: 320 }}>
@@ -108,6 +109,7 @@ function EventDetail({ id }) {
         {myShift && <div className="alert info" style={{ marginTop: 12 }}><Icon name="user" size={16} />{t('events.youreWorkingThisNameTime', { name: jobs[myShift.jobCodeId]?.name, time: shiftTime(myShift) })}</div>}
       </div>
 
+      <TripleseatEventCard e={e} reload={load} />
       <EventPlans event={e} />
 
       <div className="beo">
@@ -265,6 +267,7 @@ function EventEditor({ id }) {
       </div>
 
       <div className="col" style={{ gap: 14 }}>
+        <TripleseatEditorNote e={e} />
         <div className="card card-pad col" style={{ gap: 12 }}>
           <h2>{t('events.event')}</h2>
           <Field label={t('events.eventName')}><input className="input" value={e.name} onChange={set('name')} placeholder={t('events.eGSmithWeddingReception')} /></Field>

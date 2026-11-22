@@ -24,6 +24,7 @@ import { mountToast, toastCron } from './toast-routes.js';
 import { featureForMethod, ROUTE_FEATURES, NOT_IN_PLAN, PAUSED, isPaused, billingBanner } from './platform/plans.js';
 import { billingPortal } from './billing.js';
 import { mountAdp } from './adp-routes.js';
+import { mountTripleseat } from './tripleseat-routes.js';
 
 const COOKIE = 'sb_session';
 const MAX_LOGIN_ATTEMPTS = 10; // per IP + email, per 15 minutes
@@ -231,7 +232,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   };
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
-  app.use(express.json({ limit: '2mb' }));
+  // Tripleseat's webhook signature covers the exact bytes it sent, so that route keeps them (req.rawBody).
+  app.use(express.json({ limit: '2mb', verify: (req, res, buf) => { if (req.originalUrl?.startsWith('/api/tripleseat/webhook/')) req.rawBody = buf; } }));
   app.use(cookieParser());
   // Error messages in the caller's language (core/errors.js): every API answer with an `error` goes through here.
   // Signed in: their language (or, if they haven't picked one, the app's, sent as X-ShiftBoard-Language).
@@ -559,6 +561,12 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   mountToast(app, { db, env, userOf: (req) => userFromToken(db.store, req.cookies[COOKIE]), managed: !!tenant && !tenant.isDefault });
   // ADP: status, Sync now, and its daily Vercel Cron (server/adp-routes.js). The CSV import is plain RPC.
   mountAdp(app, { db, env, userOf: (req) => userFromToken(db.store, req.cookies[COOKIE]) });
+  // Tripleseat: status, Sync now, its webhook and daily Vercel Cron (server/tripleseat-routes.js). A sync's
+  // notifications (staff on a changed event) go out like any other: email, web push, texts, the phone app.
+  mountTripleseat(app, {
+    db, env, userOf: (req) => userFromToken(db.store, req.cookies[COOKIE]), managed: !!tenant && !tenant.isDefault,
+    onCommit: (changes, req) => { channels.afterCommit(changes, req); emailNotifications(changes, req); pushToPhones(changes); },
+  });
   // Training photos (menu study guide, quizzes), for signed-in staff only.
   trainingRoutes(app, { db, signedIn: (req) => userFromToken(db.store, req.cookies[COOKIE]) });
   // 86 List photos, for people who can see the item's list (cookie on the web, bearer token in the phone app).

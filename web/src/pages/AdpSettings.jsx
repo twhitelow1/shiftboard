@@ -8,6 +8,7 @@ import { IS_DEMO } from '../api.js';
 import { adpStatus, adpSyncRange } from '../adp-api.js';
 import { AdpImportButton } from './AdpImport.jsx';
 import { ToastPanel, SyncProgress } from './ToastSettings.jsx';
+import { TripleseatPanel } from './TripleseatSettings.jsx';
 import '../labor.css';
 import { useT, prettyDate, stamp, t as tr } from '../i18n/index.js';
 
@@ -49,17 +50,19 @@ export function useAdpSync() {
   return [sync, progress];
 }
 
-/** The card on the Settings page: ADP (and the clock-in source), then Toast. */
+/** The card on the Settings page: ADP (and the clock-in source), then Toast, then Tripleseat (events). */
 export function IntegrationsCard() {
   const t = useT();
   const { has } = useApp();
-  const adp = !has || has('adp'), toast = !has || has('toast');
+  const adp = !has || has('adp'), toast = !has || has('toast'), tripleseat = !has || (has('tripleseat') && has('events'));
   return (
     <div className="card card-pad col" style={{ gap: 12 }}>
       <h2>{t('toastSettings.integrations')}</h2>
       {adp && <AdpPanel />}
       {adp && toast && <hr className="adp-hr" />}
       {toast && <ToastPanel />}
+      {tripleseat && (adp || toast) && <hr className="adp-hr" />}
+      {tripleseat && <TripleseatPanel />}
     </div>
   );
 }
