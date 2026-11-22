@@ -440,6 +440,28 @@ table.sched { border-collapse: separate; border-spacing: 0; width: 100%; min-wid
 .imp-names { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 6px 16px; max-height: 300px; overflow-y: auto; padding-right: 4px; }
 @media (max-width: 640px) { .imp-ctl { flex: 1 1 140px; } .imp-ctl .input { width: 100%; } }
 
+/* Import BEOs (PDF): one card per event found */
+.beo-imp-list { display: flex; flex-direction: column; gap: 8px; }
+.beo-imp-ev { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; min-width: 0; }
+.beo-imp-ev.on { border-color: color-mix(in srgb, var(--brand) 45%, var(--border)); }
+.beo-imp-head { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.beo-imp-name { display: block; font-size: 14.5px; overflow-wrap: anywhere; }
+.beo-imp-meta { display: block; margin-top: 2px; }
+.beo-imp-ctl { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--text-3); font-weight: 600; min-width: 0; }
+.beo-imp-ctl .input { max-width: 340px; color: var(--text); font-weight: 500; }
+.beo-x-h { margin: 12px 0 4px; font-size: 14px; }
+.beo-x-p { margin: 0 0 6px; }
+.beo-imp-warn ul { margin: 0; padding-left: 16px; }
+.beo-imp-toggle { align-self: flex-start; }
+.beo-imp-details { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); min-width: 0; }
+.beo-imp-details h4 { margin: 6px 0 0; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); }
+.beo-imp-times { margin: 4px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+.beo-imp-times li { display: flex; gap: 10px; min-width: 0; }
+.beo-imp-times b { flex: 0 0 auto; min-width: 70px; }
+@media (max-width: 640px) { .beo-imp-ctl .input { max-width: none; width: 100%; } }
+/* BEO text keeps its line breaks (notes, recipes, instructions) */
+.pre, .beo p, .beo .drink .small, .beo .kv dd, .beo .alert > div { white-space: pre-line; overflow-wrap: anywhere; }
+
 /* ---------- Sheet view: the schedule laid out like the house spreadsheet / PDF ---------- */
 .sheet-wrap { overflow-x: auto; background: #fff; border: 1px solid var(--border); border-radius: 10px; -webkit-overflow-scrolling: touch; }
 table.sheet { width: 100%; min-width: 860px; border-collapse: collapse; table-layout: fixed; background: #fff; color: #000;

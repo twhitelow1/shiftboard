@@ -4,6 +4,7 @@ import { uid } from './store.js';
 import { addDays, dow, weekStart, range, overlaps, shiftSpan, todayStr, prettyDate, fmtTime, toMin, daysBetween } from './time.js';
 import { forecastDay, effectiveShift, hoursOf, activeAt, recommend } from './forecast.js';
 import { suggestStaffing } from './beo.js';
+import { cleanBeoEvent, mergeBeo } from './beo-import.js';
 import { laborMethods } from './labor-api.js';
 import { adpMethods } from './adp-api.js';
 import { calibrationMethods } from './calibrate.js';
@@ -1182,14 +1183,16 @@ export function createService(store, opts = {}) {
       const from = start || addDays(today(), -7);
       return store.list('events', (e) => e.date >= from && (!end || e.date <= end) && (isEvents(actor) || e.status !== 'tentative'))
         .sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start))
-        .map((e) => { const v = eventView(e, actor); return { id: v.id, name: v.name, date: v.date, start: v.start, end: v.end, room: v.room, guestCount: v.guestCount, status: v.status, type: v.type, needed: v.needed, filled: v.filled, captainId: v.captainId, client: v.client }; });
+        .map((e) => { const v = eventView(e, actor); return { id: v.id, name: v.name, date: v.date, start: v.start, end: v.end, room: v.room, guestCount: v.guestCount, status: v.status, type: v.type, needed: v.needed, filled: v.filled, captainId: v.captainId, client: isEvents(actor) ? v.client : undefined }; });
     },
     'events.get': (actor, { id }) => {
       needAuth(actor);
       const e = store.get('events', id);
       if (!e || (!isEvents(actor) && e.status === 'tentative')) fail(404, 'Event not found');
       const v = eventView(e, actor);
-      if (!isEvents(actor)) { delete v.estRevenue; delete v.contactPhone; delete v.contactEmail; delete v.deposit; }
+      // The client and their contact details, the F&B minimum and revenue: managers and the events team only.
+      if (!isEvents(actor)) for (const k of ['estRevenue', 'deposit', 'fbMinimum', 'client', 'contactName', 'contactPhone', 'contactEmail', 'contactNotes']) delete v[k];
+      delete v.beoPrints;
       v.comments = store.list('eventComments', (c) => c.eventId === id).sort((a, b) => a.at.localeCompare(b.at)).map((c) => ({ ...c, userName: nameOf(c.userId) }));
       return v;
     },
@@ -1198,7 +1201,8 @@ export function createService(store, opts = {}) {
       if (!a.name?.trim()) fail(400, 'Event name is required');
       if (!/^\d{4}-\d{2}-\d{2}$/.test(a.date || '')) fail(400, 'Event date is required');
       const fields = ['name', 'date', 'start', 'end', 'room', 'guestCount', 'guaranteed', 'type', 'serviceStyle', 'status', 'client', 'contactName', 'contactPhone', 'contactEmail',
-        'estRevenue', 'deposit', 'captainId', 'menu', 'beverage', 'specialDrinks', 'staffing', 'timeline', 'setupNotes', 'dietaryNotes', 'avNotes', 'attire', 'notes'];
+        'estRevenue', 'deposit', 'captainId', 'menu', 'beverage', 'specialDrinks', 'staffing', 'timeline', 'setupNotes', 'dietaryNotes', 'avNotes', 'attire', 'notes',
+        'arrivalNotes', 'specialInstructions', 'contactNotes'];
       const doc = {};
       for (const f of fields) if (f in a) doc[f] = a[f];
       doc.guestCount = Number(doc.guestCount) || 0;
@@ -1217,6 +1221,53 @@ export function createService(store, opts = {}) {
         notify(managers().map((m) => m.id).filter((id) => id !== actor.id), say('newEvent', e.name, day(e.date), e.guestCount), `#/events/${e.id}`);
       }
       return eventView(e, actor);
+    },
+    // BEOs from a PDF (core/beo-import.js reads it in the browser; cleanBeoEvent cleans it again here, so no
+    // prices, deposits or card digits get in). One event per BEO, found by invoice number, else name and date,
+    // so importing a newer PDF updates the event instead of adding another. The BEO owns the booking, menu and
+    // notes; staffing, captain, status, attire, comments and shifts stay as managers left them. Staff on the
+    // event hear when its date, time, room or guest count changes. dryRun: what would happen to each one
+    // (new, update, same, older than the copy here, invalid), without saving.
+    'events.importBeos': (actor, { events: list, dryRun = false, status = 'confirmed' } = {}) => {
+      needEvents(actor);
+      if (!Array.isArray(list) || !list.length) fail(400, 'Pick at least one event to import');
+      if (list.length > 60) fail(400, 'Import at most 60 events at a time');
+      const key = (n) => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const out = [], notes = [];
+      const run = () => list.forEach((raw, index) => {
+        const b = cleanBeoEvent(raw);
+        if (!b.name || !b.date) {
+          if (dryRun) return out.push({ index, status: 'invalid' });
+          fail(400, !b.name ? 'Event name is required' : 'Event date is required');
+        }
+        if (b.roomId) {
+          const room = store.get('rooms', b.roomId);
+          if (!room) fail(400, 'That room is gone. Pick another one.');
+          b.room = room.name;
+        }
+        const cur = (b.invoiceNumber && store.list('events', (e) => e.invoiceNumber === b.invoiceNumber)[0])
+          || store.list('events', (e) => e.date === b.date && key(e.name) === key(b.name) && !(e.invoiceNumber && b.invoiceNumber))[0] || null;
+        const { doc, changes, keyChanges } = mergeBeo(cur, b);
+        const older = !!(cur?.beoUpdatedAt && b.beoUpdatedAt && b.beoUpdatedAt < cur.beoUpdatedAt);
+        const row = { index, status: !cur ? 'new' : older ? 'older' : changes.length ? 'update' : 'same', id: cur?.id || null, name: cur?.name || b.name,
+          room: cur?.room || '', roomId: cur?.roomId || null, beoUpdatedAt: cur?.beoUpdatedAt || '', changes, staffing: (cur?.staffing || []).length };
+        out.push(row);
+        if (dryRun) return;
+        const at = now().toISOString();
+        const stamp = { invoiceNumber: b.invoiceNumber || cur?.invoiceNumber || '', source: cur?.source === 'tripleseat' ? 'tripleseat' : 'beo-pdf', beoUpdatedAt: b.beoUpdatedAt || cur?.beoUpdatedAt || '', importedAt: at, updatedAt: at, updatedBy: actor.id };
+        if (cur) {
+          store.update('events', cur.id, { ...doc, ...stamp });
+          const staff = store.list('shifts', (s) => s.eventId === cur.id && s.userId && s.published).map((s) => s.userId);
+          if (keyChanges.length) notes.push([[...staff, cur.captainId], say('beoUpdated', doc.name, day(doc.date)), `#/events/${cur.id}`]);
+        } else {
+          const e = store.insert('events', { id: uid('evt'), status: status === 'tentative' ? 'tentative' : 'confirmed', staffing: [], captainId: null, ...doc, ...stamp, createdAt: at, createdBy: actor.id });
+          row.id = e.id;
+          notes.push([managers().map((m) => m.id), say('newEvent', e.name, day(e.date), e.guestCount), `#/events/${e.id}`]);
+        }
+      });
+      if (dryRun) run(); else store.transaction(run);
+      for (const [ids, text, link] of notes) notify([...new Set(ids)].filter((id) => id && id !== actor.id), text, link);
+      return { events: out };
     },
     'events.delete': (actor, { id }) => {
       needEvents(actor);

@@ -513,7 +513,7 @@ test('features follow the plan on the server: 403 for RPCs and routes outside it
     const boot = (await owner.rpc('app.bootstrap')).body.result;
     assert.deepEqual(boot.tenant.features, resolveFeatures('starter'));
     assert.deepEqual((await owner.get('/api/config')).body.features, resolveFeatures('starter'));
-    for (const m of ['events.list', 'forecast.week', 'labor.week', 'sections.list', 'venue.get', 'sms.preferences', 'toast.get', 'settings.laborRules']) {
+    for (const m of ['events.list', 'events.importBeos', 'forecast.week', 'labor.week', 'sections.list', 'venue.get', 'sms.preferences', 'toast.get', 'settings.laborRules']) {
       const r = await owner.rpc(m, {});
       assert.equal(r.status, 403, m);
       assert.equal(r.body.error, 'Not included in your plan');
@@ -527,6 +527,7 @@ test('features follow the plan on the server: 403 for RPCs and routes outside it
     const patched = await admin.patch(`/api/platform/tenants/${made.tenant.id}`, { features: { events: true, training: false } });
     assert.equal(patched.status, 200, patched.text);
     assert.equal((await owner.rpc('events.list', {})).status, 200);
+    assert.equal((await owner.rpc('events.importBeos', { events: [{ name: 'Gala', date: '2026-12-31' }], dryRun: true })).body.result.events[0].status, 'new', 'switched on: the BEO import works');
     assert.equal((await owner.rpc('training.summary')).status, 403);
     assert.equal((await owner.get('/api/training/photos/x')).status, 403);
     const audit = (await admin.get(`/api/platform/audit?tenant=${made.tenant.id}`)).body.result;

@@ -117,6 +117,8 @@ export const ERRORS_ES = {
   'Event name is required': 'Falta el nombre del evento',
   'Event date is required': 'Falta la fecha del evento',
   'Write something first': 'Primero escribe algo',
+  'Pick at least one event to import': 'Elige al menos un evento para importar',
+  'Import at most 60 events at a time': 'Importa como máximo 60 eventos a la vez',
   // ----- venue, floor plans and sections -----
   'The venue is already set up': 'El local ya está configurado',
   'Location name is required': 'Falta el nombre de la sucursal',
