@@ -23,7 +23,12 @@ test('the view: plan decides the integrations; secrets only as set + last 4; env
   assert.deepEqual(starter.groups.map((g) => g.key), ['email'], 'Starter: only the email From');
   assert.equal(starter.groups[0].status, 'connected');
   assert.equal(starter.groups[0].from, 'Bistro <s@mail.example.test>');
-  assert.ok(!allowedKeys(tenant.resolved).has('TOAST_CLIENT_ID') && allowedKeys(tenant.resolved).has('EMAIL_FROM_ADDRESS'));
+  assert.ok(!allowedKeys(tenant.resolved).has('TOAST_CLIENT_ID') && allowedKeys(tenant.resolved).has('EMAIL_FROM_NAME'));
+  // DubLow's sender identities: shown to the restaurant, changed only in the console.
+  assert.ok(!allowedKeys(resolveFeatures('pro')).has('EMAIL_FROM_ADDRESS'));
+  assert.ok(!allowedKeys(resolveFeatures('pro')).has('TWILIO_MESSAGING_SERVICE_SID') && !allowedKeys(resolveFeatures('pro')).has('TWILIO_FROM_NUMBER'));
+  assert.equal(starter.groups[0].fields.find((f) => f.key === 'EMAIL_FROM_ADDRESS').managed, true);
+  assert.equal(starter.groups[0].fields.find((f) => f.key === 'EMAIL_FROM_NAME').managed, false);
 
   const pro = restaurantView({ tenant: { ...tenant, resolved: resolveFeatures('pro') }, secretView: { TOAST_CLIENT_SECRET: { set: true, last4: 'abcd' } }, env: {} });
   assert.deepEqual(pro.groups.map((g) => g.key), GROUPS);
@@ -132,7 +137,7 @@ test('on the platform: each restaurant’s admins save their own settings (encry
     assert.ok(!saved.text.includes('bistro-toast-secret-value') && !saved.text.includes('bistro-toast-id'), 'secrets never come back');
     const toast = saved.body.result.groups.find((g) => g.key === 'toast');
     assert.equal(toast.status, 'connected');
-    assert.deepEqual(toast.fields.find((f) => f.key === 'TOAST_CLIENT_SECRET'), { key: 'TOAST_CLIENT_SECRET', secret: true, multiline: false, placeholder: '', set: true, last4: 'alue', fromEnv: false });
+    assert.deepEqual(toast.fields.find((f) => f.key === 'TOAST_CLIENT_SECRET'), { key: 'TOAST_CLIENT_SECRET', secret: true, multiline: false, placeholder: '', managed: false, set: true, last4: 'alue', fromEnv: false });
     assert.deepEqual(saved.body.result.changed.sort(), ['TOAST_CLIENT_ID (set)', 'TOAST_CLIENT_SECRET (set)', 'TOAST_RESTAURANT_GUID'].sort());
     // The restaurant runs with them from the next request.
     const st = (await pat.get('/api/toast/status')).body.result;
@@ -163,6 +168,11 @@ test('on the platform: each restaurant’s admins save their own settings (encry
     assert.equal(outside.status, 403);
     assert.equal(outside.body.error, 'Not included in your plan');
     assert.equal((await sky.put('/api/integrations', { EMAIL_FROM_NAME: 'Starter Spot Schedule' })).status, 200);
+    // The From address and the texting number are DubLow's: a restaurant admin can't change them.
+    const managed = await sky.put('/api/integrations', { EMAIL_FROM_ADDRESS: 'me@elsewhere.example.test' });
+    assert.equal(managed.status, 403);
+    assert.equal(managed.body.error, 'DubLow Digital sets this one. Ask DubLow to change it.');
+    assert.equal((await pat.put('/api/integrations', { TWILIO_FROM_NUMBER: '+17205550100' })).status, 403);
 
     // One restaurant can't reach another's: its session is refused there, and the default restaurant sees only its own.
     const patOnCr = at('chasing-rabbits.lvh.test');

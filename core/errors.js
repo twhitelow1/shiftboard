@@ -222,6 +222,7 @@ export const ERRORS_ES = {
   'Only the person who reported it or a manager can remove a photo': 'Solo quien lo reportó o un gerente puede quitar una foto',
   // ----- the platform (one ShiftBoard for many restaurants: server/platform/) -----
   'Not included in your plan': 'No está incluido en tu plan',
+  'DubLow Digital sets this one. Ask DubLow to change it.': 'Esto lo configura DubLow Digital. Pídele a DubLow que lo cambie.',
   'This restaurant’s account is paused. Contact DubLow Digital.': 'La cuenta de este restaurante está pausada. Comunícate con DubLow Digital.',
   'Restaurant not found': 'No encontramos ese restaurante',
   'Not available while DubLow Digital is signed in for support': 'No está disponible mientras DubLow Digital tiene la sesión abierta para darte soporte',

@@ -11,8 +11,16 @@ import { NOT_IN_PLAN } from './plans.js';
 export const GROUPS = ['adp', 'toast', 'tripleseat', 'twilio', 'email'];
 export const GROUP_FEATURE = { adp: 'adp', toast: 'toast', tripleseat: 'tripleseat', twilio: 'sms', email: null };
 export const groupAllowed = (group, resolved) => !GROUP_FEATURE[group] || !resolved || resolved[GROUP_FEATURE[group]] !== false;
-/** The setting names a restaurant on this plan may change. */
-export const allowedKeys = (resolved) => new Set(INTEGRATION_FIELDS.filter((f) => groupAllowed(f.group, resolved)).map((f) => f.key));
+/**
+ * Sender identities DubLow manages, set only in the platform console: texts go out under DubLow Digital's
+ * registered Twilio campaign (the opt-in wording names DubLow Digital), and a From address only works on a
+ * domain verified in DubLow's Resend account. A restaurant's admins see them but can't change them.
+ */
+export const MANAGED = 'DubLow Digital sets this one. Ask DubLow to change it.';
+export const PLATFORM_MANAGED = new Set(['TWILIO_MESSAGING_SERVICE_SID', 'TWILIO_FROM_NUMBER', 'EMAIL_FROM_ADDRESS']);
+/** The setting names a restaurant's own admins on this plan may change. */
+export const allowedKeys = (resolved) => new Set(INTEGRATION_FIELDS
+  .filter((f) => groupAllowed(f.group, resolved) && !PLATFORM_MANAGED.has(f.key)).map((f) => f.key));
 
 /**
  * Save settings for one restaurant. input: { KEY: value } with '' meaning clear and absent meaning keep.
@@ -24,7 +32,7 @@ export async function saveIntegrations(registry, tenant, input, { actor = null, 
   const { plain, secrets } = cleanIntegrations(input || {});
   if (allowed) {
     for (const k of [...Object.keys(plain), ...Object.keys(secrets)]) {
-      if (!allowed.has(k)) { const e = new Error(NOT_IN_PLAN); e.status = 403; throw e; }
+      if (!allowed.has(k)) { const e = new Error(PLATFORM_MANAGED.has(k) ? MANAGED : NOT_IN_PLAN); e.status = 403; throw e; }
     }
   }
   const changed = [];
@@ -72,7 +80,7 @@ export function restaurantView({ tenant, secretView = {}, env = process.env, mod
     const fields = INTEGRATION_FIELDS.filter((f) => f.group === g).map((f) => {
       const own = f.secret ? !!secretView[f.key]?.set : !!t.integrations?.[f.key];
       return {
-        key: f.key, secret: !!f.secret, multiline: !!f.multiline, placeholder: f.placeholder || '',
+        key: f.key, secret: !!f.secret, multiline: !!f.multiline, placeholder: f.placeholder || '', managed: PLATFORM_MANAGED.has(f.key),
         ...(f.secret ? { set: own, last4: own ? secretView[f.key]?.last4 || '' : '' } : { value: String(t.integrations?.[f.key] || '') }),
         // Set on the server (env) instead: the default restaurant's fallback, or a single install's settings.
         fromEnv: !own && (mode === 'env' || t.is_default) && !!String(envValue(f.key) || '').trim(),

@@ -107,9 +107,9 @@ function ConnectionForm({ group, data, onSaved }) {
   const field = (f) => {
     const label = t(`integrations.field_${f.key}`);
     const note = f.fromEnv ? t('integrations.fromEnv') : '';
-    if (!editable) {
+    if (!editable || f.managed) {
       const state = f.secret ? (f.set ? t('integrations.setEnds', { last4: f.last4 || '••••' }) : f.fromEnv ? note : t('integrations.notSet')) : (f.value || note || t('integrations.notSet'));
-      return <Field key={f.key} label={label}><div className="int-readonly"><span>{state}</span>{data.mode === 'env' && <code>{f.key}</code>}</div></Field>;
+      return <Field key={f.key} label={label} help={f.managed && editable ? t('integrations.managedByDublow') : ''}><div className="int-readonly"><span>{state}</span>{data.mode === 'env' && <code>{f.key}</code>}</div></Field>;
     }
     if (f.secret) {
       const typing = editing[f.key] || (!f.set && vals[f.key] !== '');
@@ -148,7 +148,7 @@ function ConnectionForm({ group, data, onSaved }) {
           {more && <div className="grid2">{extra.map(field)}</div>}
         </>
       )}
-      {editable && (
+      {editable && group.fields.some((f) => !f.managed) && (
         <div className="row wrap" style={{ gap: 8 }}>
           <button className="btn primary sm" disabled={busy || !changed.length} onClick={save}><Icon name="check" />{t('integrations.save')}</button>
           {changed.length > 0 && <button className="btn ghost sm" disabled={busy} onClick={() => { setVals({}); setEditing({}); }}>{t('common.undo')}</button>}
