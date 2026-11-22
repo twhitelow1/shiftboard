@@ -48,6 +48,7 @@ const BASE_ENV = {
 };
 
 async function startPlatform({ env = {}, conn } = {}) {
+  const ownConn = !conn;
   conn ??= await freshConn();
   const resend = fakeResend();
   const clock = { offset: 0 };
@@ -69,7 +70,7 @@ async function startPlatform({ env = {}, conn } = {}) {
       assert.equal(r.status, 200, r.text);
       return c;
     },
-    close: async () => { server.closeAllConnections(); await new Promise((r) => server.close(r)); await conn.end(); },
+    close: async () => { server.closeAllConnections(); await new Promise((r) => server.close(r)); if (ownConn) await conn.end(); },
   };
 }
 
@@ -149,7 +150,11 @@ test('secrets: AES-256-GCM, bound to the restaurant and the setting; the wrong k
   assert.equal(decrypt(key, blob, 'ten_a:TOAST_CLIENT_SECRET'), 'toast-secret-value-1234');
   assert.throws(() => decrypt(key, blob, 'ten_b:TOAST_CLIENT_SECRET'));
   assert.throws(() => decrypt(crypto.randomBytes(32), blob, 'ten_a:TOAST_CLIENT_SECRET'));
-  assert.throws(() => decrypt(key, blob.replace(/.$/, (c) => (c === 'A' ? 'B' : 'A')), 'ten_a:TOAST_CLIENT_SECRET'));
+  // One flipped bit in the ciphertext or the tag fails authentication.
+  const flip = (b64) => { const b = Buffer.from(b64, 'base64url'); b[0] ^= 1; return b.toString('base64url'); };
+  const [v, iv, tag, ct] = blob.split('.');
+  assert.throws(() => decrypt(key, [v, iv, tag, flip(ct)].join('.'), 'ten_a:TOAST_CLIENT_SECRET'));
+  assert.throws(() => decrypt(key, [v, iv, flip(tag), ct].join('.'), 'ten_a:TOAST_CLIENT_SECRET'));
 });
 
 test('LRU: keeps the most recently used restaurants, never evicts one with a request in flight', () => {
@@ -288,7 +293,7 @@ test('the default restaurant keeps schema shiftboard: its data, sessions, iCal l
     const stray = await p.at('localhost').get('/api/config');
     assert.equal(stray.status, 404);
     assert.equal(stray.body.notFound, true);
-  } finally { await p.close(); }
+  } finally { await p.close(); await conn.end(); }
 });
 
 // ---------- the console ----------
@@ -370,8 +375,9 @@ test('creating a restaurant: its own schema with row-level security, its owner a
     assert.equal(boot.employees.length, 1, 'just the owner, no demo data');
     assert.equal((await p.at('bistro.lvh.test').get('/api/config')).body.brand.name, 'Bistro Test');
 
-    // Without email for that restaurant, the console shows the link once instead.
-    const noMail = await startPlatform({ conn: await freshConn(), env: { RESEND_API_KEY: '' } });
+    // Without email, the console shows the link once instead. (A second instance on the same database, as on
+    // Vercel; this one has no Resend key.)
+    const noMail = await startPlatform({ conn: p.conn, env: { RESEND_API_KEY: '' } });
     try {
       const a2 = await noMail.console();
       const r = await createRestaurant(a2, { name: 'Cafe Two', slug: 'cafe-two', ownerEmail: 'sam@cafe.local' });
@@ -383,7 +389,7 @@ test('creating a restaurant: its own schema with row-level security, its owner a
     } finally { await noMail.close(); }
 
     const audit = (await admin.get('/api/platform/audit')).body.result;
-    const created = audit.find((a) => a.action === 'tenant.create');
+    const created = audit.find((a) => a.action === 'tenant.create' && a.details.slug === 'bistro');
     assert.equal(created.details.slug, 'bistro');
     assert.equal(created.adminEmail, 'ops@dublow.test');
   } finally { await p.close(); }
@@ -414,6 +420,15 @@ test('isolation: a session from one restaurant is refused on another, and no dat
     assert.equal((await asBearer('bistro.lvh.test')).status, 200);
     assert.equal((await asBearer('legacy.example.test')).status, 401);
     assert.equal((await asBearer('chasing-rabbits.lvh.test')).status, 401);
+    // Spoofing X-Forwarded-Host doesn't move a request to another restaurant.
+    const spoof = await request(p.port, { host: 'bistro.lvh.test', method: 'POST', path: '/api/rpc/app.bootstrap', body: {}, headers: { Cookie: cr.cookies(), 'X-Forwarded-Host': 'chasing-rabbits.lvh.test' } });
+    assert.equal(spoof.status, 401);
+    // Email links (reset / invite tokens) live in each restaurant's own schema.
+    const crRt = await p.platform.runtime((await p.platform.registry.snapshot()).defaultTenant);
+    const victor = crRt.db.store.list('users', (u) => u.email === 'victor@demo.shiftboard')[0];
+    const crReset = await crRt.db.createToken(victor.id, 'reset', 60);
+    assert.equal((await p.at('bistro.lvh.test').post('/api/auth/reset', { token: crReset, password: 'whatever-1' })).status, 400);
+    assert.equal((await p.at('legacy.example.test').post('/api/auth/reset', { token: crReset, password: 'whatever-1' })).status, 200);
     // Signing in on the wrong host doesn't find the account.
     assert.equal((await p.at('bistro.lvh.test').post('/api/auth/login', { email: 'moe@demo.shiftboard', password: 'demo1234' })).status, 401);
 

@@ -40,7 +40,7 @@ export function consoleRouter({ platform }) {
 
   // Only on the console's hosts; and for anything that changes data, JSON from this same site.
   r.use((req, res, next) => {
-    if (!consoleAllowed(req.hostname, hostCfg)) return res.status(404).json({ error: 'Not found' });
+    if (!consoleAllowed(req.headers.host, hostCfg)) return res.status(404).json({ error: 'Not found' });
     res.set('Cache-Control', 'no-store');
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       if (!req.is('application/json')) return res.status(415).json({ error: 'Send JSON' });
@@ -121,7 +121,7 @@ export function consoleRouter({ platform }) {
   // The restaurant's address as seen from this console request (protocol and port included in development).
   const addressFor = (req, t) => {
     const port = /:(\d+)$/.exec(req.get('host') || '')?.[1] || '';
-    return tenantAddress(t, hostCfg, { proto: req.protocol, port: ['80', '443'].includes(port) ? '' : port, consoleHost: req.hostname });
+    return tenantAddress(t, hostCfg, { proto: req.protocol, port: ['80', '443'].includes(port) ? '' : port, consoleHost: req.headers.host });
   };
   const summary = async (req, t) => ({
     id: t.id, slug: t.slug, name: t.name, status: t.status, plan: t.plan, isDefault: t.is_default, schema: t.schema_name,

@@ -184,7 +184,7 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
   // The platform console page: /platform on the console's hosts (Vercel rewrites /platform to platform.html).
   const consolePage = staticDir && fs.existsSync(path.join(staticDir, 'platform.html')) ? path.join(staticDir, 'platform.html') : null;
   app.get(['/platform', '/platform/'], (req, res, next) => {
-    if (!consoleAllowed(req.hostname, hostCfg)) return next();
+    if (!consoleAllowed(req.headers.host, hostCfg)) return next();
     if (!consolePage) return res.status(404).type('text').send('Build the web app first (npm run build)');
     res.sendFile('platform.html', { root: staticDir });
   });
@@ -199,7 +199,8 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
     }
     let where;
     try {
-      where = resolveHost(req.hostname, hostCfg, await registry.snapshot());
+      // The Host header itself (Vercel passes the requested domain), not X-Forwarded-Host, which a client could set.
+      where = resolveHost(req.headers.host, hostCfg, await registry.snapshot());
     } catch (e) { return next(e); }
     const api = req.path.startsWith('/api/');
 
