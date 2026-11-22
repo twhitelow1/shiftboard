@@ -561,3 +561,34 @@ table.sheet { width: 100%; min-width: 860px; border-collapse: collapse; table-la
   input[type="date"].input::-webkit-date-and-time-value, input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
 }
 @media (max-width: 640px) { .table th, .table td { padding: 8px 8px; } }
+
+/* Language switch (LanguageSwitch.jsx): top right of every screen, at least 44×44 to tap. */
+.lang-switch { position: relative; flex: none; }
+.lang-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 44px; min-height: 44px; padding: 0 8px;
+  border-radius: 10px; border: 1px solid var(--border); background: transparent; color: var(--text); font: inherit; font-weight: 800;
+  font-size: 13px; letter-spacing: .04em; cursor: pointer;
+}
+.lang-btn:hover { background: var(--surface-3); }
+.lang-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.lang-btn svg { width: 18px; height: 18px; flex: none; }
+.lang-menu {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; min-width: 180px; padding: 6px; display: flex; flex-direction: column; gap: 2px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-lg);
+}
+.lang-menu button {
+  display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 10px; border: 0; border-radius: 8px; background: none;
+  color: var(--text); font: inherit; font-weight: 600; text-align: left; cursor: pointer;
+}
+.lang-menu button:hover, .lang-menu button.on { background: var(--brand-soft); }
+.lang-check { width: 16px; display: inline-flex; color: var(--brand); }
+.lang-menu-code { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--text-3); }
+.lang-switch.on-dark .lang-btn { color: #fff; border-color: rgba(255,255,255,.35); }
+.lang-switch.on-dark .lang-btn:hover { background: rgba(255,255,255,.12); }
+.login { position: relative; }
+.login-lang { position: absolute; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); z-index: 5; }
+.topbar-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 900px) {
+  .topbar { gap: 6px; }
+  .topbar-bell { width: 44px; height: 44px; }
+}

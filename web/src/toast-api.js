@@ -1,11 +1,12 @@
 // Toast POS endpoints (hosted app only; the demo build has no server, so Toast shows as unavailable).
 import { IS_DEMO, ApiError } from './api.js';
+import { getLang } from './i18n/index.js';
 
 async function request(path, { method = 'GET', body } = {}) {
   const res = await fetch(path, {
     method,
     credentials: 'same-origin',
-    headers: body ? { 'Content-Type': 'application/json' } : {},
+    headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), 'X-ShiftBoard-Language': getLang() }, // errors come back in this language
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));

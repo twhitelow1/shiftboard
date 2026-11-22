@@ -61,12 +61,25 @@ const MIGRATIONS = [
   `ALTER TABLE ${SCHEMA}.login_attempts ENABLE ROW LEVEL SECURITY`,
 ];
 
+/**
+ * Collections whose `data` field (an image's bytes, base64) stays in Postgres only. Every instance keeps
+ * all documents in memory, so photos there would grow memory and cold starts with the photo library.
+ * The cache keeps the rest of each document; routes read the bytes on demand with DocDb.lazyData.
+ */
+export const LAZY_DATA = ['menuPhotos', 'eightySixPhotos'];
+const LAZY_SQL = `ARRAY[${LAZY_DATA.map((c) => `'${c}'`).join(',')}]::text[]`;
+
+// A cached lazy document has no `data`; saving it again keeps the bytes already stored.
 const UPSERT_DOCS = `
   INSERT INTO ${SCHEMA}.docs (col, id, data, deleted, seq, updated_at)
   SELECT t.c, t.i, t.d, t.x, nextval('${SCHEMA}.docs_seq'), now()
     FROM jsonb_to_recordset($1::text::jsonb) AS t(c text, i text, d jsonb, x boolean)
   ON CONFLICT (col, id) DO UPDATE
-    SET data = EXCLUDED.data, deleted = EXCLUDED.deleted, seq = EXCLUDED.seq, updated_at = EXCLUDED.updated_at
+    SET data = CASE
+          WHEN EXCLUDED.col = ANY(${LAZY_SQL}) AND NOT (EXCLUDED.data ? 'data') AND ${SCHEMA}.docs.data ? 'data'
+            THEN EXCLUDED.data || jsonb_build_object('data', ${SCHEMA}.docs.data -> 'data')
+          ELSE EXCLUDED.data END,
+        deleted = EXCLUDED.deleted, seq = EXCLUDED.seq, updated_at = EXCLUDED.updated_at
   RETURNING col, id, seq`;
 
 const docKey = (col, id) => `${col}\u0000${id}`;
@@ -120,7 +133,8 @@ export class DocDb {
   async sync(client = this.conn) {
     const since = this.lastSeq;
     const { rows } = await client.query(
-      `SELECT col, id, data, deleted, seq FROM ${SCHEMA}.docs WHERE seq > $1::bigint${since ? '' : ' AND NOT deleted'} ORDER BY seq`,
+      `SELECT col, id, CASE WHEN col = ANY(${LAZY_SQL}) THEN data - 'data' ELSE data END AS data, deleted, seq
+         FROM ${SCHEMA}.docs WHERE seq > $1::bigint${since ? '' : ' AND NOT deleted'} ORDER BY seq`,
       [since],
     );
     let max = since;
@@ -138,8 +152,16 @@ export class DocDb {
     const k = docKey(col, id);
     if (seq <= (this.seqs.get(k) || 0)) return;
     this.seqs.set(k, seq);
+    if (doc && LAZY_DATA.includes(col) && 'data' in doc) { const { data: _bytes, ...rest } = doc; doc = rest; }
     if (doc) this.store.col(col).set(id, doc);
     else this.store.col(col).delete(id);
+  }
+
+  /** The `data` field of a lazy document (see LAZY_DATA), read straight from Postgres, or null. */
+  async lazyData(col, id) {
+    if (!LAZY_DATA.includes(col)) throw new Error(`${col} isn't a lazy collection`);
+    const { rows } = await this.query(`SELECT data ->> 'data' AS d FROM ${SCHEMA}.docs WHERE col = $1 AND id = $2 AND NOT deleted`, [col, id]);
+    return rows[0]?.d ?? null;
   }
 
   /** Run fn(client) in a transaction holding ShiftBoard's write lock. */

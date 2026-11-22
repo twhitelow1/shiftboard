@@ -16,7 +16,10 @@ import Team from './pages/Team.jsx';
 import TimeOff from './pages/TimeOff.jsx';
 import Settings from './pages/Settings.jsx';
 import Venue from './pages/Venue.jsx';
-import { prettyDate } from '../../core/time.js';
+import Training from './pages/Training.jsx';
+import EightySix from './pages/EightySix.jsx';
+import { t as tr, useT, I18nCtx, setCurrentLang, resolveLang, saveDeviceLang, deviceLang, unsavedDeviceLang, clearUnsaved, isLang, prettyDate, stamp } from './i18n/index.js';
+import LanguageSwitch from './LanguageSwitch.jsx';
 
 function useHashRoute() {
   const get = () => (location.hash.replace(/^#\/?/, '') || '').split('/');
@@ -31,18 +34,23 @@ function useHashRoute() {
 const go = (path) => { location.hash = `#/${path}`; };
 
 const NAV = [
-  { key: 'schedule', label: 'Schedule', icon: 'grid' },
-  { key: 'calendar', label: 'Calendar', icon: 'calendar' },
-  { key: 'my', label: 'My Shifts', icon: 'user' },
-  { key: 'swaps', label: 'Swaps & Trades', short: 'Swaps', icon: 'swap', badge: 'swaps' },
-  { key: 'events', label: 'Events & BEOs', short: 'Events', icon: 'glass' },
-  { key: 'timeoff', label: 'Time Off', icon: 'sun', badge: 'timeoff' },
-  { key: 'tips', label: 'Tips', icon: 'dollar' },
-  { key: 'forecast', label: 'Forecast & Labor', icon: 'chart', mgr: true },
-  { key: 'venue', label: 'Venue & Floor Plans', short: 'Venue', icon: 'map', mgr: true },
-  { key: 'team', label: 'Team & Job Codes', icon: 'users', mgr: true },
-  { key: 'settings', label: 'Settings', icon: 'settings', admin: true },
+  { key: 'schedule', label: 'main.schedule', icon: 'grid' },
+  { key: 'calendar', label: 'main.calendar', icon: 'calendar' },
+  { key: 'my', label: 'main.myShifts', icon: 'user' },
+  { key: '86', label: 'main.eightySix', icon: 'ban' },
+  { key: 'swaps', label: 'main.swapsTrades', short: 'main.swaps', icon: 'swap', badge: 'swaps' },
+  { key: 'events', label: 'main.eventsBeos', short: 'common.events', icon: 'glass' },
+  { key: 'timeoff', label: 'main.timeOff', icon: 'sun', badge: 'timeoff' },
+  { key: 'tips', label: 'main.tips', icon: 'dollar' },
+  { key: 'training', label: 'main.training', icon: 'book' },
+  { key: 'forecast', label: 'main.forecastLabor', icon: 'chart', mgr: true },
+  { key: 'venue', label: 'main.venueFloorPlans', short: 'main.venue', icon: 'map', mgr: true },
+  { key: 'team', label: 'main.teamJobCodes', icon: 'users', mgr: true },
+  { key: 'settings', label: 'main.settings', icon: 'settings', admin: true },
 ];
+
+// Shorter page titles for the phone's top bar, where the language switch and the bell sit too.
+const PHONE_TITLE = { swaps: 'main.phoneTitleSwaps', events: 'main.phoneTitleEvents', forecast: 'main.phoneTitleForecast', venue: 'main.phoneTitleVenue', team: 'main.phoneTitleTeam' };
 
 // The restaurant's name and logo for the sign-in screens (from /api/config, before anyone signs in).
 const SignInBrand = React.createContext(null);
@@ -55,14 +63,16 @@ export function BrandMark({ name, logo, size = 32 }) {
 const DEFAULT_NAME = 'Our Restaurant';
 
 function AuthCard({ children, onSubmit }) {
+  const t = useT();
   const brand = React.useContext(SignInBrand);
   const named = brand?.name && brand.name !== DEFAULT_NAME;
   return (
     <div className="login">
+      <div className="login-lang"><LanguageSwitch onDark /></div>
       <form className="card card-pad col" style={{ gap: 14, padding: 26 }} onSubmit={onSubmit}>
         <div className="brand" style={{ color: 'var(--text)', padding: 0 }}>
           <BrandMark name={named ? brand.name : 'S'} logo={brand?.logo} size={40} />
-          <div><div className="brand-name">{named ? brand.name : 'ShiftBoard'}</div><div className="small muted">{named ? 'Schedule · ShiftBoard' : 'Restaurant scheduling'}</div></div>
+          <div><div className="brand-name">{named ? brand.name : t('main.shiftboard')}</div><div className="small muted">{named ? t('main.scheduleShiftboard') : t('main.restaurantScheduling')}</div></div>
         </div>
         {children}
       </form>
@@ -71,6 +81,7 @@ function AuthCard({ children, onSubmit }) {
 }
 
 function Login({ onDone, emailEnabled }) {
+  const t = useT();
   const [mode, setMode] = useState('login'); // login | forgot | sent
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -86,49 +97,51 @@ function Login({ onDone, emailEnabled }) {
   };
   if (mode === 'sent') return (
     <AuthCard onSubmit={(e) => { e.preventDefault(); setMode('login'); }}>
-      <div className="alert ok"><Icon name="send" size={16} />If {email} has an account, we just emailed a link to reset the password. It works for 1 hour.</div>
-      <button className="btn block">Back to sign in</button>
+      <div className="alert ok"><Icon name="send" size={16} />{t('main.ifEmailHasAnAccount', { email })}</div>
+      <button className="btn block">{t('main.backToSignIn')}</button>
     </AuthCard>
   );
   return (
     <AuthCard onSubmit={submit}>
-      {mode === 'forgot' && <div className="small muted">Enter your sign-in email and we'll send you a link to choose a new password.</div>}
-      <label className="field"><span>Email</span><input className="input" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus /></label>
-      {mode === 'login' && <label className="field"><span>Password</span><input className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>}
+      {mode === 'forgot' && <div className="small muted">{t('main.enterYourSignInEmail')}</div>}
+      <label className="field"><span>{t('common.email')}</span><input className="input" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus /></label>
+      {mode === 'login' && <label className="field"><span>{t('main.password')}</span><input className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>}
       {err && <div className="alert bad">{err}</div>}
-      <button className="btn primary block" disabled={busy}>{mode === 'forgot' ? (busy ? 'Sending…' : 'Email me a reset link') : (busy ? 'Signing in…' : 'Sign in')}</button>
+      <button className="btn primary block" disabled={busy}>{mode === 'forgot' ? (busy ? t('main.sending') : t('main.emailMeAResetLink')) : (busy ? t('main.signingIn') : t('main.signIn'))}</button>
       {emailEnabled
-        ? <button type="button" className="btn ghost sm" onClick={() => { setErr(''); setMode(mode === 'login' ? 'forgot' : 'login'); }}>{mode === 'login' ? 'Forgot your password?' : 'Back to sign in'}</button>
-        : <div className="help">Forgot your password? Ask a manager to reset it.</div>}
+        ? <button type="button" className="btn ghost sm" onClick={() => { setErr(''); setMode(mode === 'login' ? 'forgot' : 'login'); }}>{mode === 'login' ? t('main.forgotYourPassword') : t('main.backToSignIn')}</button>
+        : <div className="help">{t('main.forgotYourPasswordAskA')}</div>}
     </AuthCard>
   );
 }
 
 // Opened from an email link (#/reset?token=…): set a password for a new account or reset a forgotten one.
 function ResetPassword({ token, onDone }) {
+  const t = useT();
   const [pw, setPw] = useState('');
   const [pw2, setPw2] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const submit = async (e) => {
     e.preventDefault();
-    if (pw !== pw2) return setErr('The two passwords don’t match');
+    if (pw !== pw2) return setErr(t('main.theTwoPasswordsDontMatch'));
     setBusy(true); setErr('');
     try { await resetPassword(token, pw); onDone(); } catch (x) { setErr(x.message); } finally { setBusy(false); }
   };
   return (
     <AuthCard onSubmit={submit}>
-      <div><b>Choose your password</b><div className="small muted">At least 6 characters. You'll be signed in right after.</div></div>
-      <label className="field"><span>New password</span><input className="input" type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} required minLength={6} autoFocus /></label>
-      <label className="field"><span>Repeat it</span><input className="input" type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} required minLength={6} /></label>
+      <div><b>{t('main.chooseYourPassword')}</b><div className="small muted">{t('main.atLeast6CharactersYoull')}</div></div>
+      <label className="field"><span>{t('main.newPassword')}</span><input className="input" type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} required minLength={6} autoFocus /></label>
+      <label className="field"><span>{t('main.repeatIt')}</span><input className="input" type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} required minLength={6} /></label>
       {err && <div className="alert bad">{err}</div>}
-      <button className="btn primary block" disabled={busy}>{busy ? 'Saving…' : 'Save and sign in'}</button>
-      <a className="btn ghost sm" href="#/">Back to sign in</a>
+      <button className="btn primary block" disabled={busy}>{busy ? t('main.saving') : t('main.saveAndSignIn')}</button>
+      <a className="btn ghost sm" href="#/">{t('main.backToSignIn')}</a>
     </AuthCard>
   );
 }
 
 function Notifications({ onClose }) {
+  const t = useT();
   const [items, setItems] = useState(null);
   useEffect(() => {
     call('notifications.list').then((r) => { setItems(r); call('notifications.readAll'); });
@@ -137,13 +150,13 @@ function Notifications({ onClose }) {
     <>
       <div className="overlay" style={{ background: 'rgba(15,23,42,.25)' }} onClick={onClose} />
       <div className="drawer">
-        <div className="modal-head"><h2 style={{ flex: 1 }}>Notifications</h2><button className="btn ghost icon sm" onClick={onClose}><Icon name="x" /></button></div>
+        <div className="modal-head"><h2 style={{ flex: 1 }}>{t('main.notifications')}</h2><button className="btn ghost icon sm" onClick={onClose}><Icon name="x" /></button></div>
         <div style={{ overflowY: 'auto', flex: 1 }}>
-          {items?.length === 0 && <div className="empty">You're all caught up.</div>}
+          {items?.length === 0 && <div className="empty">{t('main.youreAllCaughtUp')}</div>}
           {items?.map((n) => (
             <div key={n.id} className={`notif ${n.read ? '' : 'unread'}`} onClick={() => { if (n.link) location.hash = n.link; onClose(); }}>
               <Icon name="bell" size={16} style={{ marginTop: 2, flex: 'none', color: 'var(--text-3)' }} />
-              <div><div>{n.text}</div><div className="tiny faint">{new Date(n.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div></div>
+              <div><div>{n.text}</div><div className="tiny faint">{stamp(n.at)}</div></div>
             </div>
           ))}
         </div>
@@ -182,6 +195,37 @@ function App() {
   useEffect(() => { load(); }, [load, version]);
   const refresh = useCallback(() => setVersion((v) => v + 1), []);
 
+  // ----- language (web/src/i18n): the person's, the restaurant's, this device's or the browser's -----
+  const [, setLangTick] = useState(0);
+  const lang = resolveLang(boot ? { me: boot.me, settings: boot.settings } : { configLanguage: config.language });
+  setCurrentLang(lang); // before the pages render, for the plain helpers (t, prettyDate…)
+  const t = useMemo(() => (key, params) => tr(key, params), [lang]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** Switch language right away, on the same screen. Signed in, it's saved on the account too ('' = automatic). */
+  const setLang = useCallback((l) => {
+    if (boot) {
+      saveDeviceLang(isLang(l) ? l : null);
+      setBoot((b) => (b ? { ...b, me: { ...b.me, language: isLang(l) ? l : '' } } : b));
+      // Then reload, so what the server writes (notifications, warnings) comes in the new language too.
+      call('account.preferences', { language: isLang(l) ? l : '' }).then(() => refresh(), (e) => toast(e.message, 'bad'));
+    } else {
+      saveDeviceLang(l, { unsaved: true });
+      setLangTick((n) => n + 1);
+    }
+  }, [boot, refresh, toast]);
+  // Signed in: a language picked on the sign-in screen goes to the account; the account's choice is
+  // remembered on this device for the next sign-in screen. The demo keeps one language for every persona.
+  const meId = boot?.me?.id;
+  const meLang = boot?.me?.language || '';
+  useEffect(() => {
+    if (!meId) return;
+    const pending = unsavedDeviceLang();
+    clearUnsaved();
+    if (pending && pending !== meLang) { setLang(pending); return; }
+    if (IS_DEMO && deviceLang() && deviceLang() !== meLang) { setLang(deviceLang()); return; }
+    if (isLang(meLang)) saveDeviceLang(meLang);
+  }, [meId, meLang]); // eslint-disable-line react-hooks/exhaustive-deps
+  const i18n = useMemo(() => ({ lang, setLang, choice: meLang }), [lang, setLang, meLang]);
+
   const ctx = useMemo(() => {
     if (!boot) return null;
     const jobs = Object.fromEntries(boot.jobCodes.map((j) => [j.id, j]));
@@ -189,15 +233,15 @@ function App() {
     const isMgr = canManageSchedule(boot.me);
     setStartTimesOnly(boot.settings?.startTimesOnly);
     return { ...boot, jobs, people, isMgr, emailEnabled: config.email, emailFrom: config.emailFrom, isAdmin: canChangeSettings(boot.me), isEvents: canManageEvents(boot.me),
-      canApprove: canApprove(boot.me, boot.settings), call, toast, refresh, version, go };
-  }, [boot, toast, refresh, version, config]);
+      canApprove: canApprove(boot.me, boot.settings), call, toast, refresh, version, go, lang, setLang };
+  }, [boot, toast, refresh, version, config, lang, setLang]);
 
   if (parts[0]?.startsWith('reset')) {
     const token = new URLSearchParams(location.hash.split('?')[1] || '').get('token') || '';
-    return <SignInBrand.Provider value={config.brand}><ResetPassword token={token} onDone={() => { location.hash = '#/'; setAuthed(true); refresh(); }} /></SignInBrand.Provider>;
+    return <I18nCtx.Provider value={i18n}><SignInBrand.Provider value={config.brand}><ResetPassword token={token} onDone={() => { location.hash = '#/'; setAuthed(true); refresh(); }} /></SignInBrand.Provider></I18nCtx.Provider>;
   }
-  if (authed === false) return <SignInBrand.Provider value={config.brand}><Login emailEnabled={config.email} onDone={() => { setAuthed(true); refresh(); }} /></SignInBrand.Provider>;
-  if (!ctx) return <div className="empty" style={{ paddingTop: 120 }}>Loading…</div>;
+  if (authed === false) return <I18nCtx.Provider value={i18n}><SignInBrand.Provider value={config.brand}><Login emailEnabled={config.email} onDone={() => { setAuthed(true); refresh(); }} /></SignInBrand.Provider></I18nCtx.Provider>;
+  if (!ctx) return <div className="empty" style={{ paddingTop: 120 }}>{t('common.loading')}</div>;
 
   const route = parts[0] || (ctx.isMgr ? 'schedule' : 'my');
   const nav = NAV.filter((n) => (!n.mgr || ctx.isMgr) && (!n.admin || ctx.isAdmin));
@@ -207,23 +251,25 @@ function App() {
   const Page = {
     schedule: Schedule, calendar: CalendarPage, my: MyShifts, swaps: Swaps, events: Events,
     forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue, tips: Tips,
+    forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue, training: Training, 86: EightySix,
   }[route] || Schedule;
 
   const signOut = async () => { await logout(); setBoot(null); setAuthed(false); };
 
   return (
+    <I18nCtx.Provider value={i18n}>
     <Ctx.Provider value={ctx}>
       <div className="app">
         <aside className="sidebar">
           <div className="brand">
             <BrandMark name={ctx.settings.restaurantName} logo={logoUrl(ctx.settings, IS_DEMO)} />
             {ctx.settings.restaurantName && ctx.settings.restaurantName !== DEFAULT_NAME
-              ? <div style={{ minWidth: 0 }}><div className="brand-name">{ctx.settings.restaurantName}</div><div className="brand-sub">ShiftBoard</div></div>
-              : <div style={{ minWidth: 0 }}><div className="brand-name">ShiftBoard</div><div className="brand-sub">{ctx.settings.restaurantName}</div></div>}
+              ? <div style={{ minWidth: 0 }}><div className="brand-name">{ctx.settings.restaurantName}</div><div className="brand-sub">{t('main.shiftboard')}</div></div>
+              : <div style={{ minWidth: 0 }}><div className="brand-name">{t('main.shiftboard')}</div><div className="brand-sub">{ctx.settings.restaurantName}</div></div>}
           </div>
           {nav.map((n) => (
             <button key={n.key} className={`nav-item ${route === n.key ? 'active' : ''}`} onClick={() => go(n.key)}>
-              <Icon name={n.icon} />{n.label}
+              <Icon name={n.icon} />{t(n.label)}
               {n.badge && badges[n.badge] > 0 && <span className="count">{badges[n.badge]}</span>}
             </button>
           ))}
@@ -232,10 +278,10 @@ function App() {
               <Avatar user={ctx.me} />
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div className="sidebar-user" style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ctx.me.name}</div>
-                <div className="tiny" style={{ color: '#94a3b8' }}>{roleLabel(ctx.me)}</div>
+                <div className="tiny" style={{ color: '#94a3b8' }}>{roleLabel(ctx.me, lang)}</div>
               </div>
             </div>
-            {!IS_DEMO && <button className="nav-item" onClick={signOut}><Icon name="logout" />Sign out</button>}
+            {!IS_DEMO && <button className="nav-item" onClick={signOut}><Icon name="logout" />{t('main.signOut')}</button>}
           </div>
         </aside>
 
@@ -243,8 +289,9 @@ function App() {
           {IS_DEMO && <DemoBar onSwitch={refresh} />}
           <header className="topbar">
             <span className="mobile-only topbar-logo"><BrandMark name={ctx.settings.restaurantName} logo={logoUrl(ctx.settings, IS_DEMO)} size={28} /></span>
-            <h1 style={{ flex: 1 }}>{current.label}</h1>
-            <button className="btn ghost icon" onClick={() => setNotifOpen(true)} aria-label="Notifications" style={{ position: 'relative' }}>
+            <h1 className="topbar-title"><span className="desktop-only">{t(current.label)}</span><span className="mobile-only">{t(PHONE_TITLE[current.key] || current.label)}</span></h1>
+            <LanguageSwitch />
+            <button className="btn ghost icon topbar-bell" onClick={() => setNotifOpen(true)} aria-label={t('main.notifications')} style={{ position: 'relative' }}>
               <Icon name="bell" />
               {ctx.unread > 0 && <span className="count" style={{ position: 'absolute', top: -2, right: -4 }}>{ctx.unread}</span>}
             </button>
@@ -257,29 +304,29 @@ function App() {
 
         <nav className="bottomnav">
           {[
-            { key: ctx.isMgr ? 'schedule' : 'my', label: ctx.isMgr ? 'Schedule' : 'My Shifts', icon: ctx.isMgr ? 'grid' : 'user' },
-            { key: ctx.isMgr ? 'my' : 'schedule', label: ctx.isMgr ? 'Mine' : 'Schedule', icon: ctx.isMgr ? 'user' : 'grid' },
-            { key: 'swaps', label: 'Swaps', icon: 'swap', badge: badges.swaps },
-            ctx.isMgr ? { key: 'events', label: 'Events', icon: 'glass' } : { key: 'timeoff', label: 'Time Off', icon: 'sun' },
+            { key: ctx.isMgr ? 'schedule' : 'my', label: ctx.isMgr ? t('main.schedule') : t('main.myShifts'), icon: ctx.isMgr ? 'grid' : 'user' },
+            { key: ctx.isMgr ? 'my' : 'schedule', label: ctx.isMgr ? t('main.mine') : t('main.schedule'), icon: ctx.isMgr ? 'user' : 'grid' },
+            { key: 'swaps', label: t('main.swaps'), icon: 'swap', badge: badges.swaps },
+            ctx.isMgr ? { key: 'events', label: t('common.events'), icon: 'glass' } : { key: 'timeoff', label: t('main.timeOff'), icon: 'sun' },
           ].map((n) => (
             <button key={n.key} className={route === n.key ? 'active' : ''} onClick={() => go(n.key)}>
               <Icon name={n.icon} />{n.label}
               {n.badge > 0 && <span className="dot" />}
             </button>
           ))}
-          <button className={moreOpen ? 'active' : ''} onClick={() => setMoreOpen(true)}><Icon name="more" />More</button>
+          <button className={moreOpen ? 'active' : ''} onClick={() => setMoreOpen(true)}><Icon name="more" />{t('main.more')}</button>
         </nav>
 
         {moreOpen && (
-          <Modal title="Menu" onClose={() => setMoreOpen(false)}>
+          <Modal title={t('main.menu')} onClose={() => setMoreOpen(false)}>
             <div className="list" style={{ margin: '-8px -18px' }}>
               {nav.map((n) => (
                 <div key={n.key} className="list-item click" onClick={() => { go(n.key); setMoreOpen(false); }}>
-                  <Icon name={n.icon} size={20} /><span style={{ fontWeight: 600, flex: 1 }}>{n.label}</span>
+                  <Icon name={n.icon} size={20} /><span style={{ fontWeight: 600, flex: 1 }}>{t(n.label)}</span>
                   {n.badge && badges[n.badge] > 0 && <span className="count">{badges[n.badge]}</span>}
                 </div>
               ))}
-              {!IS_DEMO && <div className="list-item click" onClick={signOut}><Icon name="logout" size={20} /><span style={{ fontWeight: 600 }}>Sign out</span></div>}
+              {!IS_DEMO && <div className="list-item click" onClick={signOut}><Icon name="logout" size={20} /><span style={{ fontWeight: 600 }}>{t('main.signOut')}</span></div>}
             </div>
           </Modal>
         )}
@@ -287,20 +334,22 @@ function App() {
         {toasts}
       </div>
     </Ctx.Provider>
+    </I18nCtx.Provider>
   );
 }
 
 function DemoBar({ onSwitch }) {
+  const t = useT();
   const [cur, setCur] = useState(demoCurrent());
   const personas = useMemo(() => demoPersonas(), []);
   return (
     <div className="demo-bar no-print">
-      <strong>Live demo</strong>
-      <span className="desktop-only" style={{ opacity: .85 }}>Clock set to {prettyDate('2026-09-27')} · the 9/28 schedule is the real one; sales, pay rates &amp; BEO menus are sample data.</span>
+      <strong>{t('main.liveDemo')}</strong>
+      <span className="desktop-only" style={{ opacity: .85 }}>{t('main.clockSetToDateThe', { date: prettyDate('2026-09-27') })}</span>
       <span className="spacer" />
-      <label className="row" style={{ gap: 6 }}><span className="desktop-only">View as</span><span className="mobile-only">Viewing as</span>
+      <label className="row" style={{ gap: 6 }}><span className="desktop-only">{t('main.viewAs')}</span><span className="mobile-only">{t('main.viewingAs')}</span>
         <select value={cur} onChange={(e) => { demoSwitch(e.target.value); setCur(e.target.value); onSwitch(); location.hash = '#/'; }}>
-          {personas.map((p) => <option key={p.id} value={p.id}>{p.name} ({roleLabel(p.role)})</option>)}
+          {personas.map((p) => <option key={p.id} value={p.id}>{p.name} ({roleLabel(p.role, t.lang)})</option>)}
         </select>
       </label>
     </div>

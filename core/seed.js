@@ -1,10 +1,12 @@
 // Demo seed: the real week of 9/28/2026 transcribed from the house schedule PDF,
 // plus SAMPLE sales history, pay rates and BEO details for demonstrating forecasting & events.
 import { uid } from './store.js';
-import { addDays, dow, range } from './time.js';
+import { addDays, dow, range, prettyDate } from './time.js';
+import { MSG } from './messages.js';
 import { DEFAULT_SETTINGS } from './service.js';
 import { findArea } from './areas.js';
 import { seedDemoTips } from './tips.js';
+import { seedTraining } from './training-seed.js';
 
 const WEEK = '2026-09-28'; // Monday
 const D = { MON: 0, TUE: 1, WED: 2, THU: 3, FRI: 4, SAT: 5, SUN: 6 };
@@ -169,7 +171,7 @@ function mulberry(seed) {
   return () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
 
-export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password = 'demo1234' } = {}) {
+export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password = 'demo1234', now: clock = new Date() } = {}) {
   const rand = mulberry(42);
   const jobId = {};
   JOBS.forEach(([key, name, short, department, color, rate, eventRole], i) => {
@@ -293,9 +295,10 @@ export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password =
   }
   for (const r of rows) store.insert('sales', r);
 
-  // Welcome notifications
+  // Welcome notifications, in both languages like the ones the app writes (core/service.js notify)
+  const posted = { en: MSG.en.schedulePosted('Sep 28', 'Oct 4'), es: MSG.es.schedulePosted(prettyDate('2026-09-28', { lang: 'es', dow: false }), prettyDate('2026-10-04', { lang: 'es', dow: false })) };
   for (const id of Object.values(userId)) {
-    store.insert('notifications', { id: uid('ntf'), userId: id, text: 'The schedule for Sep 28 – Oct 4 is posted. Check your shifts.', link: '#/my', read: false, at: now });
+    store.insert('notifications', { id: uid('ntf'), userId: id, text: posted.en, i18n: posted, link: '#/my', read: false, at: now });
   }
   // SAMPLE venue: one location, rooms on three levels, floor plans for the Restaurant and Moon Rabbit
   store.insert('locations', { id: 'loc_main', name: 'Our Restaurant', address: '', order: 0 });
@@ -336,13 +339,29 @@ export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password =
   ].forEach(([id, name, level, kinds, capacity, p], order) => store.insert('rooms', {
     id, locationId: 'loc_main', name, level, kinds, capacity, order, plan: p || { width: 1000, height: 700, items: [] },
   }));
+  // SAMPLE server sections (see core/venue-links.js): Friday dinner and the Saturday wedding in the
+  // Restaurant, and Tuesday's happy hour in the Moon Rabbit. Table numbers are the plans' item numbers.
+  const shiftOn = (person, d) => store.list('shifts', (s) => s.userId === userId[person] && s.date === day(d))[0];
+  const sections = (roomId, d, list) => store.insert('sections', {
+    id: `${roomId}|${day(d)}`, roomId, date: day(d), updatedAt: now, updatedBy: userId.Moe,
+    entries: list.map(([person, items]) => ({ shiftId: shiftOn(person, d).id, tableIds: items.map((n) => `itm_${n}`) })),
+  });
+  sections('room_restaurant', 'FRI', [['Alex D', [4, 7, 10]], ['Styves', [5, 8, 11]], ['Andrea', [6, 9, 12]], ['Jonathan', [13, 14, 15, 16, 17]], ['Karen', [3]]]);
+  sections('room_restaurant', 'SAT', [['Styves', [4, 5, 6]], ['Victor', [7, 8, 9]], ['Tori', [10, 11, 12]], ['Andrea', [13, 14, 15]], ['Jonathan', [16, 17]], ['Karen', [3]], ['Alex D', []]]);
+  sections('room_moonrabbit', 'TUE', [['Todd', [4]], ['Romina', []], ['Agustina', [6, 7, 8]], ['Andrea', [9, 10, 11]], ['Alex D', []]]);
 
   // SAMPLE tips: a house pool and a Rabbit Hole pool, with tips entered for the demo week (core/tips.js).
   seedDemoTips(store, { week: WEEK, jobId, userId });
 
   // SAMPLE clock-ins (as if synced from Toast) for Forecast & Labor → Labor review: core/labor-demo.js
   seedLaborDemo(store, { week: WEEK });
+  // SAMPLE training: an invented menu with placeholder photos, quizzes and tries, the employee manual (core/training-seed.js)
+  seedTraining(store, { userId, jobId });
+  // SAMPLE 86 List: Bar, Moon Rabbit bar and Kitchen, a few items out or low now, and a month of history (core/eighty-six.js)
+  seedEightySix(store, { userId, now: clock });
+
   return { userId, jobId, eventId };
 }
 
 import { seedLaborDemo } from './labor-demo.js';
+import { seedEightySix } from './eighty-six.js';

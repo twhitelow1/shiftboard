@@ -8,3 +8,19 @@ data/
 .DS_Store
 .vercel
 .claude/worktrees/
+# phone app (mobile/): its own install and build output
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+mobile/web-build/
+mobile/ios/
+mobile/android/
+mobile/expo-env.d.ts
+mobile/*.jks
+mobile/*.p8
+mobile/*.p12
+mobile/*.key
+mobile/*.mobileprovision
+mobile/google-services.json
+mobile/GoogleService-Info.plist
+mobile/*service-account*.json

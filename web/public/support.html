@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ShiftBoard Help &amp; Support</title>
+<style>
+  :root { --bg: #f4f5f7; --surface: #fff; --text: #0f172a; --muted: #475569; --brand: #4f46e5; --warn-bg: #fff7e6; --warn: #92400e; --border: #e2e8f0; color-scheme: light dark; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0b1020; --surface: #121a2e; --text: #e6ebf5; --muted: #aab5cb; --brand: #818cf8; --warn-bg: #3a2a0a; --warn: #fcd34d; --border: #22304f; } }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; margin-bottom: 18px; }
+  h1 { font-size: 28px; margin: 0 0 4px; letter-spacing: -.02em; } h2 { font-size: 19px; margin: 22px 0 6px; } .muted { color: var(--muted); font-size: 14px; }
+  a { color: var(--brand); } ol, ul { padding-left: 22px; } .draft { background: var(--warn-bg); color: var(--warn); border-radius: 10px; padding: 12px 14px; font-size: 14px; margin-bottom: 18px; }
+  .todo { background: var(--warn-bg); color: var(--warn); padding: 0 4px; border-radius: 4px; } nav { margin-bottom: 14px; font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <nav><a href="#en">English</a> · <a href="#es">Español</a> · <a href="/privacy">Privacy policy / Privacidad</a></nav>
+  <div class="draft"><b>DRAFT for DubLow Digital to review.</b> Fill in the highlighted contact details, then remove this box. / <b>BORRADOR</b> para revisar.</div>
+
+  <div class="card" id="en">
+    <h1>ShiftBoard help</h1>
+    <div class="muted">For restaurant staff using ShiftBoard on the web or in the iPhone / Android app.</div>
+
+    <h2>Schedule, sign-in or password questions</h2>
+    <p>Your restaurant runs its own ShiftBoard. For questions about your shifts, time off, or your account, <b>ask a manager first</b>. They can resend your sign-in link or reset your password.</p>
+    <p>Forgot your password? On the sign-in screen tap <b>Forgot your password?</b>. If your restaurant has email turned on, we email you a link to choose a new one.</p>
+
+    <h2>Setting up the app</h2>
+    <ol>
+      <li>Install <b>ShiftBoard</b> from the App Store or Google Play.</li>
+      <li>Open the invite link or scan the QR code your manager shared. Or type your restaurant's ShiftBoard address (the web address you use to see the schedule, like <i>yourrestaurant.vercel.app</i>).</li>
+      <li>Sign in with the same email and password as the website.</li>
+      <li>Allow notifications to hear about new schedules, trades and approvals.</li>
+    </ol>
+    <p>Work at more than one place, or moved? In the app go to <b>More → Change restaurant</b>. The app works in English and Spanish: tap the language button at the top of any screen.</p>
+
+    <h2 id="delete-account">Delete your account</h2>
+    <p>You can ask to delete your ShiftBoard account and personal data at any time:</p>
+    <ol>
+      <li>In the app: <b>More → Delete my account</b>, then confirm. Your managers are told right away.</li>
+      <li>Or ask a manager at your restaurant to remove you.</li>
+      <li>Or email <span class="todo">[DubLow support email]</span> from the email you sign in with. Include your name and restaurant.</li>
+    </ol>
+    <p>Your sign-in and personal details (name, email, phone, availability, notification tokens, preferences) are deleted within <span class="todo">[30]</span> days. Work records your restaurant must keep by law (such as shifts worked and approved time off) stay only as long as required. See the <a href="/privacy">privacy policy</a>.</p>
+
+    <h2>Contact DubLow Digital</h2>
+    <p>App problems or questions about your data: <span class="todo">[support email]</span> · <span class="todo">[phone, optional]</span>. We usually answer within <span class="todo">[2 business days]</span>.</p>
+  </div>
+
+  <div class="card" id="es" lang="es">
+    <h1>Ayuda de ShiftBoard</h1>
+    <div class="muted">Para el personal de restaurante que usa ShiftBoard en la web o en la app para iPhone y Android.</div>
+
+    <h2>Dudas sobre tu horario, tu cuenta o tu contraseña</h2>
+    <p>Cada restaurante tiene su propio ShiftBoard. Si tienes dudas sobre tus turnos, tus días libres o tu cuenta, <b>pregúntale primero a un gerente</b>. Te puede volver a mandar el enlace para entrar o cambiar tu contraseña.</p>
+    <p>¿Olvidaste tu contraseña? En la pantalla para iniciar sesión, toca <b>¿Olvidaste tu contraseña?</b>. Si tu restaurante tiene el correo activado, te mandamos un enlace para elegir una nueva.</p>
+
+    <h2>Configurar la app</h2>
+    <ol>
+      <li>Instala <b>ShiftBoard</b> desde App Store o Google Play.</li>
+      <li>Abre el enlace de invitación o escanea el código QR que te mandó tu gerente. También puedes escribir la dirección de ShiftBoard de tu restaurante (la dirección web donde ves el horario, como <i>turestaurante.vercel.app</i>).</li>
+      <li>Inicia sesión con el mismo correo y contraseña que usas en la web.</li>
+      <li>Permite las notificaciones para enterarte de horarios nuevos, intercambios y aprobaciones.</li>
+    </ol>
+    <p>¿Trabajas en otro lugar o te cambiaste? En la app ve a <b>Más → Cambiar de restaurante</b>. La app funciona en español e inglés: toca el botón de idioma arriba en cualquier pantalla.</p>
+
+    <h2 id="borrar-cuenta">Borrar tu cuenta</h2>
+    <p>Puedes pedir que se borre tu cuenta de ShiftBoard y tus datos personales cuando quieras:</p>
+    <ol>
+      <li>En la app: <b>Más → Borrar mi cuenta</b> y confirma. Tus gerentes reciben el aviso de inmediato.</li>
+      <li>O pídele a un gerente de tu restaurante que te dé de baja.</li>
+      <li>O escribe a <span class="todo">[correo de soporte de DubLow]</span> desde el correo con el que entras. Incluye tu nombre y tu restaurante.</li>
+    </ol>
+    <p>Tu acceso y tus datos personales (nombre, correo, teléfono, disponibilidad, tokens de notificaciones y preferencias) se borran en un plazo de <span class="todo">[30]</span> días. Los registros de trabajo que tu restaurante deba guardar por ley (como turnos trabajados y días libres aprobados) se guardan solo el tiempo necesario. Ve la <a href="/privacy#es">política de privacidad</a>.</p>
+
+    <h2>Contacto con DubLow Digital</h2>
+    <p>Problemas con la app o preguntas sobre tus datos: <span class="todo">[correo de soporte]</span> · <span class="todo">[teléfono, opcional]</span>. Normalmente respondemos en <span class="todo">[2 días hábiles]</span>.</p>
+  </div>
+</main>
+</body>
+</html>

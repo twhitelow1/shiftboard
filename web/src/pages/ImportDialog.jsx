@@ -3,8 +3,9 @@ import { useApp, Modal, Field, Icon, useAction } from '../ui.jsx';
 import { parseSchedule, readSections, dateForDow, matchPeople, matchPosition, positionName, departmentFor, suggestRole, notesToEvents, personName, titleCase } from '../../../core/importer.js';
 import { scheduleAreas, findArea, uniqueAreas } from '../../../core/areas.js';
 import { ROLES, rankOf, roleLabel, assignableRoles } from '../../../core/roles.js';
-import { addDays, weekStart, prettyDate } from '../../../core/time.js';
+import { addDays, weekStart } from '../../../core/time.js';
 import { weekLabel } from './Schedule.jsx';
+import { tx, useT, prettyDate } from '../i18n/index.js';
 
 const NEW = '__new__';
 const SAMPLE = `SERVER\tMONDAY\tTUESDAY\tWEDNESDAY\tTHURSDAY\tFRIDAY\tSATURDAY\tSUNDAY
@@ -12,6 +13,7 @@ ALEX D\tOFF\t3:30PM BC\tOFF\t4PM\t4:30PM*\t3:30PM BC\tOFF
 STYVES\tOFF\t4PM LIB\t4PM\tOFF\t4PM\t4PM\tOFF`;
 
 export default function ImportDialog({ ws: initialWs, onClose }) {
+  const t = useT();
   const { employees, jobCodes, settings, call, toast, me } = useApp();
   const [text, setText] = useState('');
   const [pdfColors, setPdfColors] = useState({}); // banner text → cell color, read from the PDF
@@ -151,15 +153,15 @@ export default function ImportDialog({ ws: initialWs, onClose }) {
     setPdfColors({});
     if (/\.pdf$/i.test(f.name) || f.type === 'application/pdf') {
       const reader = __DEMO__ ? null : await import('../pdf.js');
-      if (!reader) return toast('PDF import works in the hosted app', 'bad');
+      if (!reader) return toast(tx('importDialog.pdfImportWorksInThe'), 'bad');
       setReading(true);
       try {
         const { text: t, colors } = await reader.pdfToGridText(f);
-        if (!t.trim()) toast('Couldn’t find a schedule in that PDF (it needs day names across the top)', 'bad');
+        if (!t.trim()) toast(tx('importDialog.couldntFindAScheduleIn'), 'bad');
         setText(t);
         setPdfColors(colors || {});
       } catch (e) {
-        toast(`Couldn’t read that PDF: ${e.message}`, 'bad');
+        toast(tx('importDialog.couldntReadThatPdfMessage', { message: e.message }), 'bad');
       } finally {
         setReading(false);
       }
@@ -190,26 +192,26 @@ export default function ImportDialog({ ws: initialWs, onClose }) {
   ].filter(Boolean).join(' · ');
 
   return (
-    <Modal wide title="Import schedule" sub="Upload the schedule PDF, or paste from Excel / Google Sheets" onClose={() => onClose(false)}
+    <Modal wide title={t('importDialog.importSchedule')} sub={t('importDialog.uploadTheSchedulePdfOr')} onClose={() => onClose(false)}
       footer={<>
-        <span className="small muted" style={{ marginRight: 'auto' }}>{plan.shifts.length ? `${summary} ready` : 'Nothing to import yet'}</span>
-        <button className="btn" onClick={() => onClose(false)}>Cancel</button>
-        <button className="btn primary" disabled={!plan.shifts.length || busy || badJobName} onClick={doImport}><Icon name="upload" />Import as drafts</button>
+        <span className="small muted" style={{ marginRight: 'auto' }}>{plan.shifts.length ? t('importDialog.summaryReady', { summary }) : t('importDialog.nothingToImportYet')}</span>
+        <button className="btn" onClick={() => onClose(false)}>{t('common.cancel')}</button>
+        <button className="btn primary" disabled={!plan.shifts.length || busy || badJobName} onClick={doImport}><Icon name="upload" />{t('importDialog.importAsDrafts')}</button>
       </>}>
       <div className="alert info"><Icon name="sparkle" size={16} />
-        <div>Upload the <b>PDF</b> of your weekly schedule, or copy the whole sheet in Excel and paste it below. Sections like <b>Servers · MONDAY · TUESDAY…</b>, banners like <b>RABBIT HOLE</b>, cells like <b>4PM</b>, <b>3:30PM BC</b>, <b>1-9PM</b>, <b>REQUEST OFF</b>, the dates, event notes and projected covers are all read. Everything comes in as drafts until you publish.</div>
+        <div>{t('importDialog.uploadTheBPdfB')}</div>
       </div>
 
       <div className="row wrap">
-        <label className="btn primary sm"><Icon name="upload" />{reading ? 'Reading…' : 'Upload PDF / CSV'}
+        <label className="btn primary sm"><Icon name="upload" />{reading ? t('importDialog.reading') : t('importDialog.uploadPdfCsv')}
           <input type="file" accept=".pdf,application/pdf,.csv,.tsv,.txt" hidden disabled={reading} onChange={(e) => { loadFile(e.target.files?.[0]); e.target.value = ''; }} />
         </label>
         {fileName && <span className="small muted">{fileName}</span>}
         <span className="spacer" />
-        <button className="btn sm ghost" onClick={() => { setFileName(''); setText(SAMPLE); }}>Try sample</button>
+        <button className="btn sm ghost" onClick={() => { setFileName(''); setText(SAMPLE); }}>{t('importDialog.trySample')}</button>
       </div>
 
-      <Field label="Week to import into" help={parsed.weekOf ? `Taken from the dates on the schedule (${prettyDate(parsed.weekOf)}).` : undefined}>
+      <Field label={t('importDialog.weekToImportInto')} help={parsed.weekOf ? t('importDialog.takenFromTheDatesOn', { date: prettyDate(parsed.weekOf) }) : undefined}>
         <div className="row">
           <button className="btn icon sm" onClick={() => setWs(addDays(ws, -7))}><Icon name="left" /></button>
           <div style={{ fontWeight: 700, minWidth: 140, textAlign: 'center' }}>{weekLabel(ws)}</div>
@@ -217,14 +219,14 @@ export default function ImportDialog({ ws: initialWs, onClose }) {
         </div>
       </Field>
 
-      <Field label={fileName ? `Schedule read from ${fileName}` : 'Or paste here'}>
+      <Field label={fileName ? t('importDialog.scheduleReadFromFilename', { fileName }) : t('importDialog.orPasteHere')}>
         <textarea className="input" style={{ minHeight: fileName ? 90 : 140, fontFamily: 'ui-monospace, monospace', fontSize: 12 }} value={text} onChange={(e) => setText(e.target.value)} placeholder={SAMPLE} />
       </Field>
 
       {labels.length > 0 && (
         <div className="col" style={{ gap: 8 }}>
-          <h3>{parsed.mode === 'grid' ? 'Sections → area and position' : 'Jobs → job codes'}</h3>
-          {parsed.mode === 'grid' && <div className="help" style={{ marginTop: -4 }}>The banner over a section (RESTAURANT, RABBIT HOLE…) is the <b>area</b>; the section’s own label (Servers, Bar…) is the <b>position</b>. Someone listed under two banners keeps one position and works both areas.</div>}
+          <h3>{parsed.mode === 'grid' ? t('importDialog.sectionsAreaAndPosition') : t('importDialog.jobsJobCodes')}</h3>
+          {parsed.mode === 'grid' && <div className="help" style={{ marginTop: -4 }}>{t('importDialog.theBannerOverASection')}</div>}
           <div className="imp-secs">
             {labels.map((l) => {
               const v = jobFor(l), r = info[l];
@@ -233,32 +235,32 @@ export default function ImportDialog({ ws: initialWs, onClose }) {
                 <div key={l} className="imp-sec">
                   <div className="imp-sec-label">
                     <b>{l}</b>
-                    {r?.inferred && <div className="small muted">No label on the sheet: position taken from the same people’s other sections</div>}
+                    {r?.inferred && <div className="small muted">{t('importDialog.noLabelOnTheSheet')}</div>}
                   </div>
                   {parsed.mode === 'grid' && (
-                    <label className="imp-ctl"><span>Area</span>
+                    <label className="imp-ctl"><span>{t('importDialog.area')}</span>
                       <select className="input sm" value={area} onChange={(e) => setAreaMap((m) => ({ ...m, [l]: e.target.value }))}>
-                        <option value="">No area</option>
-                        {areaChoices.map((a) => <option key={a} value={a}>{a}{findArea(a, knownAreas) ? '' : ' (new)'}</option>)}
+                        <option value="">{t('importDialog.noArea')}</option>
+                        {areaChoices.map((a) => <option key={a} value={a}>{a}{findArea(a, knownAreas) ? '' : t('importDialog.new')}</option>)}
                       </select>
                     </label>
                   )}
-                  <label className="imp-ctl"><span>Position</span>
+                  <label className="imp-ctl"><span>{t('common.position')}</span>
                     <select className="input sm" value={v} onChange={(e) => setJobMap((m) => ({ ...m, [l]: e.target.value }))}>
-                      <option value={NEW}>＋ New job code</option>
-                      <option value="">Skip this section</option>
+                      <option value={NEW}>{t('importDialog.newJobCode')}</option>
+                      <option value="">{t('importDialog.skipThisSection')}</option>
                       {activeJobs.map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}
                     </select>
                   </label>
                   {v === NEW && (
-                    <label className="imp-ctl"><span>New job code</span>
-                      <input className="input sm" value={newJobName(l)} placeholder="Job code name" onChange={(e) => setJobNames((m) => ({ ...m, [l]: e.target.value }))} />
+                    <label className="imp-ctl"><span>{t('importDialog.newJobCode2')}</span>
+                      <input className="input sm" value={newJobName(l)} placeholder={t('importDialog.jobCodeName')} onChange={(e) => setJobNames((m) => ({ ...m, [l]: e.target.value }))} />
                     </label>
                   )}
                   {v !== '' && parsed.mode === 'grid' && (
-                    <label className="imp-ctl"><span>New people are</span>
-                      <select className="input sm" title="Role for new people from this section" value={roleFor(l)} onChange={(e) => setRoleMap((m) => ({ ...m, [l]: e.target.value }))}>
-                        {ROLES.filter((x) => roleChoices.includes(x.id)).map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+                    <label className="imp-ctl"><span>{t('importDialog.newPeopleAre')}</span>
+                      <select className="input sm" title={t('importDialog.roleForNewPeopleFrom')} value={roleFor(l)} onChange={(e) => setRoleMap((m) => ({ ...m, [l]: e.target.value }))}>
+                        {ROLES.filter((x) => roleChoices.includes(x.id)).map((x) => <option key={x.id} value={x.id}>{roleLabel(x.id, t.lang)}</option>)}
                       </select>
                     </label>
                   )}
@@ -267,62 +269,59 @@ export default function ImportDialog({ ws: initialWs, onClose }) {
             })}
           </div>
 
-          <h3 style={{ marginTop: 6 }}>Names → people</h3>
+          <h3 style={{ marginTop: 6 }}>{t('importDialog.namesPeople')}</h3>
           <div className="imp-names">
             {names.map((n) => {
               const v = empFor(n);
               return (
                 <div key={n} className="row">
                   <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: v === '' ? 'var(--text-3)' : undefined, minWidth: 0 }}>{n}
-                    {v === NEW && <span className="badge ok" style={{ marginLeft: 6 }}>new</span>}
-                    {isGuess(n) && <span className="badge warn" style={{ marginLeft: 6 }} title="Matched by a close spelling. Pick the right person if this is wrong.">check</span>}
+                    {v === NEW && <span className="badge ok" style={{ marginLeft: 6 }}>{t('importDialog.new2')}</span>}
+                    {isGuess(n) && <span className="badge warn" style={{ marginLeft: 6 }} title={t('importDialog.matchedByACloseSpelling')}>{t('importDialog.check')}</span>}
                   </span>
                   <select className="input sm" style={{ width: 170 }} value={v} onChange={(e) => setEmpMap((m) => ({ ...m, [n]: e.target.value }))}>
-                    <option value={NEW}>＋ Add as {personName(n)}</option>
-                    <option value="">Skip</option>
+                    <option value={NEW}>{t('importDialog.addAsPersonname', { personName: personName(n) })}</option>
+                    <option value="">{t('importDialog.skip')}</option>
                     {people.map((p) => <option key={p.id} value={p.id}>{p.name}{p.sheetName ? ` (${p.sheetName})` : ''}</option>)}
                   </select>
                 </div>
               );
             })}
           </div>
-          <div className="help">Names are matched by each person’s <b>name on the schedule</b> (set in Team, e.g. MOE for Louis Henson), then their full name. Anything marked <b>check</b> is a guess. When you pick someone whose name is written differently, that spelling is remembered for next time.</div>
-          {plan.newPeople.length > 0 && <div className="help">New people get their section’s role ({[...new Set(plan.newPeople.map((p) => roleLabel(p.role)))].join(', ')}), position and areas. People already in ShiftBoard keep their role and get any position or area from the sheet they don’t have yet. Add emails in Team, then send sign-in links.</div>}
+          <div className="help">{t('importDialog.namesAreMatchedByEach')}</div>
+          {plan.newPeople.length > 0 && <div className="help">{t('importDialog.newPeopleGetTheirSections')}{[...new Set(plan.newPeople.map((p) => roleLabel(p.role, t.lang)))].join(', ')}{t('importDialog.positionAndAreasPeopleAlready')}</div>}
         </div>
       )}
 
       {found.events.length > 0 && (
         <div className="col" style={{ gap: 6 }}>
-          <label className="check"><input type="checkbox" checked={opts.events} onChange={(e) => setOpts({ ...opts, events: e.target.checked })} /><b>Create {found.events.length} events from the schedule notes</b></label>
+          <label className="check"><input type="checkbox" checked={opts.events} onChange={(e) => setOpts({ ...opts, events: e.target.checked })} />{t('importDialog.bCreateEventscountEventsFrom', { eventsCount: found.events.length })}</label>
           {opts.events && found.events.map((e, i) => (
             <label key={i} className="check small" style={{ marginLeft: 24 }}>
               <input type="checkbox" checked={!skipEvent[i]} onChange={(x) => setSkipEvent((m) => ({ ...m, [i]: !x.target.checked }))} />
-              {prettyDate(dateOf(e.dow))} · {e.name}{e.room ? ` · ${e.room}` : ''} · {e.guestCount} guests
-            </label>
+              {prettyDate(dateOf(e.dow))} · {e.name}{e.room ? ` · ${e.room}` : ''}{' '}{t('importDialog.guestcountGuests', { guestCount: e.guestCount })}</label>
           ))}
-          {opts.events && <div className="help" style={{ marginLeft: 24 }}>Created as confirmed events. Add times, menus, drinks and staffing on each BEO.</div>}
+          {opts.events && <div className="help" style={{ marginLeft: 24 }}>{t('importDialog.createdAsConfirmedEventsAdd')}</div>}
         </div>
       )}
       {found.dayNotes.length > 0 && (
         <label className="check"><input type="checkbox" checked={opts.notes} onChange={(e) => setOpts({ ...opts, notes: e.target.checked })} />
-          <span>Show the sheet’s day notes on the schedule: {found.dayNotes.map((n) => `${prettyDate(dateOf(n.dow))} ${titleCase(n.text)}`).join(' · ')}</span></label>
+          <span>{t('importDialog.showTheSheetsDayNotes')}{' '}{found.dayNotes.map((n) => `${prettyDate(dateOf(n.dow))} ${titleCase(n.text)}`).join(' · ')}</span></label>
       )}
       {Object.keys(plan.areaColors).length > 0 && (
-        <div className="row wrap small muted" style={{ gap: 6 }}>Banner colors from the PDF:
-          {Object.entries(plan.areaColors).map(([n, c]) => <span key={n} className="sheet-swatch" style={{ background: c }}>{n}</span>)}
+        <div className="row wrap small muted" style={{ gap: 6 }}>{t('importDialog.bannerColorsFromThePdf')}{Object.entries(plan.areaColors).map(([n, c]) => <span key={n} className="sheet-swatch" style={{ background: c }}>{n}</span>)}
         </div>
       )}
       {parsed.covers.length > 0 && (
-        <label className="check"><input type="checkbox" checked={opts.covers} onChange={(e) => setOpts({ ...opts, covers: e.target.checked })} />
-          Use the projected covers ({parsed.covers.map((c) => c.covers).join(', ')}) as this week's forecast{opts.events && plan.events.length ? ', minus event guests (the forecast adds those from the events)' : ''}
+        <label className="check"><input type="checkbox" checked={opts.covers} onChange={(e) => setOpts({ ...opts, covers: e.target.checked })} />{t('importDialog.useTheProjectedCovers')}{parsed.covers.map((c) => c.covers).join(', ')}{t('importDialog.asThisWeeksForecast')}{opts.events && plan.events.length ? t('importDialog.minusEventGuestsTheForecast') : ''}
         </label>
       )}
       <label className="check"><input type="checkbox" checked={opts.dupes} onChange={(e) => setOpts({ ...opts, dupes: e.target.checked })} />
-        <span>Don’t double up: {plan.dupes > 0 ? `skip ${plan.dupes} shifts listed twice on the sheet (same person, day and start), and ` : ''}update shifts already on the schedule with the sheet’s area, position and tag instead of adding them again</span></label>
-      {plan.tos.length > 0 && <label className="check"><input type="checkbox" checked={opts.timeOff} onChange={(e) => setOpts({ ...opts, timeOff: e.target.checked })} />Also record {plan.tos.length} “REQUEST OFF” cells as approved time off</label>}
-      {badJobName && <div className="alert bad"><Icon name="alert" size={16} />Give every new job code a name.</div>}
-      {plan.skipped.length > 0 && <div className="alert warn"><Icon name="alert" size={16} />Skipping: {plan.skipped.join(', ')}.</div>}
-      {parsed.problems.length > 0 && <div className="alert warn"><Icon name="alert" size={16} /><div>Couldn't read {parsed.problems.length} cell(s), so they're left out: {parsed.problems.slice(0, 5).join('; ')}{parsed.problems.length > 5 ? '…' : ''}</div></div>}
+        <span>{t('importDialog.dontDoubleUp')}{' '}{plan.dupes > 0 ? t('importDialog.skipDupesShiftsListedTwice', { dupes: plan.dupes }) : ''}{t('importDialog.updateShiftsAlreadyOnThe')}</span></label>
+      {plan.tos.length > 0 && <label className="check"><input type="checkbox" checked={opts.timeOff} onChange={(e) => setOpts({ ...opts, timeOff: e.target.checked })} />{t('importDialog.alsoRecordToscountRequestOff', { tosCount: plan.tos.length })}</label>}
+      {badJobName && <div className="alert bad"><Icon name="alert" size={16} />{t('importDialog.giveEveryNewJobCode')}</div>}
+      {plan.skipped.length > 0 && <div className="alert warn"><Icon name="alert" size={16} />{t('importDialog.skipping')}{' '}{plan.skipped.join(', ')}.</div>}
+      {parsed.problems.length > 0 && <div className="alert warn"><Icon name="alert" size={16} /><div>{t('importDialog.couldntReadProblemscountCellS', { problemsCount: parsed.problems.length })}{' '}{parsed.problems.slice(0, 5).join('; ')}{parsed.problems.length > 5 ? '…' : ''}</div></div>}
     </Modal>
   );
 }

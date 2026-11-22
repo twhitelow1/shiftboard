@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { fmtTime } from '../../core/time.js';
+import { fmtTime, t as tr, moneyText, translateError } from './i18n/index.js';
+import { useT } from './i18n/index.js';
 
 export const Ctx = createContext(null);
 export const useApp = () => useContext(Ctx);
@@ -43,6 +44,11 @@ const P = {
   hand: 'M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8a8 8 0 0 0 16 0v-3a2 2 0 0 0-4 0',
   link: 'M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71',
   sparkle: 'M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z',
+  book: 'M4 19.5A2.5 2.5 0 0 1 6.5 17H20V2H6.5A2.5 2.5 0 0 0 4 4.5zM4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5',
+  camera: 'M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
+  ban: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM4.93 4.93l14.14 14.14', // the 86 List
+  search: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35',
+  globe: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z',
 };
 export function Icon({ name, size, style }) {
   return (
@@ -68,6 +74,7 @@ export function Avatar({ user, size = '' }) {
 }
 
 export function Modal({ title, onClose, children, footer, wide, sub }) {
+  const t = useT();
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose?.();
     window.addEventListener('keydown', onKey);
@@ -81,7 +88,7 @@ export function Modal({ title, onClose, children, footer, wide, sub }) {
             <h2>{title}</h2>
             {sub && <div className="small muted">{sub}</div>}
           </div>
-          <button className="btn ghost icon sm" onClick={onClose} aria-label="Close"><Icon name="x" /></button>
+          <button className="btn ghost icon sm" onClick={onClose} aria-label={t('common.close')}><Icon name="x" /></button>
         </div>
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-foot">{footer}</div>}
@@ -122,7 +129,8 @@ export function Warnings({ items }) {
 
 export function useToasts() {
   const [toasts, setToasts] = useState([]);
-  const toast = useCallback((text, kind = '') => {
+  const toast = useCallback((message, kind = '') => {
+    const text = typeof message === 'string' ? translateError(message) : message; // a known English error, in Spanish when needed
     const id = Math.random();
     setToasts((t) => [...t, { id, text, kind }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3200);
@@ -141,16 +149,17 @@ let startOnly = false;
 export const setStartTimesOnly = (v) => { startOnly = !!v; };
 export const startTimesOnly = () => startOnly;
 
+/** '4p–10p', '4p–CL' (until close) · '4 pm–10 pm', '4 pm–cierre'. In the current language (web/src/i18n). */
 export function shiftTime(s) {
   if (startOnly) return fmtTime(s.start);
-  return `${fmtTime(s.start)}–${s.end ? fmtTime(s.end) : 'CL'}`;
+  return `${fmtTime(s.start)}–${s.end ? fmtTime(s.end) : tr('common.untilCloseShort')}`;
 }
 
 export function JobDot({ job }) {
   return <span className="swatch" style={{ background: job?.color || '#999' }} />;
 }
 
-export const money = (n) => (n == null ? '—' : `$${Math.round(n).toLocaleString()}`);
+export const money = (n) => moneyText(n);
 
 /** Run an async action with toast feedback. */
 export function useAction() {
@@ -164,7 +173,7 @@ export function useAction() {
       refresh();
       return r;
     } catch (e) {
-      toast(e.message, 'bad');
+      toast(translateError(e.message), 'bad');
       return undefined;
     } finally {
       setBusy(false);

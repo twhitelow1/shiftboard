@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useApp, Modal, Field, Icon, Avatar, Warnings, shiftTime, startTimesOnly, useAction, JobDot } from '../ui.jsx';
-import { prettyDate, addDays, fmtTime } from '../../../core/time.js';
+import { addDays } from '../../../core/time.js';
 import { scheduleAreas, findArea } from '../../../core/areas.js';
+import { ShiftSectionCard, useSectionField } from './Sections.jsx';
+import { CallOutPanel } from './TrainingShared.jsx';
+import { useT, fmtTime, prettyDate } from '../i18n/index.js';
 
 /**
  * Opens the right dialog for the viewer: managers edit other people's shifts; your own shift (any
@@ -17,6 +20,7 @@ export default function ShiftDialog({ shift, onClose, warnings, events = [], sta
 }
 
 function ShiftEditor({ shift, onClose, warnings, events }) {
+  const t = useT();
   const { jobCodes, employees, settings, jobs, call, toast } = useApp();
   const [f, setF] = useState(() => ({
     id: shift.id, date: shift.date, start: shift.start || '16:00', end: shift.end || '', jobCodeId: shift.jobCodeId || jobCodes.find((j) => !j.archived)?.id,
@@ -25,6 +29,7 @@ function ShiftEditor({ shift, onClose, warnings, events }) {
   }));
   const [run, busy] = useAction();
   const [publishNow, setPublishNow] = useState(!!shift.published);
+  const section = useSectionField(shift, f.date); // room & tables (server section)
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e?.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e }));
 
   const active = employees.filter((e) => e.active !== false && e.onSchedule !== false);
@@ -44,83 +49,86 @@ function ShiftEditor({ shift, onClose, warnings, events }) {
     const payload = { ...f, end: f.untilClose ? null : f.end, userId: f.userId || null, eventId: f.eventId || null, published: shift.id ? undefined : publishNow };
     const r = await run(() => call('shifts.save', payload));
     if (r) {
-      if (r.warnings?.length) toast(`Saved — heads up: ${r.warnings[0]}`, 'bad');
-      else toast(shift.id ? 'Shift updated' : 'Shift added');
+      await section.save(r.shift.id);
+      if (r.warnings?.length) toast(t('shiftDialog.savedHeadsUpValue', { value: r.warnings[0] }), 'bad');
+      else toast(shift.id ? t('shiftDialog.shiftUpdated') : t('shiftDialog.shiftAdded'));
       onClose(true);
     }
   };
   const del = async () => {
     if (!confirmDelete) return setConfirmDelete(true);
-    const r = await run(() => call('shifts.delete', { id: shift.id }), 'Shift deleted');
+    const r = await run(() => call('shifts.delete', { id: shift.id }), t('shiftDialog.shiftDeleted'));
     if (r) onClose(true);
   };
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   return (
-    <Modal title={shift.id ? 'Edit shift' : 'Add shift'} sub={`${prettyDate(f.date)}${shift.id && !shift.published ? ' · Draft' : ''}`} onClose={() => onClose(false)}
+    <Modal title={shift.id ? t('shiftDialog.editShift') : t('shiftDialog.addShift')} sub={`${prettyDate(f.date)}${shift.id && !shift.published ? t('shiftDialog.draftSuffix') : ''}`} onClose={() => onClose(false)}
       footer={<>
-        {shift.id && <button className={`btn danger ${confirmDelete ? 'solid' : ''}`} onClick={del} disabled={busy}><Icon name="trash" />{confirmDelete ? 'Tap again to delete' : 'Delete'}</button>}
+        {shift.id && <button className={`btn danger ${confirmDelete ? 'solid' : ''}`} onClick={del} disabled={busy}><Icon name="trash" />{confirmDelete ? t('shiftDialog.tapAgainToDelete') : t('common.delete')}</button>}
         <span className="spacer" />
-        <button className="btn" onClick={() => onClose(false)}>Cancel</button>
-        <button className="btn primary" onClick={save} disabled={busy}>{shift.id ? 'Save' : 'Add shift'}</button>
+        <button className="btn" onClick={() => onClose(false)}>{t('common.cancel')}</button>
+        <button className="btn primary" onClick={save} disabled={busy}>{shift.id ? t('common.save') : t('shiftDialog.addShift')}</button>
       </>}>
       <Warnings items={warnings} />
       <div className="grid2">
-        <Field label="Position (job code)">
+        <Field label={t('shiftDialog.positionJobCode')}>
           <select className="input" value={f.jobCodeId} onChange={set('jobCodeId')}>
             {jobCodes.filter((j) => !j.archived || j.id === f.jobCodeId).map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}
           </select>
         </Field>
-        <Field label="Employee">
+        <Field label={t('shiftDialog.employee')}>
           <select className="input" value={f.userId} onChange={pickUser}>
-            <option value="">— Open shift (anyone can pick up) —</option>
-            <optgroup label={`Trained as ${jobs[f.jobCodeId]?.name || ''}`}>
+            <option value="">{t('shiftDialog.openShiftAnyoneCanPick')}</option>
+            <optgroup label={t('shiftDialog.trainedAsValue', { value: jobs[f.jobCodeId]?.name || '' })}>
               {trained.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
             </optgroup>
-            <optgroup label="Not trained for this job">
+            <optgroup label={t('shiftDialog.notTrainedForThisJob')}>
               {others.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
             </optgroup>
           </select>
         </Field>
       </div>
       <div className="grid3">
-        <Field label="Date"><input className="input" type="date" value={f.date} onChange={set('date')} /></Field>
-        <Field label="Start"><input className="input" type="time" value={f.start} onChange={set('start')} step="900" /></Field>
-        <Field label="End">
+        <Field label={t('common.date')}><input className="input" type="date" value={f.date} onChange={set('date')} /></Field>
+        <Field label={t('shiftDialog.start')}><input className="input" type="time" value={f.start} onChange={set('start')} step="900" /></Field>
+        <Field label={t('shiftDialog.end')}>
           {f.untilClose
-            ? <button type="button" className="input" style={{ textAlign: 'left', cursor: 'pointer' }} onClick={() => setF((x) => ({ ...x, untilClose: false, end: x.end || '22:00' }))}>Until close <span className="faint small">(set time)</span></button>
+            ? <button type="button" className="input" style={{ textAlign: 'left', cursor: 'pointer' }} onClick={() => setF((x) => ({ ...x, untilClose: false, end: x.end || '22:00' }))}>{t('shiftDialog.untilClose')}{' '}<span className="faint small">{t('shiftDialog.setTime')}</span></button>
             : <input className="input" type="time" value={f.end} onChange={set('end')} step="900" />}
         </Field>
       </div>
-      <label className="check"><input type="checkbox" checked={f.untilClose} onChange={set('untilClose')} />Until close (no set end time)</label>
-      <Field label="Area" help={areas.length ? 'Where this shift is worked. The schedule groups shifts by area, like the banners on your sheet.' : 'Add areas (Restaurant, Rabbit Hole…) in Settings, or import a schedule.'}>
+      <label className="check"><input type="checkbox" checked={f.untilClose} onChange={set('untilClose')} />{t('shiftDialog.untilCloseNoSetEnd')}</label>
+      <Field label={t('shiftDialog.area')} help={areas.length ? t('shiftDialog.whereThisShiftIsWorked') : t('shiftDialog.addAreasRestaurantRabbitHole')}>
         <select className="input" value={f.area} onChange={set('area')}>
-          <option value="">No area</option>
+          <option value="">{t('shiftDialog.noArea')}</option>
           {areas.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
       </Field>
-      <Field label="Tag / section" help="Shows on the schedule next to the time — e.g. LIB, RH, BC, PASSED">
-        <input className="input" value={f.tag} onChange={set('tag')} placeholder="Optional" />
+      {section.field}
+      <Field label={t('shiftDialog.tagSection')} help={t('shiftDialog.showsOnTheScheduleNext')}>
+        <input className="input" value={f.tag} onChange={set('tag')} placeholder={t('shiftDialog.optional')} />
         <div className="row wrap" style={{ marginTop: 4 }}>
           {settings.tags.map((t) => <button type="button" key={t} className={`chip ${f.tag === t ? 'on' : ''}`} onClick={() => setF((x) => ({ ...x, tag: x.tag === t ? '' : t }))}>{t}</button>)}
         </div>
       </Field>
       <div className="grid2">
-        <Field label="Linked event">
+        <Field label={t('shiftDialog.linkedEvent')}>
           <select className="input" value={f.eventId} onChange={set('eventId')}>
-            <option value="">None</option>
+            <option value="">{t('shiftDialog.none')}</option>
             {dayEvents.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
         </Field>
-        <Field label="Unpaid break (min)"><input className="input" type="number" min="0" step="5" value={f.breakMin} onChange={set('breakMin')} /></Field>
+        <Field label={t('shiftDialog.unpaidBreakMin')}><input className="input" type="number" min="0" step="5" value={f.breakMin} onChange={set('breakMin')} /></Field>
       </div>
-      <Field label="Notes"><textarea className="input" rows="2" value={f.notes} onChange={set('notes')} placeholder="Visible to the employee" /></Field>
-      {!shift.id && <label className="check"><input type="checkbox" checked={publishNow} onChange={(e) => setPublishNow(e.target.checked)} />Publish immediately (notify the employee)</label>}
+      <Field label={t('common.notes')}><textarea className="input" rows="2" value={f.notes} onChange={set('notes')} placeholder={t('shiftDialog.visibleToTheEmployee')} /></Field>
+      {!shift.id && <label className="check"><input type="checkbox" checked={publishNow} onChange={(e) => setPublishNow(e.target.checked)} />{t('shiftDialog.publishImmediatelyNotifyTheEmployee')}</label>}
     </Modal>
   );
 }
 
 function ShiftDetail({ shift, onClose, events, startIn, onEdit }) {
+  const t = useT();
   const { me, jobs, people, call, today, settings } = useApp();
   const [run, busy] = useAction();
   const [mode, setMode] = useState(startIn && shift.published ? startIn : null); // 'drop' | 'swap'
@@ -163,91 +171,93 @@ function ShiftDetail({ shift, onClose, events, startIn, onEdit }) {
   if (sent) {
     const who = sent.target ? people[sent.target.userId]?.name : '';
     const steps = sent.type === 'swap'
-      ? [`${who} gets your request and accepts (or declines) it`, approval && 'A manager approves it', 'The schedule updates and you both get a notification']
+      ? [t('shiftDialog.stepGetsRequest', { who }), approval && t('shiftDialog.stepManagerApproves'), t('shiftDialog.stepUpdatesBoth')]
       : sent.type === 'drop'
-        ? [`Everyone trained as ${job?.name} was notified`, 'Someone picks it up', approval && 'A manager approves it', 'The schedule updates and you get a notification']
-        : [approval ? 'A manager approves your pickup' : 'It’s yours', 'The schedule updates and you get a notification'];
+        ? [t('shiftDialog.stepEveryoneNotified', { job: job?.name }), t('shiftDialog.stepSomeonePicks'), approval && t('shiftDialog.stepManagerApproves'), t('shiftDialog.stepUpdatesYou')]
+        : [approval ? t('shiftDialog.stepManagerApprovesPickup') : t('shiftDialog.stepYours'), t('shiftDialog.stepUpdatesYou')];
     return (
-      <Modal title={sent.type === 'swap' ? 'Trade request sent' : sent.type === 'drop' ? 'Your shift is up for grabs' : 'Pickup requested'} onClose={() => onClose(true)}
-        footer={<><a className="btn" href="#/swaps" onClick={() => onClose(true)}>See my requests</a><span className="spacer" /><button className="btn primary" onClick={() => onClose(true)}>Done</button></>}>
-        <div className="alert ok"><Icon name="check" size={16} /><span>{sent.type === 'pickup' ? 'Requested.' : `You’re still on ${prettyDate(shift.date)} until it’s ${approval ? 'approved' : 'taken'}.`}</span></div>
-        <div className="small" style={{ fontWeight: 700 }}>What happens next</div>
-        <ol className="trade-steps">{steps.filter(Boolean).map((t) => <li key={t}>{t}</li>)}</ol>
-        <div className="help">Track it, or cancel it, in Swaps & Trades → My requests.</div>
+      <Modal title={sent.type === 'swap' ? t('shiftDialog.tradeRequestSent') : sent.type === 'drop' ? t('shiftDialog.yourShiftIsUpFor') : t('shiftDialog.pickupRequested')} onClose={() => onClose(true)}
+        footer={<><a className="btn" href="#/swaps" onClick={() => onClose(true)}>{t('shiftDialog.seeMyRequests')}</a><span className="spacer" /><button className="btn primary" onClick={() => onClose(true)}>{t('common.done')}</button></>}>
+        <div className="alert ok"><Icon name="check" size={16} /><span>{sent.type === 'pickup' ? t('shiftDialog.requested') : t(approval ? 'shiftDialog.stillOnUntilApproved' : 'shiftDialog.stillOnUntilTaken', { date: prettyDate(shift.date) })}</span></div>
+        <div className="small" style={{ fontWeight: 700 }}>{t('shiftDialog.whatHappensNext')}</div>
+        <ol className="trade-steps">{steps.filter(Boolean).map((x) => <li key={x}>{x}</li>)}</ol>
+        <div className="help">{t('shiftDialog.trackItOrCancelIt')}</div>
       </Modal>
     );
   }
 
   return (
-    <Modal title={`${job?.name || 'Shift'}${shift.tag ? ' · ' + shift.tag : ''}`} sub={`${prettyDate(shift.date)} · ${shiftTime(shift)}${!shift.end && !startTimesOnly() ? ' (until close)' : ''}${shift.area ? ` · ${shift.area}` : ''}`} onClose={() => onClose(false)}
+    <Modal title={`${job?.name || t('shiftDialog.shiftWord')}${shift.tag ? ' · ' + shift.tag : ''}`} sub={`${prettyDate(shift.date)} · ${shiftTime(shift)}${!shift.end && !startTimesOnly() && t.lang === 'en' ? ' (until close)' : ''}${shift.area ? ` · ${shift.area}` : ''}`} onClose={() => onClose(false)}
       footer={mode ? <>
-        <button className="btn" onClick={() => { setMode(null); setTarget(null); }}>Back</button>
+        <button className="btn" onClick={() => { setMode(null); setTarget(null); }}>{t('shiftDialog.back')}</button>
         <span className="spacer" />
-        {mode === 'drop' && <button className="btn primary" disabled={busy} onClick={() => submit('drop')}><Icon name="send" />Post for pickup</button>}
-        {mode === 'swap' && <button className="btn primary" disabled={busy || !target} onClick={() => submit('swap')}><Icon name="swap" />{target ? `Send trade to ${people[target.userId]?.name?.split(' ')[0] || 'them'}` : 'Pick a shift first'}</button>}
-      </> : onEdit ? <><button className="btn" onClick={onEdit}><Icon name="edit" />Edit shift</button><span className="spacer" /><button className="btn" onClick={() => onClose(false)}>Close</button></> : null}>
+        {mode === 'drop' && <button className="btn primary" disabled={busy} onClick={() => submit('drop')}><Icon name="send" />{t('shiftDialog.postForPickup')}</button>}
+        {mode === 'swap' && <button className="btn primary" disabled={busy || !target} onClick={() => submit('swap')}><Icon name="swap" />{target ? (people[target.userId]?.name ? t('shiftDialog.sendTradeTo', { name: people[target.userId].name.split(' ')[0] }) : t('shiftDialog.sendTrade')) : t('shiftDialog.pickAShiftFirst')}</button>}
+      </> : onEdit ? <><button className="btn" onClick={onEdit}><Icon name="edit" />{t('shiftDialog.editShift')}</button><span className="spacer" /><button className="btn" onClick={() => onClose(false)}>{t('shiftDialog.close')}</button></> : null}>
       {!mode && <>
         <div className="row">
           <Avatar user={people[shift.userId]} size="lg" />
           <div>
-            <div style={{ fontWeight: 700 }}>{isOpen ? 'Open shift' : people[shift.userId]?.name}</div>
+            <div style={{ fontWeight: 700 }}>{isOpen ? t('common.openShift') : people[shift.userId]?.name}</div>
             <div className="small muted row" style={{ gap: 6 }}><JobDot job={job} />{job?.name}{job?.department ? ` · ${job.department}` : ''}</div>
           </div>
         </div>
-        {shift.pending && <div className="alert warn"><Icon name="clock" size={16} />A {shift.pending === 'drop' ? 'giveaway' : shift.pending} request is in progress for this shift.</div>}
+        <ShiftSectionCard shift={shift} />
+        {shift.pending && <div className="alert warn"><Icon name="clock" size={16} />{t(shift.pending === 'drop' ? 'shiftDialog.pendingDrop' : shift.pending === 'swap' ? 'shiftDialog.pendingSwap' : 'shiftDialog.pendingPickup')}</div>}
         {event && (
           <a className="card card-pad row" href={`#/events/${event.id}`} style={{ color: 'inherit', boxShadow: 'none' }}>
             <Icon name="glass" size={20} />
-            <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{event.name}</div><div className="small muted">{event.room} · {event.guestCount} guests · starts {fmtTime(event.start)}</div></div>
-            <span className="badge brand">View BEO</span>
+            <div style={{ flex: 1 }}><div style={{ fontWeight: 700 }}>{event.name}</div><div className="small muted">{t('shiftDialog.roomGuestcountGuestsStartsTime', { room: event.room, guestCount: event.guestCount, time: fmtTime(event.start) })}</div></div>
+            <span className="badge brand">{t('shiftDialog.viewBeo')}</span>
           </a>
         )}
-        {shift.notes && <div><div className="small faint" style={{ fontWeight: 600 }}>Notes</div>{shift.notes}</div>}
-        {!shift.end && <div className="help">"Until close" shifts end when a manager cuts you. Estimated at {settings.openEndHours} hrs for labor planning.</div>}
+        {shift.notes && <div><div className="small faint" style={{ fontWeight: 600 }}>{t('common.notes')}</div>{shift.notes}</div>}
+        {!shift.end && <div className="help">{t('shiftDialog.untilCloseShiftsEndWhen', { openEndHours: settings.openEndHours })}</div>}
         {coworkers.length > 0 && (
           <div>
-            <div className="small faint" style={{ fontWeight: 600, marginBottom: 6 }}>Working with you</div>
+            <div className="small faint" style={{ fontWeight: 600, marginBottom: 6 }}>{t('shiftDialog.workingWithYou')}</div>
             <div className="row wrap">{coworkers.map((c) => <span key={c.id} className="badge"><JobDot job={jobs[c.jobCodeId]} />{people[c.userId]?.name} · {fmtTime(c.start)}</span>)}</div>
           </div>
         )}
         {future && mine && !shift.pending && !shift.published && (
-          <div className="alert info"><Icon name="clock" size={16} />This shift is still a draft. Trading and giving it away open once the schedule is published.</div>
+          <div className="alert info"><Icon name="clock" size={16} />{t('shiftDialog.thisShiftIsStillA')}</div>
         )}
         {future && mine && !shift.pending && shift.published && (
           <div className="col" style={{ gap: 8 }}>
-            <div style={{ fontWeight: 700 }}>Can’t make it?</div>
+            <div style={{ fontWeight: 700 }}>{t('shiftDialog.cantMakeIt')}</div>
             <div className="trade-choices">
               <button type="button" className="trade-choice" onClick={() => setMode('swap')}>
-                <Icon name="swap" size={22} /><b>Trade with a coworker</b>
-                <span>Swap it for someone else’s shift. They accept{approval ? ', then a manager approves' : ''}.</span>
+                <Icon name="swap" size={22} />{t('shiftDialog.bTradeWithACoworker')}
+                <span>{t('shiftDialog.swapItForSomeoneElses')}{approval ? t('shiftDialog.thenAManagerApproves') : ''}.</span>
               </button>
               <button type="button" className="trade-choice" onClick={() => setMode('drop')}>
-                <Icon name="hand" size={22} /><b>Give it away</b>
-                <span>Anyone trained as {job?.name} can pick it up{approval ? ', then a manager approves' : ''}.</span>
+                <Icon name="hand" size={22} />{t('shiftDialog.bGiveItAwayB')}
+                <span>{t('shiftDialog.anyoneTrainedAsNameCan', { name: job?.name })}{approval ? t('shiftDialog.thenAManagerApproves') : ''}.</span>
               </button>
             </div>
-            <div className="help">You keep the shift until the trade or giveaway goes through.{settings.minSwapNoticeHours ? ` Trades need ${settings.minSwapNoticeHours} hours’ notice; closer than that, call your manager.` : ''}</div>
+            <div className="help">{t('shiftDialog.youKeepTheShiftUntil')}{settings.minSwapNoticeHours ? t('shiftDialog.tradesNeedMinswapnoticehoursHoursNotice', { minSwapNoticeHours: settings.minSwapNoticeHours }) : ''}</div>
           </div>
         )}
-        {future && isOpen && qualified && <button className="btn primary block" disabled={busy} onClick={() => submit('pickup')}><Icon name="plus" />Request to pick up</button>}
-        {future && isOpen && !qualified && <div className="help">You're not set up as {job?.name}, so you can't pick this up.</div>}
+        {future && mine && <CallOutPanel />}
+        {future && isOpen && qualified && <button className="btn primary block" disabled={busy} onClick={() => submit('pickup')}><Icon name="plus" />{t('shiftDialog.requestToPickUp')}</button>}
+        {future && isOpen && !qualified && <div className="help">{t('shiftDialog.youreNotSetUpAs', { name: job?.name })}</div>}
       </>}
 
       {mode === 'drop' && <>
-        <div className="alert info"><Icon name="hand" size={16} />Everyone trained as {job?.name} gets notified. You stay responsible for the shift until someone picks it up{approval ? ' and a manager approves' : ''}.</div>
-        <Field label="Note to coworkers (optional)"><textarea className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Family event, will owe you one!" /></Field>
+        <div className="alert info"><Icon name="hand" size={16} />{t('shiftDialog.everyoneTrainedAsNameGets', { name: job?.name })}{approval ? t('shiftDialog.andAManagerApproves') : ''}.</div>
+        <Field label={t('shiftDialog.noteToCoworkersOptional')}><textarea className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('shiftDialog.eGFamilyEventWill')} /></Field>
       </>}
 
       {mode === 'swap' && <>
-        <div className="small"><b>Which shift would you take instead?</b> You give {prettyDate(shift.date)} · {shiftTime(shift)} and take the shift you pick. Showing posted shifts in the next 3 weeks from people who can work your {job?.name} shift and that you’re trained for.</div>
-        {!candidates && <div className="empty">Loading…</div>}
+        <div className="small">{t('shiftDialog.bWhichShiftWouldYou', { date: prettyDate(shift.date), time: shiftTime(shift), name: job?.name })}</div>
+        {!candidates && <div className="empty">{t('common.loading')}</div>}
         {candidates?.length === 0 && (
           <div className="alert warn col" style={{ alignItems: 'stretch', gap: 8 }}>
-            <span>No one has a shift you could trade for in the next 3 weeks.</span>
-            <div><button type="button" className="btn sm primary" onClick={() => { setMode('drop'); setTarget(null); }}><Icon name="hand" />Give it away instead</button></div>
+            <span>{t('shiftDialog.noOneHasAShift')}</span>
+            <div><button type="button" className="btn sm primary" onClick={() => { setMode('drop'); setTarget(null); }}><Icon name="hand" />{t('shiftDialog.giveItAwayInstead')}</button></div>
           </div>
         )}
-        {(candidates?.length || 0) > 6 && <input className="input sm" placeholder="Find a coworker…" value={filter} onChange={(e) => setFilter(e.target.value)} />}
+        {(candidates?.length || 0) > 6 && <input className="input sm" placeholder={t('shiftDialog.findACoworker')} value={filter} onChange={(e) => setFilter(e.target.value)} />}
         {candidates?.length > 0 && (
           <div className="list card" style={{ boxShadow: 'none', maxHeight: 320, overflowY: 'auto' }}>
             {Object.entries(byDay).map(([day, list]) => (
@@ -267,8 +277,8 @@ function ShiftDetail({ shift, onClose, events, startIn, onEdit }) {
             ))}
           </div>
         )}
-        {target && <div className="alert info"><Icon name="swap" size={16} /><span>You’d work <b>{prettyDate(target.date)} · {shiftTime(target)}</b>; {people[target.userId]?.name} would work your <b>{prettyDate(shift.date)} · {shiftTime(shift)}</b>.</span></div>}
-        <Field label="Note (optional)"><input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Have a wedding that day" /></Field>
+        {target && <div className="alert info"><Icon name="swap" size={16} /><span>{t('shiftDialog.youdWorkBDateTime', { date: prettyDate(target.date), time: shiftTime(target), name: people[target.userId]?.name, date2: prettyDate(shift.date), time2: shiftTime(shift) })}</span></div>}
+        <Field label={t('shiftDialog.noteOptional')}><input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('shiftDialog.eGHaveAWedding')} /></Field>
       </>}
     </Modal>
   );

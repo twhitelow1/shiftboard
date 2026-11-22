@@ -7,9 +7,14 @@ import { suggestStaffing } from './beo.js';
 import { laborMethods } from './labor-api.js';
 import { cleanArea, uniqueAreas, findArea, scheduleAreas } from './areas.js';
 import { tipMethods } from './tips.js';
+import { langOf, render, renderAll } from './i18n.js';
+import { msg } from './messages.js';
 import { ROLE_IDS, roleOf, roleLabel, canManageSchedule, canChangeSettings, canManageEvents, canSeeContacts, canApprove,
   offSchedule, assignableRoles, canManageUser } from './roles.js';
 import { channelApi } from './notify-prefs.js';
+import { venueLinks } from './venue-links.js';
+import { trainingApi } from './training.js';
+import { eightySixApi } from './eighty-six.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -54,6 +59,7 @@ export const DEFAULT_SETTINGS = {
   laborRules: [],
   forecastWeeks: 8,
   targetLaborPct: 28,
+  language: 'auto', // the language for people who haven't picked one: 'auto' (their phone or browser), 'en' or 'es'
 };
 
 const PUBLIC_USER = ({ passwordHash, ...u }) => u;
@@ -87,12 +93,33 @@ export function createService(store, opts = {}) {
   const users = () => store.list('users');
   const userById = (id) => store.get('users', id);
   const jobById = (id) => store.get('jobCodes', id);
-  const nameOf = (id) => userById(id)?.name || 'Open shift';
-  const jobName = (id) => jobById(id)?.name || 'Shift';
+  const nameOf = (id, lang = 'en') => userById(id)?.name || msg(lang).openShift;
+  const jobName = (id, lang = 'en') => jobById(id)?.name || msg(lang).shift;
+  /** The language ShiftBoard writes to this person in (their choice, else the restaurant's, else English). */
+  const L = (u) => langOf(u?.id ? userById(u.id) || u : u, settings());
   const qualified = (user, jobCodeId) => !!user?.jobCodes?.some((j) => j.jobCodeId === jobCodeId);
   const managers = () => users().filter((u) => u.active !== false && canManageSchedule(u));
   const approvers = () => users().filter((u) => u.active !== false && canApprove(u, settings()));
-  const describe = (s) => `${jobName(s.jobCodeId)}${s.area ? ` (${s.area})` : ''} ${prettyDate(s.date)} ${fmtTime(s.start)}${s.end && !settings().startTimesOnly ? '–' + fmtTime(s.end) : ''}`;
+  /** 'Server (Restaurant) Tue, Sep 29 4p–10p' · 'Server (Restaurant) mar, 29 de sep · 4 pm–10 pm' (open-ended: '4 pm–cierre'). */
+  const describe = (s, lang = 'en') => {
+    const st = settings().startTimesOnly;
+    const head = `${jobName(s.jobCodeId, lang)}${s.area ? ` (${s.area})` : ''}`;
+    if (lang === 'en') return `${head} ${prettyDate(s.date)} ${fmtTime(s.start)}${s.end && !st ? '–' + fmtTime(s.end) : ''}`;
+    const end = st ? '' : s.end ? `–${fmtTime(s.end, lang)}` : `–${msg(lang).untilClose}`;
+    return `${head} ${prettyDate(s.date, { lang })} · ${fmtTime(s.start, lang)}${end}`;
+  };
+  /** A shift's description for each recipient's language (for notify). */
+  const desc = (s) => (lang) => describe(s, lang);
+  /**
+   * A notification text in each recipient's language: say('newShift', desc(s)) → (lang) => MSG[lang].newShift(…).
+   * Arguments that are functions get the language too (desc(s), a date, a name that can be "Open shift").
+   */
+  const say = (key, ...args) => (lang) => {
+    const m = msg(lang)[key];
+    const vals = args.map((a) => (typeof a === 'function' ? a(lang) : a));
+    return typeof m === 'function' ? m(...vals) : m;
+  };
+  const day = (date, opts = {}) => (lang) => prettyDate(date, { ...opts, lang });
   const isFuture = (s) => {
     const [start] = shiftSpan(s);
     const n = now();
@@ -100,10 +127,19 @@ export function createService(store, opts = {}) {
     return start > nowAbs;
   };
 
+  /**
+   * An in-app notification for each person, in their own language. `text` is a function (lang) => text,
+   * { en, es }, or a plain string. Each stored notification keeps every language's version (i18n) so the
+   * list follows the person's language if they change it; `text` is theirs at the time, which email,
+   * web push, phone app push and texts send (server/channels.js, server/expo-push.js).
+   */
   function notify(userIds, text, link = '') {
     const at = now().toISOString();
+    const all = renderAll(text);
+    const st = settings();
     for (const id of new Set(userIds.filter(Boolean))) {
-      store.insert('notifications', { id: uid('ntf'), userId: id, text, link, read: false, at });
+      const body = all ? all[langOf(userById(id), st)] : render(text);
+      store.insert('notifications', { id: uid('ntf'), userId: id, text: body, ...(all ? { i18n: all } : {}), link, read: false, at });
     }
   }
 
@@ -111,47 +147,56 @@ export function createService(store, opts = {}) {
     return store.list('shifts', (s) => s.userId === userId && s.date >= from && s.date <= to);
   }
 
-  /** Conflicts that would arise if `userId` worked `shift` (ignoring shifts in `ignoreIds`). */
-  function conflictsFor(userId, shift, ignoreIds = []) {
+  /** Conflicts that would arise if `userId` worked `shift` (ignoring shifts in `ignoreIds`): [{ code, args }]. */
+  function conflictList(userId, shift, ignoreIds = []) {
     const st = settings();
     const out = [];
+    const add = (code, ...args) => out.push({ code, args });
     const user = userById(userId);
-    if (!user) return ['Unknown employee'];
-    if (user.active === false) out.push(`${user.name} is inactive`);
-    if (!qualified(user, shift.jobCodeId)) out.push(`${user.name} isn't trained as ${jobName(shift.jobCodeId)}`);
+    if (!user) return [{ code: 'unknown', args: [] }];
+    if (user.active === false) add('inactive', user.name);
+    if (!qualified(user, shift.jobCodeId)) add('untrained', user.name, (lang) => jobName(shift.jobCodeId, lang));
     const eff = effectiveShift(shift, st);
     const nearby = shiftsForUser(userId, addDays(shift.date, -1), addDays(shift.date, 1))
       .filter((o) => o.id !== shift.id && !ignoreIds.includes(o.id));
     for (const o of nearby) {
-      if (overlaps(eff, effectiveShift(o, st))) out.push(`Overlaps ${describe(o)}`);
+      if (overlaps(eff, effectiveShift(o, st))) add('overlap', desc(o));
     }
     const tos = store.list('timeOff', (t) => t.userId === userId && t.status !== 'denied' && t.status !== 'cancelled' &&
       t.startDate <= shift.date && t.endDate >= shift.date);
-    for (const t of tos) out.push(t.status === 'approved' ? 'Approved time off' : 'Time-off request pending');
+    for (const t of tos) add(t.status === 'approved' ? 'timeOffApproved' : 'timeOffPending');
     const av = user.availability?.[dow(shift.date)];
     if (av) {
-      if (av.available === false) out.push('Marked unavailable this day');
-      else if (av.from && toMin(shift.start) < toMin(av.from)) out.push(`Available from ${fmtTime(av.from)}`);
-      else if (av.to && eff.end && toMin(eff.end) > toMin(av.to) && toMin(eff.end) > toMin(eff.start)) out.push(`Available until ${fmtTime(av.to)}`);
+      if (av.available === false) add('unavailable');
+      else if (av.from && toMin(shift.start) < toMin(av.from)) add('availableFrom', (lang) => fmtTime(av.from, lang));
+      else if (av.to && eff.end && toMin(eff.end) > toMin(av.to) && toMin(eff.end) > toMin(eff.start)) add('availableUntil', (lang) => fmtTime(av.to, lang));
     }
     // Overtime for the week containing the shift.
     const ws = weekStart(shift.date, st.weekStartDow);
     const weekShifts = shiftsForUser(userId, ws, addDays(ws, 6)).filter((o) => o.id !== shift.id && !ignoreIds.includes(o.id));
     const hrs = weekShifts.reduce((t, o) => t + hoursOf(o, st), 0) + hoursOf(shift, st);
-    if (hrs > st.overtimeHours) out.push(`Overtime: ${hrs.toFixed(1)} hrs this week`);
+    if (hrs > st.overtimeHours) add('overtime', hrs.toFixed(1));
     return out;
   }
+  /** A conflict in words, in a language. */
+  const conflictText = (c, lang = 'en') => {
+    const m = msg(lang).conflict[c.code];
+    return typeof m === 'function' ? m(...c.args.map((a) => (typeof a === 'function' ? a(lang) : a))) : m;
+  };
+  /** Conflicts in words (the warnings managers and staff see), in the reader's language. */
+  const conflictsFor = (userId, shift, ignoreIds = [], lang = 'en') => conflictList(userId, shift, ignoreIds).map((c) => conflictText(c, lang));
 
   function visibleShift(actor, s) {
     return isMgr(actor) || s.published;
   }
 
+  /** reason: 'reasonChanged' | 'reasonRemoved' | 'reasonEventRemoved' (core/messages.js). The stored resolution stays English; the apps show it translated. */
   function cancelRequestsForShift(shiftId, reason) {
     const active = store.list('requests', (r) => ['open', 'pending_approval'].includes(r.status) &&
       (r.shiftId === shiftId || r.targetShiftId === shiftId));
     for (const r of active) {
-      store.update('requests', r.id, { status: 'cancelled', resolvedAt: now().toISOString(), resolution: reason });
-      notify([r.requesterId, r.pickupUserId, r.targetUserId], `Request cancelled: ${reason}`, '#/swaps');
+      store.update('requests', r.id, { status: 'cancelled', resolvedAt: now().toISOString(), resolution: msg('en')[reason] });
+      notify([r.requesterId, r.pickupUserId, r.targetUserId], say('requestCancelled', say(reason)), '#/swaps');
     }
   }
 
@@ -227,22 +272,22 @@ export function createService(store, opts = {}) {
       (shiftIds.includes(o.shiftId) || shiftIds.includes(o.targetShiftId)));
     for (const o of others) {
       store.update('requests', o.id, { status: 'denied', resolvedAt: now().toISOString(), resolution: 'Shift was given to someone else' });
-      notify([o.requesterId, o.pickupUserId], `Your request for ${describe(store.get('shifts', o.shiftId))} was closed — it was filled.`, '#/swaps');
+      notify([o.requesterId, o.pickupUserId], say('requestFilled', desc(store.get('shifts', o.shiftId))), '#/swaps');
     }
   }
 
-  function requestView(r) {
+  function requestView(r, lang = 'en') {
     const shift = store.get('shifts', r.shiftId);
     const target = r.targetShiftId ? store.get('shifts', r.targetShiftId) : null;
     let warnings = [];
     if (['open', 'pending_approval'].includes(r.status) && shift) {
       if (r.type === 'swap' && target) {
         warnings = [
-          ...conflictsFor(r.targetUserId, shift, [target.id]).map((w) => `${nameOf(r.targetUserId)}: ${w}`),
-          ...conflictsFor(r.requesterId, target, [shift.id]).map((w) => `${nameOf(r.requesterId)}: ${w}`),
+          ...conflictsFor(r.targetUserId, shift, [target.id], lang).map((w) => `${nameOf(r.targetUserId, lang)}: ${w}`),
+          ...conflictsFor(r.requesterId, target, [shift.id], lang).map((w) => `${nameOf(r.requesterId, lang)}: ${w}`),
         ];
       } else if (r.pickupUserId) {
-        warnings = conflictsFor(r.pickupUserId, shift).map((w) => `${nameOf(r.pickupUserId)}: ${w}`);
+        warnings = conflictsFor(r.pickupUserId, shift, [], lang).map((w) => `${nameOf(r.pickupUserId, lang)}: ${w}`);
       }
     }
     return { ...r, shift, targetShift: target, warnings };
@@ -336,12 +381,13 @@ export function createService(store, opts = {}) {
     'settings.update': (actor, patch) => {
       needAdmin(actor);
       const allowed = ['restaurantName', 'weekStartDow', 'closedDays', 'hours', 'openEndHours', 'overtimeHours', 'requireSwapApproval',
-        'requirePickupApproval', 'supervisorsCanApprove', 'startTimesOnly', 'emailNotifications', 'minSwapNoticeHours', 'tags', 'rooms', 'areas', 'areaColors', 'brandColor', 'navColor', 'bgColor', 'appearance', 'departments', 'dayparts', 'forecastWeeks', 'targetLaborPct', 'laborRules'];
+        'requirePickupApproval', 'supervisorsCanApprove', 'startTimesOnly', 'emailNotifications', 'minSwapNoticeHours', 'tags', 'rooms', 'areas', 'areaColors', 'brandColor', 'navColor', 'bgColor', 'appearance', 'departments', 'dayparts', 'forecastWeeks', 'targetLaborPct', 'laborRules', 'language'];
       const clean = {};
       for (const k of allowed) if (k in patch) clean[k] = patch[k];
       if ('areas' in clean) clean.areas = uniqueAreas(Array.isArray(clean.areas) ? clean.areas : []);
       if ('areaColors' in clean) clean.areaColors = cleanColors(clean.areaColors);
       if ('appearance' in clean) clean.appearance = ['light', 'dark'].includes(clean.appearance) ? clean.appearance : 'auto';
+      if ('language' in clean) clean.language = ['en', 'es'].includes(clean.language) ? clean.language : 'auto';
       for (const k of ['brandColor', 'navColor', 'bgColor']) {
         if (k in clean) clean[k] = /^#[0-9a-f]{6}$/i.test(String(clean[k] || '')) ? String(clean[k]).toLowerCase() : '';
       }
@@ -487,7 +533,7 @@ export function createService(store, opts = {}) {
         }
         if (!active && cur.active !== false) patch.sessionVersion = (patch.sessionVersion ?? cur.sessionVersion ?? 0) + 1;
         const u = store.update('users', cur.id, patch);
-        if (role !== roleOf(cur)) notify([cur.id], `Your role is now ${roleLabel(role)}.`, '#/my');
+        if (role !== roleOf(cur)) notify([cur.id], (lang) => msg(lang).roleNow(roleLabel(role, lang)), '#/my');
         return userView(u);
       }
       const tempPassword = a.password || randomPassword();
@@ -554,12 +600,13 @@ export function createService(store, opts = {}) {
       store.update('users', u.id, { passwordHash: hashPassword(tempPassword), sessionVersion: (u.sessionVersion || 0) + 1, passwordResetAt: now().toISOString(), passwordResetBy: actor.id });
       return { tempPassword };
     },
-    // Each person's own choices: email copies of notifications, and light/dark mode ('' = the company's).
+    // Each person's own choices: email copies of notifications, light/dark mode ('' = the company's), and language (en/es).
     'account.preferences': (actor, a = {}) => {
       needAuth(actor);
       const patch = {};
       if ('emailNotifications' in a) patch.emailNotifications = a.emailNotifications !== false;
       if ('appearance' in a) patch.appearance = ['auto', 'light', 'dark'].includes(a.appearance) ? a.appearance : '';
+      if ('language' in a) patch.language = ['en', 'es'].includes(a.language) ? a.language : ''; // '' = follow the phone/browser
       return userView(store.update('users', actor.id, patch));
     },
     'employees.changePassword': (actor, { password }) => {
@@ -581,7 +628,7 @@ export function createService(store, opts = {}) {
       const pendingByShift = {};
       for (const r of activeReq) { pendingByShift[r.shiftId] = r.type; if (r.targetShiftId) pendingByShift[r.targetShiftId] = r.type; }
       let warnings = {};
-      if (isMgr(actor)) for (const s of shifts) if (s.userId) { const w = conflictsFor(s.userId, s); if (w.length) warnings[s.id] = w; }
+      if (isMgr(actor)) for (const s of shifts) if (s.userId) { const w = conflictsFor(s.userId, s, [], L(actor)); if (w.length) warnings[s.id] = w; }
       const st = settings();
       // The sheet's day notes (CLOSED, MEETING…) and the week's "Notes:" line.
       const notes = store.list('notes', (n) => n.date >= start && n.date <= end && n.text).map(({ id, kind, date, text }) => ({ id, kind, date, text }));
@@ -608,25 +655,25 @@ export function createService(store, opts = {}) {
       if (a.id) {
         const cur = store.get('shifts', a.id);
         if (!cur) fail(404, 'Shift not found');
-        if (cur.userId !== doc.userId || cur.date !== doc.date || cur.start !== doc.start) cancelRequestsForShift(a.id, 'the shift was changed by a manager');
+        if (cur.userId !== doc.userId || cur.date !== doc.date || cur.start !== doc.start) cancelRequestsForShift(a.id, 'reasonChanged');
         const upd = store.update('shifts', a.id, doc);
         if (cur.published) {
-          if (cur.userId && cur.userId !== doc.userId) notify([cur.userId], `You were removed from ${describe(cur)}`, '#/my');
-          if (doc.userId) notify([doc.userId], cur.userId === doc.userId ? `Your shift changed: ${describe(upd)}` : `You were added to ${describe(upd)}`, '#/my');
+          if (cur.userId && cur.userId !== doc.userId) notify([cur.userId], say('removedFrom', desc(cur)), '#/my');
+          if (doc.userId) notify([doc.userId], cur.userId === doc.userId ? say('shiftChanged', desc(upd)) : say('addedTo', desc(upd)), '#/my');
         }
-        return { shift: upd, warnings: doc.userId ? conflictsFor(doc.userId, upd) : [] };
+        return { shift: upd, warnings: doc.userId ? conflictsFor(doc.userId, upd, [], L(actor)) : [] };
       }
       const s = store.insert('shifts', { id: uid('shf'), ...doc, published: !!a.published, createdAt: now().toISOString(), createdBy: actor.id });
-      if (s.published && s.userId) notify([s.userId], `New shift: ${describe(s)}`, '#/my');
-      return { shift: s, warnings: s.userId ? conflictsFor(s.userId, s) : [] };
+      if (s.published && s.userId) notify([s.userId], say('newShift', desc(s)), '#/my');
+      return { shift: s, warnings: s.userId ? conflictsFor(s.userId, s, [], L(actor)) : [] };
     },
     'shifts.delete': (actor, { id }) => {
       needMgr(actor);
       const s = store.get('shifts', id);
       if (!s) return { ok: true };
-      cancelRequestsForShift(id, 'the shift was removed');
+      cancelRequestsForShift(id, 'reasonRemoved');
       store.remove('shifts', id);
-      if (s.published && s.userId) notify([s.userId], `Shift removed: ${describe(s)}`, '#/my');
+      if (s.published && s.userId) notify([s.userId], say('shiftRemoved', desc(s)), '#/my');
       return { ok: true };
     },
     // Start a week over: delete its draft shifts (and, if asked, its published ones and its notes).
@@ -639,12 +686,12 @@ export function createService(store, opts = {}) {
       const told = new Set();
       for (const sh of store.list('shifts', (x) => x.date >= ws && x.date <= end)) {
         if (sh.eventId || (sh.published && !published)) { out.kept++; continue; }
-        cancelRequestsForShift(sh.id, 'the shift was removed');
+        cancelRequestsForShift(sh.id, 'reasonRemoved');
         store.remove('shifts', sh.id);
         out.removed++;
         if (sh.published) { out.published++; if (sh.userId) told.add(sh.userId); }
       }
-      if (told.size) notify([...told], `Your shifts for the week of ${prettyDate(ws)} were taken off the schedule. A new schedule is coming.`, '#/my');
+      if (told.size) notify([...told], say('weekCleared', day(ws)), '#/my');
       if (notes) for (const n of store.list('notes', (x) => x.date >= ws && x.date <= end)) { store.remove('notes', n.id); out.notes++; }
       return out;
     },
@@ -873,13 +920,12 @@ export function createService(store, opts = {}) {
       const drafts = store.list('shifts', (s) => !s.published && (eventId ? s.eventId === eventId : s.date >= start && s.date <= end));
       store.transaction(() => drafts.forEach((s) => store.update('shifts', s.id, { published: true, publishedAt: now().toISOString() })));
       const byUser = new Set(drafts.map((s) => s.userId).filter(Boolean));
-      const label = eventId ? `Event shifts posted for ${store.get('events', eventId)?.name}` : `The schedule for ${prettyDate(start, { dow: false })} – ${prettyDate(end, { dow: false })} is posted`;
-      notify([...byUser], `${label}. Check your shifts.`, '#/my');
+      notify([...byUser], eventId ? say('eventShiftsPosted', store.get('events', eventId)?.name) : say('schedulePosted', day(start, { dow: false }), day(end, { dow: false })), '#/my');
       const open = drafts.filter((s) => !s.userId);
       if (open.length) {
         const jobs = new Set(open.map((s) => s.jobCodeId));
         const eligible = users().filter((u) => u.active !== false && u.jobCodes?.some((j) => jobs.has(j.jobCodeId)) && !byUser.has(u.id)).map((u) => u.id);
-        notify(eligible, `${open.length} open shift${open.length > 1 ? 's' : ''} available to pick up.`, '#/my');
+        notify(eligible, say('openShiftsPosted', open.length), '#/my');
       }
       return { published: drafts.length, notified: byUser.size };
     },
@@ -888,7 +934,7 @@ export function createService(store, opts = {}) {
       const s = store.get('shifts', shiftId);
       if (!s || !visibleShift(actor, s)) fail(404, 'Shift not found');
       return users().filter((u) => u.active !== false && u.id !== s.userId && qualified(u, s.jobCodeId))
-        .map((u) => ({ id: u.id, name: u.name, conflicts: conflictsFor(u.id, s) }))
+        .map((u) => ({ id: u.id, name: u.name, conflicts: conflictsFor(u.id, s, [], L(actor)) }))
         .sort((a, b) => a.conflicts.length - b.conflicts.length || a.name.localeCompare(b.name));
     },
 
@@ -899,17 +945,19 @@ export function createService(store, opts = {}) {
       const all = store.list('requests').sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
       const recentCut = addDays(today(), -30);
       const view = all.filter((r) => (r.createdAt || '').slice(0, 10) >= recentCut || ['open', 'pending_approval'].includes(r.status));
-      const approvals = isApprover(actor) ? view.filter((r) => r.status === 'pending_approval').map(requestView) : [];
-      const mine = view.filter((r) => r.requesterId === actor.id || r.pickupUserId === actor.id || r.targetUserId === actor.id).map(requestView);
+      const lang = L(actor);
+      const rv = (r) => requestView(r, lang);
+      const approvals = isApprover(actor) ? view.filter((r) => r.status === 'pending_approval').map(rv) : [];
+      const mine = view.filter((r) => r.requesterId === actor.id || r.pickupUserId === actor.id || r.targetUserId === actor.id).map(rv);
       const offers = view.filter((r) => r.status === 'open' && r.requesterId !== actor.id && (
         (r.type === 'swap' && r.targetUserId === actor.id) ||
         (r.type === 'drop' && qualified(me, store.get('shifts', r.shiftId)?.jobCodeId)))).map((r) => {
-        const v = requestView(r);
-        v.myConflicts = r.type === 'drop' ? conflictsFor(actor.id, v.shift) : conflictsFor(actor.id, v.shift, [r.targetShiftId]);
+        const v = rv(r);
+        v.myConflicts = r.type === 'drop' ? conflictsFor(actor.id, v.shift, [], lang) : conflictsFor(actor.id, v.shift, [r.targetShiftId], lang);
         return v;
       });
-      const history = isApprover(actor) ? view.filter((r) => !['open', 'pending_approval'].includes(r.status)).slice(0, 40).map(requestView) : [];
-      const openPending = isApprover(actor) ? view.filter((r) => r.status === 'open').map(requestView) : [];
+      const history = isApprover(actor) ? view.filter((r) => !['open', 'pending_approval'].includes(r.status)).slice(0, 40).map(rv) : [];
+      const openPending = isApprover(actor) ? view.filter((r) => r.status === 'open').map(rv) : [];
       return { approvals, mine, offers, history, openPending };
     },
     'swaps.create': (actor, { shiftId, type, targetShiftId, note }) => {
@@ -932,21 +980,21 @@ export function createService(store, opts = {}) {
         if (store.list('requests', (r) => r.type === 'pickup' && r.shiftId === shiftId && r.pickupUserId === actor.id && r.status === 'pending_approval').length) fail(409, 'You already requested this shift');
         const r = { ...base, type: 'pickup', pickupUserId: actor.id, status: 'pending_approval' };
         if (!st.requirePickupApproval) {
-          const c = conflictsFor(actor.id, s).filter((w) => !w.startsWith('Overtime'));
-          if (c.length) fail(409, c.join('; '));
+          const c = conflictList(actor.id, s).filter((w) => w.code !== 'overtime');
+          if (c.length) fail(409, c.map((w) => conflictText(w, L(actor))).join('; '));
           store.insert('requests', { ...r, status: 'approved', resolvedAt: now().toISOString(), resolution: 'Auto-approved' });
           executeRequest(r);
           return { ok: true, autoApproved: true };
         }
         store.insert('requests', r);
-        notify(approvers().map((m) => m.id), `${nameOf(actor.id)} wants to pick up ${describe(s)}`, '#/swaps');
+        notify(approvers().map((m) => m.id), say('wantsPickup', nameOf(actor.id), desc(s)), '#/swaps');
         return r;
       }
       if (s.userId !== actor.id) fail(403, 'You can only trade your own shifts');
       if (type === 'drop') {
         const r = store.insert('requests', { ...base, type: 'drop', status: 'open' });
         const eligible = users().filter((u) => u.id !== actor.id && u.active !== false && qualified(u, s.jobCodeId)).map((u) => u.id);
-        notify(eligible, `${nameOf(actor.id)} is giving away ${describe(s)} — pick it up?`, '#/swaps');
+        notify(eligible, say('givingAway', nameOf(actor.id), desc(s)), '#/swaps');
         return r;
       }
       if (type === 'swap') {
@@ -957,7 +1005,7 @@ export function createService(store, opts = {}) {
         if (!qualified(userById(t.userId), s.jobCodeId)) fail(400, `${nameOf(t.userId)} isn't trained as ${jobName(s.jobCodeId)}`);
         if (!qualified(userById(actor.id), t.jobCodeId)) fail(400, `You aren't trained as ${jobName(t.jobCodeId)}`);
         const r = store.insert('requests', { ...base, type: 'swap', targetShiftId, targetUserId: t.userId, status: 'open' });
-        notify([t.userId], `${nameOf(actor.id)} wants to trade their ${describe(s)} for your ${describe(t)}`, '#/swaps');
+        notify([t.userId], say('wantsTrade', nameOf(actor.id), desc(s), desc(t)), '#/swaps');
         return r;
       }
       fail(400, 'Unknown request type');
@@ -972,8 +1020,8 @@ export function createService(store, opts = {}) {
       if (r.type === 'drop') {
         if (r.requesterId === actor.id) fail(400, "You can't pick up your own shift");
         if (!qualified(userById(actor.id), s.jobCodeId)) fail(403, `You aren't set up as ${jobName(s.jobCodeId)}`);
-        const hard = conflictsFor(actor.id, s).filter((w) => w.startsWith('Overlaps'));
-        if (hard.length) fail(409, hard.join('; '));
+        const hard = conflictList(actor.id, s).filter((w) => w.code === 'overlap');
+        if (hard.length) fail(409, hard.map((w) => conflictText(w, L(actor))).join('; '));
         patch = { pickupUserId: actor.id };
       } else if (r.type === 'swap') {
         if (r.targetUserId !== actor.id) fail(403, 'This trade was offered to someone else');
@@ -984,12 +1032,12 @@ export function createService(store, opts = {}) {
       if (!st.requireSwapApproval) {
         executeRequest(updated);
         store.update('requests', r.id, { ...patch, status: 'approved', resolvedAt: now().toISOString(), resolution: 'Auto-approved' });
-        notify([r.requesterId], `${nameOf(actor.id)} took your ${describe(s)}. It's official.`, '#/my');
+        notify([r.requesterId], say('tookYourShift', nameOf(actor.id), desc(s)), '#/my');
         return { ok: true, autoApproved: true };
       }
       store.update('requests', r.id, { ...patch, status: 'pending_approval' });
-      notify([r.requesterId], `${nameOf(actor.id)} accepted your ${r.type === 'swap' ? 'trade' : 'shift'} — waiting on manager approval.`, '#/swaps');
-      notify(approvers().map((m) => m.id).filter((id) => ![r.requesterId, actor.id].includes(id) || isMgr(userById(id))), `Approval needed: ${r.type === 'swap' ? 'trade' : 'giveaway'} of ${describe(s)} (${nameOf(r.requesterId)} → ${nameOf(actor.id)})`, '#/swaps');
+      notify([r.requesterId], say(r.type === 'swap' ? 'acceptedTrade' : 'acceptedShift', nameOf(actor.id)), '#/swaps');
+      notify(approvers().map((m) => m.id).filter((id) => ![r.requesterId, actor.id].includes(id) || isMgr(userById(id))), say('approvalNeeded', r.type, desc(s), nameOf(r.requesterId), nameOf(actor.id)), '#/swaps');
       return { ok: true };
     },
     'swaps.decline': (actor, { requestId }) => {
@@ -997,7 +1045,7 @@ export function createService(store, opts = {}) {
       const r = store.get('requests', requestId);
       if (!r || r.status !== 'open' || r.type !== 'swap' || r.targetUserId !== actor.id) fail(409, 'Nothing to decline');
       store.update('requests', r.id, { status: 'declined', resolvedAt: now().toISOString() });
-      notify([r.requesterId], `${nameOf(actor.id)} declined your trade request.`, '#/swaps');
+      notify([r.requesterId], say('declinedTrade', nameOf(actor.id)), '#/swaps');
       return { ok: true };
     },
     'swaps.cancel': (actor, { requestId }) => {
@@ -1006,7 +1054,7 @@ export function createService(store, opts = {}) {
       if (!r || !['open', 'pending_approval'].includes(r.status)) fail(409, 'Request is already closed');
       if (r.requesterId !== actor.id && !isApprover(actor)) fail(403, 'Not your request');
       store.update('requests', r.id, { status: 'cancelled', resolvedAt: now().toISOString() });
-      if (r.status === 'pending_approval') notify([r.pickupUserId, r.targetUserId].filter((id) => id !== r.requesterId), `${nameOf(r.requesterId)} cancelled the request.`, '#/swaps');
+      if (r.status === 'pending_approval') notify([r.pickupUserId, r.targetUserId].filter((id) => id !== r.requesterId), say('cancelledRequest', nameOf(r.requesterId)), '#/swaps');
       return { ok: true };
     },
     'swaps.approve': (actor, { requestId, note }) => {
@@ -1020,7 +1068,7 @@ export function createService(store, opts = {}) {
         store.update('requests', r.id, { status: 'approved', resolvedAt: now().toISOString(), resolvedBy: actor.id, resolution: note || '' });
       });
       const parties = [r.requesterId, r.pickupUserId, r.targetUserId];
-      notify(parties, `Approved: ${r.type === 'swap' ? 'trade' : r.type === 'pickup' ? 'pickup' : 'giveaway'} of ${describe(s)}. Check your updated schedule.`, '#/my');
+      notify(parties, say('approved', r.type, desc(s)), '#/my');
       return { ok: true };
     },
     'swaps.deny': (actor, { requestId, note }) => {
@@ -1030,7 +1078,7 @@ export function createService(store, opts = {}) {
       notOwnRequest(actor, [r.requesterId, r.pickupUserId, r.targetUserId]);
       store.update('requests', r.id, { status: 'denied', resolvedAt: now().toISOString(), resolvedBy: actor.id, resolution: note || '' });
       const s = store.get('shifts', r.shiftId);
-      notify([r.requesterId, r.pickupUserId, r.targetUserId], `Denied: request for ${describe(s)}${note ? ` — ${note}` : ''}`, '#/swaps');
+      notify([r.requesterId, r.pickupUserId, r.targetUserId], say('denied', desc(s), note), '#/swaps');
       return { ok: true };
     },
 
@@ -1047,7 +1095,7 @@ export function createService(store, opts = {}) {
       const endDate = a.endDate && a.endDate >= a.startDate ? a.endDate : a.startDate;
       const status = isMgr(actor) && a.userId && a.userId !== actor.id ? 'approved' : 'pending';
       const t = store.insert('timeOff', { id: uid('tof'), userId, startDate: a.startDate, endDate, reason: (a.reason || '').trim(), status, createdAt: now().toISOString() });
-      if (status === 'pending') notify(approvers().map((m) => m.id).filter((id) => id !== userId || isMgr(userById(id))), `${nameOf(userId)} requested off ${prettyDate(t.startDate)}${endDate !== t.startDate ? ' – ' + prettyDate(endDate) : ''}`, '#/timeoff');
+      if (status === 'pending') notify(approvers().map((m) => m.id).filter((id) => id !== userId || isMgr(userById(id))), say('requestedOff', nameOf(userId), day(t.startDate), endDate !== t.startDate ? day(endDate) : ''), '#/timeoff');
       const clashes = store.list('shifts', (s) => s.userId === userId && s.date >= t.startDate && s.date <= endDate);
       return { ...t, clashes: clashes.length };
     },
@@ -1058,7 +1106,7 @@ export function createService(store, opts = {}) {
       if (!cur) fail(404, 'Not found');
       notOwnRequest(actor, [cur.userId]);
       const t = store.update('timeOff', id, { status, decidedBy: actor.id, decidedAt: now().toISOString(), note: note || '' });
-      notify([t.userId], `Time off ${prettyDate(t.startDate)}${t.endDate !== t.startDate ? ' – ' + prettyDate(t.endDate) : ''} was ${status}.`, '#/timeoff');
+      notify([t.userId], say('timeOffDecided', status, day(t.startDate), t.endDate !== t.startDate ? day(t.endDate) : ''), '#/timeoff');
       return t;
     },
     'timeOff.cancel': (actor, { id }) => {
@@ -1113,7 +1161,7 @@ export function createService(store, opts = {}) {
       const f = computeForecastWeek(ws);
       const toCreate = [];
       for (const d of f.days) for (const dp of d.dayparts) for (const row of dp.rows) {
-        for (let i = 0; i < row.gap; i++) toCreate.push({ date: d.date, start: dp.start, end: dp.end, jobCodeId: row.jobCodeId, userId: null, notes: `Forecast: ${dp.name} (${dp.covers} covers)` });
+        for (let i = 0; i < row.gap; i++) toCreate.push({ date: d.date, start: dp.start, end: dp.end, jobCodeId: row.jobCodeId, userId: null, notes: msg(L(actor)).forecastNote(dp.name, dp.covers) });
       }
       store.transaction(() => toCreate.forEach((s) => store.insert('shifts', { id: uid('shf'), ...cleanShift(s), published: false, createdAt: now().toISOString(), createdBy: actor.id })));
       return { created: toCreate.length };
@@ -1156,10 +1204,10 @@ export function createService(store, opts = {}) {
         if (!cur) fail(404, 'Event not found');
         e = store.update('events', a.id, doc);
         const staff = store.list('shifts', (s) => s.eventId === a.id && s.userId && s.published).map((s) => s.userId);
-        notify([...staff, e.captainId].filter((id) => id !== actor.id), `BEO updated: ${e.name} (${prettyDate(e.date)}). Review the latest details.`, `#/events/${e.id}`);
+        notify([...staff, e.captainId].filter((id) => id !== actor.id), say('beoUpdated', e.name, day(e.date)), `#/events/${e.id}`);
       } else {
         e = store.insert('events', { id: uid('evt'), status: 'tentative', ...doc, createdAt: now().toISOString(), createdBy: actor.id });
-        notify(managers().map((m) => m.id).filter((id) => id !== actor.id), `New event: ${e.name} on ${prettyDate(e.date)} — ${e.guestCount} guests`, `#/events/${e.id}`);
+        notify(managers().map((m) => m.id).filter((id) => id !== actor.id), say('newEvent', e.name, day(e.date), e.guestCount), `#/events/${e.id}`);
       }
       return eventView(e, actor);
     },
@@ -1167,15 +1215,15 @@ export function createService(store, opts = {}) {
       needEvents(actor);
       const linked = store.list('shifts', (s) => s.eventId === id);
       store.transaction(() => {
-        for (const s of linked) { cancelRequestsForShift(s.id, 'the event was removed'); store.remove('shifts', s.id); }
+        for (const s of linked) { cancelRequestsForShift(s.id, 'reasonEventRemoved'); store.remove('shifts', s.id); }
         store.remove('events', id);
       });
-      notify(linked.filter((s) => s.published && s.userId).map((s) => s.userId), 'An event you were scheduled for was cancelled.', '#/my');
+      notify(linked.filter((s) => s.published && s.userId).map((s) => s.userId), say('eventCancelled'), '#/my');
       return { ok: true };
     },
     'events.suggestStaffing': (actor, event) => {
       needEvents(actor);
-      return suggestStaffing(event, store.list('jobCodes'));
+      return suggestStaffing(event, store.list('jobCodes'), L(actor));
     },
     'events.generateShifts': (actor, { id, publish }) => {
       needMgr(actor);
@@ -1205,7 +1253,7 @@ export function createService(store, opts = {}) {
       const staff = store.list('shifts', (s) => s.eventId === eventId && s.userId && s.published).map((s) => s.userId);
       const others = store.list('eventComments', (x) => x.eventId === eventId).map((x) => x.userId);
       const evTeam = users().filter((u) => u.active !== false && canManageEvents(u)).map((u) => u.id);
-      notify([...new Set([...staff, ...others, ...evTeam, e.captainId])].filter((id) => id && id !== actor.id), `${nameOf(actor.id)} on ${e.name}: “${text.trim().slice(0, 80)}”`, `#/events/${eventId}`);
+      notify([...new Set([...staff, ...others, ...evTeam, e.captainId])].filter((id) => id && id !== actor.id), say('eventComment', nameOf(actor.id), e.name, text.trim().slice(0, 80)), `#/events/${eventId}`);
       return { ...c, userName: nameOf(actor.id) };
     },
 
@@ -1361,21 +1409,64 @@ export function createService(store, opts = {}) {
     })(),
 
     // ----- tip pooling (core/tips.js) -----
-    ...tipMethods({ store, now, settings, fail, needAuth, needMgr, needAdmin, notify }),
+    ...tipMethods({ store, now, settings, fail, needAuth, needMgr, needAdmin, notify, langOf: L }),
     // ----- phone notifications and text messages (core/notify-prefs.js) -----
     ...channelApi({ store, fail, needAuth, needAdmin, settings, now, channels: opts.channels }),
+    // ----- training: menu study guide, quizzes, leaderboard, employee manual, manager on duty (core/training.js) -----
+    ...trainingApi({ store, now, settings, notify, fail, random: opts.random, langOf: L }),
+    // ----- 86 List: what's out or running low, per list; the bar separate (core/eighty-six.js) -----
+    ...eightySixApi({ store, now, settings, notify, fail }),
 
     // ----- notifications -----
     'notifications.list': (actor) => {
       needAuth(actor);
-      return store.list('notifications', (n) => n.userId === actor.id).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 60);
+      const lang = L(actor);
+      return store.list('notifications', (n) => n.userId === actor.id).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 60)
+        .map(({ i18n, ...n }) => (i18n?.[lang] ? { ...n, text: i18n[lang] } : n)); // in the reader's language now
     },
     'notifications.readAll': (actor) => {
       needAuth(actor);
       store.transaction(() => store.list('notifications', (n) => n.userId === actor.id && !n.read).forEach((n) => store.update('notifications', n.id, { read: true })));
       return { ok: true };
     },
+
+    // ----- phone app (mobile/): push tokens and account deletion requests -----
+    // A phone's Expo push token. One phone belongs to one person: signing in as someone else moves it.
+    // v is the session version, so a password change or reset stops pushes to phones signed in before it.
+    'devices.register': (actor, { token, platform } = {}) => {
+      needAuth(actor);
+      if (typeof token !== 'string' || token.length > 200 || !/^Expo(nent)?PushToken\[[A-Za-z0-9_-]+\]$/.test(token)) fail(400, 'Not a push token');
+      if (!['ios', 'android'].includes(platform)) fail(400, 'Platform must be ios or android');
+      const v = userById(actor.id)?.sessionVersion || 0;
+      for (const d of store.list('deviceTokens', (x) => x.token === token && x.userId !== actor.id)) store.remove('deviceTokens', d.id);
+      const mine = store.list('deviceTokens', (x) => x.userId === actor.id).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      const cur = mine.find((x) => x.token === token);
+      if (cur) store.update('deviceTokens', cur.id, { platform, v, seenAt: now().toISOString() });
+      else store.insert('deviceTokens', { id: uid('dev'), userId: actor.id, token, platform, v, createdAt: now().toISOString() });
+      for (const old of mine.filter((x) => x !== cur).slice(9)) store.remove('deviceTokens', old.id); // keep 10 phones at most
+      return { ok: true };
+    },
+    'devices.unregister': (actor, { token } = {}) => {
+      needAuth(actor);
+      const mine = store.list('deviceTokens', (x) => x.userId === actor.id && x.token === token);
+      for (const d of mine) store.remove('deviceTokens', d.id);
+      return { ok: true, removed: mine.length };
+    },
+    // "Delete my account" in the app: tells the managers who look after this person, who remove the
+    // account in Team. Schedule and payroll records the restaurant must keep by law stay.
+    'account.requestDeletion': (actor) => {
+      needAuth(actor);
+      const me = userById(actor.id);
+      const at = now().toISOString();
+      if (me.deletionRequestedAt && Date.parse(at) - Date.parse(me.deletionRequestedAt) < 24 * 3600 * 1000) return { ok: true, requestedAt: me.deletionRequestedAt };
+      store.update('users', me.id, { deletionRequestedAt: at });
+      const mine = users().filter((u) => u.id !== me.id && u.active !== false && canManageUser(u, me));
+      notify((mine.length ? mine : managers().filter((u) => u.id !== me.id)).map((u) => u.id), say('deletionRequested', me.name), '#/team');
+      return { ok: true, requestedAt: at };
+    },
   };
+  // Rooms ↔ schedule: sections.* (who works which tables) and event room links. See core/venue-links.js.
+  venueLinks({ store, api, fail, needAuth, needMgr, needEvents, visibleShift, now });
 
   return {
     api,
@@ -1385,5 +1476,7 @@ export function createService(store, opts = {}) {
       return fn(actor, args || {});
     },
     settings,
+    /** The language ShiftBoard writes to this person in. */
+    langOf: L,
   };
 }
