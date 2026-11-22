@@ -172,21 +172,24 @@ core/       Business logic shared by server + demo (pure JS, no I/O)
   eighty-six.js  the 86 List: lists (Bar, Kitchen…), who reports and sees each, items out or low, the nightly reset, history
   training.js  menu study guide, quizzes, leaderboard, employee manual, manager on duty (training-seed.js: its demo data)
 server/     Express API (one RPC endpoint + auth) and iCal feed
-  app.js       routes, sessions, login rate limiting
-  db.js        Postgres persistence (see below)
+  app.js       one restaurant's API: routes, sessions, login rate limiting, plan features
+  db.js        Postgres persistence (see below), one schema per restaurant
+  platform/    many restaurants on one deployment: host routing, the tenant registry, the console's API (docs/platform)
+  billing.js   phase 2 (Stripe), documented only
   email.js     Resend email sender and email templates
   training-routes.js  menu and quiz photos, for signed-in people only
   eighty-six-routes.js  86 List photos, for people who can see the item's list (cookie or bearer token)
   index.js     standalone server (local, Docker)
-api/        Vercel Function entry point (wraps server/app.js)
+api/        Vercel Function entry point (wraps server/platform/)
 web/        React UI (Vite). DEMO=1 builds a self-contained single-file demo that runs core/ in the browser
+  console/     the platform console for DubLow Digital (platform.html)
 scripts/    one-off tools (SQLite → Postgres import)
 test/       node:test suites for scheduling, swaps, forecast, events, importer, store, database and API
 ```
 
 The API is `POST /api/rpc/<method>` with a JSON body. Every method enforces its own role check in `core/service.js`, so the web app, the demo, and any future mobile app or integration share one set of rules.
 
-**How data is stored.** Each record (shift, user, event…) is a JSON document in one Postgres table, `shiftboard.docs`, stamped with an ever-increasing sequence number. Each running instance keeps a cache and, before every request, pulls only the rows that changed since its last look (usually none: one indexed query). Writes run in a transaction that holds a single lock: the instance catches up, re-runs the operation on the latest data, and saves every change in one statement. That keeps check-then-act operations correct when Vercel runs several instances at once, for example two people grabbing the same open shift. The business logic stays synchronous and unchanged, and a failed request never leaves partial writes.
+**How data is stored.** Each record (shift, user, event…) is a JSON document in one Postgres table, `shiftboard.docs` (each restaurant on the platform has its own schema with the same tables; see [docs/platform](docs/platform/README.md)), stamped with an ever-increasing sequence number. Each running instance keeps a cache and, before every request, pulls only the rows that changed since its last look (usually none: one indexed query). Writes run in a transaction that holds a single lock: the instance catches up, re-runs the operation on the latest data, and saves every change in one statement. That keeps check-then-act operations correct when Vercel runs several instances at once, for example two people grabbing the same open shift. The business logic stays synchronous and unchanged, and a failed request never leaves partial writes.
 ## Roadmap ideas
 - POS integration (Toast / Square) to pull daily sales automatically
 - Time clock and tip pooling

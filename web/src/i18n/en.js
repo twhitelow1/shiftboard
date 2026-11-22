@@ -1536,6 +1536,26 @@ const catalog = {
     nameOnSheet: 'Name on the sheet (optional)',
     labelSaved: 'Name saved',
   },
+  // One ShiftBoard for many restaurants (server/platform/): the screens and banners it adds.
+  platform: {
+    notFoundTitle: 'Restaurant not found',
+    notFoundHelp: 'There’s no ShiftBoard restaurant at this address. Check the link your manager sent you.',
+    pausedTitle: 'This restaurant’s account is paused. Contact DubLow Digital.',
+    pausedHelp: 'Nothing has been deleted: the schedule and everything else will be here when the account is back on.',
+    supportBanner: 'Support mode: DubLow Digital ({by}) is signed in as {name} until {time}.',
+    endSupport: 'End support session',
+    trialEndsIn: { one: 'Your free trial ends in {count} day.', other: 'Your free trial ends in {count} days.' },
+    trialEndsToday: 'Your free trial ends today.',
+    choosePlan: 'Choose a plan',
+    paymentFailed: 'Payment failed. Update your card to keep ShiftBoard running.',
+    updateCard: 'Update card',
+    billingByDublow: 'Contact DubLow Digital to set up or update your payment.',
+    dismiss: 'Dismiss',
+    askDublowEmail: 'Not set up yet. Ask DubLow Digital to set up email for your restaurant.',
+    askDublowTexts: 'Not set up yet. Ask DubLow Digital to set up texts for your restaurant.',
+    askDublowPush: 'Not set up yet. Ask DubLow Digital to set them up.',
+    askDublowToast: 'Toast isn’t connected yet. Ask DubLow Digital to connect it. They’ll need your Toast Standard API credentials: the client ID, the client secret and the location’s GUID.',
+  },
 };
 
 export default catalog;
