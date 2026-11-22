@@ -581,6 +581,16 @@ test('HTTP: photos are uploaded one per request and served only to signed-in peo
     assert.equal((await fetch(quizPhoto)).status, 401);
     assert.equal((await fetch(quizPhoto, { headers: { Cookie: alex } })).status, 200);
     assert.equal((await fetch(quizPhoto, { headers: { Cookie: await login('styves@demo.shiftboard') } })).status, 404, 'someone else’s attempt');
+
+    // The phone app sends its session as a bearer token instead of the cookie: same photos, same rules.
+    const phone = await (await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'alexd@demo.shiftboard', password: 'demo1234', client: 'mobile' }) })).json();
+    const bearer = { Authorization: `Bearer ${phone.token}` };
+    const menuPhoto = await fetch(`${base}/api/training/photos/${id}`, { headers: bearer });
+    assert.equal(menuPhoto.status, 200);
+    assert.equal((await menuPhoto.arrayBuffer()).byteLength, 300 * 1024);
+    assert.equal((await fetch(quizPhoto, { headers: bearer })).status, 200, 'their own quiz photo');
+    assert.equal((await fetch(`${base}/api/training/photos/${id}`, { headers: { Authorization: 'Bearer not-a-token' } })).status, 401);
     const done = await rpc(alex, 'quiz.submit', { attemptId: att.body.result.id, answers: {} });
     assert.equal(done.body.result.score, 0);
     assert.ok(done.body.result.questions.every((q) => q.correctId));
