@@ -6,7 +6,8 @@ import { once } from 'node:events';
 import { MemoryStore } from '../core/store.js';
 import { createService, DEFAULT_SETTINGS } from '../core/service.js';
 import { seedDemo } from '../core/seed.js';
-import { TEXT } from '../core/eighty-six.js';
+import { TEXT, PHOTOS_PER_ITEM, KEEP_PHOTOS_DAYS, eightySixPhotoFor } from '../core/eighty-six.js';
+import { PHOTO_MAX_BYTES } from '../core/training.js';
 import { DocDb } from '../server/db.js';
 import { openPglite } from '../server/pglite.js';
 import { createApp } from '../server/app.js';
@@ -50,6 +51,7 @@ function withMenu() {
   return f;
 }
 const shift = (f, userId, date, start, end, published = true) => f.store.insert('shifts', { date, start, end, userId, jobCodeId: f.store.get('users', userId).jobCodes[0].jobCodeId, area: '', tag: '', notes: '', breakMin: 0, published });
+const jpeg = (bytes = 200) => `data:image/jpeg;base64,${Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(bytes - 4, 7)]).toString('base64')}`;
 const notes = (f, id) => f.store.list('notifications', (n) => n.userId === id && n.link === '#/86');
 
 test('default lists: Bar for bar staff plus managers, Kitchen for the kitchen and front of house; everyone sees both', () => {
@@ -323,7 +325,7 @@ test('settings: admins add, rename and limit lists (one bar list per bar area); 
   assert.deepEqual(s.lists[0].reporters, { departments: ['Bar'], jobCodeIds: [] });
   assert.deepEqual(s.lists[1].reporters, { departments: ['Leadership', 'Restaurant', 'Kitchen'], jobCodeIds: [] });
   assert.deepEqual(s.lists[0].viewers, { all: true });
-  assert.deepEqual(s.options.areas.slice(0, 2), ['Dining Room', 'Rooftop'], 'the schedule’s areas, then its rooms');
+  assert.deepEqual(s.options.areas, ['Dining Room', 'Rooftop'], 'the restaurant’s areas');
   assert.deepEqual(s.options.sections.sort(), ['Cocktails', 'Mains', 'Sides', 'Wine']);
   f.admin('eightySix.saveList', { id: s.lists[0].id, name: 'Main bar', nameEs: 'Barra principal', area: 'dining room' });
   const roof = f.admin('eightySix.saveList', { name: 'Rooftop bar', kind: 'bar', area: 'Rooftop', reporters: { departments: ['Bar'], jobCodeIds: ['job_srv', 'nope'] }, sections: ['Cocktails'] });
@@ -385,6 +387,170 @@ test('the API: read-only methods, reports and errors in the caller’s language'
     assert.equal(gone.body.error, 'Eso ya no está en la lista');
     assert.equal((await mak('eightySix.clear', { id: r.body.result.item.id })).status, 200);
     assert.equal((await alex('eightySix.history.get')).status, 403);
+  } finally {
+    server.closeAllConnections();
+    await new Promise((r) => server.close(r));
+    await conn.end();
+  }
+});
+
+test('a new restaurant gets its Bar and Kitchen lists on the first read, through the server’s read-only path', async () => {
+  const conn = await openPglite();
+  const env = { ADMIN_EMAIL: 'owner@test.local', ADMIN_PASSWORD: 'first-pass-86', JWT_SECRET: 'test-secret-86b' };
+  const db = new DocDb(conn);
+  const app = createApp({ db, env });
+  await app.locals.ready();
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const { token } = await (await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: env.ADMIN_EMAIL, password: env.ADMIN_PASSWORD, client: 'mobile' }) })).json();
+    const rpc = async (method, args = {}) => (await (await fetch(`${base}/api/rpc/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(args) })).json()).result;
+    const first = await rpc('eightySix.board.get');
+    assert.deepEqual(first.lists.map((l) => [l.name, l.kind]), [['Bar', 'bar'], ['Kitchen', 'kitchen']]);
+    assert.deepEqual((await rpc('eightySix.summary')).lists.map((l) => l.id), first.lists.map((l) => l.id), 'saved once: the same lists after');
+    await db.sync();
+    assert.equal(db.store.list('eightySixLists').length, 2, 'stored in the database');
+  } finally {
+    server.closeAllConnections();
+    await new Promise((r) => server.close(r));
+    await conn.end();
+  }
+});
+
+test('photos: up to 3 per report, checked like Training’s, only for people who can see the list; the reporter or a manager removes them', () => {
+  const f = withMenu();
+  const bar = f.list('bar', 'Bar');
+  const item = f.as('bar')('eightySix.report', { listId: bar.id, name: 'Buffalo Trace' }).item;
+  assert.deepEqual(item.photos, [], 'photos are optional');
+  const add = (who, dataUrl = jpeg(), id = item.id) => f.as(who)('eightySix.addPhoto', { itemId: id, dataUrl, w: 1200, h: 900 });
+  const first = add('bar');
+  assert.deepEqual([first.photo.w, first.photo.h, first.item.photos.length], [1200, 900, 1]);
+  const doc = f.store.get('eightySixPhotos', first.photo.id);
+  assert.deepEqual([doc.itemId, doc.listId, doc.mime, doc.by], [item.id, bar.id, 'image/jpeg', 'bar']);
+  // Type, the real bytes and size, like menu.addPhoto.
+  assert.throws(() => add('bar', 'data:image/gif;base64,R0lGODlhAQABAAAAACw='), /Upload a JPG, PNG or WebP photo/);
+  assert.throws(() => add('bar', jpeg().replace('image/jpeg', 'image/png')), /isn’t the kind of image it says it is/);
+  assert.throws(() => add('bar', jpeg(PHOTO_MAX_BYTES + 10)), (e) => e.status === 413 && /too large/.test(e.message));
+  assert.throws(() => add('bar', 'not a photo'), /Upload a JPG, PNG or WebP photo/);
+  // Who: the list's reporters; at most 3.
+  assert.throws(() => add('srv'), /can’t report on this list/);
+  add('bar2');
+  const third = add('mgr');
+  assert.equal(third.item.photos.length, PHOTOS_PER_ITEM);
+  assert.throws(() => add('bar'), /up to 3 photos/);
+  // Everyone who sees the list sees the photos; the reporter and managers may remove any, others their own.
+  const seen = (who) => f.list(who, 'Bar').items.find((i) => i.id === item.id).photos;
+  assert.deepEqual(seen('srv').map((p) => p.canRemove), [false, false, false]);
+  assert.deepEqual(seen('bar').map((p) => p.canRemove), [true, true, true], 'the reporter');
+  assert.deepEqual(seen('bar2').map((p) => p.canRemove), [false, true, false], 'their own');
+  assert.ok(eightySixPhotoFor(f.store, f.store.get('users', 'srv'), first.photo.id));
+  assert.match(f.as('srv')('eightySix.photo.get', { id: first.photo.id }).dataUrl, /^data:image\/jpeg;base64,/);
+  assert.throws(() => f.as('bbk')('eightySix.removePhoto', { itemId: item.id, photoId: first.photo.id }), /Only the person who reported it or a manager/);
+  assert.throws(() => f.as('bar2')('eightySix.removePhoto', { itemId: item.id, photoId: first.photo.id }), /Only the person who reported it or a manager/);
+  assert.equal(f.as('bar2')('eightySix.removePhoto', { itemId: item.id, photoId: seen('bar2')[1].id }).item.photos.length, 2);
+  assert.equal(f.mgr('eightySix.removePhoto', { itemId: item.id, photoId: first.photo.id }).item.photos.length, 1);
+  assert.equal(f.store.get('eightySixPhotos', first.photo.id), null, 'the bytes go too');
+  assert.throws(() => f.mgr('eightySix.removePhoto', { itemId: item.id, photoId: first.photo.id }), /Photo not found/);
+  // A hidden list: no photo for anyone outside it, through any method.
+  f.admin('eightySix.saveList', { id: bar.id, viewers: { departments: ['Bar'] } });
+  const left = seen('bar')[0].id;
+  assert.equal(eightySixPhotoFor(f.store, f.store.get('users', 'srv'), left), null);
+  assert.throws(() => f.as('srv')('eightySix.photo.get', { id: left }), /Photo not found/);
+  assert.throws(() => f.as('srv')('eightySix.addPhoto', { itemId: item.id, dataUrl: jpeg() }), /isn’t on the list anymore/);
+  assert.throws(() => f.as('srv')('eightySix.removePhoto', { itemId: item.id, photoId: left }), /isn’t on the list anymore/);
+  assert.ok(f.as('bbk')('eightySix.photo.get', { id: left }).dataUrl);
+  assert.throws(() => f.as('bar')('eightySix.photo.get', { id: 'e86p_nope' }), /Photo not found/);
+});
+
+test('photos stay with the history for 30 days after the item comes off the list, then they are deleted', () => {
+  const f = withMenu();
+  const bar = f.list('bar', 'Bar');
+  const report = (name) => f.as('bar')('eightySix.report', { listId: bar.id, name }).item;
+  const photo = (it) => f.as('bar')('eightySix.addPhoto', { itemId: it.id, dataUrl: jpeg() }).photo.id;
+  const start = new Date('2026-11-20T15:00:00').getTime();
+  const gone = report('Gin'), still = report('Rye');
+  const p1 = photo(gone), p2 = photo(gone), p3 = photo(still);
+  f.as('bar')('eightySix.clear', { id: gone.id }); // Fri Nov 20, 3pm
+  // Kept with the history: managers see them there, and anyone who can see the list can open them.
+  assert.equal(f.mgr('eightySix.history.get').entries.find((e) => e.id === gone.id).photos.length, 2);
+  assert.ok(eightySixPhotoFor(f.store, f.store.get('users', 'srv'), p1));
+  f.clock.now = new Date(start + (KEEP_PHOTOS_DAYS - 1) * 86400000);
+  f.as('srv')('eightySix.summary');
+  assert.ok(f.store.get('eightySixPhotos', p1) && f.store.get('eightySixPhotos', p2), 'still there after 29 days');
+  f.clock.now = new Date(start + (KEEP_PHOTOS_DAYS + 1) * 86400000);
+  f.as('srv')('eightySix.summary');
+  assert.equal(f.store.get('eightySixPhotos', p1), null);
+  assert.equal(f.store.get('eightySixPhotos', p2), null);
+  const log = f.store.get('eightySixLog', gone.id);
+  assert.deepEqual(log.photos, []);
+  assert.ok(log.photosRemovedAt, 'the history entry stays, without its photos');
+  assert.ok(f.store.get('eightySixPhotos', p3), 'an item still on the list keeps its photos');
+  // The nightly reset counts as coming off the list too.
+  f.admin('eightySix.saveList', { id: bar.id, resetAt: '04:00' });
+  f.clock.now = new Date(f.clock.now.getTime() + 86400000);
+  f.as('srv')('eightySix.summary');
+  assert.equal(f.store.get('eightySixLog', still.id).clearedHow, 'reset');
+  assert.ok(f.store.get('eightySixPhotos', p3));
+  f.clock.now = new Date(f.clock.now.getTime() + (KEEP_PHOTOS_DAYS + 1) * 86400000);
+  f.as('srv')('eightySix.board.get');
+  assert.equal(f.store.get('eightySixPhotos', p3), null);
+});
+
+test('photo bytes stay in Postgres (not in any instance’s memory) and are served only to people who can see the list', async () => {
+  const conn = await openPglite();
+  const db = new DocDb(conn);
+  const app = createApp({ db, env: { SEED_DEMO: 'true', JWT_SECRET: 'test-secret-86c' } });
+  await app.locals.ready();
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const signIn = async (email) => {
+    const { token } = await (await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: 'demo1234', client: 'mobile' }) })).json();
+    const auth = { Authorization: `Bearer ${token}` };
+    const rpc = async (method, args = {}) => {
+      const res = await fetch(`${base}/api/rpc/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...auth }, body: JSON.stringify(args) });
+      return { status: res.status, body: await res.json() };
+    };
+    return { rpc, get: (url) => fetch(`${base}${url}`, { headers: auth }) };
+  };
+  try {
+    const mak = await signIn('mak@demo.shiftboard');
+    const alex = await signIn('alexd@demo.shiftboard');
+    const moe = await signIn('moe@demo.shiftboard');
+    const bar = (await mak.rpc('eightySix.board.get')).body.result.lists[0];
+    const item = bar.items[0];
+    const up = await mak.rpc('eightySix.addPhoto', { itemId: item.id, dataUrl: jpeg(300 * 1024), w: 800, h: 600 });
+    assert.equal(up.status, 200, JSON.stringify(up.body));
+    const id = up.body.result.photo.id;
+    assert.equal((await mak.rpc('eightySix.addPhoto', { itemId: item.id, dataUrl: jpeg(PHOTO_MAX_BYTES + 10) })).status, 413);
+    assert.equal((await alex.rpc('eightySix.addPhoto', { itemId: item.id, dataUrl: jpeg() })).status, 403, 'a server can’t add to the bar’s list');
+    // Served behind sign-in (cookie or bearer), to anyone who can see the list.
+    const url = `/api/eighty-six/photos/${id}`;
+    assert.equal((await fetch(`${base}${url}`)).status, 401);
+    const img = await alex.get(url);
+    assert.equal(img.status, 200);
+    assert.equal(img.headers.get('content-type'), 'image/jpeg');
+    assert.match(img.headers.get('cache-control'), /^private/);
+    assert.equal((await img.arrayBuffer()).byteLength, 300 * 1024);
+    assert.equal((await alex.get('/api/eighty-six/photos/nope')).status, 404);
+    // On a server the RPC has no bytes to hand out (the route serves them).
+    assert.equal((await alex.rpc('eightySix.photo.get', { id })).status, 404);
+    // The bytes are in Postgres only: this instance's cache and a cold-started one hold none.
+    assert.equal(db.store.get('eightySixPhotos', id).data, undefined);
+    const cold = new DocDb(conn);
+    await cold.sync();
+    assert.equal(cold.store.get('eightySixPhotos', id).data, undefined, 'a cold start loads no photo bytes');
+    assert.equal((await cold.lazyData('eightySixPhotos', id)).length, Math.ceil(300 * 1024 / 3) * 4);
+    // Hide the bar's list from servers: the photo is gone for them, still there for the bar.
+    assert.equal((await moe.rpc('eightySix.saveList', { id: bar.id, viewers: { departments: ['Bar'] } })).status, 200);
+    assert.equal((await alex.get(url)).status, 404);
+    assert.equal((await mak.get(url)).status, 200);
+    // Back in stock keeps the photo with the history; removing it deletes the bytes.
+    await mak.rpc('eightySix.clear', { id: item.id });
+    assert.equal((await mak.get(url)).status, 200);
+    assert.equal((await moe.rpc('eightySix.removePhoto', { itemId: item.id, photoId: id })).status, 200);
+    assert.equal((await mak.get(url)).status, 404);
   } finally {
     server.closeAllConnections();
     await new Promise((r) => server.close(r));

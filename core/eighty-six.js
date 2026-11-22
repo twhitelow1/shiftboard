@@ -12,8 +12,13 @@
 //                   same thing reported twice on a list updates it instead of listing it twice.
 //                   { id, listId, name, key, menuItemId, status: 'out' | 'low', count, note, area,
 //                     reportedBy, reportedAt, outAt, updatedBy, updatedAt }
+//                   photos: [{ id, w, h, by, at }] (up to 3, optional: the empty bottle, the shelf)
 //   eightySixLog    items that came off a list, under the same id: the history managers read.
 //                   { ...item, listName, clearedAt, clearedBy, clearedHow: 'back' | 'reset' | 'removed' }
+//   eightySixPhotos one photo per document (base64), uploaded one per request (eightySix.addPhoto). The server keeps
+//                   the bytes in Postgres only (server/db.js LAZY_DATA) and serves them at /api/eighty-six/photos/:id
+//                   to people who can see the list (server/eighty-six-routes.js). Kept with the history for 30 days
+//                   after the item comes off the list, then deleted on the next read or write.
 //
 // Who can do what
 //   see a list:      everyone by default (servers need to know what the bar is out of); admins can limit a list to
@@ -31,11 +36,14 @@ import { uid } from './store.js';
 import { canManageSchedule, canChangeSettings } from './roles.js';
 import { addDays, todayStr, daysBetween, shiftSpan } from './time.js';
 import { effectiveShift } from './forecast.js';
-import { scheduleAreas, findArea, cleanArea, sameArea } from './areas.js';
+import { scheduleAreas, uniqueAreas, findArea, cleanArea, sameArea } from './areas.js';
+import { checkPhoto } from './training.js';
 
 export const KINDS = ['bar', 'kitchen', 'other'];
 export const MENU_MODES = ['drinks', 'food', 'all', 'none'];
 export const UNDO_MINUTES = 60; // "Back in stock" can be undone for an hour
+export const PHOTOS_PER_ITEM = 3;
+export const KEEP_PHOTOS_DAYS = 30; // after an item comes off the list
 // The bar's departments and positions (bartenders, barbacks), for the Bar list's default reporters.
 const BAR_DEPT = /\bbars?\b|bartend|barback/i;
 const BAR_JOB = /bartend|barback|\bbar\b/i;
@@ -68,6 +76,29 @@ const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0) || String(a.createdAt 
 const isDrink = (item) => DRINKS.test(item?.category || '');
 /** The dedupe key of an item: its menu item, else its name. */
 export const itemKey = (menuItemId, name) => (menuItemId ? `m:${menuItemId}` : `n:${key(name)}`);
+
+// ---------- who can see and report (also used by the photo route, server/eighty-six-routes.js) ----------
+function ruleMatches(store, user, rule) {
+  if (!rule || rule.all) return true;
+  const mine = (user?.jobCodes || []).map((j) => j.jobCodeId);
+  if ((rule.jobCodeIds || []).some((id) => mine.includes(id))) return true;
+  const depts = mine.map((id) => store.get('jobCodes', id)?.department).filter(Boolean);
+  return (rule.departments || []).some((d) => depts.some((x) => same(x, d)));
+}
+/** May this person report on (and clear) the list? Managers and up always may. */
+export const canReportList = (store, u, list) => canManageSchedule(u) || (!!list?.reporters && ruleMatches(store, u, list.reporters));
+/** May this person see the list? Everyone unless an admin limited it; managers and its reporters always. */
+export const canSeeList = (store, u, list) => !!list && (canManageSchedule(u) || !list.viewers || ruleMatches(store, u, list.viewers) || canReportList(store, u, list));
+
+/** A photo document, if the caller may see it: it's on an item (on a list or in the history) of a list they can see. */
+export function eightySixPhotoFor(store, actor, id) {
+  const p = id ? store.get('eightySixPhotos', id) : null;
+  if (!p || !actor) return null;
+  const u = store.get('users', actor.id) || actor;
+  if (!canSeeList(store, u, store.get('eightySixLists', p.listId))) return null;
+  const owner = store.get('eightySixItems', p.itemId) || store.get('eightySixLog', p.itemId);
+  return owner && (owner.photos || []).some((x) => x.id === p.id) ? p : null;
+}
 
 /** Departments the restaurant uses: Settings, then the job codes'. */
 function departmentsOf(store, st) {
@@ -110,16 +141,8 @@ export function eightySixApi({ store, now, settings, notify, fail }) {
       jobCodeIds: [...new Set(asList(r.jobCodeIds).filter((id) => jobs[id]))],
     };
   }
-  function ruleMatches(user, rule) {
-    if (!rule || rule.all) return true;
-    const mine = (user?.jobCodes || []).map((j) => j.jobCodeId);
-    if ((rule.jobCodeIds || []).some((id) => mine.includes(id))) return true;
-    const jobs = jobMap();
-    const depts = mine.map((id) => jobs[id]?.department).filter(Boolean);
-    return (rule.departments || []).some((d) => depts.some((x) => same(x, d)));
-  }
-  const canReport = (u, list) => isMgr(u) || (!!list.reporters && ruleMatches(u, list.reporters));
-  const canSee = (u, list) => isMgr(u) || !list.viewers || ruleMatches(u, list.viewers) || canReport(u, list);
+  const canReport = (u, list) => canReportList(store, u, list);
+  const canSee = (u, list) => canSeeList(store, u, list);
   /** A list the person may see, or 404 (a hidden list looks like no list at all). */
   function visibleList(u, id) {
     const list = id ? store.get('eightySixLists', id) : null;
@@ -157,6 +180,12 @@ export function eightySixApi({ store, now, settings, notify, fail }) {
         archive(it, list, { clearedAt: iso, clearedBy: null, clearedHow: 'reset' });
       }
     }
+    // Photos stay with the history for KEEP_PHOTOS_DAYS after the item came off the list, then go.
+    const cutoff = new Date(now().getTime() - KEEP_PHOTOS_DAYS * 86400000).toISOString();
+    for (const old of store.list('eightySixLog', (x) => x.photos?.length > 0 && !!x.clearedAt && x.clearedAt < cutoff)) {
+      for (const ph of old.photos) store.remove('eightySixPhotos', ph.id);
+      store.update('eightySixLog', old.id, { photos: [], photosRemovedAt: nowIso() });
+    }
     return all;
   }
 
@@ -174,14 +203,23 @@ export function eightySixApi({ store, now, settings, notify, fail }) {
   const menuMatch = (name, menu = menuItems()) => menu.find((m) => same(m.name, name) || same(m.es?.name, name)) || null;
 
   // ---------- views ----------
-  function itemView(it, menu) {
+  /** An item as `viewer` sees it; each photo says whether they may remove it (who added it, who reported the item, managers). */
+  function itemView(it, menu, viewer) {
     const m = it.menuItemId ? menu?.find((x) => x.id === it.menuItemId) || store.get('menuItems', it.menuItemId) : null;
     return {
       id: it.id, listId: it.listId, name: it.name, nameEs: m?.es?.name || '', menuItemId: it.menuItemId || null,
       status: it.status, count: it.count ?? null, note: it.note || '', area: it.area || '',
       reportedBy: { id: it.reportedBy, name: nameOf(it.reportedBy) }, reportedAt: it.reportedAt, outAt: it.outAt || null,
       updatedBy: { id: it.updatedBy || it.reportedBy, name: nameOf(it.updatedBy || it.reportedBy) }, updatedAt: it.updatedAt || it.reportedAt,
+      photos: (it.photos || []).map((ph) => ({ id: ph.id, w: ph.w || 0, h: ph.h || 0, canRemove: !!viewer && (isMgr(viewer) || ph.by === viewer.id || it.reportedBy === viewer.id) })),
     };
+  }
+  /** The item (on a list, or in the history) a person may see, or 404. */
+  function visibleItem(u, id, { history = false } = {}) {
+    const it = id ? store.get('eightySixItems', id) || (history ? store.get('eightySixLog', id) : null) : null;
+    const list = it ? store.get('eightySixLists', it.listId) : null;
+    if (!it || !list || !canSee(u, list)) fail(404, 'That item isn’t on the list anymore');
+    return { it, list, active: !!store.get('eightySixItems', it.id) };
   }
   const listView = (l) => ({ id: l.id, name: l.name, nameEs: l.nameEs || '', kind: l.kind, area: l.area || '', notify: l.notify !== false, notifyLow: !!l.notifyLow, resetAt: l.resetAt || '' });
   const fullList = (l) => ({ ...listView(l), menu: l.menu, sections: l.sections || [], reporters: l.reporters || { departments: [], jobCodeIds: [] }, viewers: l.viewers || { all: true }, order: l.order ?? 0 });
@@ -223,7 +261,9 @@ export function eightySixApi({ store, now, settings, notify, fail }) {
     if (!Number.isInteger(n) || n < 0 || n > 9999) fail(400, 'The count must be a whole number');
     return n;
   }
-  const cleanItemArea = (v) => (text(v, 60) ? findArea(cleanArea(v), scheduleAreas(settings())) || '' : '');
+  /** The tags for an item or a list: the restaurant's areas (settings.areas), or its rooms when it has none. */
+  const areas = () => { const st = settings(); const own = uniqueAreas(st.areas || []); return own.length ? own : scheduleAreas(st); };
+  const cleanItemArea = (v) => (text(v, 60) ? findArea(cleanArea(v), areas()) || '' : '');
   function cleanList(a, cur) {
     const name = text(a.name ?? cur?.name, 40);
     if (!name) fail(400, 'Give the list a name');
@@ -257,13 +297,13 @@ export function eightySixApi({ store, now, settings, notify, fail }) {
       const out = lists().filter((l) => canSee(u, l)).map((l) => ({
         ...listView(l), canReport: canReport(u, l),
         suggest: suggestions(l, menu).map((i) => i.id),
-        items: items.filter((i) => i.listId === l.id).sort(byUrgency).map((i) => itemView(i, menu)),
+        items: items.filter((i) => i.listId === l.id).sort(byUrgency).map((i) => itemView(i, menu, u)),
       }));
       const wanted = new Set(out.flatMap((l) => l.suggest));
       return {
         lists: out,
         menu: Object.fromEntries(menu.filter((i) => wanted.has(i.id)).map((i) => [i.id, { name: i.name, nameEs: i.es?.name || '', category: i.category || '' }])),
-        areas: scheduleAreas(settings()),
+        areas: areas(),
         canReport: out.some((l) => l.canReport),
         isMgr: isMgr(u),
         now: nowIso(),
@@ -312,7 +352,7 @@ export function eightySixApi({ store, now, settings, notify, fail }) {
         ? store.update('eightySixItems', cur.id, { ...doc, updatedBy: u.id, updatedAt: at, ...(nowOut ? { outAt: at } : {}) })
         : store.insert('eightySixItems', { id: uid('e86'), listId: list.id, key: k, ...doc, reportedBy: u.id, reportedAt: at, outAt: status === 'out' ? at : null, updatedBy: u.id, updatedAt: at });
       const announce = list.notify !== false && (nowOut || (status === 'low' && !cur && !!list.notifyLow));
-      return { item: itemView(saved, menu), updated: !!cur, notified: announce ? tell(list, saved, u) : 0 };
+      return { item: itemView(saved, menu, u), updated: !!cur, notified: announce ? tell(list, saved, u) : 0 };
     },
     // Back in stock: off the list and into the history. eightySix.restore undoes it.
     'eightySix.clear': (actor, { id } = {}) => {
@@ -338,7 +378,45 @@ export function eightySixApi({ store, now, settings, notify, fail }) {
       if (store.list('eightySixItems', (x) => x.listId === list.id && x.key === log.key).length) fail(409, 'It’s already back on the list');
       const { clearedAt, clearedBy, clearedHow, listName: _n, ...item } = log;
       store.remove('eightySixLog', log.id);
-      return { item: itemView(store.insert('eightySixItems', item)) };
+      return { item: itemView(store.insert('eightySixItems', item), null, u) };
+    },
+
+    // ----- photos: up to 3 per report, optional (the empty bottle, the low shelf) -----
+    // One photo per request (the app shrinks it first); the same checks as Training's menu photos.
+    'eightySix.addPhoto': (actor, { itemId, dataUrl, w, h } = {}) => {
+      needAuth(actor);
+      ready();
+      const u = fresh(actor);
+      const { it, list, active } = visibleItem(u, itemId);
+      if (!active) fail(404, 'That item isn’t on the list anymore');
+      if (!canReport(u, list)) fail(403, 'You can’t report on this list');
+      if ((it.photos || []).length >= PHOTOS_PER_ITEM) fail(400, 'A report can have up to 3 photos');
+      const { mime, data, bytes } = checkPhoto(dataUrl, fail);
+      const dim = (v) => Math.max(0, Math.min(10000, Math.round(Number(v) || 0)));
+      const photo = { id: uid('e86p'), w: dim(w), h: dim(h), by: u.id, at: nowIso() };
+      store.insert('eightySixPhotos', { ...photo, itemId: it.id, listId: list.id, mime, data, bytes });
+      const saved = store.update('eightySixItems', it.id, { photos: [...(it.photos || []), photo] });
+      return { photo: { id: photo.id, w: photo.w, h: photo.h, canRemove: true }, item: itemView(saved, null, u) };
+    },
+    // Who added it, who reported the item, or a manager. Also from the history.
+    'eightySix.removePhoto': (actor, { itemId, photoId } = {}) => {
+      needAuth(actor);
+      ready();
+      const u = fresh(actor);
+      const { it, active } = visibleItem(u, itemId, { history: true });
+      const ph = (it.photos || []).find((x) => x.id === photoId);
+      if (!ph) fail(404, 'Photo not found');
+      if (!isMgr(u) && ph.by !== u.id && it.reportedBy !== u.id) fail(403, 'Only the person who reported it or a manager can remove a photo');
+      store.remove('eightySixPhotos', ph.id);
+      const saved = store.update(active ? 'eightySixItems' : 'eightySixLog', it.id, { photos: it.photos.filter((x) => x.id !== ph.id) });
+      return { item: itemView(saved, null, u) };
+    },
+    // The photo itself as a data URL, for the demo (on a server the bytes aren't cached: /api/eighty-six/photos/:id serves them).
+    'eightySix.photo.get': (actor, { id } = {}) => {
+      needAuth(actor);
+      const p = eightySixPhotoFor(store, actor, id);
+      if (!p?.data) fail(404, 'Photo not found');
+      return { id: p.id, dataUrl: `data:${p.mime};base64,${p.data}` };
     },
 
     // ----- history (managers) -----
@@ -356,8 +434,9 @@ export function eightySixApi({ store, now, settings, notify, fail }) {
       ].filter((r) => (!listId || r.listId === listId) && ((r.outAt || r.reportedAt) >= from || (r.clearedAt || '') >= from));
       const when = (r) => r.outAt || r.reportedAt || '';
       rows.sort((a, b) => when(b).localeCompare(when(a)));
+      const u = fresh(actor);
       const entries = rows.slice(0, 300).map((r) => ({
-        ...itemView(r, menu), listName: byId[r.listId]?.name || r.listName || '', listNameEs: byId[r.listId]?.nameEs || '',
+        ...itemView(r, menu, u), listName: byId[r.listId]?.name || r.listName || '', listNameEs: byId[r.listId]?.nameEs || '',
         active: r.active, clearedAt: r.clearedAt || null, clearedHow: r.clearedHow || null, clearedBy: r.clearedBy ? { id: r.clearedBy, name: nameOf(r.clearedBy) } : null,
       }));
       const groups = new Map();
@@ -387,7 +466,7 @@ export function eightySixApi({ store, now, settings, notify, fail }) {
         options: {
           departments: departmentsOf(store, settings()),
           jobCodes: jobs.map((j) => ({ id: j.id, name: j.name, department: j.department || '' })),
-          areas: scheduleAreas(settings()),
+          areas: areas(),
           sections: uniq(menuItems().map((i) => i.category)),
         },
       };

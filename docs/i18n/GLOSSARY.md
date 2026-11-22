@@ -193,6 +193,9 @@ The words ShiftBoard uses in Spanish, so the phone app, the website and emails s
 | clear the list each night at… | vaciar la lista cada noche a las… | the nightly reset |
 | history / log | historial / registro | |
 | most 86'd | lo que más se acabó | |
+| photo / photos (optional) | foto / fotos (opcional) | |
+| take photo / choose photo | tomar foto / elegir foto | phone app buttons |
+| remove photo | quitar foto | |
 
 ## App words
 

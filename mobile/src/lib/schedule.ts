@@ -74,6 +74,8 @@ export function routeForLink(link?: string): Href {
       return '/swaps';
     case 'timeoff':
       return '/time-off';
+    case '86':
+      return '/eighty-six';
     default:
       return '/notifications';
   }

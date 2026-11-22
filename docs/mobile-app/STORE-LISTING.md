@@ -157,11 +157,12 @@ Tip: a 6.9" iPhone simulator screenshot is already 1320 × 2868 (iPhone 16/17 Pr
 | Phone number (optional) | the restaurant's records; shown to shift leads | finding coverage | yes | no / no | no |
 | User ID | the account | the app working | yes | no / no | no |
 | Work schedule, availability, time-off dates | the restaurant; the person's requests | the app working | yes | no / no | no |
-| Notes the person types (trade notes, time-off reason) | typed in the app | requests and approvals | yes | no / no | no |
+| Notes the person types (trade notes, time-off reason, 86 List notes) | typed in the app | requests and approvals, the 86 List | yes | no / no | no |
+| Photos (optional) | taken or picked by the person for an 86 List report (up to 3, e.g. an empty bottle); shrunk on the phone; deleted 30 days after the item comes off the list | showing coworkers what's out | yes | no / no | no |
 | Push token + phone type (iOS/Android) | the phone, after the person allows notifications | sending notifications | yes | no / no | no |
 | Language choice | the person | showing the app in their language | yes | no / no | no |
 
-**Not collected:** location, contacts, photos, camera, microphone, health, payment or financial info (pay rates aren't shown or collected in the app), browsing or search history, analytics, crash reports, advertising IDs. No ads, no third-party SDKs that collect data, no tracking. Data goes over HTTPS to the restaurant's own ShiftBoard server; service providers (Vercel, the database host, Resend, Expo/Apple/Google for push) process it on DubLow's behalf, which both stores don't count as "sharing".
+**Not collected:** location, contacts, other photos (only the photo the person picks is uploaded), microphone, health, payment or financial info (pay rates aren't shown or collected in the app), browsing or search history, analytics, crash reports, advertising IDs. No ads, no third-party SDKs that collect data, no tracking. Data goes over HTTPS to the restaurant's own ShiftBoard server; service providers (Vercel, the database host, Resend, Expo/Apple/Google for push) process it on DubLow's behalf, which both stores don't count as "sharing".
 
 ## Apple App Privacy (nutrition label)
 
@@ -174,6 +175,7 @@ Tip: a 6.9" iPhone simulator screenshot is already 1320 × 2868 (iPhone 16/17 Pr
 | Contact Info → Phone Number | Yes | Yes | No | App Functionality |
 | Identifiers → User ID | Yes | Yes | No | App Functionality |
 | Identifiers → Device ID (push token) | Yes | Yes | No | App Functionality |
+| User Content → Photos or Videos (optional 86 List photos) | Yes | Yes | No | App Functionality |
 | User Content → Other User Content (notes on requests) | Yes | Yes | No | App Functionality |
 | Other Data → Other Data Types (work schedule, availability, time off) | Yes | Yes | No | App Functionality |
 
@@ -199,13 +201,14 @@ Privacy policy URL: `https://[stable DubLow URL]/privacy` (Spanish (Mexico): `�
 | Personal info → Phone number (optional: mark "users can choose") | App functionality |
 | Personal info → User IDs | App functionality, Account management |
 | App activity → Other user-generated content | App functionality |
+| Photos and videos → Photos (optional: mark "users can choose") | App functionality |
 | Device or other IDs | App functionality (push notifications) |
 
-Not collected: location, financial info, health and fitness, messages (emails, SMS), photos and videos, audio, files and docs, calendar (the app adds a calendar subscription only when the person taps it; it doesn't read their calendar), contacts, web browsing, app info and performance (no crash logs or diagnostics).
+Not collected: location, financial info, health and fitness, messages (emails, SMS), videos, audio, files and docs, calendar (the app adds a calendar subscription only when the person taps it; it doesn't read their calendar), contacts, web browsing, app info and performance (no crash logs or diagnostics).
 
 ## Age and content rating (suggested answers; 🛑 owner confirms)
 
-**Apple age rating:** none / no for violence, sexual content, nudity, profanity, horror, alcohol/tobacco/drugs (job titles like "Bartender" aren't drug or alcohol content), medical, gambling, contests, ads, unrestricted web access (the app only opens the restaurant's own website), social media, messaging/chat. **User-generated content:** short notes on trade and time-off requests, seen only by coworkers at the same restaurant, moderated by managers. Expected rating: 4+ (lowest).
+**Apple age rating:** none / no for violence, sexual content, nudity, profanity, horror, alcohol/tobacco/drugs (job titles like "Bartender" aren't drug or alcohol content), medical, gambling, contests, ads, unrestricted web access (the app only opens the restaurant's own website), social media, messaging/chat. **User-generated content:** short notes on trade and time-off requests, and 86 List notes and optional photos of stock (e.g. an empty bottle), seen only by coworkers at the same restaurant, removable by managers. 🛑 Owner confirms the alcohol answer: photos of the bar's bottles are work records, not alcohol promotion. Expected rating: 4+ (lowest).
 
 **Google content rating (IARC):** category: utility / productivity / other (not a game, not social). No violence, sexuality, language, controlled substances or gambling. "Users can interact or exchange content": the honest answer is yes (notes between coworkers), which may add a "Users Interact" note. Doesn't share location, no digital purchases. Expected: Everyone / ESRB Everyone.
 

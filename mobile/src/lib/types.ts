@@ -128,6 +128,51 @@ export interface AppNotification {
   at: string;
 }
 
+// The 86 List (core/eighty-six.js): eightySix.board.get and eightySix.summary.
+export interface EightySixItem {
+  id: string;
+  listId: string;
+  name: string;
+  nameEs: string;
+  menuItemId: string | null;
+  status: 'out' | 'low';
+  count: number | null;
+  note: string;
+  area: string;
+  reportedBy: { id: string; name: string };
+  reportedAt: string;
+  updatedBy: { id: string; name: string };
+  updatedAt: string;
+  photos: { id: string; w: number; h: number; canRemove: boolean }[];
+}
+
+export interface EightySixList {
+  id: string;
+  name: string;
+  nameEs: string;
+  kind: 'bar' | 'kitchen' | 'other';
+  area: string;
+  resetAt: string;
+  canReport: boolean;
+  suggest: string[];
+  items: EightySixItem[];
+}
+
+export interface EightySixBoard {
+  lists: EightySixList[];
+  menu: Record<string, { name: string; nameEs: string; category: string }>;
+  areas: string[];
+  canReport: boolean;
+  isMgr: boolean;
+  now: string;
+}
+
+export interface EightySixSummary {
+  lists: { id: string; name: string; nameEs: string; kind: EightySixList['kind']; out: number; low: number }[];
+  out: number;
+  low: number;
+}
+
 /** GET /api/config: what the sign-in screen needs before anyone signs in. */
 export interface ServerConfig {
   email: boolean;

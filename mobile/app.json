@@ -53,6 +53,14 @@
       ],
       "expo-secure-store",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "ShiftBoard opens your photos so you can add a picture to the 86 List, like the empty bottle or the shelf.",
+          "cameraPermission": "ShiftBoard uses the camera so you can add a picture to the 86 List, like the empty bottle or the shelf.",
+          "microphonePermission": false
+        }
+      ],
+      [
         "expo-localization",
         {
           "supportedLocales": {
@@ -62,6 +70,9 @@
         }
       ]
     ],
+    "locales": {
+      "es": "./locales/es.json"
+    },
     "experiments": {
       "reactCompiler": true
     }

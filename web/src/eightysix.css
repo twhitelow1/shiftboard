@@ -30,7 +30,8 @@
 .e86-list-title { flex: 1; min-width: 0; }
 .e86-list-name { font-weight: 800; font-size: 15px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; overflow-wrap: anywhere; }
 
-.e86-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px 8px 8px; border-bottom: 1px solid var(--border); }
+.e86-item { padding: 8px 12px 8px 8px; border-bottom: 1px solid var(--border); }
+.e86-item-row { display: flex; align-items: center; gap: 8px; }
 .e86-item:last-child { border-bottom: 0; }
 .e86-item-main { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 10px; text-align: left; background: none; border: 0; padding: 6px; border-radius: 10px; color: inherit; font: inherit; }
 button.e86-item-main { cursor: pointer; }
@@ -105,3 +106,24 @@ button.e86-item-main:hover { background: var(--surface-2); }
 .e86-edit { padding: 14px 16px; gap: 12px; background: var(--surface-2); border-bottom: 1px solid var(--border); }
 .e86-edit .seg { flex-wrap: wrap; }
 .e86-edit .tr-chips { margin-top: 4px; }
+
+/* photos: thumbnails on an item, the full-screen viewer, the picker in the report sheet */
+.e86-thumbs { display: flex; gap: 6px; padding: 2px 0 4px 54px; flex-wrap: wrap; }
+.e86-thumbs.small { padding-left: 0; margin-top: 4px; }
+.e86-thumb { width: 56px; height: 56px; padding: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface-3); cursor: zoom-in; }
+.e86-thumbs.small .e86-thumb { width: 44px; height: 44px; }
+.e86-thumb img, .e86-pick-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.e86-photo-ph { display: block; width: 100%; height: 100%; background: var(--surface-3); }
+.e86-viewer { position: fixed; inset: 0; z-index: 160; background: #05070c; color: #fff; display: flex; flex-direction: column; animation: fade .15s; }
+.e86-viewer-top { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 16px; padding-top: calc(8px + env(safe-area-inset-top)); }
+.e86-viewer-title { flex: 1; min-width: 0; font-weight: 700; overflow-wrap: anywhere; }
+.e86-viewer .btn.ghost { color: #fff; }
+.e86-viewer .btn.ghost:hover { background: rgba(255, 255, 255, .12); }
+.e86-viewer-img { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 8px; }
+.e86-viewer-img img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; }
+.e86-viewer-bar { display: flex; align-items: center; gap: 8px; padding: 10px 16px; padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+.e86-photo-pick { display: flex; flex-wrap: wrap; gap: 8px; }
+.e86-pick-thumb { position: relative; width: 72px; height: 72px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: var(--surface-3); }
+.e86-pick-x { position: absolute; top: 4px; right: 4px; width: 26px; height: 26px; border-radius: 999px; border: 0; background: rgba(15, 23, 42, .75); color: #fff; display: grid; place-items: center; cursor: pointer; padding: 0; }
+.e86-pick-add { width: 72px; height: 72px; border-radius: 12px; border: 1.5px dashed var(--border-strong); background: var(--surface); color: var(--text-2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.e86-pick-add:hover { border-color: var(--brand); color: var(--brand); }

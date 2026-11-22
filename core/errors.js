@@ -196,6 +196,8 @@ export const ERRORS_ES = {
   'Give the list a name': 'Ponle nombre a la lista',
   'Pick a time like 04:00': 'Elige una hora, por ejemplo 04:00',
   'Keep at least one list': 'Debe quedar al menos una lista',
+  'A report can have up to 3 photos': 'Un reporte puede tener hasta 3 fotos',
+  'Only the person who reported it or a manager can remove a photo': 'Solo quien lo reportó o un gerente puede quitar una foto',
 };
 
 /** Messages with names or numbers in them: [English pattern, Spanish]. */

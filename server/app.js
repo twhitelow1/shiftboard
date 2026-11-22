@@ -12,6 +12,7 @@ import { canChangeSettings, canManageUser, canManageSchedule } from '../core/rol
 import { createMailer, deliverable, notificationEmail, inviteEmail, resetEmail, testEmail } from './email.js';
 import { createChannels } from './channels.js';
 import { trainingRoutes } from './training-routes.js';
+import { eightySixRoutes } from './eighty-six-routes.js';
 import { createExpoPush, pushNotifications } from './expo-push.js';
 import { uid } from '../core/store.js';
 import { createService, AppError } from '../core/service.js';
@@ -461,6 +462,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   mountToast(app, { db, env, userOf: (req) => userFromToken(db.store, req.cookies[COOKIE]) });
   // Training photos (menu study guide, quizzes), for signed-in staff only.
   trainingRoutes(app, { db, signedIn: (req) => userFromToken(db.store, req.cookies[COOKIE]) });
+  // 86 List photos, for people who can see the item's list (cookie on the web, bearer token in the phone app).
+  eightySixRoutes(app, { db, signedIn: (req) => userFromToken(db.store, sessionToken(req)) });
 
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
