@@ -8,7 +8,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { AppState, useColorScheme } from 'react-native';
 
 import { useI18n } from '@/i18n';
-import { ApiError, createClient, fetchConfig, login, type Client } from './api';
+import { ApiError, createClient, fetchConfig, login, verifySignIn, type Client, type LoginStep } from './api';
 import { clearCache, readCache, writeCache } from './cache';
 import { featureOn, featuresOf, type Feature, type Features } from './features';
 import { registerForPush, unregisterPush, onPushReceived } from './push';
@@ -67,7 +67,15 @@ interface Session {
   startAdding: () => void;
   /** Sign out of a restaurant and remove it from this phone. */
   forget: (origin: string) => Promise<void>;
-  signIn: (email: string, password: string) => Promise<void>;
+  /**
+   * Sign in with email and password. Signed in right away on servers without two-step sign-in ('token');
+   * otherwise the next step: enter a code ('verify') or finish setting up the account ('enroll').
+   */
+  signIn: (email: string, password: string) => Promise<LoginStep>;
+  /** Step two: a code from the authenticator app ('totp') or a recovery code. */
+  verifyCode: (ticket: string, method: 'totp' | 'recovery', code: string) => Promise<void>;
+  /** Keep a session token the server handed over (after setting up an authenticator app in the app). */
+  acceptToken: (token: string) => void;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
   bump: () => void;
@@ -242,13 +250,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setExpired(false);
   }, []);
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    const s = serverRef.current;
-    if (!s) throw new ApiError(0, 'No server', 'badAddress');
-    const t = await login(s, email, password);
+  const acceptToken = useCallback((t: string) => {
     setExpired(false);
     saveToken(t);
   }, [saveToken]);
+
+  const signIn = useCallback(async (email: string, password: string) => {
+    const s = serverRef.current;
+    if (!s) throw new ApiError(0, 'No server', 'badAddress');
+    const step = await login(s, email, password);
+    if (step.kind === 'token') acceptToken(step.token);
+    return step;
+  }, [acceptToken]);
+
+  const verifyCode = useCallback(async (ticket: string, method: 'totp' | 'recovery', code: string) => {
+    const s = serverRef.current;
+    if (!s) throw new ApiError(0, 'No server', 'badAddress');
+    acceptToken(await verifySignIn(s, ticket, method, code));
+  }, [acceptToken]);
 
   const signOut = useCallback(async () => {
     const s = serverRef.current;
@@ -296,9 +315,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       features,
       has: (f: Feature) => featureOn(features, f),
       cachePrefix: server || '',
-      openRestaurant, startAdding, forget, signIn, signOut, refresh, bump,
+      openRestaurant, startAdding, forget, signIn, verifyCode, acceptToken, signOut, refresh, bump,
     };
-  }, [ready, accounts, server, config, token, boot, bootError, offlineSince, expired, client, version, colors, logoPath, features, openRestaurant, startAdding, forget, signIn, signOut, refresh, bump]);
+  }, [ready, accounts, server, config, token, boot, bootError, offlineSince, expired, client, version, colors, logoPath, features, openRestaurant, startAdding, forget, signIn, verifyCode, acceptToken, signOut, refresh, bump]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

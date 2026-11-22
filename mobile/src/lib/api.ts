@@ -85,16 +85,58 @@ export async function fetchConfig(server: string): Promise<ServerConfig> {
   };
 }
 
-/** Sign in. Returns the session token (valid 30 days). */
-export async function login(server: string, email: string, password: string): Promise<string> {
-  const res = await request(`${server}/api/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ email: email.trim(), password, client: 'mobile' }),
-  });
+/**
+ * What signing in with a password leads to. Servers with two-step sign-in answer with a ticket (valid 10 minutes)
+ * for the second step; older servers answer with the session token right away ({ ok, token } or { token }).
+ *   token   signed in (the 30-day session token, kept in secure storage like before)
+ *   verify  enter a code: from an authenticator app ('totp') or a recovery code ('recovery'); 'passkey' is web-only
+ *   enroll  no second step set up yet: finish in the browser (or set up an authenticator app here)
+ */
+export type LoginStep =
+  | { kind: 'token'; token: string }
+  | { kind: 'verify'; ticket: string; methods: string[] }
+  | { kind: 'enroll'; ticket: string };
+
+const post = (server: string, path: string, data: object) => request(`${server}${path}`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+  body: JSON.stringify(data),
+});
+const fail = (res: Response, body: any, what: string) => new ApiError(res.status, body?.error || `${what} failed (${res.status})`);
+
+/** Sign in with email and password (step one). 401: wrong email or password; 429: too many tries. */
+export async function login(server: string, email: string, password: string): Promise<LoginStep> {
+  const res = await post(server, '/api/auth/login', { email: email.trim(), password, client: 'mobile' });
   const body = await json(res);
-  if (!res.ok || !body?.token) throw new ApiError(res.status, body?.error || `Sign-in failed (${res.status})`);
+  if (!res.ok) throw fail(res, body, 'Sign-in');
+  if (body?.mfa === 'verify' && body.ticket) return { kind: 'verify', ticket: body.ticket, methods: Array.isArray(body.methods) ? body.methods : ['totp', 'recovery'] };
+  if (body?.mfa === 'enroll' && body.ticket) return { kind: 'enroll', ticket: body.ticket };
+  if (body?.token) return { kind: 'token', token: body.token };
+  throw fail(res, body, 'Sign-in');
+}
+
+/** Step two: a 6-digit code from the authenticator app, or a recovery code. Returns the session token. */
+export async function verifySignIn(server: string, ticket: string, method: 'totp' | 'recovery', code: string): Promise<string> {
+  const res = await post(server, '/api/auth/mfa/verify', { ticket, method, code: code.trim(), client: 'mobile' });
+  const body = await json(res);
+  if (!res.ok || !body?.token) throw fail(res, body, 'Verification');
   return body.token;
+}
+
+/** Setting up an authenticator app in the app (optional; the browser can do it too): the secret to add. */
+export async function totpSetup(server: string, ticket: string): Promise<{ secret: string; otpauthUrl: string }> {
+  const res = await post(server, '/api/auth/mfa/totp/setup', { ticket });
+  const body = await json(res);
+  if (!res.ok || !body?.secret) throw fail(res, body, 'Setup');
+  return { secret: String(body.secret), otpauthUrl: String(body.otpauthUrl || '') };
+}
+
+/** Confirm the authenticator app with its first code: recovery codes to save, and the session token. */
+export async function totpConfirm(server: string, ticket: string, code: string): Promise<{ recoveryCodes: string[]; token: string }> {
+  const res = await post(server, '/api/auth/mfa/totp/confirm', { ticket, code: code.trim(), client: 'mobile' });
+  const body = await json(res);
+  if (!res.ok || !body?.token) throw fail(res, body, 'Setup');
+  return { recoveryCodes: Array.isArray(body.recoveryCodes) ? body.recoveryCodes.map(String) : [], token: body.token };
 }
 
 /** Ask for a password reset email. The link opens the web app, where the new password is set. */
