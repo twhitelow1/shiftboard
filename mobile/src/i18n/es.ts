@@ -242,7 +242,7 @@ const es: Messages = {
     planMine: 'Mis mesas',
     planTheirs: 'Sus mesas',
     planRoom: 'Todo el salón',
-    planHelp: 'Tus mesas están resaltadas. Las secciones de tus compañeros se ven más claras.',
+    planHelp: 'Tus mesas están resaltadas. Las secciones de tus compañeros aparecen atenuadas.',
     markYou: 'Tú',
     markOpen: 'Libre',
   },
