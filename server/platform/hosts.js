@@ -1,10 +1,11 @@
 // Which restaurant a request is for, from its Host. Pure functions, so they're easy to test.
 //
 //   1. An exact match on a restaurant's domains (a custom domain, or a spare *.vercel.app alias).
-//   2. <slug>.<PLATFORM_DOMAIN>, e.g. bistro.shiftboard.app. admin.<PLATFORM_DOMAIN> is the platform console.
+//   2. admin.<PLATFORM_DOMAIN> is the platform console.
 //   3. The legacy fallback: hosts in LEGACY_HOSTS, or any host at all when PLATFORM_DOMAIN isn't set
 //      (local development, tests, a single-restaurant install), go to the default restaurant
 //      (Chasing Rabbits, schema shiftboard). That keeps every existing address working.
+//   4. <slug>.<PLATFORM_DOMAIN>, e.g. bistro.shiftboard.app.
 //   Anything else under the platform domain, or any other host once PLATFORM_DOMAIN is set, is
 //   "restaurant not found": never another restaurant's data.
 
@@ -49,16 +50,16 @@ export function resolveHost(host, cfg, reg) {
   const h = normalizeHost(host);
   const exact = reg.byDomain.get(h);
   if (exact) return { kind: 'tenant', tenant: exact, via: 'domain' };
-  if (cfg.platformDomain) {
-    if (h === cfg.adminHost) return { kind: 'console' };
-    if (h.endsWith(`.${cfg.platformDomain}`)) {
-      const label = h.slice(0, -(cfg.platformDomain.length + 1));
-      const t = !label.includes('.') && !RESERVED_SLUGS.includes(label) ? reg.bySlug.get(label) : null;
-      return t ? { kind: 'tenant', tenant: t, via: 'subdomain' } : { kind: 'notFound' };
-    }
-    if (!cfg.legacyHosts.has(h)) return { kind: 'notFound' };
+  const legacy = () => (reg.defaultTenant ? { kind: 'tenant', tenant: reg.defaultTenant, via: 'legacy' } : { kind: 'notFound' });
+  if (!cfg.platformDomain) return legacy();
+  if (h === cfg.adminHost) return { kind: 'console' };
+  if (cfg.legacyHosts.has(h)) return legacy(); // listed explicitly, so it wins even under the platform domain
+  if (h.endsWith(`.${cfg.platformDomain}`)) {
+    const label = h.slice(0, -(cfg.platformDomain.length + 1));
+    const t = !label.includes('.') && !RESERVED_SLUGS.includes(label) ? reg.bySlug.get(label) : null;
+    if (t) return { kind: 'tenant', tenant: t, via: 'subdomain' };
   }
-  return reg.defaultTenant ? { kind: 'tenant', tenant: reg.defaultTenant, via: 'legacy' } : { kind: 'notFound' };
+  return { kind: 'notFound' };
 }
 
 const HOSTNAME = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}$/;

@@ -186,7 +186,7 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
   app.get(['/platform', '/platform/'], (req, res, next) => {
     if (!consoleAllowed(req.hostname, hostCfg)) return next();
     if (!consolePage) return res.status(404).type('text').send('Build the web app first (npm run build)');
-    res.sendFile(consolePage);
+    res.sendFile('platform.html', { root: staticDir });
   });
 
   // Everything else: the restaurant for this host.
@@ -208,13 +208,13 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
       if (req.path === '/api/config') return res.json({ console: '/platform' });
       if (api) return res.status(404).json({ error: 'Not found' });
       if (req.path === '/') return res.redirect(302, '/platform');
-      if (staticFiles) return staticFiles(req, res, () => (consolePage ? res.sendFile(consolePage) : res.status(404).end()));
+      if (staticFiles) return staticFiles(req, res, () => (consolePage ? res.sendFile('platform.html', { root: staticDir }) : res.status(404).end()));
       return res.status(404).end();
     }
     if (where.kind === 'notFound') {
       if (api) return res.status(404).json({ error: 'Restaurant not found', notFound: true });
       // The web app shows "restaurant not found" in the visitor's language (from /api/config); without it, a plain page.
-      const page = () => (indexPage ? res.status(404).sendFile(indexPage) : res.status(404).type('html').send(NOT_FOUND_HTML));
+      const page = () => (indexPage ? res.status(404).sendFile('index.html', { root: staticDir }) : res.status(404).type('html').send(NOT_FOUND_HTML));
       return staticFiles ? staticFiles(req, res, page) : page();
     }
 

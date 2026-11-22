@@ -39,10 +39,11 @@ function cached(key, load) {
 }
 /** The venue's rooms (with plans). */
 export function useVenueRooms() {
-  const { call, version } = useApp();
+  const { call, version, has } = useApp();
   const [rooms, setRooms] = useState(null);
   useEffect(() => {
     let live = true;
+    if (has && !has('venue')) { setRooms([]); return undefined; } // not in the restaurant's plan
     cached(`venue|${version}`, () => call('venue.get')).then((v) => live && setRooms(v.rooms)).catch(() => live && setRooms([]));
     return () => { live = false; };
   }, [version]);
@@ -50,11 +51,11 @@ export function useVenueRooms() {
 }
 /** The section (room and tables) of one shift, or null. Loads the shift's week once for all its rows. */
 export function useShiftSection(shift) {
-  const { call, version, settings } = useApp();
+  const { call, version, settings, has } = useApp();
   const [hit, setHit] = useState(null);
   useEffect(() => {
     let live = true;
-    if (!shift?.id || !shift.date) { setHit(null); return undefined; }
+    if (!shift?.id || !shift.date || (has && !has('venue'))) { setHit(null); return undefined; }
     const ws = weekStart(shift.date, settings.weekStartDow);
     cached(`week|${version}|${ws}`, () => call('sections.list', { start: ws, end: addDays(ws, 6) })).then((days) => {
       if (!live) return;
@@ -291,13 +292,13 @@ export function ShiftSectionCard({ shift }) {
  * and call save with the shift's id after the shift is saved. Nothing shows until the venue has rooms.
  */
 export function useSectionField(shift, date) {
-  const { call, people, toast, refresh } = useApp();
+  const { call, people, toast, refresh, has } = useApp();
   const rooms = useVenueRooms();
   const [day, setDay] = useState(null);
   const [pick, setPick] = useState(null);
   useEffect(() => {
     let live = true;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) { setDay([]); return undefined; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || (has && !has('venue'))) { setDay([]); return undefined; }
     call('sections.list', { start: date, end: date }).then((d) => live && setDay(d)).catch(() => live && setDay([]));
     return () => { live = false; };
   }, [date]);
@@ -352,12 +353,12 @@ export function useSectionField(shift, date) {
 // ---------- BEO ----------
 /** The event's floor plans: its room, and any room where its staff have sections, with those sections. */
 export function EventPlans({ event }) {
-  const { call, version, people, isMgr } = useApp();
+  const { call, version, people, isMgr, has } = useApp();
   const rooms = useVenueRooms();
   const [days, setDays] = useState(null);
   useEffect(() => {
     let live = true;
-    if (!event?.date) return undefined;
+    if (!event?.date || (has && !has('venue'))) return undefined;
     call('sections.list', { start: event.date, end: event.date }).then((d) => live && setDays(d)).catch(() => live && setDays([]));
     return () => { live = false; };
   }, [event?.id, event?.date, version]);

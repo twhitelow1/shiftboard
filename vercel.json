@@ -17,6 +17,7 @@
     { "source": "/api/:path*", "destination": "/api" },
     { "source": "/privacy", "destination": "/privacy.html" },
     { "source": "/support", "destination": "/support.html" },
+    { "source": "/platform", "destination": "/platform.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [

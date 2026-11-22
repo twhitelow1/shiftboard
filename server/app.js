@@ -4,7 +4,6 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { waitUntil } from '@vercel/functions';
@@ -567,7 +566,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   // ---------- static web app (standalone server only) ----------
   if (staticDir && fs.existsSync(staticDir)) {
     app.use(express.static(staticDir, { index: false, maxAge: '1h', extensions: ['html'] })); // /privacy → privacy.html
-    app.get(/^\/(?!api\/).*/, (req, res) => res.sendFile(path.join(staticDir, 'index.html')));
+    // root: send() refuses absolute paths that go through a dot-directory; relative to root it checks only 'index.html'.
+    app.get(/^\/(?!api\/).*/, (req, res) => res.sendFile('index.html', { root: staticDir }));
   }
 
   app.use((err, req, res, next) => {

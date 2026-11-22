@@ -19,7 +19,8 @@ function useServerConfig() {
 /** My Shifts: phone notifications and texts. */
 export function PhoneCards() {
   const config = useServerConfig();
-  return <><PushCard /><TextCard config={config} /></>;
+  const { has } = useApp();
+  return <><PushCard />{(!has || has('sms')) && <TextCard config={config} />}</>;
 }
 
 // iPhone's Share button: a square with an arrow up.
@@ -31,7 +32,7 @@ const ShareGlyph = () => (
 
 function PushCard() {
   const t = useT();
-  const { call, isAdmin, toast } = useApp();
+  const { call, isAdmin, toast, managed } = useApp();
   const [info, setInfo] = useState(null); // { enabled, publicKey, thisDevice, devices } from push.publicKey
   const [reg, setReg] = useState(null);
   const [endpoint, setEndpoint] = useState(null);
@@ -85,7 +86,7 @@ function PushCard() {
   } else if (!info) {
     body = <div className="help">{t('phoneCards.checkingThisPhone')}</div>;
   } else if (!info.enabled) {
-    body = <div className="help">{isAdmin ? t('phoneCards.notSetUpYetAdd', { PUSH_ENV: t('phoneCards.pushEnv') }) : t('phoneCards.yourRestaurantHasntSetThese')}</div>;
+    body = <div className="help">{!isAdmin ? t('phoneCards.yourRestaurantHasntSetThese') : managed ? t('platform.askDublowPush') : t('phoneCards.notSetUpYetAdd', { PUSH_ENV: t('phoneCards.pushEnv') })}</div>;
   } else if (isIOS() && !isStandalone()) {
     body = (
       <div className="col" style={{ gap: 6 }}>
@@ -130,7 +131,7 @@ function PushCard() {
 
 function TextCard({ config }) {
   const t = useT();
-  const { call, me, settings, isAdmin } = useApp();
+  const { call, me, settings, isAdmin, managed } = useApp();
   const [phone, setPhone] = useState(formatPhone(me.smsPhone) || me.phone || '');
   const [editing, setEditing] = useState(false);
   const [run, busy] = useAction();
@@ -143,7 +144,7 @@ function TextCard({ config }) {
   } else if (!config) {
     body = null;
   } else if (!config.sms) {
-    body = <div className="help">{isAdmin ? t('phoneCards.notSetUpYetAdd2', { TWILIO_ENV: t('phoneCards.twilioEnv') }) : t('phoneCards.yourRestaurantHasntSetUp')}</div>;
+    body = <div className="help">{!isAdmin ? t('phoneCards.yourRestaurantHasntSetUp') : managed ? t('platform.askDublowTexts') : t('phoneCards.notSetUpYetAdd2', { TWILIO_ENV: t('phoneCards.twilioEnv') })}</div>;
   } else if (settings.smsNotifications === false) {
     body = (
       <div className="col" style={{ gap: 8 }}>
@@ -186,7 +187,8 @@ function TextCard({ config }) {
 /** Settings: texts (restaurant switch + test text) and whether phone notifications are set up. */
 export function TextSettingsCard() {
   const t = useT();
-  const { settings, call, me } = useApp();
+  const { settings, call, me, has, managed } = useApp();
+  const sms = !has || has('sms'); // texts are a plan feature; phone notifications are in every plan
   const config = useServerConfig();
   const [phone, setPhone] = useState(formatPhone(me.smsPhone) || me.phone || '');
   const [run, busy] = useAction();
@@ -196,18 +198,18 @@ export function TextSettingsCard() {
       <h2>{t('phoneCards.textsPhoneNotifications')}</h2>
       {IS_DEMO ? <div className="help">{t('phoneCards.thisIsADemoSo3')}</div> : !config ? null : (
         <div className="col" style={{ gap: 6 }}>
-          {config.sms
+          {!sms ? null : config.sms
             ? <div className="alert ok"><Icon name="check" size={16} />{t('phoneCards.textsConnectedToTwilio')}{config.smsFrom ? t('phoneCards.textsComeFromSmsfrom', { smsFrom: config.smsFrom }) : ''}</div>
-            : <div className="alert warn"><Icon name="alert" size={16} />{t('phoneCards.textsNotSetUpYet', { TWILIO_ENV: t('phoneCards.twilioEnv') })}</div>}
+            : <div className="alert warn"><Icon name="alert" size={16} />{managed ? t('platform.askDublowTexts') : t('phoneCards.textsNotSetUpYet', { TWILIO_ENV: t('phoneCards.twilioEnv') })}</div>}
           {config.push
             ? <div className="alert ok"><Icon name="check" size={16} />{t('phoneCards.phoneNotificationsReadyEachPerson')}</div>
-            : <div className="alert warn"><Icon name="alert" size={16} />{t('phoneCards.phoneNotificationsNotSetUp', { PUSH_ENV: t('phoneCards.pushEnv') })}</div>}
+            : <div className="alert warn"><Icon name="alert" size={16} />{managed ? t('platform.askDublowPush') : t('phoneCards.phoneNotificationsNotSetUp', { PUSH_ENV: t('phoneCards.pushEnv') })}</div>}
         </div>
       )}
-      <label className="check"><input type="checkbox" checked={on} disabled={busy}
+      {sms && <><label className="check"><input type="checkbox" checked={on} disabled={busy}
         onChange={(e) => run(() => call('sms.setRestaurant', { on: e.target.checked }), e.target.checked ? t('phoneCards.textsOn') : t('phoneCards.textsOffForEveryone'))} />{t('phoneCards.textStaffACopyOf')}</label>
-      <div className="help">{t('phoneCards.onlyPeopleWhoTurnTexts')}</div>
-      {config?.sms && (
+      <div className="help">{t('phoneCards.onlyPeopleWhoTurnTexts')}</div></>}
+      {sms && config?.sms && (
         <form className="row wrap phone-row" onSubmit={(e) => { e.preventDefault(); run(() => sendTestText(phone), (r) => t('phoneCards.testTextSentToTo', { to: r.to })); }}>
           <input className="input" type="tel" inputMode="tel" autoComplete="tel" placeholder={t('phoneCards.yourMobileNumber')} aria-label={t('phoneCards.yourMobileNumber')} value={phone} onChange={(e) => setPhone(e.target.value)} />
           <button className="btn sm" disabled={busy || !normalizePhone(phone)}><Icon name="send" />{t('phoneCards.sendMeATestText')}</button>

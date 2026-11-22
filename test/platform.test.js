@@ -119,6 +119,10 @@ test('host routing: exact domains first, then <slug>.<PLATFORM_DOMAIN>, then the
   // ...except a restaurant's own domains, which work before the platform domain exists (a spare *.vercel.app alias).
   assert.equal(resolveHost('schedule.bistro.example', none, reg).tenant, bistro);
   assert.equal(normalizeHost('Schedule.Bistro.Example.:8080'), 'schedule.bistro.example');
+  // A legacy host listed explicitly wins even when it sits under the platform domain.
+  const under = hostConfig({ PLATFORM_DOMAIN: 'shiftboard.app', LEGACY_HOSTS: 'cr.shiftboard.app' });
+  assert.equal(resolveHost('cr.shiftboard.app', under, reg).tenant, def);
+  assert.equal(resolveHost('bistro.shiftboard.app', under, reg).tenant, bistro);
 });
 
 test('slugs: format, reserved names, schema names; domains can’t be legacy hosts or under the platform domain', () => {
@@ -187,6 +191,8 @@ test('plans: features per plan with overrides, RPCs mapped to features, prices f
   assert.deepEqual(billingBanner({ status: 'trialing', trial_ends_at: '2026-11-04T12:00:00Z' }, now), { kind: 'trial', daysLeft: 3, endsAt: '2026-11-04T12:00:00Z' });
   assert.deepEqual(billingBanner({ status: 'past_due' }, now), { kind: 'pastDue' });
   assert.equal(billingBanner({ status: 'active' }, now), null);
+  assert.equal(billingBanner({ status: 'trialing', trial_ends_at: '2026-11-01T20:00:00Z' }, now).daysLeft, 0, 'ends later today');
+  assert.equal(billingBanner({ status: 'trialing', trial_ends_at: '2026-10-30T20:00:00Z' }, now).daysLeft, 0, 'already over');
 });
 
 test('integrations: another restaurant never inherits the default restaurant’s env; console settings override env', () => {
@@ -637,7 +643,7 @@ test('billing banners: trial and payment-failed, for the restaurant’s admins o
   const p = await startPlatform();
   try {
     const admin = await p.console();
-    const made = await createRestaurant(admin, { name: 'Trial Spot', slug: 'trial-spot', ownerEmail: 'jo@trial.local', trialEndsAt: new Date(Date.now() + 5 * 86_400_000 - 60_000).toISOString() });
+    const made = await createRestaurant(admin, { name: 'Trial Spot', slug: 'trial-spot', ownerEmail: 'jo@trial.local', trialEndsAt: new Date(Date.now() + 5 * 86_400_000 + 3_600_000).toISOString() });
     const owner = await acceptInvite(p, 'trial-spot.lvh.test', { email: 'jo@trial.local' });
     let boot = (await owner.rpc('app.bootstrap')).body.result;
     assert.deepEqual([boot.tenant.status, boot.tenant.billing.kind, boot.tenant.billing.daysLeft], ['trialing', 'trial', 5]);

@@ -102,3 +102,5 @@ export const inviteAll = () => post('/api/users/invite-all');
 // Phone notifications and texts (server/channels.js)
 export const sendTestPush = () => post('/api/push/test');
 export const sendTestText = (phone) => post('/api/sms/test', { phone });
+// The billing banner's button (server/billing.js): Stripe's billing portal in phase 2, nothing yet.
+export const billingPortal = () => post('/api/billing/portal');

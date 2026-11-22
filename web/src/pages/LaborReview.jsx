@@ -30,7 +30,7 @@ const STORE_KEY = 'sb_labor_week';
 const saved = () => { try { return sessionStorage.getItem(STORE_KEY); } catch { return null; } };
 
 export default function LaborReview() {
-  const { call, version, today, settings, jobs, isMgr } = useApp();
+  const { call, version, today, settings, jobs, isMgr, has } = useApp();
   const current = weekStartOf(today, settings.weekStartDow);
   const [ws, setWsState] = useState(() => saved() || addDays(current, -7));
   const setWs = (v) => { setWsState(v); try { sessionStorage.setItem(STORE_KEY, v); } catch { /* ignore */ } };
@@ -67,7 +67,7 @@ export default function LaborReview() {
         </div>
         <span className="spacer" />
         {canSync && <button className="btn sm primary" disabled={!!progress} onClick={() => sync({ from: r.weekStart, to: syncTo })}><Icon name="download" />{tx('laborReview.syncThisWeek')}</button>}
-        {isMgr && <ToastSetupButton />}
+        {isMgr && has('toast') && <ToastSetupButton />}
       </div>
       {progress && <div className="card card-pad section"><SyncProgress progress={progress} /></div>}
 

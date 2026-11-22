@@ -72,7 +72,8 @@ export function billingBanner(tenant, now = Date.now()) {
   if (tenant.status === 'past_due') return { kind: 'pastDue' };
   if (tenant.status === 'trialing' && tenant.trial_ends_at) {
     const ms = Date.parse(tenant.trial_ends_at) - now;
-    return { kind: 'trial', daysLeft: Math.max(0, Math.ceil(ms / 86_400_000)), endsAt: tenant.trial_ends_at };
+    // Whole days left: a trial ending tonight says "today", one ending in 14½ days says 14.
+    return { kind: 'trial', daysLeft: Math.max(0, Math.floor(ms / 86_400_000)), endsAt: tenant.trial_ends_at };
   }
   return null;
 }

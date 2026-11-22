@@ -380,6 +380,15 @@ table.sched { border-collapse: separate; border-spacing: 0; width: 100%; min-wid
 .demo-bar select { background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.3); border-radius: 7px; padding: 3px 6px; }
 .demo-bar select option { color: #000; }
 
+/* Platform banners (server/platform/): support mode for everyone; trial ending / payment failed for admins only. */
+.tenant-banner { display: flex; gap: 10px; align-items: center; padding: 8px 16px; font-size: 13px; font-weight: 500; border-bottom: 1px solid var(--border); }
+.tenant-banner .tenant-banner-text { flex: 1; min-width: 0; }
+.tenant-banner.support { background: #7c2d12; color: #fff; border-color: transparent; }
+.tenant-banner.support .btn { background: rgba(255,255,255,.16); color: #fff; border-color: rgba(255,255,255,.35); }
+.tenant-banner.info { background: var(--brand-soft); color: var(--brand); }
+.tenant-banner.bad { background: var(--bad-soft); color: var(--bad); }
+@media (max-width: 900px) { .tenant-banner { flex-wrap: wrap; padding: 8px 12px; } .tenant-banner .tenant-banner-text { flex-basis: calc(100% - 30px); } }
+
 .login { min-height: 100vh; display: grid; place-items: center; padding: 20px; background: radial-gradient(1200px 600px at 20% -10%, #312e81 0, transparent 60%), radial-gradient(900px 500px at 110% 110%, #0e7490 0, transparent 55%), #0b1020; }
 .login .card { width: 100%; max-width: 380px; }
 

@@ -1516,6 +1516,26 @@ const catalog = {
     moveThem: 'Pasarlos a',
     keepThem: 'Dejarlos aquí (seguirá apareciendo aquí)',
   },
+  // Un ShiftBoard para muchos restaurantes (server/platform/): las pantallas y los avisos que agrega.
+  platform: {
+    notFoundTitle: 'No encontramos ese restaurante',
+    notFoundHelp: 'No hay ningún restaurante de ShiftBoard en esta dirección. Revisa el enlace que te mandó tu gerente.',
+    pausedTitle: 'La cuenta de este restaurante está pausada. Comunícate con DubLow Digital.',
+    pausedHelp: 'No se borró nada: el horario y todo lo demás seguirán aquí cuando se reactive la cuenta.',
+    supportBanner: 'Modo de soporte: DubLow Digital ({by}) tiene la sesión abierta como {name} hasta las {time}.',
+    endSupport: 'Terminar la sesión de soporte',
+    trialEndsIn: { one: 'Tu prueba gratis termina en {count} día.', other: 'Tu prueba gratis termina en {count} días.' },
+    trialEndsToday: 'Tu prueba gratis termina hoy.',
+    choosePlan: 'Elegir un plan',
+    paymentFailed: 'No se pudo cobrar el pago. Actualiza tu tarjeta para seguir usando ShiftBoard.',
+    updateCard: 'Actualizar tarjeta',
+    billingByDublow: 'Comunícate con DubLow Digital para configurar o actualizar tu pago.',
+    dismiss: 'Cerrar',
+    askDublowEmail: 'Todavía no está configurado. Pídele a DubLow Digital que configure el correo de tu restaurante.',
+    askDublowTexts: 'Todavía no está configurado. Pídele a DubLow Digital que configure los mensajes de texto de tu restaurante.',
+    askDublowPush: 'Todavía no está configurado. Pídeselo a DubLow Digital.',
+    askDublowToast: 'Toast todavía no está conectado. Pídele a DubLow Digital que lo conecte. Van a necesitar las credenciales de la API estándar de Toast: el client ID, el client secret y el GUID del local.',
+  },
 };
 
 export default catalog;
