@@ -236,7 +236,9 @@ test("each section keeps the sheet's heading, label and order of names, through 
   const rosters = svc.call(owner(), 'shifts.list', { start: '2026-11-16', end: '2026-11-22' }).rosters;
   const rh = rosters.find((r) => r.area === 'Rabbit Hole');
   assert.deepEqual([rh.jobCodeId, rh.label, rh.banner, rh.userIds], [bar.id, 'Bar', 'RABBIT HOLE', [id('Max'), id('Sam'), id('Kai'), id('Pat')]]);
-  assert.deepEqual(rosters.filter((r) => !r.area).map((r) => [r.label, r.banner]), [['', 'M.O.D.']]);
+  // A banner that names a position (M.O.D.) is a room of its own (its position's department): its names are kept under it.
+  assert.deepEqual(rosters.filter((r) => r.area === 'M.O.D.').map((r) => [r.label, r.banner]), [['', 'M.O.D.']]);
+  assert.ok(!rosters.some((r) => !r.area), 'every section is kept under its room');
   // An old banner job code's section folds into Bartender's.
   store.insert('rosters', { id: 'moon rabbit|job_old', area: 'Moon Rabbit', jobCodeId: 'job_old', label: 'Bar', banner: 'MOON RABBIT', userIds: [id('Sam')] });
   svc.call(owner(), 'jobCodes.merge', { fromId: 'job_old', intoId: bar.id });
