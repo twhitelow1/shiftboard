@@ -1494,6 +1494,28 @@ const catalog = {
     levelMainFloor: 'Planta baja',
     levelSuggestions: 'Planta baja|Sótano|Planta alta|Azotea',
   },
+  sectionPeople: {
+    editTitle: 'Editar quién aparece en esta sección',
+    people: 'Personas',
+    sub: 'Quién aparece aquí en el horario. También aparece quien tenga un turno aquí esa semana.',
+    empty: 'Todavía no hay nadie aquí.',
+    shiftsThisWeek: { one: '{count} turno aquí esta semana', other: '{count} turnos aquí esta semana' },
+    moveUp: 'Subir',
+    moveDown: 'Bajar',
+    addSomeone: 'Agregar a alguien…',
+    add: 'Agregar',
+    added: 'Se agregó a {name}',
+    how: 'Quitar a alguien aquí solo lo saca de esta sección. Sus otros puestos y áreas se quedan igual.',
+    removeTitle: 'Quitar a {name}',
+    removed: 'Se quitó a {name}',
+    loadFailed: 'No se pudieron cargar los datos de esta persona. Intenta de nuevo.',
+    losesPosition: '{name} ya no tendrá el puesto de {position}.',
+    keepsAreas: '{position} se queda para: {areas}.',
+    onlyShifts: '{name} aparece aquí solo por sus turnos aquí.',
+    shiftsHere: { one: '{count} turno aquí de esta semana en adelante:', other: '{count} turnos aquí de esta semana en adelante:' },
+    moveThem: 'Pasarlos a',
+    keepThem: 'Dejarlos aquí (seguirá apareciendo aquí)',
+  },
 };
 
 export default catalog;

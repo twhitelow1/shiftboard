@@ -6,6 +6,7 @@ import { scheduleAreas, findArea, sameArea } from '../../../core/areas.js';
 import ShiftDialog from './ShiftDialog.jsx';
 import ImportDialog from './ImportDialog.jsx';
 import ScheduleSheet from './ScheduleSheet.jsx';
+import SectionPeople from './SectionPeople.jsx';
 import TradeHint, { canTrade } from './TradeHint.jsx';
 import { EightySixBanner } from './EightySix.jsx';
 import { IS_DEMO } from '../api.js';
@@ -92,6 +93,7 @@ export default function Schedule() {
     return m;
   }, [shifts, settings]);
 
+  const [editSection, setEditSection] = useState(null); // the section whose people a manager is editing
   const openDialog = (shift, startIn) => setDialog({ shift, startIn, warnings: data?.warnings?.[shift.id] });
   const addAt = (date, jobCodeId, userId, area = '') => isMgr && setDialog({ shift: { date, jobCodeId, userId, area, start: '16:00' } });
   const closeDialog = (changed) => { setDialog(null); if (changed) load(); };
@@ -267,7 +269,7 @@ export default function Schedule() {
           <TradeHint shifts={shifts} />
           {/* Like the house PDF. Print always uses this layout. */}
           <ScheduleSheet className={view === 'sheet' ? 'sheet-print' : 'sheet-print print-only'} sections={sheetSections} days={days} data={data} fc={fc} ws={ws}
-            onAdd={addAt} onOpen={openDialog} onSaved={load} />
+            onAdd={addAt} onOpen={openDialog} onSaved={load} onEditSection={isMgr ? (sec) => setEditSection(allSections.find((x) => x.key === sec.key) || sec) : undefined} />
 
           {/* Desktop grid */}
           {view !== 'sheet' && <div className="sched-wrap desktop-only no-print">
@@ -299,7 +301,9 @@ export default function Schedule() {
                       <tr className="section area"><td colSpan={8}><div className="row">{sec.banner}</div></td></tr>
                     )}
                     {groupBy === 'job' && (
-                      <tr className="section"><td colSpan={8}><div className="row"><JobDot job={sec.job} />{sec.label}</div></td></tr>
+                      <tr className="section"><td colSpan={8}><div className="row"><JobDot job={sec.job} />{sec.label}
+                        {isMgr && sec.job && <button className="btn ghost sm no-print" style={{ marginLeft: 'auto' }} title={t('sectionPeople.editTitle')}
+                          onClick={() => setEditSection(allSections.find((x) => x.key === sec.key) || sec)}><Icon name="users" />{t('sectionPeople.people')}</button>}</div></td></tr>
                     )}
                     {sec.rows.map(({ user, shifts: us }) => {
                       const hrs = hoursByUser[user.id] || 0;
@@ -349,6 +353,8 @@ export default function Schedule() {
           </div>}
         </>
       )}
+
+      {editSection && <SectionPeople section={editSection} ws={ws} sections={allSections} onClose={(changed) => { setEditSection(null); if (changed) load(); }} />}
 
       {dialog && <ShiftDialog shift={dialog.shift} startIn={dialog.startIn} warnings={dialog.warnings} events={data?.events || []} onClose={closeDialog} />}
       {importOpen && <ImportDialog ws={ws} onClose={(changed) => { setImportOpen(false); if (changed) load(); }} />}
