@@ -72,7 +72,8 @@ export function ToastSetupButton({ label = tr('toastSettings.toastSetup') }) {
   );
 }
 
-export function ToastPanel({ inModal }) {
+/** embedded: inside Settings → Integrations (its title and status are above). connect: the credentials are pasted there, not in Vercel. */
+export function ToastPanel({ inModal, embedded, connect }) {
   const t = useT();
   const { today, managed } = useApp();
   const { status, info, error } = useToast();
@@ -81,11 +82,11 @@ export function ToastPanel({ inModal }) {
   const [replaceManual, setReplaceManual] = useState(false);
   const [sync, progress] = useToastSync();
 
-  const head = (badge) => (
+  const head = (badge) => (embedded ? null : (
     <div className="row wrap" style={{ gap: 8 }}>
       <h3 style={{ flex: 1 }}>{inModal ? '' : t('toastSettings.toastPos')}</h3>{badge}
     </div>
-  );
+  ));
   const intro = <div className="small muted" style={{ marginTop: -4 }}>{t('toastSettings.pullsDailySalesAndCovers')}</div>;
 
   if (IS_DEMO || status?.demo) {
@@ -99,7 +100,7 @@ export function ToastPanel({ inModal }) {
     return (
       <div className="col" style={{ gap: 10 }}>
         {head(<span className="badge warn">{t('toastSettings.notSetUp')}</span>)}{intro}
-        {managed
+        {connect ? <div className="help">{t('integrations.pasteAbove')}</div> : managed
           ? <div className="alert warn"><Icon name="alert" size={16} /><div>{t('platform.askDublowToast')}</div></div>
           : <><div className="alert warn"><Icon name="alert" size={16} /><div>{t('toastSettings.add')}{' '}{status.missing.join(', ')}{' '}{t('toastSettings.inVercelSettingsEnvironmentVariables')}</div></div>
             <SetupHelp /></>}
@@ -134,7 +135,7 @@ export function ToastPanel({ inModal }) {
       <div className="help">{t('toastSettings.syncingAgainIsSafeDays')}</div>
 
       {info && (info.employees.length > 0 || info.jobs.length > 0) && <Matching info={info} inModal={inModal} />}
-      {!inModal && <SetupHelp />}
+      {!inModal && !connect && <SetupHelp />}
     </div>
   );
 }

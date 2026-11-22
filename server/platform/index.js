@@ -27,6 +27,8 @@ import { Registry } from './registry.js';
 import { TenantCache } from './tenant-cache.js';
 import { hostConfig, resolveHost, consoleAllowed, tenantAddress } from './hosts.js';
 import { tenantEnv } from './tenant-env.js';
+import { restaurantView, saveIntegrations, allowedKeys } from './integrations.js';
+import { encryptionKey } from './secrets.js';
 import { consoleRouter } from './console.js';
 import { isPaused } from './plans.js';
 
@@ -83,6 +85,25 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
       id: t.id, slug: t.slug, name: t.name, isDefault: t.is_default, status: t.status, plan: t.plan,
       features: t.resolved, trialEndsAt: t.trial_ends_at,
       consumeSupportGrant: (token) => registry.consumeSupportGrant(token, t.id),
+      // Settings → Integrations for the restaurant's own admins (server/integrations-routes.js): the same
+      // settings and encrypted secrets as the console, for the integrations in its plan only, audited.
+      integrations: {
+        view: async () => {
+          const cur = (await registry.get(t.id)) || t;
+          let encryption = false;
+          try { encryption = !!encryptionKey(env); } catch { encryption = false; }
+          return restaurantView({ tenant: cur, secretView: await registry.secretView(t.id), env, encryption });
+        },
+        save: async (input, user) => {
+          const cur = (await registry.get(t.id)) || t;
+          const changed = await saveIntegrations(registry, cur, input, {
+            actor: { id: `user:${user.id}`, email: user.email || null }, allowed: allowedKeys(cur.resolved),
+            details: { via: 'restaurant settings', user: user.name || '', role: user.role || '' },
+          });
+          if (changed.length) platform.forget(t.id); // the next request runs with the new env
+          return changed;
+        },
+      },
     };
   }
 

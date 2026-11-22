@@ -25,6 +25,7 @@ import { featureForMethod, ROUTE_FEATURES, NOT_IN_PLAN, PAUSED, isPaused, billin
 import { billingPortal } from './billing.js';
 import { mountAdp } from './adp-routes.js';
 import { mountTripleseat } from './tripleseat-routes.js';
+import { mountIntegrations } from './integrations-routes.js';
 
 const COOKIE = 'sb_session';
 const MAX_LOGIN_ATTEMPTS = 10; // per IP + email, per 15 minutes
@@ -567,6 +568,9 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     db, env, userOf: (req) => userFromToken(db.store, req.cookies[COOKIE]), managed: !!tenant && !tenant.isDefault,
     onCommit: (changes, req) => { channels.afterCommit(changes, req); emailNotifications(changes, req); pushToPhones(changes); },
   });
+  // Settings → Integrations: the restaurant's admins set up ADP, Toast, Tripleseat, the text sender and the
+  // email From themselves (server/integrations-routes.js); read-only from env on a single-restaurant install.
+  mountIntegrations(app, { db, env, tenant, userOf: (req) => userFromToken(db.store, sessionToken(req)) });
   // Training photos (menu study guide, quizzes), for signed-in staff only.
   trainingRoutes(app, { db, signedIn: (req) => userFromToken(db.store, req.cookies[COOKIE]) });
   // 86 List photos, for people who can see the item's list (cookie on the web, bearer token in the phone app).

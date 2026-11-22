@@ -130,7 +130,10 @@ test('isolation: each restaurant syncs its own Tripleseat account into its own s
   const at = (host) => hostClient(port, host);
   try {
     const admin = at('admin.lvh.test');
-    assert.equal((await admin.post('/api/platform/login', { email: 'ops@dublow.test', password: 'console-password-1' })).status, 200);
+    const signIn = await admin.post('/api/platform/login', { email: 'ops@dublow.test', password: 'console-password-1' });
+    assert.equal(signIn.status, 200);
+    // The first console admin from env has a temporary password: set it before anything else.
+    if (signIn.body.result?.mustChange) assert.equal((await admin.post('/api/platform/password', { password: 'console-password-1' })).status, 200);
     const make = async (body) => {
       const r = await admin.post('/api/platform/tenants', { ownerName: 'Pat Owner', ...body });
       assert.equal(r.status, 200, r.text);

@@ -13,7 +13,8 @@ import crypto from 'node:crypto';
 import { FEATURES, PLANS, PLAN_KEYS, STATUSES, TRIAL_DAYS, cleanOverrides, isPaused } from './plans.js';
 import { RESERVED_SLUGS, slugProblem, slugify } from './slugs.js';
 import { consoleAllowed, domainProblem, normalizeHost, tenantAddress } from './hosts.js';
-import { INTEGRATION_FIELDS, PLAIN_KEYS, cleanIntegrations, integrationsView } from './tenant-env.js';
+import { INTEGRATION_FIELDS, integrationsView } from './tenant-env.js';
+import { saveIntegrations } from './integrations.js';
 import { createTenant, OnboardError } from './onboard.js';
 import { encryptionKey } from './secrets.js';
 
@@ -233,22 +234,7 @@ export function consoleRouter({ platform }) {
   r.put('/tenants/:id/integrations', wrap(async (req) => {
     const admin = await signedIn(req);
     const t = await tenantOr404(req.params.id);
-    const { plain, secrets } = cleanIntegrations(req.body || {});
-    const changed = [];
-    if (Object.keys(plain).length) {
-      const next = { ...t.integrations };
-      for (const k of PLAIN_KEYS) {
-        if (!(k in plain)) continue;
-        if ((next[k] || '') !== plain[k]) changed.push(k);
-        if (plain[k]) next[k] = plain[k]; else delete next[k];
-      }
-      await registry.updateTenant(t.id, { integrations: next });
-    }
-    if (Object.keys(secrets).length) {
-      await registry.setSecrets(t.id, secrets);
-      changed.push(...Object.entries(secrets).map(([k, v]) => `${k} (${v ? 'set' : 'cleared'})`));
-    }
-    if (changed.length) await registry.audit({ admin, action: 'tenant.integrations', tenantId: t.id, details: { changed } });
+    await saveIntegrations(registry, t, req.body || {}, { actor: admin }); // the same path a restaurant's own admins use (integrations.js)
     platform.forget(t.id);
     return detail(req, await tenantOr404(t.id));
   }));

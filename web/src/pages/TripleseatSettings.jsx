@@ -33,13 +33,14 @@ export function useTripleseat() {
   return { status, info, error };
 }
 
-export function TripleseatPanel() {
+/** embedded: inside Settings → Integrations (its title and status are above). connect: the credentials are pasted there, not in Vercel. */
+export function TripleseatPanel({ embedded, connect }) {
   const t = useT();
   const { managed, isAdmin, toast, refresh } = useApp();
   const { status, info, error } = useTripleseat();
   const [progress, setProgress] = useState(null);
 
-  const head = (badge) => <div className="row wrap" style={{ gap: 8 }}><h3 style={{ flex: 1 }}>{t('tripleseat.title')}</h3>{badge}</div>;
+  const head = (badge) => (embedded ? null : <div className="row wrap" style={{ gap: 8 }}><h3 style={{ flex: 1 }}>{t('tripleseat.title')}</h3>{badge}</div>);
   const intro = <div className="small muted" style={{ marginTop: -4 }}>{t('tripleseat.intro')}</div>;
 
   if (IS_DEMO || status?.demo) {
@@ -51,9 +52,10 @@ export function TripleseatPanel() {
     return (
       <div className="col" style={{ gap: 10 }}>
         {head(<span className="badge warn">{t('tripleseat.notSetUp')}</span>)}{intro}
-        {managed
-          ? <div className="alert warn"><Icon name="alert" size={16} /><div>{t('tripleseat.askDublow')}</div></div>
-          : <><div className="alert warn"><Icon name="alert" size={16} /><div>{t('tripleseat.addEnv', { names: status.missing.join(', ') })}</div></div><SetupHelp open /></>}
+        {connect ? <><div className="help">{t('integrations.pasteAbove')}</div><SetupHelp open connect /></>
+          : managed
+            ? <div className="alert warn"><Icon name="alert" size={16} /><div>{t('tripleseat.askDublow')}</div></div>
+            : <><div className="alert warn"><Icon name="alert" size={16} /><div>{t('tripleseat.addEnv', { names: status.missing.join(', ') })}</div></div><SetupHelp open /></>}
       </div>
     );
   }
@@ -97,9 +99,9 @@ export function TripleseatPanel() {
       {info && <EventsSummary info={info} />}
       {info && <RoomMatching info={info} />}
       {info && <RulesCard info={info} />}
-      {info && isAdmin && <WebhookCard info={info} status={status} managed={managed} />}
+      {info && isAdmin && <WebhookCard info={info} status={status} managed={managed} connect={connect} />}
       {info?.skipped?.length > 0 && <SkippedCard info={info} />}
-      {!managed && <SetupHelp />}
+      {(connect || !managed) && <SetupHelp connect={connect} />}
     </div>
   );
 }
@@ -197,7 +199,7 @@ function RulesCard({ info }) {
 }
 
 /** The restaurant's own webhook link (admins only: it's what lets Tripleseat reach this restaurant). */
-function WebhookCard({ info, status, managed }) {
+function WebhookCard({ info, status, managed, connect }) {
   const t = useT();
   const { call, toast } = useApp();
   const [token, setToken] = useState(info.webhookToken || null);
@@ -225,7 +227,7 @@ function WebhookCard({ info, status, managed }) {
           <div><button className={`btn sm ${renew ? 'danger solid' : 'ghost'}`} disabled={busy} onClick={() => (renew ? make(true) : setRenew(true))}>{renew ? t('tripleseat.newLinkConfirm') : t('tripleseat.newLink')}</button></div>
         </>
       )}
-      <div className="small">{status.webhookSecret ? t('tripleseat.signingOn') : managed ? t('tripleseat.signingOffManaged') : t('tripleseat.signingOff')}</div>
+      <div className="small">{status.webhookSecret ? t('tripleseat.signingOn') : connect ? t('tripleseat.signingOffHere') : managed ? t('tripleseat.signingOffManaged') : t('tripleseat.signingOff')}</div>
       <div className="small muted">{t('tripleseat.lastWebhook')}: {lw ? t('tripleseat.lastWebhookLine', { when: when(lw.at), id: lw.eventId, action: lw.ok ? t(`tripleseat.action_${lw.action || 'none'}`) : translateError(lw.error) }) : t('tripleseat.noWebhookYet')}</div>
     </div>
   );
@@ -253,7 +255,7 @@ function SkippedCard({ info }) {
   );
 }
 
-function SetupHelp({ open }) {
+function SetupHelp({ open, connect }) {
   const t = useT();
   return (
     <details className="tp-help" open={open}>
@@ -261,9 +263,9 @@ function SetupHelp({ open }) {
       <ol>
         <li>{t('tripleseat.step1')}</li>
         <li>{t('tripleseat.step2')}</li>
-        <li>{t('tripleseat.step3')}</li>
+        <li>{connect ? t('tripleseat.step3Here') : t('tripleseat.step3')}</li>
         <li>{t('tripleseat.step4')}</li>
-        <li>{t('tripleseat.step5')}</li>
+        <li>{connect ? t('tripleseat.step5Here') : t('tripleseat.step5')}</li>
       </ol>
       <div className="help" style={{ marginTop: 6 }}>{t('tripleseat.docsLine')} <code>{TRIPLESEAT_DOCS}</code></div>
     </details>

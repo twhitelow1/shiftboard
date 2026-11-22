@@ -80,3 +80,17 @@
 .ah-trends h3 { margin-bottom: 2px; }
 .ah-trends > div { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 @media (max-width: 760px) { .ah-trends { grid-template-columns: 1fr; } }
+
+/* Settings → Integrations: one panel per integration, closed until tapped */
+.int-panel { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--surface); }
+.int-panel > summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; cursor: pointer; list-style: none; font-weight: 700; min-height: 32px; }
+.int-panel > summary::-webkit-details-marker { display: none; }
+.int-panel > summary::before { content: '▸'; color: var(--text-3); transition: transform .15s; }
+.int-panel[open] > summary::before { transform: rotate(90deg); }
+.int-title { flex: 1 1 150px; min-width: 0; }
+.int-panel > summary .badge { white-space: normal; max-width: 100%; text-align: left; }
+.int-secret { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 34px; }
+.int-secret .mono, .int-readonly span { font-size: 13px; overflow-wrap: anywhere; }
+.int-readonly { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 34px; }
+.int-readonly code { font-size: 11.5px; background: var(--surface-3); padding: 1px 5px; border-radius: 5px; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }

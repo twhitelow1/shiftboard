@@ -5,7 +5,7 @@ import { scheduleAreas, uniqueAreas, bannerColor, textOn, sameArea } from '../..
 import { applyBranding, logoUrl, imageToPng, THEMES } from '../theme.js';
 import TipPoolSettings from './TipPoolSettings.jsx';
 import { TextSettingsCard } from './PhoneCards.jsx';
-import { IntegrationsCard } from './AdpSettings.jsx'; // ADP, the clock-in source, Toast and Tripleseat
+import { IntegrationsCard } from './IntegrationsSettings.jsx'; // ADP, Toast, Tripleseat, the text sender, the email From
 import { TrainingSettingsCard } from './TrainingShared.jsx';
 import EightySixSettings from './EightySixSettings.jsx';
 import { tx, useT, dowLong, dowShort , LANGUAGE_NAMES } from '../i18n/index.js';
@@ -108,7 +108,7 @@ export default function Settings() {
       </div>
 
       <TextSettingsCard />
-      {(has('toast') || has('adp') || has('tripleseat')) && <IntegrationsCard />}
+      <IntegrationsCard />
 
       <div className="card card-pad col" style={{ gap: 12 }}>
         <h2>{t('settings.forecasting')}</h2>
