@@ -13,6 +13,7 @@ import { openPglite } from '../server/pglite.js';
 import { createApp } from '../server/app.js';
 import { createExpoPush, pushNotifications, pushMessages, isExpoPushToken, EXPO_PUSH_URL, EXPO_RECEIPTS_URL } from '../server/expo-push.js';
 import { addDays, todayStr } from '../core/time.js';
+import { signIn as signInFlow, secondStep } from './helpers/signin.js';
 
 const SECRET = 'test-secret-for-mobile-sessions';
 const ENV = { SEED_DEMO: 'true', JWT_SECRET: SECRET };
@@ -63,7 +64,7 @@ function phone(base) {
     },
     rpc: (method, args) => c.post(`/api/rpc/${method}`, args),
     async signIn(email, password = 'demo1234') {
-      const r = await c.post('/api/auth/login', { email, password, client: 'mobile' });
+      const r = await signInFlow((p, b) => c.post(p, b, ''), email, password, { client: 'mobile' });
       assert.equal(r.status, 200, JSON.stringify(r.body));
       c.token = r.body.token;
       return c;
@@ -76,7 +77,11 @@ test('phone sign-in returns a bearer token (no cookie) that works on the RPC rou
   const A = await start();
   try {
     const p = phone(A.base);
-    const r = await p.post('/api/auth/login', { email: 'alexd@demo.shiftboard', password: 'demo1234', client: 'mobile' });
+    const first = await p.post('/api/auth/login', { email: 'alexd@demo.shiftboard', password: 'demo1234', client: 'mobile' });
+    assert.equal(first.status, 200);
+    assert.equal(first.body.mfa, 'enroll', 'the password alone never hands out a token');
+    assert.equal(first.body.token, undefined);
+    const r = await secondStep((path, b) => p.post(path, b, ''), first, { email: 'alexd@demo.shiftboard', client: 'mobile' });
     assert.equal(r.status, 200);
     assert.equal(r.headers.get('set-cookie'), null, 'no cookie for the phone app');
     assert.equal(r.body.expiresIn, 30 * 24 * 60 * 60);
@@ -97,10 +102,16 @@ test('phone sign-in returns a bearer token (no cookie) that works on the RPC rou
     const forged = jwt.sign({ sub: claims.sub, v: 0 }, 'some-other-secret', { expiresIn: '30d' });
     assert.equal((await p.post('/api/rpc/app.bootstrap', {}, forged)).status, 401);
 
-    // The web sign-in is unchanged: a cookie, no token in the body.
-    const web = await fetch(`${A.base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'alexd@demo.shiftboard', password: 'demo1234' }) });
-    assert.match(web.headers.get('set-cookie'), /sb_session=/);
-    assert.deepEqual(await web.json(), { ok: true });
+    // The web sign-in: a cookie after the second step, no token in the body.
+    let cookie = '';
+    const webPost = async (path, b) => {
+      const res = await fetch(A.base + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+      cookie = res.headers.get('set-cookie') || cookie;
+      return { status: res.status, body: await res.json() };
+    };
+    const web = await signInFlow(webPost, 'alexd@demo.shiftboard');
+    assert.match(cookie, /sb_session=/);
+    assert.deepEqual(web.body, { ok: true });
   } finally { await A.close(); }
 });
 

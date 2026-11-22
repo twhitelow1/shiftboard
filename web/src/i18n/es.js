@@ -1,5 +1,6 @@
 // Español (Latinoamérica neutro, "tú"): the same keys as en.js. Vocabulary: docs/i18n/GLOSSARY.md, and
 // the phone app (mobile/src/i18n/es.ts) for the words they share. Restaurant data stays as entered.
+import auth from './es-auth.js'; // iniciar sesión, dos pasos, la bienvenida, el consentimiento, Mi configuración
 const catalog = {
   lang: {
     change: 'Cambiar idioma',
@@ -606,7 +607,7 @@ const catalog = {
     emailNotificationsOn: 'Notificaciones por correo activadas',
     emailNotificationsOff: 'Notificaciones por correo apagadas',
     changeMyPassword: 'Cambiar mi contraseña',
-    newPassword6Characters: 'Contraseña nueva (6 caracteres o más)',
+    newPassword6Characters: 'Contraseña nueva (10 caracteres o más)',
     passwordChanged: 'Contraseña cambiada',
     isThisYou: '¿Eres tú? <b>{value}</b> está en el horario, pero no está unido a tu cuenta, así que esos turnos no aparecen aquí.',
     isThisYouShifts: { one: '¿Eres tú? <b>{value}</b> está en el horario con {count} turno, pero no está unido a tu cuenta, así que esos turnos no aparecen aquí.', other: '¿Eres tú? <b>{value}</b> está en el horario con {count} turnos, pero no está unido a tu cuenta, así que esos turnos no aparecen aquí.' },
@@ -875,7 +876,7 @@ const catalog = {
     addDaypart: 'Agregar horario',
     saveSettings: 'Guardar configuración',
     myPassword: 'Mi contraseña',
-    newPassword6Characters: 'Contraseña nueva (6 caracteres o más)',
+    newPassword6Characters: 'Contraseña nueva (10 caracteres o más)',
     change: 'Cambiar',
     passwordChanged: 'Contraseña cambiada',
     themeSaved: 'Tema guardado',
@@ -2124,6 +2125,7 @@ const catalog = {
     adpStep5Here: 'Pega el client ID, el secreto, el certificado y la clave en Conexión, arriba, y guarda. Luego usa Sincronizar ahora.',
     textsAfter: 'Cuando esté conectado, aquí puedes mandarte un mensaje de prueba.',
   },
+  ...auth,
 };
 
 export default catalog;

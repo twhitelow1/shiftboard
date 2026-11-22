@@ -10,6 +10,7 @@ import { PHOTO_MAX_BYTES, PHOTOS_PER_ITEM, localizeItem, localize, allergenLabel
 import { DocDb } from '../server/db.js';
 import { openPglite } from '../server/pglite.js';
 import { createApp } from '../server/app.js';
+import { cookieFor, tokenFor } from './helpers/signin.js';
 
 function prng(seed) {
   return () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -539,11 +540,7 @@ test('HTTP: photos are uploaded one per request and served only to signed-in peo
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
-  const login = async (email) => {
-    const res = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: 'demo1234' }) });
-    assert.equal(res.status, 200);
-    return res.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
-  };
+  const login = (email) => cookieFor(base, email);
   const rpc = async (cookie, method, args) => {
     const res = await fetch(`${base}/api/rpc/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: JSON.stringify(args) });
     return { status: res.status, body: await res.json() };
@@ -583,9 +580,7 @@ test('HTTP: photos are uploaded one per request and served only to signed-in peo
     assert.equal((await fetch(quizPhoto, { headers: { Cookie: await login('styves@demo.shiftboard') } })).status, 404, 'someone else’s attempt');
 
     // The phone app sends its session as a bearer token instead of the cookie: same photos, same rules.
-    const phone = await (await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'alexd@demo.shiftboard', password: 'demo1234', client: 'mobile' }) })).json();
-    const bearer = { Authorization: `Bearer ${phone.token}` };
+    const bearer = { Authorization: `Bearer ${await tokenFor(base, 'alexd@demo.shiftboard')}` }; // password + second step, as the app does
     const menuPhoto = await fetch(`${base}/api/training/photos/${id}`, { headers: bearer });
     assert.equal(menuPhoto.status, 200);
     assert.equal((await menuPhoto.arrayBuffer()).byteLength, 300 * 1024);

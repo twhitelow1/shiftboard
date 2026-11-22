@@ -1,6 +1,7 @@
 // HTTP requests with any Host header (fetch can't set it), and a cookie jar per client, for testing
 // the platform's routing by host against one local server.
 import http from 'node:http';
+import { signIn } from './signin.js';
 
 export function request(port, { host, method = 'GET', path, headers = {}, body }) {
   return new Promise((resolve, reject) => {
@@ -50,10 +51,17 @@ export function hostClient(port, host) {
     rpc: (method, args = {}, headers) => send('POST', `/api/rpc/${method}`, args, headers),
     cookies: () => cookie(),
     setCookies(str) { jar.clear(); for (const p of String(str || '').split(/;\s*/).filter(Boolean)) { const i = p.indexOf('='); jar.set(p.slice(0, i), p.slice(i + 1)); } },
+    /** Password and the second step (test/helpers/signin.js). */
     async login(email, password = 'demo1234') {
-      const r = await send('POST', '/api/auth/login', { email, password });
+      const r = await signIn((path, body) => send('POST', path, body), email, password);
       if (r.status !== 200) throw new Error(`login ${email} on ${host}: ${r.status} ${r.text}`);
       return this;
+    },
+    /** The phone app's sign-in: returns the bearer token. */
+    async token(email, password = 'demo1234') {
+      const r = await signIn((path, body) => send('POST', path, body), email, password, { client: 'mobile' });
+      if (r.status !== 200) throw new Error(`login ${email} on ${host}: ${r.status} ${r.text}`);
+      return r.body.token;
     },
   };
 }

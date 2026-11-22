@@ -6,6 +6,7 @@ import { sameArea } from '../../../core/areas.js';
 import { roomsForPosition, homeRoom, entryRooms } from '../../../core/layout.js';
 import { sendSignInLink, inviteAll, IS_DEMO } from '../api.js';
 import { t, useT, stampDay } from '../i18n/index.js';
+import { AddEmployeeDialog, PersonBadges, SignInHelp, PreviewOnboardingLink } from './TeamInvite.jsx'; // invitations, status, sign-in help
 
 const COLORS = ['#2563eb', '#16a34a', '#65a30d', '#0891b2', '#9333ea', '#a855f7', '#dc2626', '#e11d48', '#d97706', '#ca8a04', '#475569', '#0f766e', '#334155', '#7c2d12', '#db2777'];
 const JOB_ROLES = ['employee', 'supervisor', 'manager'];
@@ -30,6 +31,7 @@ export default function Team() {
   const [edit, setEdit] = useState(null);
   const [editJob, setEditJob] = useState(null);
   const [showInactive, setShowInactive] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [run, busy] = useAction();
 
   const list = employees.filter((e) => (showInactive || e.active !== false) && (!q || `${e.name} ${e.sheetName || ''}`.toLowerCase().includes(q.toLowerCase()))
@@ -70,14 +72,14 @@ export default function Team() {
               onClick={() => run(() => inviteAll(), (r) => `${t('team.sentLinks', { count: r.sent })}${r.noEmail ? t('team.stillNeedEmail', { count: r.noEmail }) : ''}`)}>
               <Icon name="send" />{t('team.inviteEveryoneInvitablecount', { invitableCount: invitable.length })}</button>
           )}
-          <button className="btn primary sm" onClick={() => setEdit({ jobCodes: [], role: 'employee', active: true, onSchedule: true })}><Icon name="plus" />{t('team.addPerson')}</button>
+          <PreviewOnboardingLink />
+          <button className="btn primary sm" onClick={() => setAdding(true)}><Icon name="plus" />{t('teamStatus.addEmployee')}</button>
         </div>
         {!IS_DEMO && !emailEnabled && <div className="alert info" style={{ marginBottom: 10 }}><Icon name="alert" size={16} />{t('team.emailIsntSwitchedOnYet')}</div>}
         {emailEnabled && missingEmail > 0 && <div className="small muted" style={{ marginBottom: 8 }}>{missingEmail} {missingEmail === 1 ? t('team.personNeeds') : t('team.peopleNeed')}{' '}{t('team.anEmailAddressBeforeThey')}</div>}
         <div className="card list">
           {!list.length && <Empty icon="users" title={t('team.noOneMatches')} />}
           {list.map((e) => {
-            const st = signInStatus(e);
             const canInvite = emailEnabled && !e.lastLoginAt && e.active !== false && deliverable(e.email) && e.id !== me.id && canManageUser(me, e);
             return (
               <div key={e.id} className="list-item click" onClick={() => setEdit(e)} style={{ opacity: e.active === false ? 0.5 : 1 }}>
@@ -88,7 +90,7 @@ export default function Team() {
                     {e.sheetName && <span className="small muted" title={t('team.nameOnTheSchedule')}>“{e.sheetName}”</span>}
                     {roleOf(e) !== 'employee' && <span className="badge brand">{roleLabel(e, t.lang)}</span>}
                     {e.eventsAccess && roleOf(e) !== 'manager' && !['admin', 'super_admin'].includes(roleOf(e)) && <span className="badge">{t('common.events')}</span>}
-                    {!IS_DEMO && <span className={`badge ${st.cls}`} title={st.title}>{st.label}</span>}
+                    <PersonBadges e={e} />
                   </div>
                   <div className="small muted">{e.email || t('team.noEmail')}{e.phone ? ` · ${e.phone}` : ''}</div>
                 </div>
@@ -132,6 +134,8 @@ export default function Team() {
       </>}
 
       {edit && <EmployeeDialog emp={edit} onClose={(changed) => { setEdit(null); if (changed) refresh(); }} />}
+      {adding && <AddEmployeeDialog onClose={(changed) => { setAdding(false); if (changed) refresh(); }}
+        onFullEditor={() => { setAdding(false); setEdit({ jobCodes: [], role: 'employee', active: true, onSchedule: true }); }} />}
       {editJob && <JobDialog job={editJob} onClose={() => setEditJob(null)} />}
     </div>
   );
@@ -287,6 +291,7 @@ function EmployeeDialog({ emp, onClose }) {
             {!self && <button className="btn sm" disabled={busy} onClick={() => run(() => call('employees.resetPassword', { userId: emp.id }), t('team.temporaryPasswordSet')).then((r) => r && setTemp(r.tempPassword))}>
               <Icon name="edit" />{t('team.setATemporaryPassword')}</button>}
           </div>
+          <SignInHelp emp={emp} />
           {!deliverable(emp.email) && !self && <div className="help">{t('team.addAnEmailAboveAnd')}</div>}
           {temp && <div className="alert warn"><Icon name="alert" size={16} /><div>{t('team.temporaryPassword')}{' '}<code style={{ fontSize: 15 }}>{temp}</code>{t('team.shareItPrivatelyItWont')}</div></div>}
         </div>

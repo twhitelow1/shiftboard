@@ -36,7 +36,7 @@ export default function Settings({ parts = [] }) {
     <div className="card card-pad col" style={{ gap: 12 }}>
       <h2>{t('settings.myPassword')}</h2>
       <div className="row wrap"><input className="input" type="password" placeholder={t('settings.newPassword6Characters')} value={pw} onChange={(e) => setPw(e.target.value)} style={{ maxWidth: 300 }} autoComplete="new-password" />
-        <button className="btn" disabled={busy || pw.length < 6} onClick={() => run(() => call('employees.changePassword', { password: pw }), t('settings.passwordChanged')).then(() => setPw(''))}>{t('settings.change')}</button></div>
+        <button className="btn" disabled={busy || pw.length < 10} onClick={() => run(() => call('employees.changePassword', { password: pw }), t('settings.passwordChanged')).then(() => setPw(''))}>{t('settings.change')}</button></div>
     </div>
   );
   // Managers run the schedule's rooms and positions; the rest of Settings is for admins.

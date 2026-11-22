@@ -5,12 +5,17 @@
 // Data:
 //   pushSubscriptions  one document per phone/browser: { userId, endpoint, keys: { p256dh, auth } }
 //   users.smsPhone             the mobile number the person gave for texts (E.164, e.g. +13035550123)
-//   users.smsNotifications     true only after the person turns texts on themselves (default off)
-//   users.smsConsentAt         when they turned texts on for that number (their consent record)
+//   users.smsConsent           true only after the person agreed to texts themselves (default off). It gates
+//                              every text. (It was users.smsNotifications before consent records existed;
+//                              core/consent.js migrates it, and smsConsentOf still reads the old field.)
+//   users.smsConsentAt         when they turned texts on for that number
 //   users.smsStoppedAt         when they replied STOP
+//   users.smsWelcomedAt        when the one-time welcome text went out (first opt-in ever)
+//   consents                   a record of every opt-in and opt-out (core/consent.js)
 //   settings.smsNotifications  the restaurant-wide switch (on unless an admin turns it off)
 import { uid } from './store.js';
 import { msg } from './messages.js';
+import { smsConsentOf, smsStatusOf, recordConsent, consentText, welcomeSms } from './consent.js';
 
 // ---------- phone numbers ----------
 
@@ -70,48 +75,57 @@ export function textMessage({ restaurant, text, url, more = 0, lang = 'en' }) {
 }
 
 /**
- * The text sent right after someone turns texts on (carriers expect one), in their language. The STOP and
- * HELP keywords stay in English in Spanish too: carriers only act on those words.
+ * The text sent on someone's first opt-in ever (carriers expect one), in their language: exactly the words in
+ * core/consent.js (WELCOME_TEXT). The STOP and HELP keywords stay in English in Spanish too.
  */
-export const welcomeText = ({ restaurant, url, lang = 'en' }) => plainText(`${msg(lang).smsWelcome(restaurant || 'ShiftBoard')}${url ? ` ${url}` : ''}`);
+export const welcomeText = ({ lang = 'en' } = {}) => welcomeSms(lang);
 /** The test text from Settings, in the admin's language. */
 export const testText = ({ restaurant, lang = 'en' }) => plainText(msg(lang).smsTest(restaurant || 'ShiftBoard'));
 
-/** May this person get texts right now? */
+/** May this person get texts right now? Their own consent (smsConsent === true), a number, and the restaurant's switch. */
 export function smsAllowed(user, settings) {
-  return !!(user && user.active !== false && user.smsNotifications === true && user.smsPhone
+  return !!(user && user.active !== false && smsConsentOf(user) === true && user.smsPhone
     && settings?.smsNotifications !== false);
 }
 
-// Twilio's standard opt-out and opt-in words.
-const STOP_WORDS = new Set(['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT', 'OPTOUT', 'REVOKE']);
-const START_WORDS = new Set(['START', 'YES', 'UNSTOP']);
+// Twilio's standard opt-out and opt-in words, plus OPTOUT and REVOKE as extra stop words.
+export const STOP_WORDS = ['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT', 'OPTOUT', 'REVOKE'];
+export const START_WORDS = ['START', 'YES', 'UNSTOP'];
+const STOPS = new Set(STOP_WORDS);
+const STARTS = new Set(START_WORDS);
+/** The keyword in an incoming text ('STOP', ' unsubscribe ', 'Stop.' → 'STOP', 'UNSUBSCRIBE'), or ''. */
+export const keywordOf = (body) => String(body || '').toUpperCase().replace(/[^A-Z]/g, '');
 /** 'stop', 'start' or null for an incoming text. Twilio's own OptOutType wins when it's there. */
 export function replyKeyword(body, optOutType) {
-  const t = String(optOutType || '').toUpperCase();
+  const t = String(optOutType || '').trim().toUpperCase();
   if (t === 'STOP' || t === 'START') return t.toLowerCase();
-  const word = String(body || '').toUpperCase().replace(/[^A-Z]/g, '');
-  if (STOP_WORDS.has(word)) return 'stop';
-  if (START_WORDS.has(word)) return 'start';
+  const word = keywordOf(body);
+  if (STOPS.has(word)) return 'stop';
+  if (STARTS.has(word)) return 'start';
   return null;
 }
 
 /**
- * Apply a STOP or START from a phone number to everyone who gave that number.
- * STOP turns their texts off; START turns them back on. Returns how many people changed.
+ * Apply a STOP or START from a phone number to everyone who gave that number, with a consent record each
+ * (source 'keyword', version 'keyword:STOP', the text they sent, the request's IP). STOP turns their texts
+ * off; START turns them back on (no welcome text: Twilio answers START itself). Returns how many people changed.
  */
-export function applyTextReply(store, { from, action, at = new Date().toISOString() }) {
+export function applyTextReply(store, { from, action, word, body, ip = null, userAgent = null, at = new Date().toISOString() }) {
   const phone = normalizePhone(from);
   if (!phone || !action) return 0;
+  const kw = keywordOf(word || body);
+  const keyword = (action === 'stop' ? STOPS : STARTS).has(kw) ? kw : action.toUpperCase();
   let n = 0;
   for (const u of store.list('users', (x) => x.smsPhone === phone)) {
-    if (action === 'stop' && u.smsNotifications !== false) {
-      store.update('users', u.id, { smsNotifications: false, smsStoppedAt: at });
-      n++;
-    } else if (action === 'start' && u.smsNotifications !== true) {
-      store.update('users', u.id, { smsNotifications: true, smsStoppedAt: null, smsConsentAt: at });
-      n++;
-    }
+    const on = smsConsentOf(u);
+    if (action === 'stop' && (on || !u.smsStoppedAt)) {
+      store.update('users', u.id, { smsConsent: false, smsStoppedAt: at });
+    } else if (action === 'start' && !on) {
+      store.update('users', u.id, { smsConsent: true, smsStoppedAt: null, smsConsentAt: at });
+    } else continue;
+    recordConsent(store, { userId: u.id, channel: 'sms', granted: action === 'start', lang: u.language === 'es' ? 'es' : 'en',
+      text: String(body ?? keyword).trim().slice(0, 160) || keyword, version: `keyword:${keyword}`, phone, ip, userAgent, source: 'keyword', at });
+    n++;
   }
   return n;
 }
@@ -148,13 +162,16 @@ export function cleanSubscription(sub) {
  * @param {object} [deps.channels]  what the server has set up: { push: { enabled, publicKey }, sms: { enabled } }.
  *                                  The demo passes nothing, so both are off there.
  */
-export function channelApi({ store, fail, needAuth, needAdmin, settings, now, channels }) {
+export function channelApi({ store, fail, needAuth, needAdmin, settings, now, channels, request, langOf }) {
   const push = channels?.push || { enabled: false, publicKey: '' };
   const sms = channels?.sms || { enabled: false };
   const myDevices = (actor) => store.list('pushSubscriptions', (s) => s.userId === actor.id);
   const saveSettings = (patch) => (store.get('settings', 'settings')
     ? store.update('settings', 'settings', patch) : store.insert('settings', { ...settings(), ...patch, id: 'settings' }));
-  const smsView = (u) => ({ smsNotifications: u.smsNotifications === true, smsPhone: u.smsPhone || '' });
+  const smsView = (u) => ({ smsConsent: smsConsentOf(u), smsPhone: u.smsPhone || '', smsStatus: smsStatusOf(u) });
+  const lang = (actor, l) => (l === 'en' || l === 'es' ? l : langOf ? langOf(actor) : 'en');
+  const record = (actor, a, granted, phone) => recordConsent(store, { userId: actor.id, channel: 'sms', granted, lang: lang(actor, a.lang),
+    text: consentText('sms', lang(actor, a.lang)), phone, ip: request?.ip, userAgent: request?.userAgent, source: 'settings', at: now().toISOString() });
 
   return {
     // ----- phone notifications (Web Push) -----
@@ -198,19 +215,27 @@ export function channelApi({ store, fail, needAuth, needAdmin, settings, now, ch
     },
 
     // ----- text messages (Twilio) -----
-    // Only the person can turn their own texts on, with their own mobile number.
-    'sms.preferences': (actor, { on, phone } = {}) => {
+    // Only the person can turn their own texts on, with their own mobile number, by ticking the consent box
+    // (consent: true; never pre-ticked). Each change is a consent record (source 'settings').
+    'sms.preferences': (actor, a = {}) => {
       needAuth(actor);
+      const { on, phone } = a;
       const me = store.get('users', actor.id);
-      if (on === false) return smsView(store.update('users', me.id, { smsNotifications: false }));
+      if (on === false) {
+        if (smsConsentOf(me)) record(actor, a, false, me.smsPhone || null);
+        return smsView(store.update('users', me.id, { smsConsent: false }));
+      }
       if (!sms.enabled) fail(400, 'Text messages aren’t set up for this restaurant yet');
       if (settings().smsNotifications === false) fail(400, 'Your restaurant has text messages turned off');
       const number = normalizePhone(phone ?? me.smsPhone);
       if (!number) fail(400, 'Enter your mobile number, like (303) 555-0123');
-      const fresh = me.smsNotifications !== true || me.smsPhone !== number;
+      if (smsConsentOf(me) && me.smsPhone === number) return smsView(me); // already on for this number
+      if (a.consent !== true) fail(400, 'Tick the box to agree to text messages');
+      const at = now().toISOString();
+      record(actor, a, true, number);
       return smsView(store.update('users', me.id, {
-        smsNotifications: true, smsPhone: number, smsStoppedAt: null,
-        ...(fresh ? { smsConsentAt: now().toISOString() } : {}),
+        smsConsent: true, smsPhone: number, smsStoppedAt: null, smsConsentAt: at,
+        ...(me.smsWelcomedAt ? {} : { smsWelcomedAt: at }), // the welcome text goes out once, on the first opt-in ever
       }));
     },
     // The restaurant-wide switch (Settings → Text messages).

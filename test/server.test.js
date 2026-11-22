@@ -11,6 +11,7 @@ import { createApp } from '../server/app.js';
 import { addDays, todayStr } from '../core/time.js';
 import { createMailer } from '../server/email.js';
 import { fakeResend } from './helpers/fake-resend.js';
+import { signIn, secondStep, onboard } from './helpers/signin.js';
 
 const URL = process.env.TEST_DATABASE_URL;
 
@@ -146,7 +147,7 @@ function client(base) {
     get: (path) => fetch(base + path),
     rpc: (method, args) => post(`/api/rpc/${method}`, args),
     async login(email, password = 'demo1234') {
-      const r = await post('/api/auth/login', { email, password });
+      const r = await signIn(post, email, password);
       assert.equal(r.status, 200, `login ${email}: ${JSON.stringify(r.body)}`);
       return this;
     },
@@ -180,6 +181,7 @@ test('first run without demo data creates the admin from env', async () => {
     const boot = await c.rpc('app.bootstrap');
     assert.equal(boot.body.result.me.role, 'admin');
     assert.equal(boot.body.result.me.passwordHash, undefined);
+    assert.deepEqual([boot.body.result.me.needsTerms, boot.body.result.me.emailConsent], [true, false], 'a new install: the consent screen, nothing grandfathered');
   } finally { await app.close(); await close(); }
 });
 
@@ -276,7 +278,7 @@ async function emailApp(db) {
   return { ...started, resend };
 }
 const setEmail = (db, id, email) => db.run((s) => s.update('users', id, { email }), { write: true });
-const linkToken = (mail) => mail.text.match(/#\/reset\?token=([\w-]+)/)[1];
+const linkToken = (mail) => mail.text.match(/#\/(?:reset|welcome)\?token=([\w-]+)/)[1];
 
 test('new notifications are emailed after the commit, respecting opt-outs', async () => {
   const { dbs: [db], close } = await instances(1);
@@ -312,7 +314,7 @@ test('new notifications are emailed after the commit, respecting opt-outs', asyn
   } finally { await A.close(); await close(); }
 });
 
-test('forgot password emails a one-time link that resets the password and signs in', async () => {
+test('forgot password emails a one-time link that resets the password, then the second step signs in', async () => {
   const { dbs: [db], close } = await instances(1);
   const A = await emailApp(db);
   try {
@@ -327,8 +329,12 @@ test('forgot password emails a one-time link that resets the password and signs 
     const token = linkToken(mails[0]);
 
     assert.equal((await anon.post('/api/auth/reset', { token, password: '123' })).status, 400); // too short; link still good
-    assert.equal((await anon.post('/api/auth/reset', { token, password: 'fresh-password-9' })).status, 200);
-    assert.equal((await anon.rpc('app.bootstrap')).status, 200, 'the reset signs you in');
+    const reset = await anon.post('/api/auth/reset', { token, password: 'fresh-password-9' });
+    assert.equal(reset.status, 200);
+    assert.equal(reset.body.mfa, 'enroll', 'no session from the reset itself: the second step comes first');
+    assert.equal((await anon.rpc('app.bootstrap')).status, 401);
+    assert.equal((await secondStep(anon.post, reset, { email: 'styves@rabbits.co' })).status, 200);
+    assert.equal((await anon.rpc('app.bootstrap')).status, 200, 'signed in after the second step');
     assert.equal((await client(A.base).post('/api/auth/reset', { token, password: 'again-again' })).status, 400, 'single use');
     assert.equal((await client(A.base).post('/api/auth/login', { email: 'styves@rabbits.co', password: 'demo1234' })).status, 401);
     await client(A.base).login('styves@rabbits.co', 'fresh-password-9');
@@ -345,8 +351,9 @@ test('new people get an invite link; sign-in links and the test email are permis
     assert.equal(r.body.result.invited, true);
     const invite = A.resend.emails().find((m) => m.to[0] === 'newbie@rabbits.co');
     assert.match(invite.subject, /Set up your/);
+    assert.match(invite.text, /#\/welcome\?token=/, 'the invitation opens the welcome wizard');
     const newbie = client(A.base);
-    assert.equal((await newbie.post('/api/auth/reset', { token: linkToken(invite), password: 'my-own-pass' })).status, 200);
+    assert.equal((await onboard(newbie.post, linkToken(invite), { password: 'my-own-pass' })).status, 200);
     assert.equal((await newbie.rpc('app.bootstrap')).body.result.me.name, 'New Server');
 
     assert.equal((await mgr.post(`/api/users/${r.body.result.id}/invite`)).status, 200, 'resend a sign-in link');

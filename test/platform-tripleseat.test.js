@@ -15,6 +15,7 @@ import { _tokenCache } from '../server/tripleseat.js';
 import { addDays, todayStr } from '../core/time.js';
 import { fakeResend } from './helpers/fake-resend.js';
 import { hostClient, request } from './helpers/hosts.js';
+import { onboard } from './helpers/signin.js';
 
 // ---------- pure parts ----------
 
@@ -145,7 +146,9 @@ test('isolation: each restaurant syncs its own Tripleseat account into its own s
       const mail = resend.emails().filter((m) => m.to.includes(email)).at(-1);
       const token = /token=([\w-]+)/.exec(mail.text)[1];
       const c = at(host);
-      assert.equal((await c.post('/api/auth/reset', { token, password: 'owner-password-1' })).status, 200);
+      // The owner's invitation opens the welcome wizard: password, a second step, profile, consent; then signed in.
+      const done = await onboard((path, body) => c.post(path, body), token, { password: 'bright-kitchen-77' });
+      assert.equal(done.status, 200, done.text);
       return c;
     };
     const pat = await accept('bistro.lvh.test', 'pat@bistro.local');
