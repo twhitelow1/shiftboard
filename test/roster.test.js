@@ -70,3 +70,56 @@ test('roster: order is saved; only managers; a manager can’t edit a higher rol
   assert.throws(() => as('Kelly')('roster.remove', { userId: ids.userId.Moe, jobCodeId: 'job_mgr', area: '' }), /higher role/);
   assert.throws(() => moe('roster.add', { userId: u('Victor').id, jobCodeId: 'job_nope' }), /position doesn’t exist/);
 });
+
+test('roster: a "Staff" section under RESTAURANT becomes Bartenders, people and shifts with it', () => {
+  const { store, u, as } = setup();
+  const moe = as('Moe');
+  // The mix-up: an unlabeled section came in as a generic "Staff" position for Restaurant bartenders.
+  const staff = store.insert('jobCodes', { id: 'job_staff', name: 'Staff', short: 'STAF', department: 'Restaurant', color: '#999999', defaultRate: 0, order: 99, archived: false, defaultRole: 'employee' });
+  for (const name of ['Ciaran', 'Dante']) {
+    const p = u(name);
+    store.update('users', p.id, { jobCodes: [...p.jobCodes, { jobCodeId: staff.id, rate: 18, primary: false, areas: ['Restaurant'] }] });
+  }
+  store.insert('shifts', { id: 'shf_staff1', date: '2026-10-02', start: '16:00', end: null, jobCodeId: staff.id, userId: u('Ciaran').id, area: 'Restaurant', published: true });
+  store.insert('shifts', { id: 'shf_staff_rh', date: '2026-10-02', start: '16:00', end: null, jobCodeId: staff.id, userId: u('Dante').id, area: 'Rabbit Hole', published: true });
+  store.insert('rosters', { id: `restaurant|${staff.id}`, area: 'Restaurant', jobCodeId: staff.id, label: '', banner: '', userIds: [u('Dante').id, u('Ciaran').id] });
+  moe('roster.arrange', { banner: 'Restaurant', jobCodeIds: [staff.id, 'job_srv'] });
+
+  const r = moe('roster.changePosition', { area: 'Restaurant', fromJobCodeId: staff.id, toJobCodeId: 'job_bar' });
+  assert.equal(r.people, 2);
+  assert.equal(r.shifts, 1, 'only the shift in this section moves');
+  const ciaranBar = u('Ciaran').jobCodes.find((e) => e.jobCodeId === 'job_bar');
+  assert.ok(ciaranBar.areas.includes('Restaurant'));
+  assert.equal(u('Ciaran').jobCodes.some((e) => e.jobCodeId === staff.id), false, 'Staff is gone for them');
+  assert.equal(store.get('shifts', 'shf_staff1').jobCodeId, 'job_bar');
+  assert.equal(store.get('shifts', 'shf_staff_rh').jobCodeId, staff.id, 'a shift in another area is left alone');
+  // The sheet keeps the names in order, shows the position's own name, and the section keeps its place.
+  const roster = store.get('rosters', 'restaurant|job_bar');
+  assert.deepEqual(roster.userIds.slice(-2), [u('Dante').id, u('Ciaran').id]);
+  assert.equal(roster.label, null);
+  assert.ok(!store.get('rosters', `restaurant|${staff.id}`), 'the old layout is gone');
+  const st = store.get('settings', 'settings');
+  assert.deepEqual(st.sectionOrder.restaurant, ['job_bar', 'job_srv']);
+});
+
+test('roster: change to a new position, set the area order and the name on the sheet', () => {
+  const { store, u, as } = setup();
+  const moe = as('Moe');
+  const r = moe('roster.changePosition', { area: 'Moon Rabbit', fromJobCodeId: 'job_coc', newPosition: { name: 'Cocktail Server II' } });
+  const job = store.get('jobCodes', r.jobCodeId);
+  assert.equal(job.name, 'Cocktail Server II');
+  assert.equal(job.department, 'Moon Rabbit');
+  assert.ok(u('Svetlana').jobCodes.some((e) => e.jobCodeId === job.id && e.areas?.includes('Moon Rabbit')));
+  // Same name again reuses it rather than making a duplicate.
+  const again = moe('roster.changePosition', { area: 'Moon Rabbit', fromJobCodeId: 'job_bar', newPosition: { name: 'cocktail server ii' } });
+  assert.equal(again.jobCodeId, job.id);
+
+  moe('roster.arrange', { banner: 'Restaurant', jobCodeIds: ['job_srv', 'job_bar', 'nope'] });
+  assert.deepEqual(store.get('settings', 'settings').sectionOrder.restaurant, ['job_srv', 'job_bar']);
+  moe('roster.label', { jobCodeId: 'job_srv', area: 'Restaurant', label: 'Floor' });
+  assert.equal(store.get('rosters', 'restaurant|job_srv').label, 'Floor');
+  moe('roster.label', { jobCodeId: 'job_srv', area: 'Restaurant', label: '  ' });
+  assert.equal(store.get('rosters', 'restaurant|job_srv').label, null, 'empty goes back to the position name');
+  assert.throws(() => as('Alex D')('roster.arrange', { banner: 'Restaurant', jobCodeIds: [] }), /Managers only/);
+  assert.throws(() => moe('roster.changePosition', { area: 'Restaurant', fromJobCodeId: 'job_srv', toJobCodeId: 'job_srv' }), /different position/);
+});

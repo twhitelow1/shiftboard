@@ -152,3 +152,97 @@ function RemovePerson({ person, section, title, ws, sections, onBack }) {
     </Modal>
   );
 }
+
+/**
+ * Arrange one banner (an area such as RESTAURANT): the order of its sections, the position each
+ * section is (turning a "Staff" section into Bartenders, or a new position), and its name on the sheet.
+ */
+export function ArrangeArea({ banner, sections, onClose }) {
+  const t = useT();
+  const { call, jobCodes, refresh } = useApp();
+  const [changing, setChanging] = useState(null); // section key whose position is being changed
+  const [changed, setChanged] = useState(false);
+  const [run, busy] = useAction();
+  const done = () => onClose(changed);
+  const ids = sections.map((s) => s.job.id);
+
+  const move = async (i, d) => {
+    const j = i + d;
+    if (j < 0 || j >= ids.length) return;
+    const next = [...ids];
+    [next[i], next[j]] = [next[j], next[i]];
+    const r = await run(() => call('roster.arrange', { banner, jobCodeIds: next }));
+    if (r) { setChanged(true); refresh(); }
+  };
+
+  return (
+    <Modal title={t('arrange.title', { banner })} sub={t('arrange.sub')} onClose={done}
+      footer={<><span className="spacer" /><button className="btn primary" onClick={done}>{t('common.done')}</button></>}>
+      <div className="list card">
+        {!sections.length && <div className="empty small">{t('arrange.empty')}</div>}
+        {sections.map((sec, i) => (
+          <div key={sec.key} className="col" style={{ gap: 8, padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>
+            <div className="row" style={{ gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <b>{sec.sheetLabel || sec.label}</b>
+                <div className="tiny muted">{t('arrange.positionPeople', { position: sec.job.name, count: sec.rows.length })}</div>
+              </div>
+              <button className="btn ghost icon sm" disabled={busy || i === 0} onClick={() => move(i, -1)} aria-label={t('sectionPeople.moveUp')}><Icon name="up" /></button>
+              <button className="btn ghost icon sm" disabled={busy || i === sections.length - 1} onClick={() => move(i, 1)} aria-label={t('sectionPeople.moveDown')}><Icon name="down" /></button>
+              <button className="btn sm" disabled={busy} onClick={() => setChanging(changing === sec.key ? null : sec.key)}>{t('arrange.change')}</button>
+            </div>
+            {changing === sec.key && (
+              <ChangeSection sec={sec} jobCodes={jobCodes} busy={busy} run={run} call={call}
+                onDone={() => { setChanging(null); setChanged(true); refresh(); }} />
+            )}
+          </div>
+        ))}
+      </div>
+      <p className="small muted" style={{ margin: 0 }}>{t('arrange.how')}</p>
+    </Modal>
+  );
+}
+
+function ChangeSection({ sec, jobCodes, busy, run, call, onDone }) {
+  const t = useT();
+  const NEW = '__new__';
+  const [to, setTo] = useState('');
+  const [name, setName] = useState('');
+  const [label, setLabel] = useState(sec.sheetLabel || '');
+  const options = (jobCodes || []).filter((j) => !j.archived && j.id !== sec.job.id);
+  const saveLabel = async () => {
+    if ((label || '') === (sec.sheetLabel || '')) return;
+    const r = await run(() => call('roster.label', { jobCodeId: sec.job.id, area: sec.area || '', label }), t('arrange.labelSaved'));
+    if (r) onDone();
+  };
+  const change = async () => {
+    const args = { area: sec.area || '', fromJobCodeId: sec.job.id, ...(to === NEW ? { newPosition: { name } } : { toJobCodeId: to }) };
+    const r = await run(() => call('roster.changePosition', args),
+      (res) => t('arrange.changed', { people: res.people, shifts: res.shifts }));
+    if (r) onDone();
+  };
+  return (
+    <div className="col" style={{ gap: 8, background: 'var(--surface-2)', borderRadius: 10, padding: 10 }}>
+      <label className="field"><span>{t('arrange.positionFor', { section: sec.sheetLabel || sec.label })}</span>
+        <select className="input" value={to} onChange={(e) => setTo(e.target.value)}>
+          <option value="">{t('arrange.pickPosition')}</option>
+          {options.map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}
+          <option value={NEW}>{t('arrange.newPosition')}</option>
+        </select>
+      </label>
+      {to === NEW && (
+        <label className="field"><span>{t('arrange.newPositionName')}</span>
+          <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('arrange.newPositionPlaceholder')} />
+        </label>
+      )}
+      {to && <p className="small muted" style={{ margin: 0 }}>{t('arrange.changeWhat', { from: sec.job.name, count: sec.rows.length })}</p>}
+      <div className="row" style={{ gap: 8 }}>
+        <span className="spacer" />
+        <button className="btn primary sm" disabled={busy || !to || (to === NEW && !name.trim())} onClick={change}>{t('arrange.changePosition')}</button>
+      </div>
+      <label className="field"><span>{t('arrange.nameOnSheet')}</span>
+        <input className="input" value={label} onChange={(e) => setLabel(e.target.value)} onBlur={saveLabel} placeholder={sec.job.name} />
+      </label>
+    </div>
+  );
+}

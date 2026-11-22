@@ -1517,6 +1517,25 @@ const catalog = {
     moveThem: 'Move them to',
     keepThem: 'Keep them here (they’ll still show here)',
   },
+  arrange: {
+    button: 'Arrange',
+    title: 'Arrange {banner}',
+    sub: 'The order of the positions here, and which position each section is.',
+    empty: 'No sections here yet.',
+    positionPeople: { one: '{position} · {count} person', other: '{position} · {count} people' },
+    change: 'Change',
+    how: 'Moving a section only changes this area. Each area keeps its own order.',
+    positionFor: 'Position for “{section}”',
+    pickPosition: 'Pick a position…',
+    newPosition: 'New position…',
+    newPositionName: 'New position name',
+    newPositionPlaceholder: 'e.g. Bartender',
+    changeWhat: { one: 'Everyone in this section ({count} person) and their shifts here move from {from} to the new position.', other: 'Everyone in this section ({count} people) and their shifts here move from {from} to the new position.' },
+    changePosition: 'Change position',
+    changed: 'Changed: {people} people and {shifts} shifts moved',
+    nameOnSheet: 'Name on the sheet (optional)',
+    labelSaved: 'Name saved',
+  },
 };
 
 export default catalog;

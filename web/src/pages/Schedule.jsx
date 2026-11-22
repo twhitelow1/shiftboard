@@ -6,7 +6,7 @@ import { scheduleAreas, findArea, sameArea } from '../../../core/areas.js';
 import ShiftDialog from './ShiftDialog.jsx';
 import ImportDialog from './ImportDialog.jsx';
 import ScheduleSheet from './ScheduleSheet.jsx';
-import SectionPeople from './SectionPeople.jsx';
+import SectionPeople, { ArrangeArea } from './SectionPeople.jsx';
 import TradeHint, { canTrade } from './TradeHint.jsx';
 import { EightySixBanner } from './EightySix.jsx';
 import { IS_DEMO } from '../api.js';
@@ -94,6 +94,7 @@ export default function Schedule() {
   }, [shifts, settings]);
 
   const [editSection, setEditSection] = useState(null); // the section whose people a manager is editing
+  const [arrange, setArrange] = useState(null); // the banner (area) whose sections a manager is arranging
   const openDialog = (shift, startIn) => setDialog({ shift, startIn, warnings: data?.warnings?.[shift.id] });
   const addAt = (date, jobCodeId, userId, area = '') => isMgr && setDialog({ shift: { date, jobCodeId, userId, area, start: '16:00' } });
   const closeDialog = (changed) => { setDialog(null); if (changed) load(); };
@@ -131,7 +132,9 @@ export default function Schedule() {
     for (const g of groups.values()) firstJob[g.banner] = Math.min(firstJob[g.banner] ?? 1e9, g.job.order ?? 1e9);
     const rank = (g) => (g.isArea ? 1e6 + areaList.findIndex((a) => sameArea(a, g.banner)) : firstJob[g.banner]);
     const byJob = (a, b) => (a.job.order ?? 0) - (b.job.order ?? 0) || a.job.name.localeCompare(b.job.name);
-    return [...groups.values()].sort((a, b) => rank(a) - rank(b) || a.banner.localeCompare(b.banner) || byJob(a, b)).map((g) => {
+    // Within a banner, the order a manager set for it (Arrange), then the positions' own order.
+    const placeIn = (g) => { const i = (settings.sectionOrder?.[g.banner.toLowerCase()] || []).indexOf(g.job.id); return i < 0 ? 1e6 : i; };
+    return [...groups.values()].sort((a, b) => rank(a) - rank(b) || a.banner.localeCompare(b.banner) || placeIn(a) - placeIn(b) || byJob(a, b)).map((g) => {
       // The imported sheet's layout for this section: names in its order, its label and heading.
       const area = g.isArea ? g.banner : '';
       const roster = (data.rosters || []).find((r) => r.jobCodeId === g.job.id && (r.area ? sameArea(r.area, area) : !area));
@@ -141,7 +144,7 @@ export default function Schedule() {
       return { key: `${g.banner}|${g.job.id}`, job: g.job, banner: g.banner, area, label: g.job.name, rows, open: g.shifts.filter((x) => !x.userId),
         sheetLabel: roster ? roster.label : null, sheetBanner: roster?.banner || '' };
     });
-  }, [data, employees, jobCodes, areaList, people, isMgr]);
+  }, [data, employees, jobCodes, areaList, people, isMgr, settings.sectionOrder]);
   const banners = [...new Set(allSections.map((x) => x.banner).filter(Boolean))];
 
   const sections = useMemo(() => {
@@ -269,7 +272,8 @@ export default function Schedule() {
           <TradeHint shifts={shifts} />
           {/* Like the house PDF. Print always uses this layout. */}
           <ScheduleSheet className={view === 'sheet' ? 'sheet-print' : 'sheet-print print-only'} sections={sheetSections} days={days} data={data} fc={fc} ws={ws}
-            onAdd={addAt} onOpen={openDialog} onSaved={load} onEditSection={isMgr ? (sec) => setEditSection(allSections.find((x) => x.key === sec.key) || sec) : undefined} />
+            onAdd={addAt} onOpen={openDialog} onSaved={load} onEditSection={isMgr ? (sec) => setEditSection(allSections.find((x) => x.key === sec.key) || sec) : undefined}
+            onArrange={isMgr ? setArrange : undefined} />
 
           {/* Desktop grid */}
           {view !== 'sheet' && <div className="sched-wrap desktop-only no-print">
@@ -298,7 +302,8 @@ export default function Schedule() {
                   <React.Fragment key={sec.key}>
                     {/* Area banner when the area changes, like the house sheet (RESTAURANT, RABBIT HOLE…). */}
                     {groupBy === 'job' && sec.banner && sec.banner !== sections[i - 1]?.banner && (
-                      <tr className="section area"><td colSpan={8}><div className="row">{sec.banner}</div></td></tr>
+                      <tr className="section area"><td colSpan={8}><div className="row">{sec.banner}
+                        {isMgr && <button className="btn ghost sm no-print" style={{ marginLeft: 'auto', color: 'inherit' }} onClick={() => setArrange(sec.banner)}><Icon name="layers" />{t('arrange.button')}</button>}</div></td></tr>
                     )}
                     {groupBy === 'job' && (
                       <tr className="section"><td colSpan={8}><div className="row"><JobDot job={sec.job} />{sec.label}
@@ -353,6 +358,8 @@ export default function Schedule() {
           </div>}
         </>
       )}
+
+      {arrange != null && <ArrangeArea banner={arrange} sections={allSections.filter((x) => x.banner === arrange)} onClose={(changed) => { setArrange(null); if (changed) load(); }} />}
 
       {editSection && <SectionPeople section={editSection} ws={ws} sections={allSections} onClose={(changed) => { setEditSection(null); if (changed) load(); }} />}
 

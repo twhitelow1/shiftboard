@@ -1418,7 +1418,7 @@ export function createService(store, opts = {}) {
     // ----- 86 List: what's out or running low, per list; the bar separate (core/eighty-six.js) -----
     ...eightySixApi({ store, now, settings, notify, fail }),
     // ----- who is listed in each schedule section, and in what order (core/roster.js) -----
-    ...rosterApi({ store, settings, fail, needMgr, today }),
+    ...rosterApi({ store, settings, fail, needMgr, today, putSettings: (patch) => (store.get('settings', 'settings') ? store.update('settings', 'settings', patch) : store.insert('settings', { ...DEFAULT_SETTINGS, ...patch })) }),
 
     // ----- notifications -----
     'notifications.list': (actor) => {

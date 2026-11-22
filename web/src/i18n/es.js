@@ -1516,6 +1516,25 @@ const catalog = {
     moveThem: 'Pasarlos a',
     keepThem: 'Dejarlos aquí (seguirá apareciendo aquí)',
   },
+  arrange: {
+    button: 'Ordenar',
+    title: 'Ordenar {banner}',
+    sub: 'El orden de los puestos aquí y qué puesto es cada sección.',
+    empty: 'Todavía no hay secciones aquí.',
+    positionPeople: { one: '{position} · {count} persona', other: '{position} · {count} personas' },
+    change: 'Cambiar',
+    how: 'Mover una sección solo cambia esta área. Cada área tiene su propio orden.',
+    positionFor: 'Puesto para “{section}”',
+    pickPosition: 'Elige un puesto…',
+    newPosition: 'Puesto nuevo…',
+    newPositionName: 'Nombre del puesto nuevo',
+    newPositionPlaceholder: 'p. ej., Bartender',
+    changeWhat: { one: 'Todos en esta sección ({count} persona) y sus turnos aquí pasan de {from} al nuevo puesto.', other: 'Todos en esta sección ({count} personas) y sus turnos aquí pasan de {from} al nuevo puesto.' },
+    changePosition: 'Cambiar puesto',
+    changed: 'Listo: se movieron {people} personas y {shifts} turnos',
+    nameOnSheet: 'Nombre en el horario (opcional)',
+    labelSaved: 'Nombre guardado',
+  },
 };
 
 export default catalog;
