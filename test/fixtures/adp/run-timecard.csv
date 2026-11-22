@@ -1,0 +1,7 @@
+"Employee Name","Employee ID","Department","Date","Time In","Time Out","Total Hours"
+"Rivera, Ana","001234","Servers","09/14/2026","4:00 PM","10:30 PM","6.50"
+"Rivera, Ana","001234","Servers","09/15/2026","5:00 PM","1:30 AM","8.50"
+"Okafor, Ben","002000","Line Cooks","09/14/2026","2:58 PM","11:02 PM","8.07"
+"Okafor, Ben","002000","Line Cooks","09/16/2026","3:00 PM","",""
+"Lindqvist, Cora","003300","Hosts","09/15/2026","5:00 PM","9:00 PM","4.00"
+"Quill, Zed","009999","Servers","09/16/2026","4:00 PM","9:00 PM","5.00"

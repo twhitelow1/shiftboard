@@ -5,6 +5,7 @@
 // variables swapped for that restaurant's settings from the console:
 //
 //   * Toast: TOAST_CLIENT_ID, TOAST_CLIENT_SECRET (secrets), TOAST_RESTAURANT_GUID, TOAST_API_HOST.
+//   * ADP: ADP_CLIENT_ID, ADP_CLIENT_SECRET, ADP_CERT_PEM, ADP_KEY_PEM (secrets), ADP_MANAGER_AOID.
 //   * Texts: the sender, TWILIO_MESSAGING_SERVICE_SID or TWILIO_FROM_NUMBER. The account SID and auth
 //     token stay platform-wide (DubLow owns one Twilio account and registers each restaurant as a brand).
 //   * Email: the From name and address and the reply-to. The Resend API key stays platform-wide.
@@ -21,6 +22,11 @@ export const INTEGRATION_FIELDS = [
   { key: 'TOAST_CLIENT_SECRET', group: 'toast', label: 'Client secret', secret: true },
   { key: 'TOAST_RESTAURANT_GUID', group: 'toast', label: 'Restaurant GUID', placeholder: '00000000-0000-0000-0000-000000000000' },
   { key: 'TOAST_API_HOST', group: 'toast', label: 'API host (only if Toast gave you another)', placeholder: 'https://ws-api.toasttab.com' },
+  { key: 'ADP_CLIENT_ID', group: 'adp', label: 'Client ID (API Central project)', secret: true },
+  { key: 'ADP_CLIENT_SECRET', group: 'adp', label: 'Client secret', secret: true },
+  { key: 'ADP_CERT_PEM', group: 'adp', label: 'Certificate (the signed .pem ADP returned)', secret: true, multiline: true },
+  { key: 'ADP_KEY_PEM', group: 'adp', label: 'Private key (the .key made with the CSR)', secret: true, multiline: true },
+  { key: 'ADP_MANAGER_AOID', group: 'adp', label: 'Manager AOID (optional: reads the whole team in one call)', placeholder: 'G3ABC…' },
   { key: 'TWILIO_MESSAGING_SERVICE_SID', group: 'twilio', label: 'Messaging Service SID (recommended)', placeholder: 'MG…' },
   { key: 'TWILIO_FROM_NUMBER', group: 'twilio', label: 'or From number', placeholder: '+17205550100' },
   { key: 'EMAIL_FROM_NAME', group: 'email', label: 'From name', placeholder: 'Bistro Schedule' },
@@ -36,6 +42,11 @@ const CHECKS = {
   TOAST_CLIENT_SECRET: (v) => /^\S{8,400}$/.test(v) || 'The Toast client secret has no spaces',
   TOAST_RESTAURANT_GUID: (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v) || 'The restaurant GUID looks like 8-4-4-4-12 hex digits',
   TOAST_API_HOST: (v) => /^https:\/\/[a-z0-9.-]+(?::\d+)?\/?$/i.test(v) || 'The API host is an https:// address',
+  ADP_CLIENT_ID: (v) => /^\S{4,200}$/.test(v) || 'The ADP client ID has no spaces',
+  ADP_CLIENT_SECRET: (v) => /^\S{8,400}$/.test(v) || 'The ADP client secret has no spaces',
+  ADP_CERT_PEM: (v) => (v.length <= 20000 && (/BEGIN CERTIFICATE/.test(v) || /^[A-Za-z0-9+/=\s]{200,}$/.test(v))) || 'Paste the whole certificate, from -----BEGIN CERTIFICATE----- to the end',
+  ADP_KEY_PEM: (v) => (v.length <= 20000 && (/BEGIN (?:RSA |EC )?PRIVATE KEY/.test(v) || /^[A-Za-z0-9+/=\s]{200,}$/.test(v))) || 'Paste the whole private key, from -----BEGIN PRIVATE KEY----- to the end',
+  ADP_MANAGER_AOID: (v) => /^[A-Za-z0-9]{6,40}$/.test(v) || 'The AOID is letters and numbers only',
   TWILIO_MESSAGING_SERVICE_SID: (v) => /^MG[0-9a-f]{32}$/i.test(v) || 'A Messaging Service SID starts with MG and has 34 characters',
   TWILIO_FROM_NUMBER: (v) => /^\+[1-9]\d{7,14}$/.test(v) || 'The From number is in +1… format, like +17205550100',
   EMAIL_FROM_NAME: (v) => (v.length <= 80 && !/[<>"\r\n]/.test(v)) || 'The From name can’t have < > or quotes',
@@ -71,6 +82,7 @@ const formatFrom = (name, address) => (name ? `${name.replace(/["<>\r\n]/g, '')}
 /** Variables that belong to one restaurant: another restaurant never inherits them from the platform env. */
 const DEFAULT_RESTAURANT_ONLY = ['ADMIN_EMAIL', 'ADMIN_PASSWORD', 'ADMIN_NAME', 'SEED_DEMO', 'DEMO_PASSWORD', 'EMAIL_FROM', 'EMAIL_REPLY_TO',
   'APP_URL', 'VERCEL_PROJECT_PRODUCTION_URL', 'TOAST_CLIENT_ID', 'TOAST_CLIENT_SECRET', 'TOAST_RESTAURANT_GUID', 'TOAST_API_HOST',
+  'ADP_CLIENT_ID', 'ADP_CLIENT_SECRET', 'ADP_CERT_PEM', 'ADP_KEY_PEM', 'ADP_MANAGER_AOID',
   'TWILIO_MESSAGING_SERVICE_SID', 'TWILIO_FROM_NUMBER', 'TWILIO_WEBHOOK_URL'];
 
 /** The signing secret for a restaurant other than the default: derived from JWT_SECRET, so it differs per restaurant. */
@@ -94,6 +106,7 @@ export function tenantEnv(env, tenant, secrets = {}) {
   }
 
   for (const k of ['TOAST_CLIENT_ID', 'TOAST_CLIENT_SECRET', 'TOAST_RESTAURANT_GUID', 'TOAST_API_HOST']) if (val(k)) out[k] = val(k);
+  for (const k of ['ADP_CLIENT_ID', 'ADP_CLIENT_SECRET', 'ADP_CERT_PEM', 'ADP_KEY_PEM', 'ADP_MANAGER_AOID']) if (val(k)) out[k] = val(k);
 
   // The sender: a console setting replaces both env values, so the env's Messaging Service can't win over it.
   if (val('TWILIO_MESSAGING_SERVICE_SID') || val('TWILIO_FROM_NUMBER')) {
@@ -111,6 +124,7 @@ export function tenantEnv(env, tenant, secrets = {}) {
 
   // Features the restaurant doesn't have are switched off at the source too.
   if (tenant.resolved && !tenant.resolved.toast) for (const k of Object.keys(out)) if (k.startsWith('TOAST_')) delete out[k];
+  if (tenant.resolved && !tenant.resolved.adp) for (const k of Object.keys(out)) if (k.startsWith('ADP_')) delete out[k];
   if (tenant.resolved && !tenant.resolved.sms) for (const k of Object.keys(out)) if (k.startsWith('TWILIO_')) delete out[k];
   return out;
 }
@@ -121,12 +135,13 @@ export function integrationsView(tenant, secretView, env = process.env) {
     ? { ...f, set: !!secretView[f.key]?.set, last4: secretView[f.key]?.last4 || '' }
     : { ...f, value: String(tenant.integrations?.[f.key] || '') }));
   // What the restaurant actually uses (names of env fallbacks only, never values).
-  const e = tenantEnv(env, { ...tenant, resolved: { toast: true, sms: true } },
+  const e = tenantEnv(env, { ...tenant, resolved: { toast: true, adp: true, sms: true } },
     Object.fromEntries(SECRET_KEYS.filter((k) => secretView[k]?.set).map((k) => [k, 'set'])));
   return {
     fields,
     effective: {
       toast: ['TOAST_CLIENT_ID', 'TOAST_CLIENT_SECRET', 'TOAST_RESTAURANT_GUID'].every((k) => e[k]),
+      adp: ['ADP_CLIENT_ID', 'ADP_CLIENT_SECRET', 'ADP_CERT_PEM', 'ADP_KEY_PEM'].every((k) => e[k]),
       sms: !!(e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN && (e.TWILIO_MESSAGING_SERVICE_SID || e.TWILIO_FROM_NUMBER)),
       smsAccount: !!(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN),
       email: !!(env.RESEND_API_KEY && e.EMAIL_FROM),

@@ -23,6 +23,7 @@ import { translateError } from '../core/errors.js';
 import { mountToast, toastCron } from './toast-routes.js';
 import { featureForMethod, ROUTE_FEATURES, NOT_IN_PLAN, PAUSED, isPaused, billingBanner } from './platform/plans.js';
 import { billingPortal } from './billing.js';
+import { mountAdp } from './adp-routes.js';
 
 const COOKIE = 'sb_session';
 const MAX_LOGIN_ATTEMPTS = 10; // per IP + email, per 15 minutes
@@ -556,6 +557,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   channels.routes(app); // /api/push/test, /api/sms/test, /api/twilio/inbound
   // Toast POS: status, Sync now, and the daily Vercel Cron (server/toast-routes.js).
   mountToast(app, { db, env, userOf: (req) => userFromToken(db.store, req.cookies[COOKIE]), managed: !!tenant && !tenant.isDefault });
+  // ADP: status, Sync now, and its daily Vercel Cron (server/adp-routes.js). The CSV import is plain RPC.
+  mountAdp(app, { db, env, userOf: (req) => userFromToken(db.store, req.cookies[COOKIE]) });
   // Training photos (menu study guide, quizzes), for signed-in staff only.
   trainingRoutes(app, { db, signedIn: (req) => userFromToken(db.store, req.cookies[COOKIE]) });
   // 86 List photos, for people who can see the item's list (cookie on the web, bearer token in the phone app).

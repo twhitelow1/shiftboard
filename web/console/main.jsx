@@ -400,6 +400,7 @@ function IntegrationsCard({ t, meta, onSaved }) {
   });
   const groups = [
     ['toast', 'Toast POS', eff.toast ? 'Connected' : 'Not set up', t.resolved.toast ? '' : 'Toast isn’t in this restaurant’s plan.'],
+    ['adp', 'ADP (clock-ins)', eff.adp ? 'Connected' : 'Not set up', t.resolved.adp ? 'ADP Workforce Now with the API Central add-on: the project’s client ID and secret, and the certificate and key from its CSR. Without API access, managers import ADP timecard CSV exports in Labor review.' : 'ADP isn’t in this restaurant’s plan.'],
     ['twilio', 'Texts (Twilio sender)', eff.sms ? 'Ready' : eff.smsAccount ? 'Needs a sender' : 'No Twilio account on the platform', t.resolved.sms ? 'The account SID and auth token are the platform’s; each restaurant has its own sender (its A2P 10DLC brand and campaign).' : 'Texts aren’t in this restaurant’s plan.'],
     ['email', 'Email', eff.email ? `From ${eff.emailFrom}` : 'Not set up', 'Uses the platform’s Resend key. The From address’s domain must be verified in Resend.'],
   ];
@@ -416,8 +417,11 @@ function IntegrationsCard({ t, meta, onSaved }) {
             {fields.filter((f) => f.group === g).map((f) => (f.secret ? (
               <Field key={f.key} label={f.label} help="Encrypted. Never shown again after saving.">
                 {editing[f.key] || !f.set
-                  ? <input className="input mono" type="password" autoComplete="off" value={secrets[f.key] ?? ''} placeholder={f.set ? 'New value' : 'Not set'}
-                      onChange={(e) => setSecrets((s) => ({ ...s, [f.key]: e.target.value }))} />
+                  ? (f.multiline
+                    ? <textarea className="input mono" rows={4} autoComplete="off" spellCheck={false} value={secrets[f.key] ?? ''} placeholder={f.set ? 'Paste the new file contents' : 'Paste the file contents (-----BEGIN …)'}
+                        onChange={(e) => setSecrets((s) => ({ ...s, [f.key]: e.target.value }))} />
+                    : <input className="input mono" type="password" autoComplete="off" value={secrets[f.key] ?? ''} placeholder={f.set ? 'New value' : 'Not set'}
+                        onChange={(e) => setSecrets((s) => ({ ...s, [f.key]: e.target.value }))} />)
                   : <div className="secret-row">
                       <span className="mono">{secrets[f.key] === '' ? 'Will be cleared' : `Set · ends in ${f.last4 || '••••'}`}</span>
                       <button type="button" className="btn sm" onClick={() => setEditing((x) => ({ ...x, [f.key]: true }))}>Replace</button>

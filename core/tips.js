@@ -12,6 +12,7 @@ import { sameArea, uniqueAreas } from './areas.js';
 import { ROLE_IDS, roleOf, roleLabel, roleLabelPlural } from './roles.js';
 import { msg } from './messages.js';
 import { uid } from './store.js';
+import { clockEntries } from './clock.js';
 
 // ---------- options ----------
 // Each option has its Spanish words in `es`; tipOption(o, lang) picks them.
@@ -127,10 +128,12 @@ export function poolsForWork(pools, area, jobCodeId, isEvent = false) {
 
 /**
  * One day's work, per pool, person and position: minutes, shifts, where the hours came from,
- * and the person's Toast tips. Actual hours from Toast (timeEntries) win when the person has
- * any for that day; otherwise the published schedule is used ("until close" shifts estimated).
- * Toast doesn't know the area, so actual time is shared across that day's scheduled shifts in
- * proportion to their scheduled length; time with no scheduled shift goes to pools with no area.
+ * and the person's Toast tips. Actual hours from clock-ins (timeEntries, already picked by the
+ * clock-in source in core/clock.js: ADP, Toast or both) win when the person has any for that day;
+ * otherwise the published schedule is used ("until close" shifts estimated). The clock doesn't know
+ * the area, so actual time is shared across that day's scheduled shifts in proportion to their
+ * scheduled length; time with no scheduled shift goes to pools with no area. Tips-only entries
+ * (Toast tips for a shift whose hours came from ADP) add tips to the person's work, never hours.
  */
 export function dayWork({ date, pools, shifts = [], timeEntries = [], settings }) {
   const rows = new Map();
@@ -144,22 +147,31 @@ export function dayWork({ date, pools, shifts = [], timeEntries = [], settings }
     rows.set(k, r);
   };
   const worked = shifts.filter((s) => s.date === date && s.userId && s.published);
-  const punches = timeEntries.filter((t) => t.date === date && t.userId);
-  const synced = punches.length > 0; // Toast has this day, so a missing punch is worth a look
-  const people = new Set([...worked.map((s) => s.userId), ...punches.map((t) => t.userId)]);
+  const punches = timeEntries.filter((t) => t.date === date && t.userId && !t.tipsOnly);
+  const tipPunches = timeEntries.filter((t) => t.date === date && t.userId && t.tipsOnly);
+  const synced = punches.length > 0; // the clock has this day, so a missing punch is worth a look
+  const people = new Set([...worked.map((s) => s.userId), ...punches.map((t) => t.userId), ...tipPunches.map((t) => t.userId)]);
   const schedMin = (s) => Math.round(hoursOf(s, settings) * 60);
 
   for (const userId of people) {
     const mine = worked.filter((s) => s.userId === userId);
     const myPunches = punches.filter((t) => t.userId === userId);
+    const myTips = tipPunches.filter((t) => t.userId === userId);
     if (!myPunches.length) {
+      const tipCard = myTips.reduce((t, x) => t + toastCents(x.nonCashTips), 0);
+      const tipCash = myTips.reduce((t, x) => t + toastCents(x.declaredCashTips), 0);
+      const total = mine.reduce((t, s) => t + schedMin(s), 0);
       for (const s of mine) {
+        const f = total ? schedMin(s) / total : 1 / mine.length;
         for (const pool of poolsForWork(pools, s.area, s.jobCodeId, !!s.eventId)) {
-          add(pool, userId, s.jobCodeId, { minutes: schedMin(s), shifts: 1, source: 'schedule', estimated: !s.end, noPunch: synced });
+          add(pool, userId, s.jobCodeId, { minutes: schedMin(s), shifts: 1, card: tipCard * f, cash: tipCash * f, source: 'schedule', estimated: !s.end, noPunch: synced });
         }
       }
+      const job = myTips.find((t) => t.jobCodeId)?.jobCodeId;
+      if (!mine.length && job && (tipCard || tipCash)) for (const pool of poolsForWork(pools, '', job)) add(pool, userId, job, { card: tipCard, cash: tipCash, source: 'toast', unscheduled: true });
       continue;
     }
+    const clock = myPunches[0].source === 'adp' ? 'adp' : 'toast'; // one source per person per day (core/clock.js)
     const schedJobs = [...new Set(mine.map((s) => s.jobCodeId))];
     const byJob = new Map();
     for (const t of myPunches) {
@@ -172,11 +184,18 @@ export function dayWork({ date, pools, shifts = [], timeEntries = [], settings }
       a.cash += toastCents(t.declaredCashTips);
       byJob.set(job, a);
     }
+    // Toast's tips for a day whose hours came from ADP: on the same position, else the one worked longest.
+    for (const t of myTips) {
+      const job = t.jobCodeId && byJob.has(t.jobCodeId) ? t.jobCodeId : [...byJob.entries()].sort((x, y) => y[1].minutes - x[1].minutes)[0]?.[0];
+      if (!job) continue;
+      byJob.get(job).card += toastCents(t.nonCashTips);
+      byJob.get(job).cash += toastCents(t.declaredCashTips);
+    }
     for (const [job, a] of byJob) {
       const sched = mine.filter((s) => s.jobCodeId === job);
       const worked1 = a.minutes > 0 ? 1 : 0;
       if (!sched.length) {
-        for (const pool of poolsForWork(pools, '', job)) add(pool, userId, job, { ...a, shifts: worked1, source: 'toast', unscheduled: true });
+        for (const pool of poolsForWork(pools, '', job)) add(pool, userId, job, { ...a, shifts: worked1, source: clock, unscheduled: true });
         continue;
       }
       const mins = sched.map(schedMin);
@@ -184,7 +203,7 @@ export function dayWork({ date, pools, shifts = [], timeEntries = [], settings }
       sched.forEach((s, i) => {
         const f = sum ? mins[i] / sum : 1 / sched.length;
         for (const pool of poolsForWork(pools, s.area, job, !!s.eventId)) {
-          add(pool, userId, job, { minutes: a.minutes * f, card: a.card * f, cash: a.cash * f, shifts: worked1, source: 'toast' });
+          add(pool, userId, job, { minutes: a.minutes * f, card: a.card * f, cash: a.cash * f, shifts: worked1, source: clock });
         }
       });
     }
@@ -311,7 +330,7 @@ export function splitPeriod({ pool, rows, totalCents, adjustments = [], users = 
 export function buildWeek({ weekStart: ws, pools, shifts = [], timeEntries = [], entries = [], users = {}, settings = {} }) {
   const dates = range(ws, 7);
   const work = new Map(dates.map((date) => [date, dayWork({ date, pools, shifts, timeEntries, settings })]));
-  const toastDays = new Set(timeEntries.filter((t) => t.userId).map((t) => t.date));
+  const toastDays = new Set(timeEntries.filter((t) => t.userId && t.source !== 'adp').map((t) => t.date)); // days with Toast's tips
   const people = new Map();
   const report = pools.map((pool) => {
     const days = dates.map((date) => {
@@ -343,7 +362,7 @@ export function buildWeek({ weekStart: ws, pools, shifts = [], timeEntries = [],
       pool,
       days: days.map(({ rows, ...d }) => {
         const workers = new Set(rows.filter((r) => r.minutes > 0 || r.shifts > 0).map((r) => r.userId));
-        return { ...d, workers: workers.size, toastHours: rows.some((r) => r.source === 'toast') };
+        return { ...d, workers: workers.size, toastHours: rows.some((r) => r.source === 'toast' || r.source === 'adp') };
       }),
       periods, total: periods.reduce((t, p) => t + p.total, 0),
     };
@@ -435,7 +454,7 @@ export function describePool(pool, { jobName = () => '', otherPools = [], lang =
   if (pool.method === 'hours_points') out.push('Each person gets points: hours worked × their position’s points. Their share is their points ÷ everyone’s points.');
   if (pool.method === 'points_shift') out.push('Each shift worked earns its position’s points, however long it was. A person’s share is their points ÷ everyone’s points.');
   if (pool.method === 'equal') out.push('Everyone who worked gets the same amount.');
-  if (pool.method !== 'equal') out.push('Hours come from Toast time punches when they’re there, otherwise from the schedule (“until close” shifts are estimated).');
+  if (pool.method !== 'equal') out.push('Hours come from clock-ins (ADP or Toast, as set in Settings) when they’re there, otherwise from the schedule (“until close” shifts are estimated).');
   if (!pool.events) out.push('Event (BEO) shifts don’t count.');
   const left = [...ROLE_IDS].reverse().filter((r) => pool.excludeRoles.includes(r)).map((r) => `${roleLabel(r)}s`);
   if (left.length) out.push(`${left.length > 1 ? `${left.slice(0, -1).join(', ')} and ${left.at(-1)}` : left[0]} are left out.`);
@@ -455,7 +474,7 @@ function describePoolEs(pool, { jobName, otherPools }) {
   if (pool.method === 'hours_points') out.push('Cada persona recibe puntos: horas trabajadas × los puntos de su puesto. Su parte son sus puntos ÷ los puntos de todos.');
   if (pool.method === 'points_shift') out.push('Cada turno trabajado gana los puntos de su puesto, sin importar cuánto duró. La parte de cada persona son sus puntos ÷ los puntos de todos.');
   if (pool.method === 'equal') out.push('Todos los que trabajaron reciben lo mismo.');
-  if (pool.method !== 'equal') out.push('Las horas salen de las checadas de Toast cuando las hay; si no, del horario (los turnos “hasta el cierre” se estiman).');
+  if (pool.method !== 'equal') out.push('Las horas salen de las checadas (de ADP o de Toast, según Configuración) cuando las hay; si no, del horario (los turnos “hasta el cierre” se estiman).');
   if (!pool.events) out.push('Los turnos de eventos (BEO) no cuentan.');
   const left = [...ROLE_IDS].reverse().filter((r) => pool.excludeRoles.includes(r)).map((r) => roleLabelPlural(r, 'es'));
   if (left.length) out.push(`${left.length > 1 ? `${left.slice(0, -1).join(', ')} y ${left.at(-1)}` : left[0]} quedan fuera.`);
@@ -529,7 +548,7 @@ export function tipMethods({ store, now, settings, fail, needAuth, needMgr, need
     return buildWeek({
       weekStart: ws, pools: pools(), users: usersMap(), settings: settings(), entries,
       shifts: store.list('shifts', (s) => s.date >= ws && s.date <= end && s.published && s.userId),
-      timeEntries: store.list('timeEntries', (t) => t.date >= ws && t.date <= end),
+      timeEntries: clockEntries(store, settings(), (t) => t.date >= ws && t.date <= end).entries, // ADP, Toast or both (core/clock.js)
     });
   }
   /** The week as it stands: the saved copy once it's final, otherwise worked out now. */

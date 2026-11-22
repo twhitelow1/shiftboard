@@ -486,7 +486,8 @@ test('isolation: a session from one restaurant is refused on another, and no dat
     assert.equal(results.bistro.ok, true, JSON.stringify(results));
     assert.equal(results['chasing-rabbits'].skipped, 'Toast is not set up');
     assert.ok(seen.length > 3);
-    const toastDocs = async (schema) => Number((await p.conn.query(`SELECT count(*)::int AS n FROM "${schema}".docs WHERE col = 'integrations'`)).rows[0].n);
+    // Only Toast's own record: other integrations (e.g. ADP's demo data) may keep theirs in the same collection.
+    const toastDocs = async (schema) => Number((await p.conn.query(`SELECT count(*)::int AS n FROM "${schema}".docs WHERE col = 'integrations' AND id = 'toast'`)).rows[0].n);
     assert.equal(await toastDocs('t_bistro'), 1);
     assert.equal(await toastDocs('shiftboard'), 0);
     // A second run the same day leaves it alone.

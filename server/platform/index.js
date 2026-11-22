@@ -19,6 +19,8 @@ import { createApp } from '../app.js';
 import { cronAuthorized, BUDGET_MS } from '../toast-routes.js';
 import { toastConfig } from '../toast.js';
 import { integration } from '../../core/toast.js';
+import { adpConfig } from '../adp.js';
+import { integration as adpIntegration } from '../../core/adp.js';
 import { Registry } from './registry.js';
 import { TenantCache } from './tenant-cache.js';
 import { hostConfig, resolveHost, consoleAllowed } from './hosts.js';
@@ -173,6 +175,46 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
     return { tenants, ms: Date.now() - started };
   }
   app.locals.toastCronAll = toastCronAll;
+
+  // The daily ADP sync (Vercel Cron), the same way: every restaurant with ADP in its plan and set up.
+  app.get('/api/cron/adp', booted, async (req, res) => {
+    if (!cronAuthorized(req.get('authorization'), env.CRON_SECRET)) return res.status(401).json({ error: 'Unauthorized' });
+    const result = await adpCronAll();
+    res.status(result.tenants.some((t) => t.ok === false) ? 502 : 200).json({ result });
+  });
+  async function adpCronAll() {
+    const budget = Number(env.CRON_BUDGET_MS) || BUDGET_MS;
+    const started = Date.now();
+    const snap = await registry.snapshot({ fresh: true });
+    const list = snap.list.filter((t) => !isPaused(t.status) && t.resolved.adp);
+    const offset = list.length ? Math.floor(Date.now() / 3_600_000) % list.length : 0;
+    const order = [...list.slice(offset), ...list.slice(0, offset)];
+    const tenants = [];
+    for (let i = 0; i < order.length; i++) {
+      const t = order[i];
+      const left = budget - (Date.now() - started);
+      if (left < 2500) {
+        for (const r of order.slice(i)) tenants.push({ slug: r.slug, skipped: 'Out of time; the next run picks it up' });
+        break;
+      }
+      let rt;
+      try { rt = await runtime(t); } catch (e) { tenants.push({ slug: t.slug, ok: false, error: e.message }); continue; }
+      if (!adpConfig(rt.env).configured) { tenants.push({ slug: t.slug, skipped: 'ADP is not set up' }); continue; }
+      const release = cache.hold(rt);
+      try {
+        await rt.db.sync();
+        const last = adpIntegration(rt.db.store).lastCron;
+        if (last?.ok && Date.now() - Date.parse(last.at) < 20 * 3_600_000) { tenants.push({ slug: t.slug, skipped: 'Already synced today' }); continue; }
+        const share = Math.max(2500, Math.floor(left / (order.length - i)));
+        tenants.push({ slug: t.slug, ...(await rt.app.locals.adpCron({ budgetMs: share })) });
+      } catch (e) {
+        console.error(`ADP cron for ${t.slug} failed:`, e);
+        tenants.push({ slug: t.slug, ok: false, error: e.message });
+      } finally { release(); }
+    }
+    return { tenants, ms: Date.now() - started };
+  }
+  app.locals.adpCronAll = adpCronAll;
   /** Open the default restaurant (its schema, first account or demo data) before the first request. */
   app.locals.warmDefault = async () => {
     await ready();

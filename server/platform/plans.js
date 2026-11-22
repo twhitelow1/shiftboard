@@ -17,6 +17,7 @@ export const FEATURES = [
   { key: 'events', label: 'Events & BEOs', hint: 'Banquet event orders and event staffing' },
   { key: 'forecast', label: 'Forecast & labor', hint: 'Sales history, forecast, labor rules and labor review' },
   { key: 'toast', label: 'Toast POS', hint: 'Daily sales, covers and clock-ins from Toast' },
+  { key: 'adp', label: 'ADP clock-ins', hint: 'Actual hours from ADP: timecard CSV import and daily sync' },
   { key: 'sms', label: 'Text messages', hint: 'Notifications by text (Twilio)' },
   { key: 'venue', label: 'Venue & floor plans', hint: 'Rooms, floor plans and server sections' },
   { key: 'multiLocation', label: 'Multiple locations', hint: 'Placeholder for a later phase; nothing uses it yet' },
@@ -35,7 +36,7 @@ export const PLANS = {
   },
   pro: {
     label: 'Pro', priceCents: 9900, interval: 'month', selfServe: true, stripePriceEnv: 'STRIPE_PRICE_PRO',
-    features: ['training', 'tips', 'eightySix', 'events', 'forecast', 'toast', 'sms', 'venue'],
+    features: ['training', 'tips', 'eightySix', 'events', 'forecast', 'toast', 'adp', 'sms', 'venue'],
   },
   beta: {
     label: 'Beta (everything, free)', priceCents: 0, interval: 'month', selfServe: false, stripePriceEnv: null,
@@ -101,6 +102,8 @@ const NAMESPACE_FEATURE = {
   events: 'events',
   forecast: 'forecast', sales: 'forecast', labor: 'forecast',
   toast: 'toast',
+  adp: 'adp',
+  clock: 'forecast', calibration: 'forecast',
   sms: 'sms',
   venue: 'venue', sections: 'venue',
 };
@@ -115,6 +118,7 @@ export function featureForMethod(method) {
 // HTTP routes (server/app.js and the modules it mounts) that belong to a feature.
 export const ROUTE_FEATURES = [
   ['/api/toast', 'toast'],
+  ['/api/adp', 'adp'],
   ['/api/training', 'training'],
   ['/api/eighty-six', 'eightySix'],
   ['/api/sms', 'sms'],
