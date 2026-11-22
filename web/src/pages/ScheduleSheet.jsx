@@ -26,7 +26,7 @@ export function sheetTime(s) {
 }
 
 /** "Server" → "Servers", "Doorman" → "Doormen". */
-const plural = (n) => (/man$/i.test(n) ? n.replace(/man$/i, 'men') : /(s|x|ch|sh)$/i.test(n) ? `${n}es` : /[^aeiou]y$/i.test(n) ? `${n.slice(0, -1)}ies` : `${n}s`);
+export const plural = (n) => (/man$/i.test(n) ? n.replace(/man$/i, 'men') : /(s|x|ch|sh)$/i.test(n) ? `${n}es` : /[^aeiou]y$/i.test(n) ? `${n.slice(0, -1)}ies` : `${n}s`);
 const usDate = (d) => { const x = parseDate(d); return `${x.getUTCMonth() + 1}/${x.getUTCDate()}/${x.getUTCFullYear()}`; };
 
 export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onOpen, onSaved, onEditSection, onArrange, className = '' }) {
@@ -80,7 +80,8 @@ export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onO
         <colgroup><col className="sh-namecol" />{days.map((d) => <col key={d} />)}</colgroup>
         <tbody>
           {groups.map((g, gi) => {
-            const color = bannerColor(settings, g.banner, gi);
+            // A room's own color, else a steady one by its place in Rooms & positions.
+            const color = bannerColor(settings, g.banner, g.secs[0]?.roomIndex ?? gi);
             const fill = { background: color, color: textOn(color) };
             return (
               <React.Fragment key={g.banner + gi}>

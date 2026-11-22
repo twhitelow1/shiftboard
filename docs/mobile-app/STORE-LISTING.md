@@ -38,16 +38,29 @@ Languages:
 >
 > THE WHOLE TEAM'S SCHEDULE
 > • Day by day, grouped by area and position, so you know who's working with you
-> • Event shifts and day notes
+> • The whole week at a glance, with projected covers
+> • Event shifts, BEOs and day notes
+> • Your section: your tables highlighted on the room's floor plan
 >
 > TRADES AND GIVEAWAYS
 > • Trade a shift with a coworker or give it away to anyone who works that position
 > • Pick up open shifts and shifts coworkers are giving away
 > • Conflicts are checked for you; a manager approves when your restaurant requires it
 >
-> TIME OFF
+> TIME OFF AND AVAILABILITY
 > • Pick the days on a calendar and send the request
 > • See what's pending, approved or denied
+> • Tell your managers when you can work, day by day
+>
+> TRAINING
+> • Study the menu: photos, allergens, what's in each dish, and how to sell it
+> • Flashcards and quizzes, with your results and the team leaderboard
+> • Read the employee manual and mark pages as read
+> • Can't make it? Call or text the manager on duty in one tap
+>
+> TIPS AND THE 86 LIST
+> • Your own tip share, day by day, and how it was worked out
+> • What's 86'd or running low, with photos
 >
 > NOTIFICATIONS
 > • Know the moment the schedule is posted, a shift changes, or someone wants your shift
@@ -55,12 +68,12 @@ Languages:
 > ENGLISH AND SPANISH
 > • Switch languages from the button at the top of any screen
 >
-> Shift leads and managers can also approve trades and time off. Building and publishing the schedule happens on the ShiftBoard website.
+> Shift leads and managers can also approve trades and time off, see who's working now, and publish a week that's ready. Building the schedule happens on the ShiftBoard website. Work at two restaurants that use ShiftBoard? Add both and switch in a tap.
 >
 > ShiftBoard is made by DubLow Digital.
 
 **What's new (1.0)** [4000]:
-> First release: your shifts, the team schedule, trades and giveaways, time off and notifications, in English and Spanish.
+> First release: your shifts, the team schedule (day and week), trades and giveaways, time off and availability, Training (menu, quizzes, manual, manager on duty), your tips, the 86 List, events and notifications, in English and Spanish.
 
 ---
 
@@ -92,16 +105,29 @@ Languages:
 >
 > EL HORARIO DE TODO EL EQUIPO
 > • Día por día, por área y por puesto, para que sepas quién trabaja contigo
-> • Turnos de eventos y notas del día
+> • Toda la semana de un vistazo, con los cubiertos proyectados
+> • Turnos de eventos, BEO y notas del día
+> • Tu sección: tus mesas resaltadas en el plano del salón
 >
 > CAMBIOS Y TURNOS CEDIDOS
 > • Intercambia un turno con un compañero o cédelo a cualquiera que trabaje ese puesto
 > • Recoge turnos disponibles y turnos que tus compañeros están cediendo
 > • La app revisa los conflictos por ti; un gerente aprueba cuando tu restaurante lo pide
 >
-> DÍAS LIBRES
+> DÍAS LIBRES Y DISPONIBILIDAD
 > • Elige los días en el calendario y envía tu solicitud
 > • Ve qué está pendiente, aprobado o rechazado
+> • Diles a tus gerentes cuándo puedes trabajar, día por día
+>
+> CAPACITACIÓN
+> • Estudia el menú: fotos, alérgenos, qué lleva cada platillo y cómo venderlo
+> • Tarjetas de estudio y cuestionarios, con tus resultados y la clasificación del equipo
+> • Lee el manual del empleado y marca las páginas que ya leíste
+> • ¿No puedes ir? Llama o manda un mensaje al gerente en turno con un toque
+>
+> PROPINAS Y LISTA 86
+> • Tu parte de las propinas, día por día, y cómo se calculó
+> • Lo que se acabó (86) o queda poco, con fotos
 >
 > NOTIFICACIONES
 > • Entérate en cuanto se publica el horario, cambia un turno o alguien quiere tu turno
@@ -109,12 +135,12 @@ Languages:
 > EN ESPAÑOL Y EN INGLÉS
 > • Cambia de idioma con el botón de arriba en cualquier pantalla
 >
-> Los supervisores y gerentes también pueden aprobar cambios y días libres. El horario se arma y se publica en el sitio web de ShiftBoard.
+> Los supervisores y gerentes también pueden aprobar cambios y días libres, ver quién está trabajando ahora y publicar una semana lista. El horario se arma en el sitio web de ShiftBoard. ¿Trabajas en dos restaurantes que usan ShiftBoard? Agrega los dos y cambia con un toque.
 >
 > ShiftBoard es creado por DubLow Digital.
 
 **Novedades (1.0)**:
-> Primera versión: tus turnos, el horario del equipo, cambios y turnos cedidos, días libres y notificaciones, en español y en inglés.
+> Primera versión: tus turnos, el horario del equipo (por día y por semana), cambios y turnos cedidos, días libres y disponibilidad, Capacitación (menú, cuestionarios, manual, gerente en turno), tus propinas, la Lista 86, eventos y notificaciones, en español y en inglés.
 
 ---
 
@@ -158,11 +184,13 @@ Tip: a 6.9" iPhone simulator screenshot is already 1320 × 2868 (iPhone 16/17 Pr
 | User ID | the account | the app working | yes | no / no | no |
 | Work schedule, availability, time-off dates | the restaurant; the person's requests | the app working | yes | no / no | no |
 | Notes the person types (trade notes, time-off reason, 86 List notes) | typed in the app | requests and approvals, the 86 List | yes | no / no | no |
+| Availability (the days and hours the person can work) | typed in the app | scheduling | yes | no / no | no |
+| Training activity (quiz answers, manual pages marked as read) | the person, in the app | the restaurant's training records | yes | no / no | no |
 | Photos (optional) | taken or picked by the person for an 86 List report (up to 3, e.g. an empty bottle); shrunk on the phone; deleted 30 days after the item comes off the list | showing coworkers what's out | yes | no / no | no |
 | Push token + phone type (iOS/Android) | the phone, after the person allows notifications | sending notifications | yes | no / no | no |
 | Language choice | the person | showing the app in their language | yes | no / no | no |
 
-**Not collected:** location, contacts, other photos (only the photo the person picks is uploaded), microphone, health, payment or financial info (pay rates aren't shown or collected in the app), browsing or search history, analytics, crash reports, advertising IDs. No ads, no third-party SDKs that collect data, no tracking. Data goes over HTTPS to the restaurant's own ShiftBoard server; service providers (Vercel, the database host, Resend, Expo/Apple/Google for push) process it on DubLow's behalf, which both stores don't count as "sharing".
+**Not collected:** location, contacts, other photos (only the photo the person picks is uploaded), microphone, health, payment or financial info (pay rates aren't shown or collected in the app; the app shows each person their own tip share, which the restaurant's server works out from what managers enter: nothing about it comes from the phone. 🛑 Owner confirms with the privacy reviewer whether the stores want it declared anyway), browsing or search history, analytics, crash reports, advertising IDs. No ads, no third-party SDKs that collect data, no tracking. Data goes over HTTPS to the restaurant's own ShiftBoard server; service providers (Vercel, the database host, Resend, Expo/Apple/Google for push) process it on DubLow's behalf, which both stores don't count as "sharing".
 
 ## Apple App Privacy (nutrition label)
 
@@ -177,7 +205,7 @@ Tip: a 6.9" iPhone simulator screenshot is already 1320 × 2868 (iPhone 16/17 Pr
 | Identifiers → Device ID (push token) | Yes | Yes | No | App Functionality |
 | User Content → Photos or Videos (optional 86 List photos) | Yes | Yes | No | App Functionality |
 | User Content → Other User Content (notes on requests) | Yes | Yes | No | App Functionality |
-| Other Data → Other Data Types (work schedule, availability, time off) | Yes | Yes | No | App Functionality |
+| Other Data → Other Data Types (work schedule, availability, time off, training answers) | Yes | Yes | No | App Functionality |
 
 Everything else: not collected. Expected label: **Data Linked to You** (Contact Info, Identifiers, User Content, Other Data); **no Data Used to Track You**.
 
@@ -250,6 +278,8 @@ Not collected: location, financial info, health and fitness, messages (emails, S
 > Primera versión. Revisa: la dirección del restaurante y el inicio de sesión, Mis turnos, el Horario por día, intercambiar y ceder un turno, recoger un turno disponible, pedir días libres, las notificaciones (permítelas y pide a un gerente que publique un turno para ti) y el botón de español/inglés arriba en cada pantalla. Cuéntanos si algo se ve cortado, confuso o mal escrito en español.
 
 ### Demo account checklist (owner)
+
+- **Two-step sign-in:** once the restaurant's server asks for an authenticator-app code, App Review can't sign in with a password alone. Either keep the review account on a demo restaurant without the second step, or give the reviewers the account's setup key (they add it to an authenticator app) in the review notes. 🛑 Owner decides before submitting.
 
 - A deployment with `SEED_DEMO=true` that stays up during review (for example a separate Vercel project), restaurant name "Demo Restaurant".
 - An employee account with a few shifts in the coming weeks (the demo data is the week of Sep 28, 2026; a manager can use "Copy week" on the website to bring it forward before each review).

@@ -1,6 +1,7 @@
-// Invite links and QR codes: shiftboard://join?server=https://yourrestaurant.vercel.app
+// Invite links and QR codes: <scheme>://join?server=https://yourrestaurant.vercel.app (scheme: mobile/brand.js).
 // The app checks the address is a ShiftBoard server and shows the restaurant's name before
-// switching to it, so a link can't quietly point the app somewhere else.
+// opening it, so a link can't quietly point the app somewhere else. Restaurants already on the
+// phone stay signed in: the new one is added to the list (More → Restaurants).
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
@@ -14,7 +15,7 @@ import type { ServerConfig } from '@/lib/types';
 
 export default function Join() {
   const { t } = useI18n();
-  const { server: current, token, setServer } = useSession();
+  const { accounts, openRestaurant } = useSession();
   const params = useLocalSearchParams<{ server?: string }>();
   const origin = parseServerInput(params.server || '');
   const [cfg, setCfg] = useState<ServerConfig | null>(null);
@@ -22,13 +23,16 @@ export default function Join() {
 
   useEffect(() => {
     if (!origin) return setError(t('welcome.joinBad'));
-    if (origin === current && token) return router.replace('/shifts'); // already here
+    if (accounts.some((a) => a.server === origin && a.signedIn)) { // already signed in there
+      openRestaurant(origin).then(() => router.replace('/shifts'));
+      return;
+    }
     fetchConfig(origin).then(setCfg).catch((e) => setError(e instanceof ApiError && e.code === 'network' ? t('common.networkError') : t('welcome.joinBad')));
   }, [origin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const yes = async () => {
     if (!origin) return;
-    await setServer(origin, cfg);
+    await openRestaurant(origin, cfg);
     router.replace('/sign-in');
   };
 

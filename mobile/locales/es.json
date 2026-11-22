@@ -1,6 +1,0 @@
-{
-  "ios": {
-    "NSCameraUsageDescription": "ShiftBoard usa la cámara para que agregues una foto a la Lista 86, como la botella vacía o el estante.",
-    "NSPhotoLibraryUsageDescription": "ShiftBoard abre tus fotos para que agregues una a la Lista 86, como la botella vacía o el estante."
-  }
-}

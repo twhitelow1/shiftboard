@@ -1,5 +1,6 @@
 // Notifications: the same list as the website's bell. Opening it marks everything read.
-// The texts come from the server as they are (the server will localize them in a later pass).
+// The texts come from the server in the person's language. Tapping one opens its screen (lib/links.ts):
+// a trade, time off, the 86 List, a quiz, a manual page, a tip week, an event…
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Linking, Pressable, StyleSheet, View } from 'react-native';
@@ -10,14 +11,14 @@ import { Button, Card, Empty, Loading, Notice, Txt, useColors } from '@/componen
 import { useI18n } from '@/i18n';
 import { useRpc } from '@/lib/hooks';
 import { pushStatus, registerForPush, type PushStatus } from '@/lib/push';
-import { routeForLink } from '@/lib/schedule';
+import { routeForLink } from '@/lib/links';
 import { useApp } from '@/lib/session';
 import type { AppNotification } from '@/lib/types';
 
 export default function Notifications() {
   const { t, stamp } = useI18n();
   const c = useColors();
-  const { client, refresh, boot } = useApp();
+  const { client, refresh, boot, has } = useApp();
   const { data, error, reload } = useRpc<AppNotification[]>('notifications.list');
   const [push, setPush] = useState<PushStatus>('unavailable');
   useEffect(() => { pushStatus().then(setPush).catch(() => {}); }, []);
@@ -42,7 +43,8 @@ export default function Notifications() {
       {data?.length ? (
         <Card pad={false} style={{ overflow: 'hidden' }}>
           {data.map((n) => (
-            <Pressable key={n.id} onPress={() => router.push(routeForLink(n.link))} accessibilityRole="button"
+            <Pressable key={n.id} onPress={() => router.push(routeForLink(n.link, has))} accessibilityRole="button"
+              accessibilityLabel={`${n.read ? '' : `${t('notifications.unread')}: `}${n.text}, ${stamp(n.at)}`}
               style={({ pressed }) => [styles.row, { borderColor: c.border, backgroundColor: pressed ? c.surface2 : !n.read ? c.brandSoft : 'transparent' }]}>
               <View style={[styles.dot, { backgroundColor: n.read ? 'transparent' : c.brand }]} />
               <View style={{ flex: 1, gap: 3 }}>

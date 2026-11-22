@@ -4,9 +4,16 @@ import { parseDate, addDays } from '../../../core/time.js';
 import { SERVICE_STYLES, styleLabel } from '../../../core/beo.js';
 import { IS_DEMO } from '../api.js';
 import { EventPlans, useVenueRooms } from './Sections.jsx';
+import { TripleseatBadge, TripleseatEventCard, TripleseatEditorNote } from './TripleseatSettings.jsx';
+import BeoImport, { BeoExtras } from './BeoImport.jsx';
 import { useT, dowShort, fmtTime, monthShort, prettyDate, stamp } from '../i18n/index.js';
 
 const STATUS_BADGE = { tentative: 'warn', confirmed: 'ok', completed: '', cancelled: 'bad' };
+/** The event's status in the person's language; "confirmed automatically" when a tentative event is within two weeks. */
+function StatusBadge({ e }) {
+  const t = useT();
+  return <span className={`badge ${STATUS_BADGE[e.status] || ''}`} title={e.autoConfirmed ? t('events.autoConfirmedHelp') : undefined}>{t(`events.${e.status}`)}{e.autoConfirmed ? ` · ${t('events.auto')}` : ''}</span>;
+}
 
 export default function Events({ parts }) {
   const id = parts[1];
@@ -21,6 +28,7 @@ function EventList() {
   const { call, version, isEvents, today } = useApp();
   const [list, setList] = useState(null);
   const [past, setPast] = useState(false);
+  const [importing, setImporting] = useState(false);
   useEffect(() => { call('events.list', past ? { start: addDays(today, -120), end: addDays(today, -1) } : { start: today }).then(setList); }, [version, past]);
 
   return (
@@ -31,8 +39,10 @@ function EventList() {
           <button className={past ? 'on' : ''} onClick={() => setPast(true)}>{t('events.past')}</button>
         </div>
         <span className="spacer" />
+        {isEvents && <button className="btn sm" onClick={() => setImporting(true)}><Icon name="upload" />{t('beoImport.button')}</button>}
         {isEvents && <a className="btn primary sm" href="#/events/new"><Icon name="plus" />{t('events.newEventBeo')}</a>}
       </div>
+      {importing && <BeoImport onClose={() => setImporting(false)} />}
       <div className="card">
         {!list ? <div className="empty">{t('common.loading')}</div> : !list.length ? <Empty icon="glass" title={t('events.noEvents')}>{isEvents ? t('events.createABeoToShare') : ''}</Empty> : list.map((e) => {
           const d = parseDate(e.date);
@@ -43,7 +53,7 @@ function EventList() {
                 <div className="date"><div className="m">{dowShort(d.getUTCDay())}</div><div className="d">{d.getUTCDate()}</div><div className="m">{monthShort(d.getUTCMonth())}</div></div>
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="row wrap" style={{ gap: 6 }}><b style={{ fontSize: 15 }}>{e.name}</b><span className={`badge ${STATUS_BADGE[e.status]}`}>{e.status}</span></div>
+                <div className="row wrap" style={{ gap: 6 }}><b style={{ fontSize: 15 }}>{e.name}</b><StatusBadge e={e} />{e.source === 'tripleseat' && <TripleseatBadge review={e.review} />}</div>
                 <div className="small muted">{fmtTime(e.start)}{e.end ? `–${fmtTime(e.end)}` : ''} · {e.room || t('events.tbd')}{e.guestCount ? t('events.guestcountGuests', { guestCount: e.guestCount }) : ''}{e.type ? ` · ${e.type}` : ''}</div>
                 {e.needed > 0 && (
                   <div className="row" style={{ marginTop: 6, maxWidth: 320 }}>
@@ -101,13 +111,14 @@ function EventDetail({ id }) {
             <div className="muted">{prettyDate(e.date)} · {fmtTime(e.start)}{e.end ? ` – ${fmtTime(e.end)}` : ''} · {e.room}</div>
           </div>
           <div className="row wrap">
-            <span className={`badge ${STATUS_BADGE[e.status]}`}>{e.status}</span>
+            <StatusBadge e={e} />
             {e.guestCount > 0 && <span className="badge brand">{t('events.guestcountGuests2', { guestCount: e.guestCount })}{e.guaranteed ? t('events.guaranteedGuaranteed', { guaranteed: e.guaranteed }) : ''}</span>}
           </div>
         </div>
         {myShift && <div className="alert info" style={{ marginTop: 12 }}><Icon name="user" size={16} />{t('events.youreWorkingThisNameTime', { name: jobs[myShift.jobCodeId]?.name, time: shiftTime(myShift) })}</div>}
       </div>
 
+      <TripleseatEventCard e={e} reload={load} />
       <EventPlans event={e} />
 
       <div className="beo">
@@ -164,7 +175,7 @@ function EventDetail({ id }) {
           {!e.menu?.length ? <div className="muted small">{t('events.noMenuItems')}</div> : (
             <div className="col" style={{ gap: 10 }}>
               {e.menu.map((m, i) => (
-                <div key={i}><div className="tiny faint" style={{ fontWeight: 700, textTransform: 'uppercase' }}>{m.course}</div><div style={{ fontWeight: 600 }}>{m.item}</div>{m.notes && <div className="small muted">{m.notes}</div>}</div>
+                <div key={i}>{m.course !== e.menu[i - 1]?.course && <div className="tiny faint" style={{ fontWeight: 700, textTransform: 'uppercase' }}>{m.course}</div>}<div style={{ fontWeight: 600 }}>{m.item}{m.qty ? <span className="muted"> ×{m.qty}</span> : ''}{(m.dietary || []).map((d) => <span key={d} className="badge" style={{ marginLeft: 6 }}>{d}</span>)}</div>{m.notes && <div className="small muted">{m.notes}</div>}</div>
               ))}
             </div>
           )}
@@ -182,7 +193,7 @@ function EventDetail({ id }) {
             <h3 style={{ margin: '12px 0 8px' }}>{t('events.specialDrinks')}</h3>
             <div className="col">
               {e.specialDrinks.map((d, i) => (
-                <div key={i} className="drink"><div style={{ fontWeight: 700 }}>🍸 {d.name}</div><div className="small">{d.recipe}</div>{d.batch && <div className="tiny faint">{d.batch}</div>}</div>
+                <div key={i} className="drink"><div style={{ fontWeight: 700 }}>🍸 {d.name}{d.qty ? ` ×${d.qty}` : ''}</div><div className="small">{d.recipe}</div>{d.notes && <div className="tiny faint">{d.notes}</div>}{d.batch && <div className="tiny faint">{d.batch}</div>}</div>
               ))}
             </div>
           </>}
@@ -191,7 +202,7 @@ function EventDetail({ id }) {
         {e.timeline?.length > 0 && (
           <div className="card card-pad">
             <h2 style={{ marginBottom: 10 }}>{t('events.timeline')}</h2>
-            <table className="table"><tbody>{e.timeline.map((t, i) => <tr key={i}><td className="num" style={{ width: 80, fontWeight: 700 }}>{fmtTime(t.time)}</td><td>{t.item}</td></tr>)}</tbody></table>
+            <table className="table"><tbody>{e.timeline.map((t, i) => <tr key={i}><td className="num" style={{ width: 80, fontWeight: 700 }}>{fmtTime(t.time)}{t.end ? `–${fmtTime(t.end)}` : ''}</td><td>{t.item}</td></tr>)}</tbody></table>
           </div>
         )}
 
@@ -203,6 +214,8 @@ function EventDetail({ id }) {
             {e.notes && <p style={{ margin: 0 }}>{e.notes}</p>}
           </div>
         )}
+
+        <BeoExtras e={e} />
 
         <div className="card card-pad full no-print">
           <h2 style={{ marginBottom: 6 }}>{t('events.teamThread')}</h2>
@@ -265,6 +278,7 @@ function EventEditor({ id }) {
       </div>
 
       <div className="col" style={{ gap: 14 }}>
+        <TripleseatEditorNote e={e} />
         <div className="card card-pad col" style={{ gap: 12 }}>
           <h2>{t('events.event')}</h2>
           <Field label={t('events.eventName')}><input className="input" value={e.name} onChange={set('name')} placeholder={t('events.eGSmithWeddingReception')} /></Field>
@@ -308,6 +322,7 @@ function EventEditor({ id }) {
             <Field label={t('events.phone')}><input className="input" value={e.contactPhone} onChange={set('contactPhone')} /></Field>
             <Field label={t('common.email')}><input className="input" value={e.contactEmail} onChange={set('contactEmail')} /></Field>
           </div>
+          <Field label={t('beoImport.contactNotes')}><textarea className="input" rows="2" value={e.contactNotes || ''} onChange={set('contactNotes')} /></Field>
           <div className="help">{t('events.clientContactInfoIsOnly')}</div>
         </div>
 
@@ -346,6 +361,8 @@ function EventEditor({ id }) {
           <h2>{t('events.setupNotes')}</h2>
           <Field label={t('events.roomSetup')}><textarea className="input" rows="2" value={e.setupNotes} onChange={set('setupNotes')} placeholder={t('events.roundsOf8HeadTable')} /></Field>
           <Field label={t('events.aV')}><input className="input" value={e.avNotes} onChange={set('avNotes')} /></Field>
+          <Field label={t('beoImport.arrivalNotes')}><textarea className="input" rows="2" value={e.arrivalNotes || ''} onChange={set('arrivalNotes')} /></Field>
+          <Field label={t('beoImport.specialInstructions')}><textarea className="input" rows="3" value={e.specialInstructions || ''} onChange={set('specialInstructions')} /></Field>
           <Field label={t('events.otherNotes')}><textarea className="input" rows="2" value={e.notes} onChange={set('notes')} /></Field>
         </div>
         <div className="row"><span className="spacer" /><button className="btn primary" disabled={busy || !e.name} onClick={save}><Icon name="check" />{t('events.saveBeo')}</button></div>

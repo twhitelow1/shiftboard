@@ -26,6 +26,13 @@ The words ShiftBoard uses in Spanish, so the phone app, the website and emails s
 | this week / next week | esta semana / la próxima semana | |
 | area (Restaurant, Rabbit Hole…) | área | names stay as entered |
 | position / job code | puesto | |
+| room (a banner on the schedule: Restaurant, Moon Rabbit…) | salón | room names stay as entered; same word as the venue's rooms |
+| Rooms & positions (Settings) | Salones y puestos | |
+| hidden (position) / hide / show | oculto / ocultar / mostrar | "Ocultar en el horario" |
+| name on the sheet (a section's label) | nombre en el horario | |
+| hidden or unlisted section | sección oculta o fuera del horario | the schedule's notice for managers |
+| show everyone (shift editor) | mostrar a todos | |
+| main position | puesto principal | Team |
 | section / tag (LIB, BC…) | sección | tags stay as entered |
 | event (BEO) | evento | BEO stays "BEO" |
 | covers | cubiertos | |
@@ -127,6 +134,10 @@ The words ShiftBoard uses in Spanish, so the phone app, the website and emails s
 | attire / all black | vestimenta / todo negro | |
 | team thread | conversación del equipo | |
 | course (menu) | tiempo | "Plato fuerte" for entrée |
+| From Tripleseat: edit it there | De Tripleseat: cámbialo allá | Tripleseat status names (Definite, Tentative, Prospect, Closed, Lost) stay in English, with the Spanish in parentheses in Settings |
+| sales manager | gerente de ventas | the event's owner in Tripleseat |
+| integrations / connection / not set up | integraciones / conexión / sin configurar | Settings → Integrations |
+| webhook / signing key | webhook / clave de firma | |
 
 ## Forecast and labor
 
@@ -202,6 +213,11 @@ The words ShiftBoard uses in Spanish, so the phone app, the website and emails s
 | English | Español | Notes |
 |---|---|---|
 | sign in / sign out | iniciar sesión / cerrar sesión | |
+| two-step sign-in | verificación en dos pasos | |
+| authenticator app / 6-digit code | app de autenticación / código de 6 dígitos | |
+| recovery code | código de recuperación | "Cada uno sirve una vez" |
+| setup key | clave de configuración | |
+| passkey | llave de acceso (passkey) | web-only for now |
 | forgot your password? | ¿olvidaste tu contraseña? | |
 | reset your password | restablece tu contraseña | |
 | restaurant address | dirección del restaurante | "dirección de ShiftBoard de tu restaurante" |
@@ -224,6 +240,47 @@ The words ShiftBoard uses in Spanish, so the phone app, the website and emails s
 | help & support | ayuda y soporte | |
 | try again | reintentar | |
 | continue / cancel / save / send | continuar / cancelar / guardar / enviar | |
+
+## Training (website and phone app)
+
+| English | Español | Notes |
+|---|---|---|
+| Training (tab) | Capacitación | the phone's tab label is a point smaller in Spanish so five tabs fit |
+| menu study guide / menu item | guía del menú / platillo | "3 platillos" |
+| flashcards | tarjetas de estudio · tarjetas | button "Tarjetas" |
+| quiz / quizzes | cuestionario / cuestionarios | |
+| hand it in / see my score | entregar / ver mi puntaje | |
+| passed / not passed | aprobado / no aprobado | |
+| leaderboard | clasificación | |
+| items mastered | platillos dominados | |
+| employee manual / handbook | manual del empleado | tab: "Manual" |
+| I've read this / read again | ya lo leí / volver a leer | |
+| manager on duty | gerente en turno | |
+| call / text (buttons) | llamar / mensaje | "Mandar un mensaje a Kelly" for screen readers |
+| call-out line | línea para avisos | |
+| Can't make it? Call out | ¿No puedes ir? Avisa | the panel on your own upcoming shift |
+| allergens / what's in it / how to sell it | alérgenos / qué lleva / cómo venderlo | |
+| recipe / prep notes / makes | receta / notas de preparación / rinde | |
+
+## Phone app, version 2
+
+| English | Español | Notes |
+|---|---|---|
+| Day / Week (schedule) | Día / Semana | |
+| projected covers | cubiertos proyectados | "~157" under each day |
+| your section / your tables | tu sección / tus mesas | "Tus mesas: T1, T4 · 12 lugares" |
+| My tables / Whole room | Mis mesas / Todo el salón | floor plan switch |
+| my tips / your share / how it was worked out | mis propinas / tu parte / cómo se calculó | |
+| estimate / final (tips) | estimado / definitivo | |
+| Today on the floor | Hoy en el salón | shift leads' and managers' screen |
+| working now / coming in later today | trabajando ahora / entran más tarde hoy | |
+| publish the week of … | publicar la semana del … | confirmation before publishing |
+| restaurants (on this phone) / add another restaurant | restaurantes / agregar otro restaurante | |
+| switch to … / open now | cambiar a … / abierto | |
+| no connection, showing what you last saw | sin conexión, mostrando lo último que viste | offline note |
+| any time / some hours / unavailable | todo el día / por horas / no disponible | availability |
+| opening / close (availability with no time) | la apertura / el cierre | |
+| waiting on coworkers / recently decided | esperando a los compañeros / decididos hace poco | approvers in Trades |
 
 ## Notifications, emails and errors
 

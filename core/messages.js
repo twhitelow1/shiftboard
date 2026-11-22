@@ -46,6 +46,14 @@ export const MSG = {
     newEvent: (event, date, guests) => `New event: ${event} on ${date} — ${guests} guests`,
     eventCancelled: 'An event you were scheduled for was cancelled.',
     eventComment: (name, event, text) => `${name} on ${event}: “${text}”`,
+    // ----- events from Tripleseat (core/tripleseat.js) -----
+    tsBeoChanged: (event, date, what) => `BEO updated from Tripleseat: ${event} (${date}). ${what}. Review the latest details.`,
+    tsWhatDate: (date) => `New date: ${date}`,
+    tsWhatTime: (time) => `New time: ${time}`,
+    tsWhatGuests: (n) => `${n} guest${s(n, '', 's')}`,
+    tsWhatRoom: (room) => `Room: ${room}`,
+    tsCancelledStaffed: (event, date, n) => `${event} (${date}) was cancelled or taken off in Tripleseat, but ${n} ${s(n, 'person is', 'people are')} still scheduled for it. Review the event.`,
+    tsMovedStaffed: (event, date, n) => `${event} moved to ${date} in Tripleseat. ${n} ${s(n, 'person’s shift is', 'people’s shifts are')} still on the old day. Review the event.`,
     // ----- people -----
     roleNow: (role) => `Your role is now ${role}.`,
     deletionRequested: (name) => `${name} asked to delete their ShiftBoard account. Remove their sign-in and personal details in Team.`,
@@ -135,6 +143,14 @@ export const MSG = {
     newEvent: (event, date, guests) => `Evento nuevo: ${event} el ${date}, ${guests} invitados`,
     eventCancelled: 'Se canceló un evento en el que tenías turno.',
     eventComment: (name, event, text) => `${name} en ${event}: “${text}”`,
+    // ----- eventos de Tripleseat (core/tripleseat.js) -----
+    tsBeoChanged: (event, date, what) => `Se actualizó el BEO desde Tripleseat: ${event} (${date}). ${what}. Revisa los detalles más recientes.`,
+    tsWhatDate: (date) => `Nueva fecha: ${date}`,
+    tsWhatTime: (time) => `Nuevo horario: ${time}`,
+    tsWhatGuests: (n) => `${n} invitado${s(n, '', 's')}`,
+    tsWhatRoom: (room) => `Salón: ${room}`,
+    tsCancelledStaffed: (event, date, n) => `${event} (${date}) se canceló o se quitó en Tripleseat, pero ${s(n, 'todavía hay 1 persona programada', `todavía hay ${n} personas programadas`)}. Revisa el evento.`,
+    tsMovedStaffed: (event, date, n) => `${event} ahora es el ${date} en Tripleseat. ${s(n, 'El turno de 1 persona sigue', `Los turnos de ${n} personas siguen`)} en el día anterior. Revisa el evento.`,
     // ----- personas -----
     roleNow: (role) => `Ahora tu rol es ${role}.`,
     deletionRequested: (name) => `${name} pidió borrar su cuenta de ShiftBoard. Quita su acceso y sus datos personales en Equipo.`,

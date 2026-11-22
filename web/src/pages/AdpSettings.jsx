@@ -49,21 +49,6 @@ export function useAdpSync() {
   return [sync, progress];
 }
 
-/** The card on the Settings page: ADP (and the clock-in source), then Toast. */
-export function IntegrationsCard() {
-  const t = useT();
-  const { has } = useApp();
-  const adp = !has || has('adp'), toast = !has || has('toast');
-  return (
-    <div className="card card-pad col" style={{ gap: 12 }}>
-      <h2>{t('toastSettings.integrations')}</h2>
-      {adp && <AdpPanel />}
-      {adp && toast && <hr className="adp-hr" />}
-      {toast && <ToastPanel />}
-    </div>
-  );
-}
-
 /** Labor review's setup button: ADP and Toast in one place. */
 export function ClockSetupButton() {
   const t = useT();
@@ -109,7 +94,8 @@ export function ClockSourceField({ clock }) {
   );
 }
 
-export function AdpPanel({ inModal }) {
+/** embedded: inside Settings → Integrations (its title and status are above). connect: the credentials are pasted there, not in Vercel. */
+export function AdpPanel({ inModal, embedded, connect }) {
   const t = useT();
   const { today } = useApp();
   const { status, info, error } = useAdp();
@@ -126,7 +112,7 @@ export function AdpPanel({ inModal }) {
 
   return (
     <div className="col" style={{ gap: 12 }}>
-      <div className="row wrap" style={{ gap: 8 }}><h3 style={{ flex: 1 }}>{inModal ? '' : 'ADP'}</h3>{badge}</div>
+      {!embedded && <div className="row wrap" style={{ gap: 8 }}><h3 style={{ flex: 1 }}>{inModal ? '' : 'ADP'}</h3>{badge}</div>}
       <div className="small muted" style={{ marginTop: -4 }}>{t('adp.intro')}</div>
       {error && !info && <div className="alert bad">{error}</div>}
       {!info && !error && <div className="small faint">{t('common.loading')}</div>}
@@ -144,14 +130,15 @@ export function AdpPanel({ inModal }) {
         <div><b>{t('adp.apiSync')}</b><div className="small muted">{t('adp.apiSyncHelp')}</div></div>
         {IS_DEMO || status?.demo ? <div className="help">{t('adp.apiNotInDemo')}</div> : !status ? <div className="small faint">{t('common.loading')}</div> : (
           <>
-            <div className="adp-env">
+            {!connect && <div className="adp-env">
               {ADP_ENV.map((k) => {
                 const missing = status.missing.includes(k);
                 const problem = status.problems?.find((p) => p.env === k);
                 return <span key={k} className={`badge ${missing ? '' : problem ? 'bad' : 'ok'}`}><Icon name={missing ? 'x' : problem ? 'alert' : 'check'} size={12} /><code>{k}</code></span>;
               })}
               <span className={`badge ${status.cron ? 'ok' : ''}`}><Icon name={status.cron ? 'check' : 'x'} size={12} /><code>CRON_SECRET</code></span>
-            </div>
+            </div>}
+            {connect && !api && <div className="help">{t('integrations.pasteAbove')}</div>}
             {status.problems?.map((p) => <div key={p.env} className="alert bad"><Icon name="alert" size={16} /><div><code>{p.env}</code>: {t(`adp.pem_${p.problem}`)}</div></div>)}
             {api && (
               <>
@@ -176,12 +163,12 @@ export function AdpPanel({ inModal }) {
       </div>
 
       {info && (info.workers.length > 0 || info.depts.length > 0) && <AdpMatching info={info} />}
-      <AdpSetupHelp open={!inModal && !api && !info?.totals.entries} />
+      <AdpSetupHelp open={!inModal && !connect && !api && !info?.totals.entries} connect={connect} />
     </div>
   );
 }
 
-function AdpSetupHelp({ open }) {
+function AdpSetupHelp({ open, connect }) {
   const t = useT();
   return (
     <details className="tp-help" open={open}>
@@ -191,7 +178,7 @@ function AdpSetupHelp({ open }) {
         <li>{t('adp.step2')}</li>
         <li>{t('adp.step3')}</li>
         <li>{t('adp.step4')}</li>
-        <li>{t('adp.step5')}</li>
+        <li>{connect ? t('integrations.adpStep5Here') : t('adp.step5')}</li>
       </ol>
       <div className="help" style={{ marginTop: 6 }}>{t('adp.docsLine')}{' '}<a href={ADP_DOCS} target="_blank" rel="noreferrer">developers.adp.com</a>{' · '}<code>docs/integrations/ADP.md</code></div>
     </details>

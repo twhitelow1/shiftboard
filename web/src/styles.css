@@ -440,6 +440,28 @@ table.sched { border-collapse: separate; border-spacing: 0; width: 100%; min-wid
 .imp-names { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 6px 16px; max-height: 300px; overflow-y: auto; padding-right: 4px; }
 @media (max-width: 640px) { .imp-ctl { flex: 1 1 140px; } .imp-ctl .input { width: 100%; } }
 
+/* Import BEOs (PDF): one card per event found */
+.beo-imp-list { display: flex; flex-direction: column; gap: 8px; }
+.beo-imp-ev { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; min-width: 0; }
+.beo-imp-ev.on { border-color: color-mix(in srgb, var(--brand) 45%, var(--border)); }
+.beo-imp-head { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.beo-imp-name { display: block; font-size: 14.5px; overflow-wrap: anywhere; }
+.beo-imp-meta { display: block; margin-top: 2px; }
+.beo-imp-ctl { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--text-3); font-weight: 600; min-width: 0; }
+.beo-imp-ctl .input { max-width: 340px; color: var(--text); font-weight: 500; }
+.beo-x-h { margin: 12px 0 4px; font-size: 14px; }
+.beo-x-p { margin: 0 0 6px; }
+.beo-imp-warn ul { margin: 0; padding-left: 16px; }
+.beo-imp-toggle { align-self: flex-start; }
+.beo-imp-details { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); min-width: 0; }
+.beo-imp-details h4 { margin: 6px 0 0; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); }
+.beo-imp-times { margin: 4px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+.beo-imp-times li { display: flex; gap: 10px; min-width: 0; }
+.beo-imp-times b { flex: 0 0 auto; min-width: 70px; }
+@media (max-width: 640px) { .beo-imp-ctl .input { max-width: none; width: 100%; } }
+/* BEO text keeps its line breaks (notes, recipes, instructions) */
+.pre, .beo p, .beo .drink .small, .beo .kv dd, .beo .alert > div { white-space: pre-line; overflow-wrap: anywhere; }
+
 /* ---------- Sheet view: the schedule laid out like the house spreadsheet / PDF ---------- */
 .sheet-wrap { overflow-x: auto; background: #fff; border: 1px solid var(--border); border-radius: 10px; -webkit-overflow-scrolling: touch; }
 table.sheet { width: 100%; min-width: 860px; border-collapse: collapse; table-layout: fixed; background: #fff; color: #000;
@@ -606,3 +628,51 @@ table.sheet { width: 100%; min-width: 860px; border-collapse: collapse; table-la
 .sheet td.sh-edit { cursor: pointer; }
 .sheet td.sh-edit:hover { box-shadow: inset 0 0 0 2px #4f46e5; }
 .sheet .sh-edit-ic { margin-left: 4px; opacity: .55; vertical-align: -1px; }
+
+/* Settings → Rooms & positions (web/src/pages/RoomsPositions.jsx): one card per room, its positions inside. */
+.ellipsis { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-card { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.rooms-card { scroll-margin-top: 72px; }
+.room-head .room-toggle svg { margin-right: -4px; }
+.room-card.open { box-shadow: var(--shadow); }
+.room-head { display: flex; align-items: center; gap: 4px; padding: 6px 8px 6px 6px; }
+.room-toggle { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 6px; border: 0; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; border-radius: 8px; }
+.room-toggle:hover { background: var(--surface-2); }
+.room-toggle svg { flex: none; color: var(--text-3); }
+.room-swatch { flex: 0 1 auto; min-width: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 10px; border-radius: 6px; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: .02em; }
+.room-count { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-body { padding: 4px 12px 14px; border-top: 1px solid var(--border); }
+.modal .room-body { padding: 0; border-top: 0; }
+.room-fields { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; padding-top: 10px; }
+.modal .room-fields { padding-top: 0; }
+.pos-list { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.pos-row { display: flex; flex-direction: column; gap: 6px; padding: 10px 10px 10px 12px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.pos-row:last-child { border-bottom: 0; }
+.pos-row.is-hidden { background: var(--surface-2); }
+.pos-row.is-hidden .pos-name b { color: var(--text-3); text-decoration: line-through; text-decoration-thickness: 1px; }
+.pos-top { display: flex; align-items: center; gap: 6px; }
+.pos-name { flex: 1; min-width: 0; }
+.pos-title { min-width: 0; overflow-wrap: anywhere; }
+.pos-actions { display: flex; flex: none; gap: 2px; }
+.pos-label { display: flex; align-items: center; gap: 8px; }
+.pos-label .input { flex: 1; min-width: 0; max-width: 280px; }
+.remove-panel { background: var(--surface-2); border-radius: 10px; padding: 10px; }
+@media (max-width: 640px) {
+  .pos-label { flex-direction: column; align-items: stretch; gap: 4px; }
+  .pos-label .input { flex: none; max-width: none; }
+  .room-fields .field { flex: 1 1 100% !important; }
+}
+
+/* The schedule's notice for shifts in hidden or unlisted sections (managers only). */
+.stray-note { display: inline-flex; align-items: center; gap: 8px; border: 0; cursor: pointer; font: inherit; font-size: 13px; text-align: left; }
+.stray-note .link { text-decoration: underline; font-weight: 700; }
+
+/* Team → a person's positions: each with its rooms and pay rate. */
+.pp-list { display: flex; flex-direction: column; gap: 8px; }
+.pp-item { border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.pp-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pp-top .pp-name { flex: 1 1 140px; min-width: 0; display: flex; align-items: center; gap: 6px; font-weight: 700; }
+.pp-rate { display: flex; align-items: center; gap: 4px; }
+.pp-rate .input { width: 96px; }
+.pp-rooms { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chip.dashed { border-style: dashed; }
