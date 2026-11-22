@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useApp, Icon, shiftTime, JobDot, Empty, useAction, startTimesOnly } from '../ui.jsx';
+import { useApp, Icon, Avatar, shiftTime, JobDot, Empty, useAction, startTimesOnly } from '../ui.jsx';
 import { canManageUser } from '../../../core/roles.js';
 import { addDays, weekStart, parseDate, dow } from '../../../core/time.js';
 import { hoursOf } from '../../../core/forecast.js';
@@ -242,12 +242,13 @@ function EmailPrefCard() {
   );
 }
 
-/** My settings: profile photo, phone, password, two-step sign-in (pages/Security.jsx). */
+/** My settings, with my photo: profile photo, phone, password, two-step sign-in (pages/Security.jsx). */
 function MySettingsCard() {
   const t = useT();
+  const { me } = useApp();
   return (
     <a className="card card-pad section row my-settings-link" href="#/account">
-      <Icon name="lock" size={20} />
+      <Avatar user={me} size="lg" />
       <span className="grow"><b>{t('security.mySettings')}</b><span className="small muted block">{t('security.mySettingsHelp')}</span></span>
       <Icon name="right" size={16} />
     </a>

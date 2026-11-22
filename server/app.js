@@ -27,7 +27,7 @@ import { mountAdp } from './adp-routes.js';
 import { createAuth } from './auth.js';
 import { mountOnboarding } from './onboarding.js';
 import { publicRoutes } from './public-routes.js';
-import { migrateConsents, emailConsentOf, legalLinks, CONSENT_MIGRATION } from '../core/consent.js';
+import { migrateConsents, emailConsentOf, legalLinks, CONSENT_MIGRATION, CONSENT_TEXT, CONSENT_VERSION } from '../core/consent.js';
 
 const COOKIE = 'sb_session';
 // Not allowed while DubLow staff are signed in as the owner for support ("Sign in as owner"): the owner's
@@ -388,7 +388,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
         logo: st.logoVersion ? `/api/branding/logo?v=${st.logoVersion}` : '' };
       language = isLang(st.language) ? st.language : 'auto'; // the restaurant's default language, for the sign-in page
     } catch { /* the sign-in page still works with ShiftBoard's look */ }
-    res.json({ email: mailer.enabled, emailFrom: mailer.enabled ? mailer.from : null, brand, language, legal, ...channels.config(),
+    // legal and consent: the links and the exact consent words (and versions), for the phone app's consent screen.
+    res.json({ email: mailer.enabled, emailFrom: mailer.enabled ? mailer.from : null, brand, language, legal, consent: { text: CONSENT_TEXT, versions: CONSENT_VERSION }, ...channels.config(),
       ...(tenant ? { restaurant: tenant.slug, features: { ...tenant.features }, managed: !tenant.isDefault, ...(paused ? { paused: true } : {}) } : {}) });
   });
 
