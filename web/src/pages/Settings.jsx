@@ -13,7 +13,7 @@ import { tx, useT, dowLong, dowShort , LANGUAGE_NAMES } from '../i18n/index.js';
 
 export default function Settings({ parts = [] }) {
   const t = useT();
-  const { settings, call, emailEnabled, emailFrom, has, managed, isAdmin } = useApp();
+  const { settings, call, emailEnabled, emailFrom, has, managed, isAdmin, isMgr } = useApp();
   const [s, setS] = useState(() => JSON.parse(JSON.stringify(settings)));
   const [run, busy] = useAction();
   const [pw, setPw] = useState('');
@@ -40,7 +40,7 @@ export default function Settings({ parts = [] }) {
     </div>
   );
   // Managers run the schedule's rooms and positions; the rest of Settings is for admins.
-  if (!isAdmin) return <div style={{ maxWidth: 820 }} className="col">{rooms}{passwordCard}</div>;
+  if (!isAdmin) return <div style={{ maxWidth: 820 }} className="col">{isMgr && rooms}{passwordCard}</div>;
 
   return (
     <div style={{ maxWidth: 820 }} className="col">
