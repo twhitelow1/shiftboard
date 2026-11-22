@@ -18,7 +18,7 @@ import type { Shift, ShiftsList } from '@/lib/types';
 export default function Schedule() {
   const { t, date, time } = useI18n();
   const c = useColors();
-  const { me, today, settings, jobs, people } = useApp();
+  const { me, today, settings, jobs, people, boot } = useApp();
   const shiftTime = useShiftTime();
   const [ws, setWs] = useState(() => weekStart(today, settings.weekStartDow));
   const days = range(ws, 7);
@@ -29,7 +29,7 @@ export default function Schedule() {
 
   const { data, error, reload } = useRpc<ShiftsList>('shifts.list', { start: ws, end: addDays(ws, 6) }, [ws]);
   const shifts = useMemo(() => (data?.shifts || []).filter((s) => s.published && s.date === day && (mine === 'all' || s.userId === me.id)), [data, day, mine, me.id]);
-  const sections = useMemo(() => daySections(shifts, jobs, settings), [shifts, jobs, settings]);
+  const sections = useMemo(() => daySections(shifts, jobs, settings, boot.layout), [shifts, jobs, settings, boot.layout]);
   const closed = settings.closedDays.includes(dow(day));
   const events = (data?.events || []).filter((e) => e.date === day);
   const notes = (data?.notes || []).filter((n) => n.kind === 'day' && n.date === day);

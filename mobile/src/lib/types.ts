@@ -61,6 +61,14 @@ export interface Boot {
   today: string;
   /** On the platform (one server for many restaurants): the restaurant's plan features. Absent on a single-restaurant server. */
   tenant?: { slug: string; plan: string; features: Record<string, boolean> } | null;
+  /** The schedule's rooms and their positions, in order (Settings → Rooms & positions). Absent on older servers. */
+  layout?: Layout;
+}
+
+/** The schedule's layout (core/layout.js): rooms in order, each with its positions in order. Staff never get hidden ones. */
+export interface Layout {
+  rev: number;
+  rooms: { room: string; positions: { jobCodeId: string; label?: string; hidden?: boolean }[] }[];
 }
 
 export interface Shift {
