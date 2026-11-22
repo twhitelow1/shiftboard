@@ -1,15 +1,20 @@
-// Forecast & Labor → Labor review: a past week's schedule against the time clock (Toast).
+// Forecast & Labor → Labor review: a past week's schedule against the time clock: ADP, Toast, or both
+// with ADP winning (Settings → Integrations → Clock-in source). Each day says where its hours came from.
 import React, { useEffect, useState } from 'react';
 import { useApp, Icon, money, JobDot, Empty } from '../ui.jsx';
 import { addDays, parseDate, weekStart as weekStartOf } from '../../../core/time.js';
 import { IS_DEMO } from '../api.js';
 import { weekLabel } from './Schedule.jsx';
-import { ToastSetupButton, useToast, useToastSync, SyncProgress } from './ToastSettings.jsx';
+import { useToast, useToastSync, SyncProgress } from './ToastSettings.jsx';
+import { ClockSetupButton, useAdp, useAdpSync } from './AdpSettings.jsx';
+import { AdpImportButton } from './AdpImport.jsx';
 import '../labor.css';
 import { tx, dowShort, fmtTime, prettyDate, stamp, num } from '../i18n/index.js';
 
 const h = (n) => (n == null ? '—' : num(Math.round(n * 10) / 10, { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
 const pctTxt = (n) => (n == null ? '—' : `${Number(n).toFixed(1)}%`);
+/** 'ADP', 'Toast' or 'ADP + Toast': where a day's (or a person's) hours came from. */
+export const sourceName = (s) => (s === 'adp' ? 'ADP' : s === 'toast' ? 'Toast' : s === 'adp+toast' ? 'ADP + Toast' : '');
 const hm = (stamp) => (stamp ? fmtTime(stamp.slice(11, 16)) : '?');
 const when = (iso) => (iso ? stamp(iso) : '');
 
@@ -38,7 +43,15 @@ export default function LaborReview() {
   const [err, setErr] = useState('');
   const [view, setView] = useState('people');
   const { status } = useToast();
-  const [sync, progress] = useToastSync();
+  const { status: adpStatus } = useAdp();
+  const [syncToast, toastProgress] = useToastSync();
+  const [syncAdp, adpProgress] = useAdpSync();
+  const progress = adpProgress || toastProgress;
+  // Sync this week: ADP's time cards (when the API is set up), then Toast's sales and clock-ins.
+  const sync = async (range) => {
+    if (adpStatus?.configured) await syncAdp(range);
+    if (status?.configured) await syncToast(range);
+  };
 
   useEffect(() => { setErr(''); call('labor.week', { weekStart: ws }).then(setR).catch((e) => setErr(e.message)); }, [ws, version]);
   if (err) return <div className="alert bad">{err}</div>;
@@ -50,10 +63,13 @@ export default function LaborReview() {
   const target = r.targetLaborPct;
   const weekEnd = addDays(r.weekStart, 6);
   const syncTo = weekEnd < today ? weekEnd : addDays(today, -1);
-  const canSync = !IS_DEMO && status?.configured && r.weekStart < today;
+  const canSync = !IS_DEMO && (status?.configured || adpStatus?.configured) && r.weekStart < today;
   const hasClock = r.clockDays.length > 0;
   const lastSync = r.toast?.lastSync;
   const issues = r.noShift.length + r.noClockIn.length + r.overtime.length + r.noClockOut.length;
+  const source = r.clock?.source || 'toast';
+  const ignored = source === 'toast' ? r.clock?.ignored?.adp : r.clock?.ignored?.toast;
+  const adpWhen = r.adp?.lastSync?.at || r.adp?.lastImport?.at;
 
   return (
     <div className="lr">
@@ -66,20 +82,22 @@ export default function LaborReview() {
           <button className="btn icon sm" onClick={() => setWs(addDays(ws, 7))} disabled={ws >= current} aria-label={tx('common.nextWeek')}><Icon name="right" /></button>
         </div>
         <span className="spacer" />
+        {isMgr && <AdpImportButton className={canSync ? 'btn sm' : 'btn sm primary'} />}
         {canSync && <button className="btn sm primary" disabled={!!progress} onClick={() => sync({ from: r.weekStart, to: syncTo })}><Icon name="download" />{tx('laborReview.syncThisWeek')}</button>}
-        {isMgr && <ToastSetupButton />}
+        {isMgr && <ClockSetupButton />}
       </div>
       {progress && <div className="card card-pad section"><SyncProgress progress={progress} /></div>}
 
       <div className="small muted lr-source">
-        {IS_DEMO ? tx('laborReview.sampleClockInsDemoData')
-          : lastSync ? tx('laborReview.clockInsAndSalesFrom', { when: when(lastSync.at) })
-            : tx('laborReview.scheduledShiftsComparedWithClock')}
+        {IS_DEMO ? tx('laborReview.sampleClockInsDemoData') : tx(`laborReview.clockInsFrom_${source === 'adp+toast' ? 'both' : source}`)}
+        {!IS_DEMO && (source !== 'toast' && adpWhen ? ` ${tx('laborReview.adpUpdated', { when: when(adpWhen) })}` : '')}
+        {!IS_DEMO && lastSync ? ` ${tx('laborReview.toastSynced', { when: when(lastSync.at) })}` : ''}
         {' '}{tx('laborReview.overtimeIsCountedAt1')}</div>
       {!r.anyEntries && !IS_DEMO && (
-        <div className="alert info section"><Icon name="clock" size={16} /><div>{tx('laborReview.noClockInsYet')}{' '}{status?.configured ? tx('laborReview.syncFromToastToSee') : tx('laborReview.connectToastToastSetupTo')}</div></div>
+        <div className="alert info section"><Icon name="clock" size={16} /><div>{tx('laborReview.noClockInsYet')}{' '}{canSync ? tx('laborReview.syncToSee') : tx('laborReview.importOrConnect')}</div></div>
       )}
-      {r.anyEntries && !hasClock && <div className="alert warn section"><Icon name="alert" size={16} />{tx('laborReview.noClockInsForThis')}{canSync ? tx('laborReview.yetSyncThisWeekTo') : '.'}</div>}
+      {r.anyEntries && !hasClock && <div className="alert warn section"><Icon name="alert" size={16} />{tx('laborReview.noClockInsForThis')}{canSync ? tx('laborReview.yetSyncThisWeekTo') : tx('laborReview.yetImportThisWeek')}</div>}
+      {ignored > 0 && <div className="help section">{tx(source === 'toast' ? 'laborReview.ignoredAdp' : 'laborReview.ignoredToast', { count: ignored })}</div>}
       {r.unmatched.entries > 0 && (
         <div className="alert warn section"><Icon name="alert" size={16} /><div>{tx('laborReview.countClockInsHHrs', { count: r.unmatched.entries, h: h(r.unmatched.hours) })}</div></div>
       )}
@@ -102,7 +120,8 @@ export default function LaborReview() {
             <tbody>
               {r.days.map((d) => (
                 <tr key={d.date} className={d.closed && !d.sched.shifts && !d.actual.entries ? 'lr-closed' : ''}>
-                  <td className="lr-stick"><b>{dowShort(d.dow)} {parseDate(d.date).getUTCDate()}</b>{d.closed && <span className="tiny faint">{' '}{tx('laborReview.closed')}</span>}</td>
+                  <td className="lr-stick"><b>{dowShort(d.dow)} {parseDate(d.date).getUTCDate()}</b>{d.closed && <span className="tiny faint">{' '}{tx('laborReview.closed')}</span>}
+                    {d.source && <div className="tiny faint lr-src" title={tx('laborReview.hoursFrom', { source: sourceName(d.source) })}>{sourceName(d.source)}</div>}</td>
                   <td className="num">{d.sales == null ? <span className="faint">—</span> : money(d.sales)}</td>
                   <td className="num">{h(d.sched.hours)}</td>
                   <td className="num">{d.hasClock ? h(d.actual.hours) : <span className="faint">—</span>}</td>
@@ -168,8 +187,8 @@ export default function LaborReview() {
                   <tr key={p.key}>
                     <td className="lr-stick">
                       {view === 'people'
-                        ? <div><b>{p.name}</b>{!p.matched && <span className="badge warn" style={{ marginLeft: 6 }}>{tx('laborReview.notMatched')}</span>}<div className="tiny faint">{p.jobs.map((id) => jobs[id]?.name).filter(Boolean).join(', ')}</div></div>
-                        : <span className="row" style={{ gap: 6 }}>{p.jobCodeId ? <JobDot job={jobs[p.jobCodeId]} /> : null}<b>{p.name}</b>{p.matched === false && <span className="badge warn">{tx('laborReview.toastJob')}</span>}</span>}
+                        ? <div><b>{p.name}</b>{!p.matched && <span className="badge warn" style={{ marginLeft: 6 }}>{tx('laborReview.notMatched')}</span>}<div className="tiny faint">{[p.jobs.map((id) => jobs[id]?.name).filter(Boolean).join(', '), sourceName(p.source)].filter(Boolean).join(' · ')}</div></div>
+                        : <span className="row" style={{ gap: 6 }}>{p.jobCodeId ? <JobDot job={jobs[p.jobCodeId]} /> : null}<b>{p.name}</b>{p.matched === false && <span className="badge warn">{tx('laborReview.clockJob', { source: sourceName(p.source) })}</span>}</span>}
                     </td>
                     <td className="num">{h(p.sched.hours)}</td>
                     <td className="num">{hasClock ? h(p.actual.hours) : '—'}</td>
@@ -184,7 +203,7 @@ export default function LaborReview() {
             </table>
           </div>
         )}
-        <div className="card-pad help" style={{ paddingTop: 8 }}>{tx('laborReview.actualCostUsesEachClock')}</div>
+        <div className="card-pad help" style={{ paddingTop: 8 }}>{tx('laborReview.actualCostUsesEachClock')}{r.otEstimated ? ` ${tx('laborReview.otEstimated', { otAfter: r.otAfter })}` : ''}</div>
       </div>
     </div>
   );

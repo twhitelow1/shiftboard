@@ -46,3 +46,37 @@
 .tp-help summary { cursor: pointer; font-weight: 600; color: var(--brand); }
 .tp-help ol { margin: 8px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
 .tp-help code { font-size: 12px; background: var(--surface-3); padding: 1px 5px; border-radius: 5px; }
+
+/* ADP: the import dialog and the Settings panel */
+.adp-drop { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 22px 14px; border: 2px dashed var(--border-strong); border-radius: 12px; text-align: center; color: var(--text-2); }
+.adp-paste { width: 100%; min-height: 140px; font-family: ui-monospace, monospace; font-size: 12px; margin-top: 8px; }
+.adp-map { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.adp-map-row { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(150px, 1.2fr) minmax(0, 1.4fr); gap: 10px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 13.5px; }
+.adp-map-row:last-child { border-bottom: 0; }
+.adp-map-row > span:first-child { font-weight: 600; }
+.adp-map-sample { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 640px) {
+  .adp-map-row { grid-template-columns: 1fr 1fr; }
+  .adp-map-sample { grid-column: 1 / -1; margin-top: -4px; }
+}
+.adp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.adp-skipped { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; overflow-wrap: anywhere; }
+.adp-preview td { font-size: 13px; }
+.adp-block { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.adp-env { display: flex; flex-wrap: wrap; gap: 6px; }
+.adp-env code, .alert code { font-size: 11.5px; }
+.adp-hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; width: 100%; }
+.lr-src { font-weight: 600; letter-spacing: .02em; }
+
+/* Forecast & Labor → From your actual hours */
+.ah .legend { flex-wrap: wrap; row-gap: 6px; }
+.ah .gapcell { padding: 4px 6px; white-space: nowrap; }
+.ah-highlights { list-style: none; margin: 0; padding: 0 16px 12px; display: flex; flex-direction: column; gap: 8px; }
+.ah-highlights li { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); font-size: 13.5px; line-height: 1.4; }
+.ah-highlights li svg { flex: none; margin-top: 2px; }
+.ah-highlights li.over svg { color: var(--warn); }
+.ah-highlights li.under svg { color: var(--bad); }
+.ah-trends { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 12px 16px 16px; border-top: 1px solid var(--border); }
+.ah-trends h3 { margin-bottom: 2px; }
+.ah-trends > div { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+@media (max-width: 760px) { .ah-trends { grid-template-columns: 1fr; } }

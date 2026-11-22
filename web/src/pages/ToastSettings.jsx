@@ -1,4 +1,4 @@
-// Settings → Integrations → Toast, also opened from Forecast & Labor → Labor review ("Toast setup").
+// Settings → Integrations → Toast (the card is in AdpSettings.jsx), also in Labor review's "Clock-in setup".
 // Shows whether Toast is configured (env vars only), the restaurant, the last sync, Sync now,
 // and how Toast's employees and jobs match ShiftBoard's people and positions.
 import React, { useEffect, useMemo, useState } from 'react';
@@ -55,17 +55,6 @@ export function SyncProgress({ progress }) {
     <div className="col" style={{ gap: 4 }}>
       <div className="small muted">{t('toastSettings.syncing')}{progress.date ? ` ${prettyDate(progress.date)}` : ''}{t('toastSettings.doneOfTotalDays', { done: progress.done, total: progress.total })}</div>
       <div className="progress"><div style={{ width: `${pct}%` }} /></div>
-    </div>
-  );
-}
-
-/** The card on the Settings page. */
-export function IntegrationsCard() {
-  const t = useT();
-  return (
-    <div className="card card-pad col" style={{ gap: 12 }}>
-      <h2>{t('toastSettings.integrations')}</h2>
-      <ToastPanel />
     </div>
   );
 }

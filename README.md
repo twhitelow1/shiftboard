@@ -113,6 +113,14 @@ Pulls each day's net sales and covers from Toast into the sales history the fore
 
 A Vercel Cron (`vercel.json`) calls `/api/cron/toast` every morning and syncs the last 3 days. Syncs run a day at a time within the 30-second limit and can be repeated safely. Days typed in by hand under Sales history are kept unless you choose to replace them. Credentials live only in env vars; the code is in `server/toast*.js`, `core/toast.js`, `core/labor.js` and `core/labor-api.js`.
 
+### ADP (optional): actual worked hours
+
+ADP is the restaurant's real time clock, so worked hours come from it: Labor review, the tip pool's hours, and **Forecast & Labor → From your actual hours** (staffing suggested from what each position really took per cover over the last 4–8 weeks, over- and under-scheduling by weekday, overtime risk; the forecast itself doesn't change). Toast stays the source of sales, covers and tips. Research, both access paths, the certificate steps and what to ask the ADP rep: [docs/integrations/ADP.md](docs/integrations/ADP.md).
+
+- **Any ADP product, today:** export a timecard report as CSV from RUN, Workforce Now, ezLaborManager or Workforce Manager, then **Labor review → Import ADP hours**. Columns are detected (and remembered), people and departments matched, and a preview flags what needs a look. Re-importing the same file or week never doubles anything. Works in the demo too.
+- **API sync (Workforce Now with API Central, or a Marketplace partner app):** add `ADP_CLIENT_ID`, `ADP_CLIENT_SECRET` (Sensitive), `ADP_CERT_PEM` and `ADP_KEY_PEM` (Sensitive; the client certificate ADP signs from your CSR and its key, as PEM text or base64), optionally `ADP_API_HOST`, `ADP_TOKEN_URL` and `ADP_MANAGER_AOID`, and `CRON_SECRET`. Then **Settings → Integrations → ADP → Sync now**; `/api/cron/adp` syncs the last 3 days every morning.
+- **Clock-in source** (Settings → Integrations → ADP): Automatic (ADP once there's ADP data), ADP, Toast, or both with ADP winning per person per day. One shift is never counted twice. Code: `server/adp*.js`, `core/adp*.js`, `core/clock.js`, `core/calibrate.js`.
+
 ### Moving data from the old SQLite version
 
 If ShiftBoard has been running on Render or Docker with SQLite, copy its `shiftboard.db` file locally, then:
