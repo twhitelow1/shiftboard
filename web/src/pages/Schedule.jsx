@@ -2,11 +2,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useApp, Icon, Avatar, Modal, Field, shiftTime, money, useAction, JobDot, Empty } from '../ui.jsx';
 import { addDays, weekStart, range, dow, parseDate } from '../../../core/time.js';
 import { hoursOf } from '../../../core/forecast.js';
-import { scheduleAreas, findArea, sameArea } from '../../../core/areas.js';
+import { sameArea } from '../../../core/areas.js';
+import { buildSections, shiftChoices } from '../../../core/layout.js';
 import ShiftDialog from './ShiftDialog.jsx';
 import ImportDialog from './ImportDialog.jsx';
 import ScheduleSheet from './ScheduleSheet.jsx';
-import SectionPeople, { ArrangeArea } from './SectionPeople.jsx';
+import SectionPeople from './SectionPeople.jsx';
+import { RoomDialog } from './RoomsPositions.jsx';
 import TradeHint, { canTrade } from './TradeHint.jsx';
 import { EightySixBanner } from './EightySix.jsx';
 import { IS_DEMO } from '../api.js';
@@ -55,7 +57,7 @@ export function WeekNav({ ws, setWs }) {
 export default function Schedule() {
   const t = useT();
   const app = useApp();
-  const { isMgr, jobCodes, employees, jobs, people, me, settings, call, version, today } = app;
+  const { isMgr, employees, jobs, people, me, settings, call, version, today, layout } = app;
   const [ws, setWs] = useWeek();
   const [data, setData] = useState(null);
   const [fc, setFc] = useState(null);
@@ -82,9 +84,6 @@ export default function Schedule() {
 
   const shifts = data?.shifts || [];
   const drafts = shifts.filter((s) => !s.published).length;
-  const areaList = useMemo(() => scheduleAreas(settings), [settings]);
-  // The banner a shift sits under: its area (Restaurant, Moon Rabbit…), else its job's department.
-  const bannerOf = (s) => s.area || jobs[s.jobCodeId]?.department || '';
 
   const timeOffOn = (userId, date) => data?.timeOff?.find((t) => t.userId === userId && t.startDate <= date && t.endDate >= date);
   const hoursByUser = useMemo(() => {
@@ -94,57 +93,21 @@ export default function Schedule() {
   }, [shifts, settings]);
 
   const [editSection, setEditSection] = useState(null); // the section whose people a manager is editing
-  const [arrange, setArrange] = useState(null); // the banner (area) whose sections a manager is arranging
+  const [arrange, setArrange] = useState(null); // the room whose positions a manager is arranging (Rooms & positions)
+  const [strayOpen, setStrayOpen] = useState(false);
   const openDialog = (shift, startIn) => setDialog({ shift, startIn, warnings: data?.warnings?.[shift.id] });
   const addAt = (date, jobCodeId, userId, area = '') => isMgr && setDialog({ shift: { date, jobCodeId, userId, area, start: '16:00' } });
   const closeDialog = (changed) => { setDialog(null); if (changed) load(); };
 
-  // Sections like the house sheet: an area banner (RESTAURANT, RABBIT HOLE…), then each position
-  // worked there. Shifts go under their area; people also show under the areas their job code lists,
-  // so a manager sees the whole roster. Without areas, a job's department is the banner.
-  const allSections = useMemo(() => {
-    if (!data) return [];
-    const activeEmps = employees.filter((e) => e.active !== false && e.onSchedule !== false);
-    const groups = new Map();
-    const add = (banner, job) => {
-      const name = findArea(banner, areaList) || banner || '';
-      const k = `${name.toLowerCase()}|${job.id}`;
-      if (!groups.has(k)) groups.set(k, { banner: name, isArea: !!findArea(name, areaList), job, users: new Set(), shifts: [] });
-      return groups.get(k);
-    };
-    for (const sh of shifts) {
-      const j = jobs[sh.jobCodeId];
-      if (!j) continue;
-      const g = add(bannerOf(sh), j);
-      g.shifts.push(sh);
-      if (sh.userId) g.users.add(sh.userId);
-    }
-    for (const e of activeEmps) {
-      for (const entry of e.jobCodes || []) {
-        const j = jobs[entry.jobCodeId];
-        if (!j || j.archived) continue;
-        for (const b of entry.areas?.length ? entry.areas : [j.department || '']) add(b, j).users.add(e.id);
-      }
-    }
-    if (isMgr) for (const j of jobCodes) if (!j.archived && ![...groups.values()].some((g) => g.job.id === j.id)) add(j.department || '', j);
-    // Department banners first (in job order, e.g. Leadership), then areas in the schedule's area order.
-    const firstJob = {};
-    for (const g of groups.values()) firstJob[g.banner] = Math.min(firstJob[g.banner] ?? 1e9, g.job.order ?? 1e9);
-    const rank = (g) => (g.isArea ? 1e6 + areaList.findIndex((a) => sameArea(a, g.banner)) : firstJob[g.banner]);
-    const byJob = (a, b) => (a.job.order ?? 0) - (b.job.order ?? 0) || a.job.name.localeCompare(b.job.name);
-    // Within a banner, the order a manager set for it (Arrange), then the positions' own order.
-    const placeIn = (g) => { const i = (settings.sectionOrder?.[g.banner.toLowerCase()] || []).indexOf(g.job.id); return i < 0 ? 1e6 : i; };
-    return [...groups.values()].sort((a, b) => rank(a) - rank(b) || a.banner.localeCompare(b.banner) || placeIn(a) - placeIn(b) || byJob(a, b)).map((g) => {
-      // The imported sheet's layout for this section: names in its order, its label and heading.
-      const area = g.isArea ? g.banner : '';
-      const roster = (data.rosters || []).find((r) => r.jobCodeId === g.job.id && (r.area ? sameArea(r.area, area) : !area));
-      const at = (id) => { const i = roster?.userIds?.indexOf(id) ?? -1; return i < 0 ? 1e9 : i; };
-      const rows = [...g.users].map((id) => people[id]).filter(Boolean).map((u) => ({ user: u, shifts: g.shifts.filter((x) => x.userId === u.id) }));
-      rows.sort((a, b) => at(a.user.id) - at(b.user.id) || (a.user.order ?? 1e9) - (b.user.order ?? 1e9) || a.user.name.localeCompare(b.user.name));
-      return { key: `${g.banner}|${g.job.id}`, job: g.job, banner: g.banner, area, label: g.job.name, rows, open: g.shifts.filter((x) => !x.userId),
-        sheetLabel: roster ? roster.label : null, sheetBanner: roster?.banner || '' };
-    });
-  }, [data, employees, jobCodes, areaList, people, isMgr, settings.sectionOrder]);
+  // Sections like the house sheet, from Settings → Rooms & positions (core/layout.js): each room's
+  // banner (RESTAURANT, RABBIT HOLE…), then its shown positions in order. A section lists the people
+  // who hold that position in that room, plus anyone with a shift there this week. Shifts in hidden
+  // or unlisted sections (stray) never show; managers get a notice to move them or show the section.
+  const { sections: allSections, stray } = useMemo(() => (data
+    ? buildSections({ layout, jobs, employees, shifts, rosters: data.rosters, settings })
+    : { sections: [], stray: [] }), [data, layout, jobs, employees, settings]);
+  const strayIds = useMemo(() => new Set(stray.flatMap((x) => x.shifts.map((s) => s.id))), [stray]);
+  const strayCount = strayIds.size;
   const banners = [...new Set(allSections.map((x) => x.banner).filter(Boolean))];
 
   const sections = useMemo(() => {
@@ -152,11 +115,13 @@ export default function Schedule() {
     const inBanner = (b) => !dept || sameArea(b, dept);
     if (groupBy === 'emp') {
       const activeEmps = employees.filter((e) => e.active !== false && e.onSchedule !== false);
-      const worksIn = (e) => e.jobCodes?.some((x) => (x.areas?.length ? x.areas : [jobs[x.jobCodeId]?.department]).some(inBanner));
+      // By employee: the shifts the sections show (none from hidden or unlisted sections), per room filter.
+      const roomOf = new Map(allSections.flatMap((sec) => [...sec.rows.flatMap((r) => r.shifts), ...sec.open].map((x) => [x.id, sec.banner])));
+      const worksIn = (e) => allSections.some((sec) => inBanner(sec.banner) && sec.rows.some((r) => r.user.id === e.id));
       const rows = activeEmps.filter((e) => (!mine || e.id === me.id))
-        .map((e) => ({ user: e, shifts: shifts.filter((x) => x.userId === e.id && inBanner(bannerOf(x))) }))
+        .map((e) => ({ user: e, shifts: shifts.filter((x) => x.userId === e.id && !strayIds.has(x.id) && inBanner(roomOf.get(x.id))) }))
         .filter((r) => (!dept || r.shifts.length || worksIn(r.user)) && (!hideEmpty || r.shifts.length || days.some((d) => timeOffOn(r.user.id, d))));
-      const open = shifts.filter((x) => !x.userId && inBanner(bannerOf(x)));
+      const open = shifts.filter((x) => !x.userId && !strayIds.has(x.id) && inBanner(roomOf.get(x.id)));
       return [{ key: 'all', label: t('schedule.everyone'), rows, open }];
     }
     return allSections.filter((x) => inBanner(x.banner)).map((x) => {
@@ -165,7 +130,7 @@ export default function Schedule() {
       if (hideEmpty) rows = rows.filter((r) => r.shifts.length);
       return { ...x, rows, open: mine ? [] : x.open };
     }).filter((x) => x.rows.length || x.open.length || (isMgr && !hideEmpty && !mine));
-  }, [allSections, data, employees, groupBy, dept, hideEmpty, mine]);
+  }, [allSections, strayIds, data, employees, groupBy, dept, hideEmpty, mine]);
 
   // The sheet lists everyone on the roster (like the PDF), whatever the grid's filters are.
   const sheetSections = allSections.filter((x) => (!dept || sameArea(x.banner, dept)) && (x.rows.length || x.open.length));
@@ -269,6 +234,11 @@ export default function Schedule() {
 
       {!data ? <div className="empty">{t('common.loading')}</div> : (
         <>
+          {isMgr && strayCount > 0 && (
+            <button type="button" className="alert warn stray-note no-print" style={{ marginBottom: 10 }} onClick={() => setStrayOpen(true)}>
+              <Icon name="alert" size={16} /><span>{t('schedule.strayShifts', { count: strayCount })}</span><span className="link">{t('schedule.review')}</span>
+            </button>
+          )}
           <TradeHint shifts={shifts} />
           {/* Like the house PDF. Print always uses this layout. */}
           <ScheduleSheet className={view === 'sheet' ? 'sheet-print' : 'sheet-print print-only'} sections={sheetSections} days={days} data={data} fc={fc} ws={ws}
@@ -359,7 +329,8 @@ export default function Schedule() {
         </>
       )}
 
-      {arrange != null && <ArrangeArea banner={arrange} sections={allSections.filter((x) => x.banner === arrange)} onClose={(changed) => { setArrange(null); if (changed) load(); }} />}
+      {arrange != null && <RoomDialog room={arrange} onClose={(changed) => { setArrange(null); if (changed) load(); }} />}
+      {strayOpen && <StrayDialog stray={stray} ws={ws} onClose={(changed) => { setStrayOpen(false); if (changed) load(); }} />}
 
       {editSection && <SectionPeople section={editSection} ws={ws} sections={allSections} onClose={(changed) => { setEditSection(null); if (changed) load(); }} />}
 
@@ -368,6 +339,64 @@ export default function Schedule() {
       {clearOpen && <ClearWeekDialog ws={ws} data={data} onClose={(changed) => { setClearOpen(false); if (changed) load(); }} />}
       {copyOpen && <CopyWeekDialog ws={ws} onClose={(changed, goTo) => { setCopyOpen(false); if (goTo && goTo !== ws) setWs(goTo); else if (changed) load(); }} />}
     </div>
+  );
+}
+
+/**
+ * Shifts this week in sections that don't show (hidden in Rooms & positions, or a room and position
+ * that isn't there): move them to a section that shows, or show the section. Managers only.
+ */
+function StrayDialog({ stray, ws, onClose }) {
+  const t = useT();
+  const { call, jobs, people, layout, employees } = useApp();
+  const [run, busy] = useAction();
+  const [changed, setChanged] = useState(false);
+  const [moving, setMoving] = useState(null); // the group being moved
+  const [to, setTo] = useState('');
+  const targets = shiftChoices({ layout, jobs, employees }).rooms.flatMap((r) => r.positions.map((j) => ({ k: `${r.room}|${j.id}`, room: r.room, jobCodeId: j.id, label: `${j.name} · ${r.room}` })));
+  const done = () => onClose(changed);
+  const show = async (g) => { const r = await run(() => call('layout.unhide', { room: g.room, jobCodeId: g.jobCodeId }), t('schedule.strayShown')); if (r) setChanged(true); };
+  const move = async (g) => {
+    const target = targets.find((x) => x.k === to);
+    if (!target) return;
+    const r = await run(() => call('layout.moveShifts', { room: g.room, jobCodeId: g.jobCodeId, start: ws, end: addDays(ws, 6), to: { room: target.room, jobCodeId: target.jobCodeId } }),
+      (res) => t('schedule.strayMoved', { count: res.moved }));
+    if (r) { setChanged(true); setMoving(null); setTo(''); }
+  };
+  return (
+    <Modal title={t('schedule.strayTitle')} sub={t('schedule.straySub')} onClose={done}
+      footer={<><a className="btn ghost sm" href="#/settings/rooms" onClick={done}><Icon name="settings" />{t('rooms.allRooms')}</a><span className="spacer" /><button className="btn primary" onClick={done}>{t('common.done')}</button></>}>
+      {!stray.length && <div className="empty small">{t('schedule.strayNone')}</div>}
+      <div className="list card">
+        {stray.map((g) => {
+          const k = `${g.room}|${g.jobCodeId}`;
+          return (
+            <div key={k} className="col" style={{ gap: 8, padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>
+              <div className="row wrap" style={{ gap: 6 }}>
+                <JobDot job={jobs[g.jobCodeId]} /><b>{jobs[g.jobCodeId]?.name}</b><span className="muted">· {g.room || t('schedule.strayNoRoom')}</span>
+                <span className={`badge ${g.hidden ? '' : 'warn'}`}>{g.hidden ? t('schedule.strayHidden') : t('schedule.strayUnlisted')}</span>
+              </div>
+              <div className="small muted">{t('schedule.strayCount', { count: g.shifts.length })}: {g.shifts.map((s) => `${people[s.userId]?.name || t('common.openShift')} ${dowShort(dow(s.date))} ${fmtTime(s.start)}`).join(', ')}</div>
+              {moving === k ? (
+                <div className="row wrap" style={{ gap: 6 }}>
+                  <select className="input" style={{ flex: '1 1 200px' }} value={to} onChange={(e) => setTo(e.target.value)} aria-label={t('schedule.strayMove')}>
+                    <option value="">{t('schedule.pickSection')}</option>
+                    {targets.map((x) => <option key={x.k} value={x.k}>{x.label}</option>)}
+                  </select>
+                  <button type="button" className="btn primary sm" disabled={busy || !to} onClick={() => move(g)}>{t('schedule.strayMoveBtn')}</button>
+                  <button type="button" className="btn sm" onClick={() => setMoving(null)}>{t('common.cancel')}</button>
+                </div>
+              ) : (
+                <div className="row wrap" style={{ gap: 6 }}>
+                  <button type="button" className="btn sm" disabled={busy} onClick={() => { setMoving(k); setTo(''); }}><Icon name="swap" />{t('schedule.strayMove')}</button>
+                  {g.room && <button type="button" className="btn sm" disabled={busy} onClick={() => show(g)}><Icon name="eye" />{t('schedule.strayShow')}</button>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </Modal>
   );
 }
 

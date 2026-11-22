@@ -26,6 +26,13 @@ The words ShiftBoard uses in Spanish, so the phone app, the website and emails s
 | this week / next week | esta semana / la próxima semana | |
 | area (Restaurant, Rabbit Hole…) | área | names stay as entered |
 | position / job code | puesto | |
+| room (a banner on the schedule: Restaurant, Moon Rabbit…) | salón | room names stay as entered; same word as the venue's rooms |
+| Rooms & positions (Settings) | Salones y puestos | |
+| hidden (position) / hide / show | oculto / ocultar / mostrar | "Ocultar en el horario" |
+| name on the sheet (a section's label) | nombre en el horario | |
+| hidden or unlisted section | sección oculta o fuera del horario | the schedule's notice for managers |
+| show everyone (shift editor) | mostrar a todos | |
+| main position | puesto principal | Team |
 | section / tag (LIB, BC…) | sección | tags stay as entered |
 | event (BEO) | evento | BEO stays "BEO" |
 | covers | cubiertos | |

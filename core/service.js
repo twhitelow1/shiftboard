@@ -8,7 +8,7 @@ import { cleanBeoEvent, mergeBeo } from './beo-import.js';
 import { laborMethods } from './labor-api.js';
 import { adpMethods } from './adp-api.js';
 import { calibrationMethods } from './calibrate.js';
-import { cleanArea, uniqueAreas, findArea, scheduleAreas } from './areas.js';
+import { cleanArea, uniqueAreas, findArea, scheduleAreas, sameArea } from './areas.js';
 import { tipMethods } from './tips.js';
 import { langOf, render, renderAll } from './i18n.js';
 import { msg } from './messages.js';
@@ -20,6 +20,7 @@ import { tripleseatLinks } from './tripleseat.js';
 import { trainingApi } from './training.js';
 import { eightySixApi } from './eighty-six.js';
 import { rosterApi } from './roster.js';
+import { layoutService, addRoom, roomOfShift } from './layout.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -86,6 +87,7 @@ export function createService(store, opts = {}) {
   // ---------- helpers ----------
   const settings = () => ({ ...DEFAULT_SETTINGS, ...(store.get('settings', 'settings') || {}) });
   const isMgr = (a) => canManageSchedule(a);
+  const putSettings = (patch) => (store.get('settings', 'settings') ? store.update('settings', 'settings', patch) : store.insert('settings', { ...DEFAULT_SETTINGS, ...patch }));
   const isEvents = (a) => canManageEvents(a);
   const isApprover = (a) => canApprove(a, settings());
   const needAuth = (a) => { if (!a) fail(401, 'Please sign in'); };
@@ -104,6 +106,8 @@ export function createService(store, opts = {}) {
   const L = (u) => langOf(u?.id ? userById(u.id) || u : u, settings());
   const qualified = (user, jobCodeId) => !!user?.jobCodes?.some((j) => j.jobCodeId === jobCodeId);
   const managers = () => users().filter((u) => u.active !== false && canManageSchedule(u));
+  // The schedule's rooms and their positions (core/layout.js): made from today's schedule the first time.
+  const layouts = layoutService({ store, settings, putSettings, fail, needMgr, now, today });
   const approvers = () => users().filter((u) => u.active !== false && canApprove(u, settings()));
   /** 'Server (Restaurant) Tue, Sep 29 4p–10p' · 'Server (Restaurant) mar, 29 de sep · 4 pm–10 pm' (open-ended: '4 pm–cierre'). */
   const describe = (s, lang = 'en') => {
@@ -364,6 +368,9 @@ export function createService(store, opts = {}) {
   const api = {
     'app.bootstrap': (actor) => {
       needAuth(actor);
+      // The rooms and positions the schedule shows (hidden ones only for managers). First, since
+      // the first read makes the layout and puts its rooms in settings.areas.
+      const layout = layouts.forViewer(isMgr(actor));
       const st = settings();
       const jobCodes = store.list('jobCodes').sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       const employees = users().map((u) => {
@@ -379,7 +386,7 @@ export function createService(store, opts = {}) {
       const openOffers = store.list('requests', (r) => r.status === 'open' && (
         (r.type === 'swap' && r.targetUserId === actor.id) ||
         (r.type === 'drop' && r.requesterId !== actor.id && qualified(me, store.get('shifts', r.shiftId)?.jobCodeId)))).length;
-      return { settings: st, jobCodes, employees, me, unread, pendingApprovals, openOffers, today: today() };
+      return { settings: st, jobCodes, employees, me, unread, pendingApprovals, openOffers, today: today(), layout };
     },
 
     // ----- settings -----
@@ -397,7 +404,19 @@ export function createService(store, opts = {}) {
         if (k in clean) clean[k] = /^#[0-9a-f]{6}$/i.test(String(clean[k] || '')) ? String(clean[k]).toLowerCase() : '';
       }
       const cur = store.get('settings', 'settings');
-      return cur ? store.update('settings', 'settings', clean) : store.insert('settings', { ...DEFAULT_SETTINGS, ...clean });
+      const out = cur ? store.update('settings', 'settings', clean) : store.insert('settings', { ...DEFAULT_SETTINGS, ...clean });
+      // The areas are the layout's rooms: new names become rooms and the order follows; a room with
+      // positions stays (Settings → Rooms & positions removes rooms).
+      if ('areas' in clean) {
+        layouts.change((rooms) => {
+          for (const a of clean.areas) if (!rooms.some((r) => sameArea(r.room, a))) rooms.push({ room: a, positions: [] });
+          const at = (r) => { const i = clean.areas.findIndex((a) => sameArea(a, r.room)); return i < 0 ? 1e6 : i; };
+          const kept = rooms.filter((r) => at(r) < 1e6 || r.positions.length).sort((a, b) => at(a) - at(b));
+          rooms.splice(0, rooms.length, ...kept);
+        }, actor);
+        return settings();
+      }
+      return out;
     },
     // The restaurant's logo: a PNG, JPEG or WebP (the app resizes it before upload), served to
     // everyone at /api/branding/logo, including the sign-in page and emails.
@@ -433,12 +452,20 @@ export function createService(store, opts = {}) {
       const doc = { name: a.name.trim(), short: (a.short || a.name.slice(0, 4)).toUpperCase().trim(), department: a.department || 'Restaurant', color: a.color || '#6366f1', defaultRate: Number(a.defaultRate) || 0, order: Number(a.order) || 0, eventRole: !!a.eventRole, archived: !!a.archived,
         // The role people in this job usually get (used when importing a schedule). Data, not code.
         defaultRole: JOB_ROLES.includes(a.defaultRole) ? a.defaultRole : 'employee' };
-      return a.id ? store.update('jobCodes', a.id, doc) : store.insert('jobCodes', { id: uid('job'), ...doc });
+      const job = a.id ? store.update('jobCodes', a.id, doc) : store.insert('jobCodes', { id: uid('job'), ...doc });
+      // A position that isn't in any room yet shows in its department's room, when there is one
+      // (Settings → Rooms & positions puts it anywhere else).
+      const lay = layouts.current();
+      if (job && !job.archived && !lay.rooms.some((r) => r.positions.some((p) => p.jobCodeId === job.id)) && lay.rooms.some((r) => sameArea(r.room, job.department))) {
+        layouts.ensurePairs([{ room: job.department, jobCodeId: job.id }], actor);
+      }
+      return job;
     },
     'jobCodes.delete': (actor, { id }) => {
       needMgr(actor);
       if (store.list('shifts', (s) => s.jobCodeId === id).length) return store.update('jobCodes', id, { archived: true });
       store.remove('jobCodes', id);
+      layouts.dropJob(id);
       return { ok: true };
     },
     // Fold one job code into another: its shifts, people (keeping their pay rate and areas), BEO
@@ -482,6 +509,7 @@ export function createService(store, opts = {}) {
         out.rules = rules.filter((r) => r.jobCodeId === from.id).length;
         store.update('settings', 'settings', { laborRules: rules.map((r) => (r.jobCodeId === from.id ? { ...r, jobCodeId: into.id } : r)) });
       }
+      layouts.replaceJob(from.id, into.id);
       store.remove('jobCodes', from.id);
       return out;
     },
@@ -657,6 +685,13 @@ export function createService(store, opts = {}) {
       validateShiftInput(a);
       const doc = cleanShift(a);
       if (doc.area) doc.area = rememberAreas([doc.area]).canon(doc.area);
+      // Scheduling someone outside their positions (the shift editor's "Show everyone") gives them
+      // the position in this room, so they're listed in the section from now on.
+      if (a.listPerson && doc.userId) {
+        const u = userById(doc.userId), job = jobById(doc.jobCodeId);
+        const room = roomOfShift(doc, job);
+        if (room && (u.id === actor.id || canManageUser(actor, u))) store.update('users', u.id, { jobCodes: addRoom(u.jobCodes, job, room) });
+      }
       if (a.id) {
         const cur = store.get('shifts', a.id);
         if (!cur) fail(404, 'Shift not found');
@@ -848,19 +883,28 @@ export function createService(store, opts = {}) {
 
       // Each section's layout on the sheet (its banner as written, its label, the order of names), so
       // the schedule's Sheet view can look just like it. Keyed by area + position.
-      const layouts = new Map();
+      // Kept under the section's room (the banner's area, or for a banner like M.O.D., the position's department).
+      const roomOf = (area, jobCodeId) => areas.canon(area) || areas.canon(jobById(jobCodeId)?.department) || '';
+      const sheet = new Map();
       for (const r of a.rosters || []) {
         const jobCodeId = job(r.job);
         if (!jobCodeId) continue;
-        const area = areas.canon(r.area);
+        const area = roomOf(r.area, jobCodeId);
         const id = `${area.toLowerCase()}|${jobCodeId}`;
-        const prev = layouts.get(id);
+        const prev = sheet.get(id);
         const userIds = [...new Set([...(prev?.userIds || []), ...(r.users || []).map(user).filter(Boolean)])];
-        layouts.set(id, { id, area, jobCodeId, label: prev ? prev.label : String(r.label ?? '').trim().slice(0, 60), banner: prev ? prev.banner : String(r.banner ?? '').trim().slice(0, 60), userIds });
+        sheet.set(id, { id, area, jobCodeId, label: prev ? prev.label : String(r.label ?? '').trim().slice(0, 60), banner: prev ? prev.banner : String(r.banner ?? '').trim().slice(0, 60), userIds });
       }
-      for (const doc of layouts.values()) {
+      for (const doc of sheet.values()) {
         if (store.get('rosters', doc.id)) store.update('rosters', doc.id, { ...doc, updatedAt: at }); else store.insert('rosters', { ...doc, updatedAt: at });
       }
+      // The sheet's sections land in the layout (Settings → Rooms & positions): a room and position the
+      // schedule doesn't have yet is added, shown, at the end of its room, with the sheet's label.
+      layouts.ensurePairs([
+        ...[...sheet.values()].map((d) => ({ room: d.area, jobCodeId: d.jobCodeId, label: d.label })),
+        ...(a.shifts || []).map((s) => ({ room: roomOf(s.area, job(s.job)), jobCodeId: job(s.job) })),
+        ...(a.assignments || []).map((x) => ({ room: roomOf(x.area, job(x.job)), jobCodeId: job(x.job) })),
+      ].filter((p) => p.room && p.jobCodeId), actor);
 
       // The sheet's own day notes (CLOSED, MEETING, NORMAL SERVICE…), one note per day.
       const byDay = new Map();
@@ -1166,7 +1210,7 @@ export function createService(store, opts = {}) {
       const f = computeForecastWeek(ws);
       const toCreate = [];
       for (const d of f.days) for (const dp of d.dayparts) for (const row of dp.rows) {
-        for (let i = 0; i < row.gap; i++) toCreate.push({ date: d.date, start: dp.start, end: dp.end, jobCodeId: row.jobCodeId, userId: null, notes: msg(L(actor)).forecastNote(dp.name, dp.covers) });
+        for (let i = 0; i < row.gap; i++) toCreate.push({ date: d.date, start: dp.start, end: dp.end, jobCodeId: row.jobCodeId, area: layouts.homeRoom(jobById(row.jobCodeId)), userId: null, notes: msg(L(actor)).forecastNote(dp.name, dp.covers) });
       }
       store.transaction(() => toCreate.forEach((s) => store.insert('shifts', { id: uid('shf'), ...cleanShift(s), published: false, createdAt: now().toISOString(), createdBy: actor.id })));
       return { created: toCreate.length };
@@ -1288,17 +1332,21 @@ export function createService(store, opts = {}) {
       const e = store.get('events', id);
       if (!e) fail(404, 'Event not found');
       let created = 0;
+      const pairs = [];
       store.transaction(() => {
         for (const line of e.staffing || []) {
           const existing = store.list('shifts', (s) => s.eventId === id && s.staffingLineId === line.id);
           for (let i = existing.length; i < line.count; i++) {
             const isCaptainLine = /captain/i.test(jobName(line.jobCodeId));
             const assign = isCaptainLine && i === 0 && e.captainId && qualified(userById(e.captainId), line.jobCodeId) ? e.captainId : null;
-            store.insert('shifts', { id: uid('shf'), ...cleanShift({ date: e.date, start: line.start || e.start, end: line.end || null, jobCodeId: line.jobCodeId, userId: assign, area: findArea(e.room || '', scheduleAreas(settings())) || '', tag: e.room ? e.room.split(' ').map((w) => w[0]).join('').toUpperCase() : 'EVT', notes: `${e.name}${line.notes ? ' — ' + line.notes : ''}`, eventId: id, staffingLineId: line.id }), published: !!publish, createdAt: now().toISOString(), createdBy: actor.id });
+            const sh = store.insert('shifts', { id: uid('shf'), ...cleanShift({ date: e.date, start: line.start || e.start, end: line.end || null, jobCodeId: line.jobCodeId, userId: assign, area: findArea(e.room || '', scheduleAreas(settings())) || '', tag: e.room ? e.room.split(' ').map((w) => w[0]).join('').toUpperCase() : 'EVT', notes: `${e.name}${line.notes ? ' — ' + line.notes : ''}`, eventId: id, staffingLineId: line.id }), published: !!publish, createdAt: now().toISOString(), createdBy: actor.id });
+            pairs.push({ room: roomOfShift(sh, jobById(sh.jobCodeId)), jobCodeId: sh.jobCodeId });
             created++;
           }
         }
       });
+      // The event's room and positions show on the schedule (a new pair goes at the end of its room).
+      if (pairs.length) layouts.ensurePairs(pairs, actor);
       if (publish && created) api['shifts.publish'](actor, { eventId: id });
       return { created };
     },
@@ -1475,7 +1523,9 @@ export function createService(store, opts = {}) {
     // ----- 86 List: what's out or running low, per list; the bar separate (core/eighty-six.js) -----
     ...eightySixApi({ store, now, settings, notify, fail }),
     // ----- who is listed in each schedule section, and in what order (core/roster.js) -----
-    ...rosterApi({ store, settings, fail, needMgr, today, putSettings: (patch) => (store.get('settings', 'settings') ? store.update('settings', 'settings', patch) : store.insert('settings', { ...DEFAULT_SETTINGS, ...patch })) }),
+    ...rosterApi({ store, settings, fail, needMgr, today, putSettings, layouts }),
+    // ----- the schedule's rooms and their positions: Settings → Rooms & positions (core/layout.js) -----
+    ...layouts.api,
 
     // ----- notifications -----
     'notifications.list': (actor) => {

@@ -47,7 +47,8 @@ const NAV = [
   { key: 'forecast', label: 'main.forecastLabor', icon: 'chart', mgr: true, feature: 'forecast' },
   { key: 'venue', label: 'main.venueFloorPlans', short: 'main.venue', icon: 'map', mgr: true, feature: 'venue' },
   { key: 'team', label: 'main.teamJobCodes', icon: 'users', mgr: true },
-  { key: 'settings', label: 'main.settings', icon: 'settings', admin: true },
+  // Managers get Settings for Rooms & positions (the schedule's layout); the rest of it is admins'.
+  { key: 'settings', label: 'main.settings', icon: 'settings', mgr: true },
 ];
 
 // Shorter page titles for the phone's top bar, where the language switch and the bell sit too.

@@ -2,7 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { useApp, Icon, Avatar, Modal, Field, useAction, JobDot, Empty } from '../ui.jsx';
 import { ROLES, roleLabel, roleOf, assignableRoles, canManageUser, canManageEvents, roleInfo } from '../../../core/roles.js';
 import { deliverable } from '../../../core/email-address.js';
-import { scheduleAreas, uniqueAreas, sameArea } from '../../../core/areas.js';
+import { sameArea } from '../../../core/areas.js';
+import { roomsForPosition, homeRoom, entryRooms } from '../../../core/layout.js';
 import { sendSignInLink, inviteAll, IS_DEMO } from '../api.js';
 import { t, useT, stampDay } from '../i18n/index.js';
 
@@ -165,7 +166,6 @@ function EmployeeDialog({ emp, onClose }) {
   const t = useT();
   const { call, jobCodes, me, employees, emailEnabled, settings } = useApp();
   const [f, setF] = useState({ onSchedule: true, ...emp, role: roleOf(emp), jobCodes: emp.jobCodes || [] });
-  const allAreas = uniqueAreas([...scheduleAreas(settings), ...f.jobCodes.flatMap((j) => j.areas || [])]);
   // The email typed is already someone's sign-in (e.g. an admin who also works shifts): offer to connect.
   const typed = String(f.email || '').trim().toLowerCase();
   const emailOwner = typed ? employees.find((x) => x.id !== emp.id && String(x.email || '').toLowerCase() === typed) : null;
@@ -186,11 +186,6 @@ function EmployeeDialog({ emp, onClose }) {
   const superAdminExists = employees.some((e) => roleOf(e) === 'super_admin' && e.active !== false);
   const roleChoices = self || !editable ? [roleOf(emp)] : assignableRoles(me, { superAdminExists });
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
-  const has = (id) => f.jobCodes.find((j) => j.jobCodeId === id);
-  const toggle = (id) => setF({ ...f, jobCodes: has(id) ? f.jobCodes.filter((j) => j.jobCodeId !== id) : [...f.jobCodes, { jobCodeId: id, rate: null }] });
-  const setRate = (id, rate) => setF({ ...f, jobCodes: f.jobCodes.map((j) => (j.jobCodeId === id ? { ...j, rate } : j)) });
-  const toggleArea = (id, area) => setF({ ...f, jobCodes: f.jobCodes.map((j) => (j.jobCodeId !== id ? j
-    : { ...j, areas: (j.areas || []).some((a) => sameArea(a, area)) ? j.areas.filter((a) => !sameArea(a, area)) : [...(j.areas || []), area] })) });
   const st = emp.id ? signInStatus(emp) : null;
   const managerOrUp = canManageEvents({ role: f.role });
 
@@ -263,29 +258,11 @@ function EmployeeDialog({ emp, onClose }) {
           <label className="check"><input type="checkbox" checked={f.onSchedule !== false} onChange={set('onSchedule')} />{t('team.showOnTheSchedule')}</label>
         </div>
 
-        <Field label={t('team.jobCodesPayRatesAreas')} help={t('team.pickEveryPositionThisPerson')}>
-          <div className="col" style={{ gap: 4, maxHeight: 260, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 10, padding: 6 }}>
-            {jobCodes.filter((j) => !j.archived).map((j) => {
-              const h = has(j.id);
-              return (
-                <div key={j.id} style={{ padding: '4px 6px', borderRadius: 8, background: h ? 'var(--brand-soft)' : undefined }}>
-                  <div className="row">
-                    <label className="check" style={{ flex: 1 }}><input type="checkbox" checked={!!h} onChange={() => toggle(j.id)} /><JobDot job={j} />{j.name} <span className="faint small">{j.department}</span></label>
-                    {h && <input className="input sm" type="number" step="0.25" style={{ width: 100 }} placeholder={j.defaultRate ? `$${j.defaultRate}` : t('team.hr')} value={h.rate ?? ''} onChange={(e) => setRate(j.id, e.target.value)} />}
-                  </div>
-                  {h && allAreas.length > 0 && (
-                    <div className="row wrap" style={{ gap: 4, margin: '4px 0 2px 26px' }}>
-                      {allAreas.map((a) => {
-                        const on = (h.areas || []).some((x) => sameArea(x, a));
-                        return <button type="button" key={a} className={`chip ${on ? 'on' : ''}`} style={{ fontSize: 11 }} onClick={() => toggleArea(j.id, a)}>{a}</button>;
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </Field>
+        <div className="field">
+          <span>{t('team.positions')}</span>
+          <PersonPositions value={f.jobCodes} onChange={(jobCodes) => setF({ ...f, jobCodes })} />
+          <div className="help">{t('team.positionsHelp')}</div>
+        </div>
         {!emp.id && (
           <Field label={t('team.passwordOptional')} help={emailEnabled ? t('team.leaveBlankWellEmailThem') : t('team.leaveBlankToGenerateA')}>
             <input className="input" type="text" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" style={{ maxWidth: 300 }} />
@@ -315,6 +292,84 @@ function EmployeeDialog({ emp, onClose }) {
         </div>
       )}
     </Modal>
+  );
+}
+
+/**
+ * A person's positions: each with the rooms they work it in (the rooms whose layout lists that
+ * position, Settings → Rooms & positions) and their pay rate for it. They're listed in those
+ * sections on the schedule and offered first when scheduling there.
+ */
+function PersonPositions({ value, onChange }) {
+  const t = useT();
+  const { jobCodes, jobs, layout } = useApp();
+  const update = (i, patch) => onChange(value.map((e, k) => (k === i ? { ...e, ...patch } : e)));
+  const drop = (i) => {
+    const next = value.filter((_, k) => k !== i);
+    if (value[i].primary && next.length && !next.some((e) => e.primary)) next[0] = { ...next[0], primary: true };
+    onChange(next);
+  };
+  const makeMain = (i) => onChange(value.map((e, k) => ({ ...e, primary: k === i })));
+  const add = (id) => {
+    const job = jobs[id];
+    if (!job) return;
+    // Starts in its usual room (its department's, else the first that shows it); tap other rooms to add them.
+    const home = homeRoom(layout, job);
+    onChange([...value, { jobCodeId: id, rate: null, primary: !value.length, ...(home ? { areas: [home] } : {}) }]);
+  };
+  const toggleRoom = (i, room) => {
+    const e = value[i];
+    const cur = entryRooms(e, jobs[e.jobCodeId]);
+    const on = cur.some((a) => sameArea(a, room));
+    if (on && cur.length === 1) return; // a position needs a room: take the position off instead
+    update(i, { areas: on ? cur.filter((a) => !sameArea(a, room)) : [...cur, room] });
+  };
+  const choices = jobCodes.filter((j) => !j.archived && !value.some((e) => e.jobCodeId === j.id));
+  return (
+    <div className="pp-list">
+      {!value.length && <div className="small muted">{t('team.noPositions')}</div>}
+      {value.map((e, i) => {
+        const job = jobs[e.jobCodeId];
+        if (!job) return null;
+        const listed = roomsForPosition(layout, job.id);
+        const mine = entryRooms(e, job);
+        const extra = mine.filter((a) => !listed.some((r) => sameArea(r.room, a)));
+        const shows = mine.some((a) => listed.some((r) => !r.hidden && sameArea(r.room, a)));
+        return (
+          <div key={e.jobCodeId} className="pp-item">
+            <div className="pp-top">
+              <span className="pp-name"><JobDot job={job} /><span className="ellipsis">{job.name}</span>{e.primary && <span className="badge brand">{t('team.main')}</span>}</span>
+              <span className="pp-rate">
+                <input className="input sm" type="number" step="0.25" min="0" placeholder={job.defaultRate ? `$${job.defaultRate}` : t('team.hr')} value={e.rate ?? ''}
+                  onChange={(ev) => update(i, { rate: ev.target.value })} aria-label={t('team.rateFor', { position: job.name })} />
+                <span className="small muted">{t('team.perHour')}</span>
+              </span>
+              {!e.primary && value.length > 1 && <button type="button" className="btn ghost sm" onClick={() => makeMain(i)}>{t('team.makeMain')}</button>}
+              <button type="button" className="btn ghost icon sm danger" onClick={() => drop(i)} aria-label={t('team.removePosition', { position: job.name })} title={t('team.removePosition', { position: job.name })}><Icon name="trash" /></button>
+            </div>
+            <div className="pp-rooms">
+              <span className="tiny muted">{t('team.rooms')}</span>
+              {listed.map((r) => {
+                const on = mine.some((a) => sameArea(a, r.room));
+                return (
+                  <button type="button" key={r.room} className={`chip ${on ? 'on' : ''} ${r.hidden ? 'dashed' : ''}`} aria-pressed={on} onClick={() => toggleRoom(i, r.room)}
+                    title={r.hidden ? t('team.roomHidden', { room: r.room }) : undefined}>{r.hidden ? t('team.roomHidden', { room: r.room }) : r.room}</button>
+                );
+              })}
+              {extra.map((a) => <button type="button" key={a} className="chip on dashed" aria-pressed="true" onClick={() => toggleRoom(i, a)} title={t('team.roomNotListed', { room: a })}>{t('team.roomNotListed', { room: a })}</button>)}
+            </div>
+            {!listed.length && <div className="help">{t('team.noRoomsForPosition')}</div>}
+            {listed.length > 0 && !shows && <div className="help">{t('team.notShown')}</div>}
+          </div>
+        );
+      })}
+      {choices.length > 0 && (
+        <select className="input" value="" onChange={(ev) => add(ev.target.value)} aria-label={t('team.addPosition')}>
+          <option value="">{t('team.addPosition')}</option>
+          {choices.map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}
+        </select>
+      )}
+    </div>
   );
 }
 

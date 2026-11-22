@@ -6,7 +6,10 @@
 import { findArea, sameArea, scheduleAreas, cleanArea } from './areas.js';
 import { canManageUser } from './roles.js';
 
-export function rosterApi({ store, settings, fail, needMgr, today, putSettings }) {
+// The order of sections and their names on the sheet live in the layout (core/layout.js, Settings →
+// Rooms & positions); these methods keep it in step, and keep settings.sectionOrder and the rosters'
+// labels too, for anything still reading them.
+export function rosterApi({ store, settings, fail, needMgr, today, putSettings, layouts }) {
   const areaList = () => scheduleAreas(settings());
   const canon = (a) => (a ? findArea(a, areaList()) || cleanArea(a) : '');
   const jobOf = (id) => {
@@ -218,6 +221,8 @@ export function rosterApi({ store, settings, fail, needMgr, today, putSettings }
       const orders = { ...(settings().sectionOrder || {}) };
       const k = bannerKey(section);
       if (orders[k]) { orders[k] = [...new Set(orders[k].map((id) => (id === from.id ? to.id : id)))]; putSettings({ sectionOrder: orders }); }
+      // In the layout, the new position takes the section's place in its room.
+      layouts?.replaceJob(from.id, to.id, { room: section });
       return { ok: true, jobCodeId: to.id, people, shifts };
     },
 
@@ -227,6 +232,7 @@ export function rosterApi({ store, settings, fail, needMgr, today, putSettings }
       if (!Array.isArray(jobCodeIds) || jobCodeIds.length > 200) fail(400, 'Pick the order of the sections');
       const ids = [...new Set(jobCodeIds.filter((id) => typeof id === 'string' && store.get('jobCodes', id)))];
       putSettings({ sectionOrder: { ...(settings().sectionOrder || {}), [bannerKey(banner)]: ids } });
+      layouts?.reorder(canon(banner) || banner, ids);
       return { ok: true };
     },
 
@@ -239,6 +245,7 @@ export function rosterApi({ store, settings, fail, needMgr, today, putSettings }
       const text = String(label || '').trim().slice(0, 60) || null;
       if (store.get('rosters', id)) store.update('rosters', id, { label: text });
       else store.insert('rosters', { id, area: areaHere, jobCodeId: job.id, label: text, banner: '', userIds: [], updatedAt: new Date().toISOString() });
+      layouts?.setLabel(sectionOf(job, area), job.id, text || '');
       return { ok: true };
     },
 
