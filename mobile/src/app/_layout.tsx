@@ -8,8 +8,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ToastProvider } from '@/components/ui';
 import { I18nProvider, useI18n } from '@/i18n';
+import { routeForLink } from '@/lib/links';
 import { setBadge, setChannelName, useTappedNotificationLink } from '@/lib/push';
-import { routeForLink } from '@/lib/schedule';
 import { SessionProvider, useSession } from '@/lib/session';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -53,15 +53,26 @@ function Shell() {
   );
 }
 
-/** Tapping a push notification opens the matching screen (once signed in). */
+/**
+ * Tapping a push notification opens the matching screen (once signed in). Its title is the restaurant's name:
+ * when it's from another restaurant this phone is signed in to, that one opens first.
+ */
 function OpenTappedNotification() {
   const tapped = useTappedNotificationLink();
-  const { boot } = useSession();
+  const { boot, accounts, server, openRestaurant, has } = useSession();
   const handled = useRef<string | null>(null);
+  const switched = useRef<string | null>(null);
   useEffect(() => {
-    if (!tapped || !boot || handled.current === tapped.id) return;
+    if (!tapped || handled.current === tapped.id) return;
+    const from = tapped.title && accounts.find((a) => a.signedIn && a.name === tapped.title);
+    if (from && from.server !== server && switched.current !== tapped.id) {
+      switched.current = tapped.id;
+      openRestaurant(from.server).catch(() => {});
+      return;
+    }
+    if (!boot) return;
     handled.current = tapped.id;
-    router.push(routeForLink(tapped.link));
-  }, [tapped, boot]);
+    router.push(routeForLink(tapped.link, has));
+  }, [tapped, boot, accounts, server]); // eslint-disable-line react-hooks/exhaustive-deps
   return null;
 }

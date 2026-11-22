@@ -29,6 +29,7 @@ export default function Swaps() {
   const swaps = useRpc<SwapsList>('swaps.list');
   const ahead = useRpc<ShiftsList>('shifts.list', { start: today, end: addDays(today, 28) });
   const [tab, setTab] = useState<Tab | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const meFull = people[me.id] || me;
 
   const mineUpcoming = (ahead.data?.shifts || []).filter((s) => s.userId === me.id && s.published && s.date >= today).sort(byStart);
@@ -63,6 +64,20 @@ export default function Swaps() {
       ) : d ? (
         list.length ? list.map((r) => <RequestCard key={r.id} r={r} mode={cur} />)
           : <Card><Empty icon="swap" title={t(cur === 'approvals' ? 'swaps.emptyApprovals' : 'swaps.emptyMine')} /></Card>
+      ) : null}
+      {d && cur === 'approvals' && d.openPending.length ? (
+        <>
+          <SectionTitle title={t('swaps.waitingOnCoworkers')} right={<Badge text={String(d.openPending.length)} />} />
+          <Txt v="small" tone="muted">{t('swaps.waitingHelp')}</Txt>
+          {d.openPending.map((r) => <RequestCard key={r.id} r={r} mode="history" />)}
+        </>
+      ) : null}
+      {d && cur === 'approvals' && d.history.length ? (
+        <>
+          <SectionTitle title={t('swaps.recent')} />
+          {d.history.slice(0, showAll ? 40 : 5).map((r) => <RequestCard key={r.id} r={r} mode="history" />)}
+          {d.history.length > 5 && !showAll ? <Button kind="ghost" small title={t('swaps.showAll', { count: d.history.length })} onPress={() => setShowAll(true)} /> : null}
+        </>
       ) : null}
     </Screen>
   );
@@ -117,7 +132,7 @@ function MiniShift({ s, who }: { s: Shift | null; who: string }) {
   );
 }
 
-function RequestCard({ r, mode }: { r: SwapRequest; mode: Tab }) {
+function RequestCard({ r, mode }: { r: SwapRequest; mode: Tab | 'history' }) {
   const { t, stamp } = useI18n();
   const c = useColors();
   const { me, people, client } = useApp();

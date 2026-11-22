@@ -1,11 +1,9 @@
 {
   "expo": {
-    "name": "ShiftBoard",
     "slug": "shiftboard",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "shiftboard",
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "com.dublowdigital.shiftboard",
@@ -55,8 +53,6 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "ShiftBoard opens your photos so you can add a picture to the 86 List, like the empty bottle or the shelf.",
-          "cameraPermission": "ShiftBoard uses the camera so you can add a picture to the 86 List, like the empty bottle or the shelf.",
           "microphonePermission": false
         }
       ],
@@ -70,9 +66,6 @@
         }
       ]
     ],
-    "locales": {
-      "es": "./locales/es.json"
-    },
     "experiments": {
       "reactCompiler": true
     }

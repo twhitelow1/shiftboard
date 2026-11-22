@@ -213,6 +213,11 @@ The words ShiftBoard uses in Spanish, so the phone app, the website and emails s
 | English | Español | Notes |
 |---|---|---|
 | sign in / sign out | iniciar sesión / cerrar sesión | |
+| two-step sign-in | verificación en dos pasos | |
+| authenticator app / 6-digit code | app de autenticación / código de 6 dígitos | |
+| recovery code | código de recuperación | "Cada uno sirve una vez" |
+| setup key | clave de configuración | |
+| passkey | llave de acceso (passkey) | web-only for now |
 | forgot your password? | ¿olvidaste tu contraseña? | |
 | reset your password | restablece tu contraseña | |
 | restaurant address | dirección del restaurante | "dirección de ShiftBoard de tu restaurante" |
@@ -235,6 +240,47 @@ The words ShiftBoard uses in Spanish, so the phone app, the website and emails s
 | help & support | ayuda y soporte | |
 | try again | reintentar | |
 | continue / cancel / save / send | continuar / cancelar / guardar / enviar | |
+
+## Training (website and phone app)
+
+| English | Español | Notes |
+|---|---|---|
+| Training (tab) | Capacitación | the phone's tab label is a point smaller in Spanish so five tabs fit |
+| menu study guide / menu item | guía del menú / platillo | "3 platillos" |
+| flashcards | tarjetas de estudio · tarjetas | button "Tarjetas" |
+| quiz / quizzes | cuestionario / cuestionarios | |
+| hand it in / see my score | entregar / ver mi puntaje | |
+| passed / not passed | aprobado / no aprobado | |
+| leaderboard | clasificación | |
+| items mastered | platillos dominados | |
+| employee manual / handbook | manual del empleado | tab: "Manual" |
+| I've read this / read again | ya lo leí / volver a leer | |
+| manager on duty | gerente en turno | |
+| call / text (buttons) | llamar / mensaje | "Mandar un mensaje a Kelly" for screen readers |
+| call-out line | línea para avisos | |
+| Can't make it? Call out | ¿No puedes ir? Avisa | the panel on your own upcoming shift |
+| allergens / what's in it / how to sell it | alérgenos / qué lleva / cómo venderlo | |
+| recipe / prep notes / makes | receta / notas de preparación / rinde | |
+
+## Phone app, version 2
+
+| English | Español | Notes |
+|---|---|---|
+| Day / Week (schedule) | Día / Semana | |
+| projected covers | cubiertos proyectados | "~157" under each day |
+| your section / your tables | tu sección / tus mesas | "Tus mesas: T1, T4 · 12 lugares" |
+| My tables / Whole room | Mis mesas / Todo el salón | floor plan switch |
+| my tips / your share / how it was worked out | mis propinas / tu parte / cómo se calculó | |
+| estimate / final (tips) | estimado / definitivo | |
+| Today on the floor | Hoy en el salón | shift leads' and managers' screen |
+| working now / coming in later today | trabajando ahora / entran más tarde hoy | |
+| publish the week of … | publicar la semana del … | confirmation before publishing |
+| restaurants (on this phone) / add another restaurant | restaurantes / agregar otro restaurante | |
+| switch to … / open now | cambiar a … / abierto | |
+| no connection, showing what you last saw | sin conexión, mostrando lo último que viste | offline note |
+| any time / some hours / unavailable | todo el día / por horas / no disponible | availability |
+| opening / close (availability with no time) | la apertura / el cierre | |
+| waiting on coworkers / recently decided | esperando a los compañeros / decididos hace poco | approvers in Trades |
 
 ## Notifications, emails and errors
 

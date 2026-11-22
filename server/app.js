@@ -571,8 +571,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   // Settings → Integrations: the restaurant's admins set up ADP, Toast, Tripleseat, the text sender and the
   // email From themselves (server/integrations-routes.js); read-only from env on a single-restaurant install.
   mountIntegrations(app, { db, env, tenant, userOf: (req) => userFromToken(db.store, sessionToken(req)) });
-  // Training photos (menu study guide, quizzes), for signed-in staff only.
-  trainingRoutes(app, { db, signedIn: (req) => userFromToken(db.store, req.cookies[COOKIE]) });
+  // Training photos (menu study guide, quizzes), for signed-in staff only (cookie on the web, bearer token in the phone app).
+  trainingRoutes(app, { db, signedIn: (req) => userFromToken(db.store, sessionToken(req)) });
   // 86 List photos, for people who can see the item's list (cookie on the web, bearer token in the phone app).
   eightySixRoutes(app, { db, signedIn: (req) => userFromToken(db.store, sessionToken(req)) });
 

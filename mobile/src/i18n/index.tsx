@@ -4,6 +4,7 @@
 import { getLocales } from 'expo-localization';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
+import { APP_NAME } from '@/brand';
 import { getItem, setItem } from '@/lib/storage';
 import { parseDate } from '@/lib/time';
 import en from './en';
@@ -39,8 +40,11 @@ export function phoneLanguage(): Lang {
 }
 
 const lookup = (lang: Lang, key: string): unknown => key.split('.').reduce<any>((o, k) => (o == null ? o : o[k]), CATALOGS[lang]);
-const fill = (s: string, params?: Record<string, string | number>) =>
-  params ? s.replace(/\{(\w+)\}/g, (m, k) => (k in params ? String(params[k]) : m)) : s;
+/** Fills {name} placeholders; {app} is always the app's name (mobile/brand.js). */
+const fill = (s: string, params?: Record<string, string | number>) => {
+  const all: Record<string, string | number> = { app: APP_NAME, ...params };
+  return s.replace(/\{(\w+)\}/g, (m, k) => (k in all ? String(all[k]) : m));
+};
 
 export function translate(lang: Lang, key: MsgKey, params?: Record<string, string | number>): string {
   const v = lookup(lang, key) ?? lookup('en', key);
