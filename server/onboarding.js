@@ -186,6 +186,10 @@ export function mountOnboarding(app, d) {
           lang, ip: req.ip, userAgent: req.get('user-agent'), source: 'onboarding', at, smsEnabled: now0.sms, requireTerms: true, links: now0.legal,
         });
       } catch (e) { fail(e.status || 400, e.message); }
+      // The wizard's recovery codes replace any older ones; its factors start counting; anything else pending goes.
+      if (s.list('authFactors', (x) => x.userId === user.id && x.type === 'recovery' && x.pending === doc.th).length) {
+        for (const old of s.list('authFactors', (x) => x.userId === user.id && x.type === 'recovery' && !x.pending)) s.remove('authFactors', old.id);
+      }
       for (const f of s.list('authFactors', (x) => x.userId === user.id && x.pending)) {
         if (f.pending === doc.th && !f.unconfirmed) { const { pending: _p, ...rest } = f; s.insert('authFactors', rest); } else s.remove('authFactors', f.id);
       }
