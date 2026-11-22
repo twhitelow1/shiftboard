@@ -29,7 +29,8 @@ export function routeForLink(link: string | undefined, has: (f: Feature) => bool
     case 'swaps':
       return '/swaps';
     case 'timeoff':
-      return a === 'availability' ? '/availability' : '/time-off';
+      // Time Off is a tab only without Training (src/navigation.ts timeOffRoute).
+      return a === 'availability' ? '/availability' : has('training') ? '/my-time-off' : '/time-off';
     case '86':
       if (!has('eightySix')) break;
       return a ? { pathname: '/eighty-six', params: { item: a } } : '/eighty-six';

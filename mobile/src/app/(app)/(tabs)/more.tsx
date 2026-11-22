@@ -18,7 +18,7 @@ import { useAction, useErrorText, useRpc } from '@/lib/hooks';
 import { pushStatus, registerForPush, type PushStatus } from '@/lib/push';
 import { useApp, type Account } from '@/lib/session';
 import type { EightySixSummary } from '@/lib/types';
-import { showTimeOffTab } from '@/navigation';
+import { showTimeOffTab, timeOffRoute } from '@/navigation';
 
 export default function More() {
   const { t, tn, chosen, setLang, date } = useI18n();
@@ -91,7 +91,7 @@ export default function More() {
       <Card pad={false} style={{ overflow: 'hidden' }}>
         {has('tips') ? <ListRow icon="dollar" title={t('more.myTips')} sub={t('more.myTipsHelp')} onPress={() => router.push('/tips')} /> : null}
         {has('events') ? <ListRow icon="glass" title={t('more.events')} sub={t('more.eventsHelp')} onPress={() => router.push('/events')} /> : null}
-        {!showTimeOffTab(has) ? <ListRow icon="sun" title={t('more.timeOff')} onPress={() => router.push('/time-off')}
+        {!showTimeOffTab(has) ? <ListRow icon="sun" title={t('more.timeOff')} onPress={() => router.push(timeOffRoute(has))}
           right={canApprove && approvals ? <Badge tone="warn" text={String(approvals)} /> : null} /> : null}
         <ListRow icon="clock" title={t('more.availability')} sub={t('more.availabilityHelp')} onPress={() => router.push('/availability')} />
       </Card>

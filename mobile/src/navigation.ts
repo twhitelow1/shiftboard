@@ -19,6 +19,11 @@ export interface TabDef {
 
 /** Time Off is a tab only when Training isn't. */
 export const showTimeOffTab = (has: (f: Feature) => boolean) => !has('training');
+/**
+ * Where Time Off opens: its tab, or (with Training) the /my-time-off screen. Expo Router can't open a tab hidden
+ * with href: null, so the same view (components/TimeOffView.tsx) has a screen of its own.
+ */
+export const timeOffRoute = (has: (f: Feature) => boolean) => (showTimeOffTab(has) ? '/time-off' : '/my-time-off') as '/time-off' | '/my-time-off';
 
 export const TABS: TabDef[] = [
   { name: 'shifts', title: 'tabs.shifts', icon: 'calendar' },

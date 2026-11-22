@@ -18,6 +18,7 @@ import { byStart, canTrade, qualified } from '@/lib/schedule';
 import { useApp } from '@/lib/session';
 import { addDays, weekStart } from '@/lib/time';
 import type { MyTipsWeek, Shift, ShiftsList, TimeOff } from '@/lib/types';
+import { timeOffRoute } from '@/navigation';
 
 const openShift = (s: Shift) => router.push({ pathname: '/shift/[id]', params: { id: s.id, date: s.date } });
 
@@ -144,7 +145,7 @@ export default function MyShifts() {
 
       {myOff.length > 0 ? (
         <>
-          <SectionTitle title={t('myShifts.timeOffTitle')} right={<Button kind="ghost" small title={t('myShifts.seeAll')} onPress={() => router.push('/time-off')} />} />
+          <SectionTitle title={t('myShifts.timeOffTitle')} right={<Button kind="ghost" small title={t('myShifts.seeAll')} onPress={() => router.push(timeOffRoute(has))} />} />
           <Card pad={false} style={{ overflow: 'hidden' }}>
             {myOff.map((x) => (
               <Row key={x.id} style={{ padding: 14, borderBottomWidth: 0.5, borderColor: c.border }}>

@@ -18,12 +18,12 @@ mobile/
     (auth)/             welcome (restaurant address, the restaurants on this phone), sign-in, forgot
     (app)/(tabs)/       shifts, schedule (day / week), swaps, training or time-off (see navigation.ts), more
     (app)/              shift/[id] (section on the floor plan, call-out), notifications, request-time-off,
-                        availability, tips, events/ (list, [id]), floor (shift leads and managers),
+                        availability, my-time-off (Time Off with Training), tips, events/ (list, [id]), floor,
                         menu/[id], study (flashcards), quiz/[id], manual/[id], eighty-six, report-86
   src/navigation.ts   the tab list: Training is the 4th tab when the plan includes it, Time Off otherwise
   src/brand.ts        APP_NAME and the invite-link schemes, from brand.js
   src/components/     Screen (header, language button, offline note), ui, ShiftRow, Icon, DateRangePicker,
-                      TimeField, ModCard (manager on duty), CallOutPanel, Markdown, TrainingPhoto,
+                      TimeField, TimeOffView, ModCard (manager on duty), CallOutPanel, Markdown, TrainingPhoto,
                       FloorPlan (react-native-svg), ShiftSection, WeekGrid, training/ (menu, quizzes, board, manual)
   src/i18n/           en.ts, es.ts (every word the app shows), index.tsx (t, plurals, dates, {app})
   src/lib/            api (server calls), session (restaurants, sign-in, bootstrap), cache (offline copies),
@@ -87,7 +87,7 @@ Notifications carry the website's links; `src/lib/links.ts` turns them into scre
 | `#/my`, `#/calendar` | My Shifts (`#/my/<shiftId>` or `#/shift/<id>` opens that shift) |
 | `#/schedule[/<date>]` | Schedule |
 | `#/swaps` | Trades |
-| `#/timeoff`, `#/timeoff/availability` | Time Off, My availability |
+| `#/timeoff`, `#/timeoff/availability` | Time Off (its tab, or `/my-time-off` with Training), My availability |
 | `#/86[/<item or list id>]` | 86 List (that item highlighted) |
 | `#/events[/<id>]` | Events, an event's BEO |
 | `#/training/quizzes`, `/quiz/<attemptId>`, `/manual/<pageId>`, `/menu/<itemId>`, `/board` | Training tab, a quiz, a manual page, a menu item, the leaderboard |

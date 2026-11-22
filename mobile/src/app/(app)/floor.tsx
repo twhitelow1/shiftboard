@@ -16,6 +16,7 @@ import { useAction, useRpc } from '@/lib/hooks';
 import { useApp } from '@/lib/session';
 import { absNow, addDays, effectiveShift, shiftSpan, weekStart } from '@/lib/time';
 import type { EightySixSummary, Shift, ShiftsList, SwapsList, TimeOff } from '@/lib/types';
+import { timeOffRoute } from '@/navigation';
 
 /** Ticks every minute so "working now" stays current while the screen is open. */
 function useMinute() {
@@ -108,7 +109,7 @@ export default function Floor() {
           <Card pad={false} style={{ overflow: 'hidden' }}>
             {!trades && !offs ? <ListRow icon="check" title={t('floor.nothingToApprove')} /> : null}
             {trades ? <ListRow icon="swap" title={tn('floor.trades', trades)} onPress={() => router.push('/swaps')} right={<Badge tone="warn" text={t('floor.review')} />} /> : null}
-            {offs ? <ListRow icon="sun" title={tn('floor.timeOff', offs)} onPress={() => router.push('/time-off')} right={<Badge tone="warn" text={t('floor.review')} />} /> : null}
+            {offs ? <ListRow icon="sun" title={tn('floor.timeOff', offs)} onPress={() => router.push(timeOffRoute(has))} right={<Badge tone="warn" text={t('floor.review')} />} /> : null}
           </Card>
         </>
       ) : null}
