@@ -1,18 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useApp, Icon, Field, useAction } from '../ui.jsx';
 import { IS_DEMO, sendTestEmail } from '../api.js';
-import { scheduleAreas, uniqueAreas, bannerColor, textOn, sameArea } from '../../../core/areas.js';
+import { textOn } from '../../../core/areas.js';
 import { applyBranding, logoUrl, imageToPng, THEMES } from '../theme.js';
 import TipPoolSettings from './TipPoolSettings.jsx';
 import { TextSettingsCard } from './PhoneCards.jsx';
 import { IntegrationsCard } from './AdpSettings.jsx'; // ADP, the clock-in source, and Toast
 import { TrainingSettingsCard } from './TrainingShared.jsx';
 import EightySixSettings from './EightySixSettings.jsx';
+import RoomsPositions from './RoomsPositions.jsx';
 import { tx, useT, dowLong, dowShort , LANGUAGE_NAMES } from '../i18n/index.js';
 
-export default function Settings() {
+export default function Settings({ parts = [] }) {
   const t = useT();
-  const { settings, call, emailEnabled, emailFrom, jobCodes, has, managed } = useApp();
+  const { settings, call, emailEnabled, emailFrom, has, managed, isAdmin } = useApp();
   const [s, setS] = useState(() => JSON.parse(JSON.stringify(settings)));
   const [run, busy] = useAction();
   const [pw, setPw] = useState('');
@@ -24,8 +25,22 @@ export default function Settings() {
   const setDp = (i, k, v) => setS({ ...s, dayparts: s.dayparts.map((d, j) => (j === i ? { ...d, [k]: v } : d)) });
   const shareTotal = s.dayparts.reduce((t, d) => t + Number(d.share || 0), 0);
 
-  // Branding saves on its own (BrandingCard), so this Save never overwrites the colors.
-  const save = () => run(() => call('settings.update', { ...s, brandColor: undefined, navColor: undefined, bgColor: undefined, appearance: undefined, weekStartDow: Number(s.weekStartDow), dayparts: s.dayparts.map((d) => ({ ...d, share: Number(d.share) })) }), t('settings.settingsSaved'));
+  // Branding saves on its own (BrandingCard), and so do the rooms and their colors (Rooms & positions),
+  // so this Save never overwrites them.
+  const save = () => run(() => call('settings.update', { ...s, brandColor: undefined, navColor: undefined, bgColor: undefined, appearance: undefined, areas: undefined, areaColors: undefined, sectionOrder: undefined,
+    weekStartDow: Number(s.weekStartDow), dayparts: s.dayparts.map((d) => ({ ...d, share: Number(d.share) })) }), t('settings.settingsSaved'));
+  // #/settings/rooms[/<room>]: open Rooms & positions (at that room).
+  const rooms = parts[1] === 'rooms' ? <RoomsPositions key={parts[2] || ''} focus={decodeURIComponent(parts[2] || '')} /> : <RoomsPositions />;
+
+  const passwordCard = !IS_DEMO && (
+    <div className="card card-pad col" style={{ gap: 12 }}>
+      <h2>{t('settings.myPassword')}</h2>
+      <div className="row wrap"><input className="input" type="password" placeholder={t('settings.newPassword6Characters')} value={pw} onChange={(e) => setPw(e.target.value)} style={{ maxWidth: 300 }} autoComplete="new-password" />
+        <button className="btn" disabled={busy || pw.length < 6} onClick={() => run(() => call('employees.changePassword', { password: pw }), t('settings.passwordChanged')).then(() => setPw(''))}>{t('settings.change')}</button></div>
+    </div>
+  );
+  // Managers run the schedule's rooms and positions; the rest of Settings is for admins.
+  if (!isAdmin) return <div style={{ maxWidth: 820 }} className="col">{rooms}{passwordCard}</div>;
 
   return (
     <div style={{ maxWidth: 820 }} className="col">
@@ -61,6 +76,8 @@ export default function Settings() {
         </Field>
       </div>
 
+      {rooms}
+
       <BrandingCard />
 
       <div className="card card-pad col" style={{ gap: 12 }}>
@@ -77,23 +94,6 @@ export default function Settings() {
           <span>{t('settings.showStartTimesOnlyThe')}</span></label>
         <Field label={t('settings.shiftTagsCommaSeparated')} help={t('settings.quickPicksWhenAddingA')}><input className="input" {...listField('tags')} /></Field>
         <Field label={t('settings.roomsAreasForEvents')}><input className="input" {...listField('rooms')} /></Field>
-        <Field label={t('settings.scheduleAreasCommaSeparatedIn')} help={t('settings.wherePeopleWorkRoomsBars')}><input className="input" {...listField('areas')} /></Field>
-        <Field label={t('settings.bannerColors')} help={t('settings.theColorOfEachBanner')}>
-          <div className="row wrap" style={{ gap: 6 }}>
-            {uniqueAreas([...jobCodes.filter((j) => !j.archived).map((j) => j.department), ...scheduleAreas(s)]).map((name, i) => {
-              const color = bannerColor(s, name, i);
-              const setColor = (c) => {
-                const rest = Object.fromEntries(Object.entries(s.areaColors || {}).filter(([k]) => !sameArea(k, name)));
-                setS({ ...s, areaColors: { ...rest, [name]: c } });
-              };
-              return (
-                <label key={name} className="sheet-swatch" style={{ background: color, color: textOn(color), cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 8px' }}>
-                  {name}<input type="color" value={color} onChange={(e) => setColor(e.target.value)} style={{ width: 22, height: 18, padding: 0, border: 0, background: 'none' }} />
-                </label>
-              );
-            })}
-          </div>
-        </Field>
         <Field label={t('settings.departments')}><input className="input" {...listField('departments')} /></Field>
       </div>
 
@@ -139,13 +139,7 @@ export default function Settings() {
       {has('training') && <TrainingSettingsCard />}
       {has('eightySix') && <EightySixSettings />}
 
-      {!IS_DEMO && (
-        <div className="card card-pad col" style={{ gap: 12 }}>
-          <h2>{t('settings.myPassword')}</h2>
-          <div className="row"><input className="input" type="password" placeholder={t('settings.newPassword6Characters')} value={pw} onChange={(e) => setPw(e.target.value)} style={{ maxWidth: 300 }} autoComplete="new-password" />
-            <button className="btn" disabled={busy || pw.length < 6} onClick={() => run(() => call('employees.changePassword', { password: pw }), t('settings.passwordChanged')).then(() => setPw(''))}>{t('settings.change')}</button></div>
-        </div>
-      )}
+      {passwordCard}
     </div>
   );
 }

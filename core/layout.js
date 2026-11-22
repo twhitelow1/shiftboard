@@ -256,8 +256,10 @@ export function buildSections({ layout, jobs = {}, employees = [], shifts = [], 
       const at = (id) => { const i = roster?.userIds?.indexOf(id) ?? -1; return i < 0 ? 1e9 : i; };
       const rows = [...ids].map((id) => people.get(id)).filter(Boolean).map((u) => ({ user: u, shifts: list.filter((x) => x.userId === u.id) }));
       rows.sort((a, b) => at(a.user.id) - at(b.user.id) || (a.user.order ?? 1e9) - (b.user.order ?? 1e9) || a.user.name.localeCompare(b.user.name));
-      sections.push({ key: `${r.room}|${job.id}`, job, banner: r.room, area: isArea ? r.room : '', room: r.room, roomIndex: ri, label: job.name, rows,
-        open: list.filter((x) => !x.userId), sheetLabel: p.label || null });
+      // area: what a new shift here is saved with (areaForRoom); sheetBanner: a department banner as the sheet wrote it.
+      const area = !isArea && sameArea(r.room, job.department) ? '' : r.room;
+      sections.push({ key: `${r.room}|${job.id}`, job, banner: r.room, area, room: r.room, roomIndex: ri, label: job.name, rows,
+        open: list.filter((x) => !x.userId), sheetLabel: p.label || null, sheetBanner: roster?.banner || '' });
     }
   });
   return { sections, stray: [...stray.values()] };

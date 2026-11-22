@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useApp, Modal, Field, Icon, Avatar, Warnings, shiftTime, startTimesOnly, useAction, JobDot } from '../ui.jsx';
 import { addDays } from '../../../core/time.js';
-import { scheduleAreas, findArea } from '../../../core/areas.js';
+import { shiftChoices, roomOfShift, findRoom, areaForRoom } from '../../../core/layout.js';
 import { ShiftSectionCard, useSectionField } from './Sections.jsx';
 import { CallOutPanel } from './TrainingShared.jsx';
 import { useT, fmtTime, prettyDate } from '../i18n/index.js';
@@ -19,34 +19,53 @@ export default function ShiftDialog({ shift, onClose, warnings, events = [], sta
   return <ShiftDetail shift={shift} onClose={onClose} events={events} startIn={startIn} onEdit={isMgr ? () => setEditing(true) : null} />;
 }
 
+/**
+ * Add or edit a shift: the room first, then that room's positions (Settings → Rooms & positions;
+ * hidden ones aren't offered), then the person. People who work that position in that room come
+ * first; "Show everyone" lists the rest, and picking one of them gives them the position there.
+ */
 function ShiftEditor({ shift, onClose, warnings, events }) {
   const t = useT();
-  const { jobCodes, employees, settings, jobs, call, toast } = useApp();
-  const [f, setF] = useState(() => ({
-    id: shift.id, date: shift.date, start: shift.start || '16:00', end: shift.end || '', jobCodeId: shift.jobCodeId || jobCodes.find((j) => !j.archived)?.id,
-    userId: shift.userId || '', area: shift.area || '', tag: shift.tag || '', notes: shift.notes || '', breakMin: shift.breakMin || 0, eventId: shift.eventId || '', staffingLineId: shift.staffingLineId || null,
-    untilClose: shift.id ? !shift.end : true,
-  }));
+  const { employees, settings, jobs, call, toast, layout } = useApp();
+  const [f, setF] = useState(() => {
+    // Where it starts: the shift's own room and position, else (a new shift with neither) the first room's first position.
+    let jobCodeId = shift.jobCodeId && jobs[shift.jobCodeId] ? shift.jobCodeId : '';
+    let room = jobCodeId ? roomOfShift(shift, jobs[jobCodeId]) : '';
+    room = findRoom(layout, room)?.room || room;
+    const first = shiftChoices({ layout, jobs, employees }).rooms;
+    if (!room) room = (jobCodeId && first.find((r) => r.positions.some((j) => j.id === jobCodeId))?.room) || first[0]?.room || '';
+    if (!jobCodeId) jobCodeId = first.find((r) => r.room === room)?.positions[0]?.id || '';
+    return {
+      id: shift.id, date: shift.date, start: shift.start || '16:00', end: shift.end || '', jobCodeId, room,
+      userId: shift.userId || '', tag: shift.tag || '', notes: shift.notes || '', breakMin: shift.breakMin || 0, eventId: shift.eventId || '', staffingLineId: shift.staffingLineId || null,
+      untilClose: shift.id ? !shift.end : true,
+    };
+  });
   const [run, busy] = useAction();
   const [publishNow, setPublishNow] = useState(!!shift.published);
+  const [everyone, setEveryone] = useState(false);
   const section = useSectionField(shift, f.date); // room & tables (server section)
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e?.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e }));
 
-  const active = employees.filter((e) => e.active !== false && e.onSchedule !== false);
-  const trained = active.filter((e) => e.jobCodes?.some((j) => j.jobCodeId === f.jobCodeId));
-  const others = active.filter((e) => !trained.includes(e));
+  const choices = shiftChoices({ layout, jobs, employees, room: f.room, jobCodeId: f.jobCodeId });
+  // A shift already in a section that doesn't show (hidden, or not in Rooms & positions) keeps it as a choice.
+  const roomListed = choices.rooms.some((r) => r.room === f.room);
+  const posListed = choices.positions.some((j) => j.id === f.jobCodeId);
+  const job = jobs[f.jobCodeId];
+  const person = employees.find((e) => e.id === f.userId);
+  const holder = !!person && choices.holders.includes(person);
+  const showOthers = everyone || (person && !holder);
   const dayEvents = events.filter((e) => e.date === f.date);
-  const areas = scheduleAreas(settings);
-  if (f.area && !findArea(f.area, areas)) areas.push(f.area);
-  // Picking someone for a shift with no area yet uses the area they usually work this job in.
-  const pickUser = (e) => {
-    const userId = e.target.value;
-    const entry = employees.find((x) => x.id === userId)?.jobCodes?.find((j) => j.jobCodeId === f.jobCodeId);
-    setF((x) => ({ ...x, userId, area: x.area || entry?.areas?.[0] || '' }));
+  const pickRoom = (e) => {
+    const room = e.target.value;
+    const positions = shiftChoices({ layout, jobs, employees, room }).positions;
+    setF((x) => ({ ...x, room, jobCodeId: positions.some((j) => j.id === x.jobCodeId) ? x.jobCodeId : positions[0]?.id || '' }));
   };
 
   const save = async () => {
-    const payload = { ...f, end: f.untilClose ? null : f.end, userId: f.userId || null, eventId: f.eventId || null, published: shift.id ? undefined : publishNow };
+    const payload = { ...f, area: areaForRoom(f.room, job, settings), end: f.untilClose ? null : f.end, userId: f.userId || null, eventId: f.eventId || null,
+      published: shift.id ? undefined : publishNow, listPerson: !!f.userId && !holder };
+    delete payload.room;
     const r = await run(() => call('shifts.save', payload));
     if (r) {
       await section.save(r.shift.id);
@@ -68,27 +87,44 @@ function ShiftEditor({ shift, onClose, warnings, events }) {
         {shift.id && <button className={`btn danger ${confirmDelete ? 'solid' : ''}`} onClick={del} disabled={busy}><Icon name="trash" />{confirmDelete ? t('shiftDialog.tapAgainToDelete') : t('common.delete')}</button>}
         <span className="spacer" />
         <button className="btn" onClick={() => onClose(false)}>{t('common.cancel')}</button>
-        <button className="btn primary" onClick={save} disabled={busy}>{shift.id ? t('common.save') : t('shiftDialog.addShift')}</button>
+        <button className="btn primary" onClick={save} disabled={busy || !f.jobCodeId}>{shift.id ? t('common.save') : t('shiftDialog.addShift')}</button>
       </>}>
       <Warnings items={warnings} />
+      {!choices.rooms.length && !f.room && <div className="alert info"><Icon name="alert" size={16} /><span>{t('shiftDialog.noRooms')}</span></div>}
       <div className="grid2">
-        <Field label={t('shiftDialog.positionJobCode')}>
-          <select className="input" value={f.jobCodeId} onChange={set('jobCodeId')}>
-            {jobCodes.filter((j) => !j.archived || j.id === f.jobCodeId).map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}
+        <Field label={t('shiftDialog.room')} help={t('shiftDialog.roomHelp')}>
+          <select className="input" value={f.room} onChange={pickRoom}>
+            {!roomListed && <option value={f.room}>{f.room ? t('shiftDialog.notOnSchedule', { name: f.room }) : '—'}</option>}
+            {choices.rooms.map((r) => <option key={r.room} value={r.room}>{r.room}</option>)}
           </select>
         </Field>
-        <Field label={t('shiftDialog.employee')}>
-          <select className="input" value={f.userId} onChange={pickUser}>
-            <option value="">{t('shiftDialog.openShiftAnyoneCanPick')}</option>
-            <optgroup label={t('shiftDialog.trainedAsValue', { value: jobs[f.jobCodeId]?.name || '' })}>
-              {trained.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </optgroup>
-            <optgroup label={t('shiftDialog.notTrainedForThisJob')}>
-              {others.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </optgroup>
+        <Field label={t('common.position')}>
+          <select className="input" value={f.jobCodeId} onChange={set('jobCodeId')}>
+            {!posListed && <option value={f.jobCodeId}>{job ? t('shiftDialog.notOnSchedule', { name: job.name }) : '—'}</option>}
+            {choices.positions.map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}
           </select>
         </Field>
       </div>
+      <Field label={t('shiftDialog.employee')}>
+        <select className="input" value={f.userId} onChange={set('userId')}>
+          <option value="">{t('shiftDialog.openShiftAnyoneCanPick')}</option>
+          {job && f.room && (
+            <optgroup label={t('shiftDialog.worksHere', { position: job.name, room: f.room })}>
+              {choices.holders.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </optgroup>
+          )}
+          {showOthers && (
+            <optgroup label={t('shiftDialog.everyoneElse')}>
+              {choices.others.filter((e) => everyone || e.id === f.userId).map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </optgroup>
+          )}
+        </select>
+        <label className="check small" style={{ marginTop: 2 }}><input type="checkbox" checked={everyone} onChange={(e) => setEveryone(e.target.checked)} />{t('shiftDialog.showEveryone')}</label>
+        {job && f.room && !choices.holders.length && !person && <div className="help">{t('shiftDialog.noOneHere', { position: job.name, room: f.room })}</div>}
+      </Field>
+      {person && !holder && job && f.room && (
+        <div className="alert warn"><Icon name="alert" size={16} /><span>{t('shiftDialog.willGetPosition', { name: person.name, position: job.name, room: f.room })}</span></div>
+      )}
       <div className="grid3">
         <Field label={t('common.date')}><input className="input" type="date" value={f.date} onChange={set('date')} /></Field>
         <Field label={t('shiftDialog.start')}><input className="input" type="time" value={f.start} onChange={set('start')} step="900" /></Field>
@@ -99,12 +135,6 @@ function ShiftEditor({ shift, onClose, warnings, events }) {
         </Field>
       </div>
       <label className="check"><input type="checkbox" checked={f.untilClose} onChange={set('untilClose')} />{t('shiftDialog.untilCloseNoSetEnd')}</label>
-      <Field label={t('shiftDialog.area')} help={areas.length ? t('shiftDialog.whereThisShiftIsWorked') : t('shiftDialog.addAreasRestaurantRabbitHole')}>
-        <select className="input" value={f.area} onChange={set('area')}>
-          <option value="">{t('shiftDialog.noArea')}</option>
-          {areas.map((a) => <option key={a} value={a}>{a}</option>)}
-        </select>
-      </Field>
       {section.field}
       <Field label={t('shiftDialog.tagSection')} help={t('shiftDialog.showsOnTheScheduleNext')}>
         <input className="input" value={f.tag} onChange={set('tag')} placeholder={t('shiftDialog.optional')} />
