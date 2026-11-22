@@ -9,6 +9,19 @@ export const SERVICE_STYLES = {
   reception: { label: 'Reception / passed apps', es: 'Recepción / bocadillos pasados', server: 30, bartender: 50, runner: 50, busser: 60 },
   cocktail: { label: 'Bar / cocktail only', es: 'Solo barra / cóctel', server: 50, bartender: 50, runner: 0, busser: 75 },
 };
+/**
+ * Events within this many days are confirmed: a tentative booking (from Tripleseat, an import, or typed in)
+ * counts as confirmed from two weeks out, so staff see it and it can be staffed. Worked out when the event is
+ * read, so nothing has to run each night; saving the event from its page stores "confirmed".
+ */
+export const AUTO_CONFIRM_DAYS = 14;
+const plusDays = (date, n) => { const d = new Date(`${date}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+/** The event's status as people see it today: tentative turns confirmed within AUTO_CONFIRM_DAYS of its date. */
+export function eventStatus(e, today) {
+  if (e?.status === 'tentative' && e.date && today && e.date <= plusDays(today, AUTO_CONFIRM_DAYS)) return 'confirmed';
+  return e?.status;
+}
+
 /** A service style's name in a language. */
 export const styleLabel = (style, lang = 'en') => (style ? (lang === 'es' && style.es) || style.label : '');
 

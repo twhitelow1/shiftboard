@@ -3,7 +3,7 @@
 import { uid } from './store.js';
 import { addDays, dow, weekStart, range, overlaps, shiftSpan, todayStr, prettyDate, fmtTime, toMin, daysBetween } from './time.js';
 import { forecastDay, effectiveShift, hoursOf, activeAt, recommend } from './forecast.js';
-import { suggestStaffing } from './beo.js';
+import { suggestStaffing, eventStatus } from './beo.js';
 import { cleanBeoEvent, mergeBeo } from './beo-import.js';
 import { laborMethods } from './labor-api.js';
 import { adpMethods } from './adp-api.js';
@@ -380,7 +380,8 @@ export function createService(store, opts = {}) {
     });
     const needed = staffing.reduce((t, l) => t + (Number(l.count) || 0), 0);
     const filled = staffing.reduce((t, l) => t + Math.min(l.filled, Number(l.count) || 0), 0);
-    return { ...e, staffing, shifts, needed, filled };
+    const status = eventStatus(e, today()); // tentative within two weeks counts as confirmed (core/beo.js)
+    return { ...e, status, ...(status !== e.status ? { autoConfirmed: true } : {}), staffing, shifts, needed, filled };
   }
 
   // ---------- API ----------
@@ -693,8 +694,9 @@ export function createService(store, opts = {}) {
       const shifts = store.list('shifts', (s) => s.date >= start && s.date <= end && visibleShift(actor, s));
       const timeOff = store.list('timeOff', (t) => t.status !== 'cancelled' && t.status !== 'denied' && t.endDate >= start && t.startDate <= end && (isMgr(actor) || t.status === 'approved'))
         .map((t) => (isMgr(actor) || t.userId === actor.id ? t : { id: t.id, userId: t.userId, startDate: t.startDate, endDate: t.endDate, status: t.status }));
-      const events = store.list('events', (e) => e.date >= start && e.date <= end && e.status !== 'cancelled')
-        .map((e) => ({ id: e.id, name: e.name, date: e.date, start: e.start, end: e.end, room: e.room, guestCount: e.guestCount, status: e.status, captainId: e.captainId }));
+      // Tentative events are the events team's until they're confirmed (or within two weeks: core/beo.js).
+      const events = store.list('events', (e) => e.date >= start && e.date <= end && e.status !== 'cancelled' && (isEvents(actor) || eventStatus(e, today()) !== 'tentative'))
+        .map((e) => ({ id: e.id, name: e.name, date: e.date, start: e.start, end: e.end, room: e.room, guestCount: e.guestCount, status: eventStatus(e, today()), captainId: e.captainId }));
       const activeReq = store.list('requests', (r) => ['open', 'pending_approval'].includes(r.status));
       const pendingByShift = {};
       for (const r of activeReq) { pendingByShift[r.shiftId] = r.type; if (r.targetShiftId) pendingByShift[r.targetShiftId] = r.type; }
@@ -1263,14 +1265,14 @@ export function createService(store, opts = {}) {
     'events.list': (actor, { start, end } = {}) => {
       needAuth(actor);
       const from = start || addDays(today(), -7);
-      return store.list('events', (e) => e.date >= from && (!end || e.date <= end) && (isEvents(actor) || e.status !== 'tentative'))
+      return store.list('events', (e) => e.date >= from && (!end || e.date <= end) && (isEvents(actor) || eventStatus(e, today()) !== 'tentative'))
         .sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start))
-        .map((e) => { const v = eventView(e, actor); return { id: v.id, name: v.name, date: v.date, start: v.start, end: v.end, room: v.room, guestCount: v.guestCount, status: v.status, type: v.type, needed: v.needed, filled: v.filled, captainId: v.captainId, client: isEvents(actor) ? v.client : undefined }; });
+        .map((e) => { const v = eventView(e, actor); return { id: v.id, name: v.name, date: v.date, start: v.start, end: v.end, room: v.room, guestCount: v.guestCount, status: v.status, autoConfirmed: v.autoConfirmed, type: v.type, needed: v.needed, filled: v.filled, captainId: v.captainId, client: isEvents(actor) ? v.client : undefined }; });
     },
     'events.get': (actor, { id }) => {
       needAuth(actor);
       const e = store.get('events', id);
-      if (!e || (!isEvents(actor) && e.status === 'tentative')) fail(404, 'Event not found');
+      if (!e || (!isEvents(actor) && eventStatus(e, today()) === 'tentative')) fail(404, 'Event not found');
       const v = eventView(e, actor);
       // The client and their contact details, the F&B minimum and revenue: managers and the events team only.
       if (!isEvents(actor)) for (const k of ['estRevenue', 'deposit', 'fbMinimum', 'client', 'contactName', 'contactPhone', 'contactEmail', 'contactNotes']) delete v[k];

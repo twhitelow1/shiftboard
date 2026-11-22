@@ -9,6 +9,11 @@ import BeoImport, { BeoExtras } from './BeoImport.jsx';
 import { useT, dowShort, fmtTime, monthShort, prettyDate, stamp } from '../i18n/index.js';
 
 const STATUS_BADGE = { tentative: 'warn', confirmed: 'ok', completed: '', cancelled: 'bad' };
+/** The event's status in the person's language; "confirmed automatically" when a tentative event is within two weeks. */
+function StatusBadge({ e }) {
+  const t = useT();
+  return <span className={`badge ${STATUS_BADGE[e.status] || ''}`} title={e.autoConfirmed ? t('events.autoConfirmedHelp') : undefined}>{t(`events.${e.status}`)}{e.autoConfirmed ? ` · ${t('events.auto')}` : ''}</span>;
+}
 
 export default function Events({ parts }) {
   const id = parts[1];
@@ -48,7 +53,7 @@ function EventList() {
                 <div className="date"><div className="m">{dowShort(d.getUTCDay())}</div><div className="d">{d.getUTCDate()}</div><div className="m">{monthShort(d.getUTCMonth())}</div></div>
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="row wrap" style={{ gap: 6 }}><b style={{ fontSize: 15 }}>{e.name}</b><span className={`badge ${STATUS_BADGE[e.status]}`}>{e.status}</span>{e.source === 'tripleseat' && <TripleseatBadge review={e.review} />}</div>
+                <div className="row wrap" style={{ gap: 6 }}><b style={{ fontSize: 15 }}>{e.name}</b><StatusBadge e={e} />{e.source === 'tripleseat' && <TripleseatBadge review={e.review} />}</div>
                 <div className="small muted">{fmtTime(e.start)}{e.end ? `–${fmtTime(e.end)}` : ''} · {e.room || t('events.tbd')}{e.guestCount ? t('events.guestcountGuests', { guestCount: e.guestCount }) : ''}{e.type ? ` · ${e.type}` : ''}</div>
                 {e.needed > 0 && (
                   <div className="row" style={{ marginTop: 6, maxWidth: 320 }}>
@@ -106,7 +111,7 @@ function EventDetail({ id }) {
             <div className="muted">{prettyDate(e.date)} · {fmtTime(e.start)}{e.end ? ` – ${fmtTime(e.end)}` : ''} · {e.room}</div>
           </div>
           <div className="row wrap">
-            <span className={`badge ${STATUS_BADGE[e.status]}`}>{e.status}</span>
+            <StatusBadge e={e} />
             {e.guestCount > 0 && <span className="badge brand">{t('events.guestcountGuests2', { guestCount: e.guestCount })}{e.guaranteed ? t('events.guaranteedGuaranteed', { guaranteed: e.guaranteed }) : ''}</span>}
           </div>
         </div>
