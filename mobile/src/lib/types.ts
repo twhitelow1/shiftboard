@@ -183,6 +183,8 @@ export interface EightySixSummary {
   lists: { id: string; name: string; nameEs: string; kind: EightySixList['kind']; out: number; low: number }[];
   out: number;
   low: number;
+  /** Menu items out (86'd) today on lists the person can see: Training's badge. */
+  outMenuItemIds?: string[];
 }
 
 /** GET /api/config: what the sign-in screen needs before anyone signs in. */

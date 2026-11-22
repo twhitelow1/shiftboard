@@ -25,6 +25,7 @@ export function useRpc<T>(method: string, args: object = {}, deps: unknown[] = [
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
   const seq = useRef(0);
   const fresh = useRef(false);
   const argsKey = JSON.stringify(args);
@@ -50,12 +51,14 @@ export function useRpc<T>(method: string, args: object = {}, deps: unknown[] = [
       if (n !== seq.current) return;
       fresh.current = true;
       setData(r);
+      setDone(true);
       setError(null);
       setUpdatedAt(null);
       if (cacheKey) writeCache(cacheKey, { args: argsKey, data: r });
     } catch (e) {
       if (n !== seq.current) return;
       setError(e);
+      setDone(true);
       if (cacheKey && isOffline(e)) {
         const c = await readCache<{ args: string; data: T }>(cacheKey);
         if (c && n === seq.current) { setData((cur) => cur ?? c.data.data); setUpdatedAt(c.at); }
@@ -63,7 +66,8 @@ export function useRpc<T>(method: string, args: object = {}, deps: unknown[] = [
     }
   }, [client, method, argsKey, token, enabled, cacheKey]);
   useEffect(() => { load(); }, [load, version, ...deps]); // eslint-disable-line react-hooks/exhaustive-deps
-  return { data, error, reload: load, loading: data == null && error == null, updatedAt, offline: !!updatedAt && isOffline(error) };
+  /** done: an answer (or an error) came back; data can then be null when the server says there's nothing. */
+  return { data, error, reload: load, loading: !done && data == null, done, updatedAt, offline: !!updatedAt && isOffline(error) };
 }
 
 /** Run something that changes data: shows a toast, then refreshes every screen. */

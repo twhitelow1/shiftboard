@@ -1,12 +1,15 @@
-// One shift: details, who's working with you, and what you can do with it: trade it with a
-// coworker, give it away, or ask to pick it up if it's open. Same rules as the website
+// One shift: details, its server section on the room's floor plan, who's working with you, the event's BEO,
+// and what you can do with it: trade it with a coworker, give it away, call out (the manager on duty and the
+// call-out procedure), or ask to pick it up if it's open. Same rules as the website
 // (web/src/pages/ShiftDialog.jsx); the server checks everything again.
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { CallOutPanel } from '@/components/CallOutPanel';
 import { Icon } from '@/components/Icon';
 import { Screen } from '@/components/Screen';
+import { ShiftSectionCard } from '@/components/ShiftSection';
 import { useShiftTime, useShiftWhat } from '@/components/ShiftRow';
 import { Badge, Button, Card, Empty, Field, JobDot, Loading, Notice, Row, Txt, useColors } from '@/components/ui';
 import { useI18n } from '@/i18n';
@@ -22,7 +25,7 @@ export default function ShiftScreen() {
   const { id, date: day, mode: startMode } = useLocalSearchParams<{ id: string; date: string; mode?: string }>();
   const { t, date } = useI18n();
   const c = useColors();
-  const { me, today, settings, jobs, people, client } = useApp();
+  const { me, today, settings, jobs, people, client, has } = useApp();
   const shiftTime = useShiftTime();
   const what = useShiftWhat();
   const [run, busy] = useAction();
@@ -32,7 +35,9 @@ export default function ShiftScreen() {
   const [filter, setFilter] = useState('');
   const [sent, setSent] = useState<null | 'swap' | 'drop' | 'pickup'>(null);
 
-  const dayList = useRpc<ShiftsList>('shifts.list', { start: day, end: day }, [day]);
+  // From a notification there may be no date: look a few weeks around today.
+  const span = day ? { start: day, end: day } : { start: addDays(today, -14), end: addDays(today, 60) };
+  const dayList = useRpc<ShiftsList>('shifts.list', span, [day]);
   const ahead = useRpc<ShiftsList>('shifts.list', { start: today, end: addDays(today, 21) }, [], mode === 'swap');
   const shift = dayList.data?.shifts.find((s) => s.id === id);
   const job = shift ? jobs[shift.jobCodeId] : undefined;
@@ -40,7 +45,7 @@ export default function ShiftScreen() {
   const approval = settings.requireSwapApproval !== false;
   const pickupApproval = settings.requirePickupApproval !== false;
 
-  const coworkers = useMemo(() => (shift ? (dayList.data?.shifts || []).filter((s) => s.id !== shift.id && s.published && s.userId && s.userId !== shift.userId
+  const coworkers = useMemo(() => (shift ? (dayList.data?.shifts || []).filter((s) => s.id !== shift.id && s.date === shift.date && s.published && s.userId && s.userId !== shift.userId
     && (s.jobCodeId === shift.jobCodeId || (shift.eventId && s.eventId === shift.eventId))).sort(byStart) : []), [dayList.data, shift]);
   const candidates = useMemo(() => {
     if (!shift || mode !== 'swap' || !ahead.data) return null;
@@ -164,6 +169,10 @@ export default function ShiftScreen() {
       {header}
       {shift.pending ? <Notice tone="warn" icon="clock" text={t('shift.pendingNote')} /> : null}
       {!shift.end && !settings.startTimesOnly ? <Txt v="small" tone="faint">{t('shift.untilCloseNote')}</Txt> : null}
+      {shift.eventId && has('events') ? (
+        <Button icon="glass" title={t('shift.seeEvent')} onPress={() => router.push({ pathname: '/events/[id]', params: { id: shift.eventId! } })} />
+      ) : null}
+      {has('venue') && shift.published ? <ShiftSectionCard shift={shift} mine={mine} /> : null}
       {coworkers.length ? (
         <Card style={{ gap: 8 }}>
           <Txt v="small" tone="muted" bold>{t('shift.workingWith')}</Txt>
@@ -182,6 +191,7 @@ export default function ShiftScreen() {
           <Txt v="small" tone="faint">{t('shift.keepIt')}{settings.minSwapNoticeHours ? ` ${t('shift.notice', { hours: settings.minSwapNoticeHours })}` : ''}</Txt>
         </View>
       ) : null}
+      {future && mine && shift.published && has('training') ? <CallOutPanel /> : null}
       {future && isOpen && shift.published && qualified(meFull, shift.jobCodeId) ? <Button kind="primary" icon="plus" title={t('shift.pickUp')} busy={busy} onPress={() => submit('pickup')} /> : null}
       {future && isOpen && !qualified(meFull, shift.jobCodeId) ? <Txt v="small" tone="muted">{t('shift.notTrained', { job: job?.name || '' })}</Txt> : null}
     </Screen>
