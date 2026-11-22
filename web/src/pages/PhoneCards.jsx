@@ -6,6 +6,7 @@ import { useApp, Icon, useAction } from '../ui.jsx';
 import { IS_DEMO, getConfig, sendTestPush, sendTestText } from '../api.js';
 import { pushSupported, isIOS, isStandalone, readyRegistration, currentSubscription, subscribePhone } from '../push.js';
 import { formatPhone, normalizePhone } from '../../../core/notify-prefs.js';
+import { CONSENT_TEXT } from '../../../core/consent.js';
 import '../phone.css';
 import { t, useT } from '../i18n/index.js';
 
@@ -134,9 +135,10 @@ function TextCard({ config }) {
   const { call, me, settings, isAdmin, managed } = useApp();
   const [phone, setPhone] = useState(formatPhone(me.smsPhone) || me.phone || '');
   const [editing, setEditing] = useState(false);
+  const [agree, setAgree] = useState(false); // the consent box: never ticked to start with
   const [run, busy] = useAction();
-  const on = me.smsNotifications === true;
-  const save = (args, msg) => run(() => call('sms.preferences', args), msg).then((r) => { if (r) setEditing(false); });
+  const on = me.smsConsent === true;
+  const save = (args, msg) => run(() => call('sms.preferences', args), msg).then((r) => { if (r) { setEditing(false); setAgree(false); } });
 
   let body;
   if (IS_DEMO) {
@@ -166,13 +168,15 @@ function TextCard({ config }) {
     const valid = !!normalizePhone(phone);
     body = (
       <div className="col" style={{ gap: 8 }}>
-        {me.smsStoppedAt && !on && <div className="alert info"><Icon name="alert" size={16} />{t('phoneCards.youRepliedStopSoTexts')}</div>}
-        <form className="row wrap phone-row" onSubmit={(e) => { e.preventDefault(); if (valid) save({ on: true, phone }, t('phoneCards.textsOnWeSentYou')); }}>
+        {me.smsStatus === 'stopped' && <div className="alert info"><Icon name="alert" size={16} />{t('phoneCards.youRepliedStopSoTexts')}</div>}
+        <form className="col" style={{ gap: 8 }} onSubmit={(e) => { e.preventDefault(); if (valid && agree) save({ on: true, phone, consent: true, lang: t.lang }, me.smsWelcomedAt ? t('phoneCards.textsOn') : t('phoneCards.textsOnWeSentYou')); }}>
           <input className="input" type="tel" inputMode="tel" autoComplete="tel" placeholder={t('phoneCards.mobileNumber')} aria-label={t('phoneCards.mobileNumber')} value={phone} onChange={(e) => setPhone(e.target.value)} />
-          <button className="btn sm primary" disabled={busy || !valid}><Icon name="send" />{on ? t('common.save') : t('phoneCards.textMe')}</button>
-          {editing && <button type="button" className="btn sm ghost" onClick={() => { setEditing(false); setPhone(formatPhone(me.smsPhone)); }}>{t('common.cancel')}</button>}
+          <label className="consent-box"><input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} /><span>{CONSENT_TEXT[t.lang === 'es' ? 'es' : 'en'].sms}</span></label>
+          <div className="row wrap phone-row">
+            <button className="btn sm primary" disabled={busy || !valid || !agree}><Icon name="send" />{on ? t('common.save') : t('phoneCards.textMe')}</button>
+            {editing && <button type="button" className="btn sm ghost" onClick={() => { setEditing(false); setAgree(false); setPhone(formatPhone(me.smsPhone)); }}>{t('common.cancel')}</button>}
+          </div>
         </form>
-        <div className="help">{t('phoneCards.textsAboutYourShiftsTrades')}</div>
       </div>
     );
   }
@@ -180,6 +184,19 @@ function TextCard({ config }) {
     <div className="card card-pad section phone-card">
       <h3>{t('phoneCards.textMessages')}</h3>
       {body}
+    </div>
+  );
+}
+
+/** Settings → Text messages: every consent record as a CSV, for carrier and Twilio audits (admins). */
+function ConsentLogLink() {
+  const t = useT();
+  const { isAdmin } = useApp();
+  if (!isAdmin) return null;
+  return (
+    <div className="col" style={{ gap: 4 }}>
+      <div><a className="btn sm" href="/api/consents.csv" download><Icon name="download" />{t('consent.downloadLog')}</a></div>
+      <div className="help">{t('consent.logHelp')}</div>
     </div>
   );
 }
@@ -209,12 +226,13 @@ export function TextSettingsCard() {
       {sms && <><label className="check"><input type="checkbox" checked={on} disabled={busy}
         onChange={(e) => run(() => call('sms.setRestaurant', { on: e.target.checked }), e.target.checked ? t('phoneCards.textsOn') : t('phoneCards.textsOffForEveryone'))} />{t('phoneCards.textStaffACopyOf')}</label>
       <div className="help">{t('phoneCards.onlyPeopleWhoTurnTexts')}</div></>}
-      {sms && config?.sms && (
+      {sms && config?.sms && (me.smsConsent ? (
         <form className="row wrap phone-row" onSubmit={(e) => { e.preventDefault(); run(() => sendTestText(phone), (r) => t('phoneCards.testTextSentToTo', { to: r.to })); }}>
           <input className="input" type="tel" inputMode="tel" autoComplete="tel" placeholder={t('phoneCards.yourMobileNumber')} aria-label={t('phoneCards.yourMobileNumber')} value={phone} onChange={(e) => setPhone(e.target.value)} />
           <button className="btn sm" disabled={busy || !normalizePhone(phone)}><Icon name="send" />{t('phoneCards.sendMeATestText')}</button>
         </form>
-      )}
+      ) : <div className="help">{t('consent.testTextNeedsConsent')}</div>)}
+      {!IS_DEMO && <ConsentLogLink />}
     </div>
   );
 }

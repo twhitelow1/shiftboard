@@ -137,3 +137,29 @@ export function testEmail({ user, restaurant, brand, appUrl, lang = 'en' }) {
   });
   return { to: user.email, subject: E.testSubject, html, text };
 }
+
+/** A one-time sign-in link (15 minutes), after the person typed their email and a current authenticator code. */
+export function signInLinkEmail({ user, link, restaurant, brand, lang = 'en' }) {
+  const E = msg(lang).email;
+  const { html, text } = layout({
+    restaurant, brand, lang,
+    heading: E.linkHeading,
+    paragraphs: [hello(user.name, lang), E.linkBody],
+    button: { label: E.linkButton, url: link },
+    footer: E.linkFooter,
+  });
+  return { to: user.email, subject: E.linkSubject(restaurant), html, text };
+}
+
+/** A security notice: a manager reset the person's second step (they set up a new one at their next sign-in). */
+export function securityResetEmail({ user, restaurant, brand, by, appUrl, lang = 'en' }) {
+  const E = msg(lang).email;
+  const { html, text } = layout({
+    restaurant, brand, lang,
+    heading: E.securityHeading,
+    paragraphs: [hello(user.name, lang), E.securityBody(by)],
+    button: appUrl ? { label: E.open, url: appUrl } : null,
+    footer: E.securityFooter,
+  });
+  return { to: user.email, subject: E.securitySubject(restaurant), html, text };
+}

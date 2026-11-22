@@ -15,6 +15,7 @@ import { DocDb } from '../server/db.js';
 import { openPglite } from '../server/pglite.js';
 import { createApp } from '../server/app.js';
 import { translateError } from '../core/errors.js';
+import { cookieFor } from './helpers/signin.js';
 
 const HOST = 'https://tripleseat.example.test';
 const ENV = { TRIPLESEAT_CLIENT_ID: 'test-client-id', TRIPLESEAT_CLIENT_SECRET: 'test-client-secret', TRIPLESEAT_API_HOST: HOST, TIMEZONE: 'America/Denver' };
@@ -567,10 +568,7 @@ test('HTTP: status and Sync now for managers, the webhook only with the restaura
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
-  const login = async (email) => {
-    const r = await realFetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: 'demo1234' }) });
-    return r.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
-  };
+  const login = (email) => cookieFor(base, email, 'demo1234', { fetchImpl: realFetch }); // password + second step
   const req = (path, { cookie, method = 'GET', body, headers = {}, raw } = {}) => realFetch(base + path, {
     method, headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}), ...headers },
     body: raw ?? (body ? JSON.stringify(body) : undefined),
@@ -643,8 +641,7 @@ test('without Tripleseat settings: the cron does nothing, Sync now says what to 
   try {
     const cron = await fetch(`${base}/api/cron/tripleseat`, { headers: { Authorization: 'Bearer cron-test-value' } });
     assert.deepEqual((await cron.json()).result, { skipped: 'Tripleseat is not set up' });
-    const login = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'moe@demo.shiftboard', password: 'demo1234' }) });
-    const cookie = login.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
+    const cookie = await cookieFor(base, 'moe@demo.shiftboard');
     const r = await fetch(`${base}/api/tripleseat/sync`, { method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json', 'X-ShiftBoard-Language': 'es' }, body: '{}' });
     assert.equal(r.status, 400);
     assert.equal((await r.json()).error, 'Tripleseat todavía no está configurado. Agrega TRIPLESEAT_CLIENT_ID, TRIPLESEAT_CLIENT_SECRET en Vercel y vuelve a publicar.');

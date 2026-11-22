@@ -11,6 +11,7 @@ import { splitCents, percentOf, toCents, fmtCents, exampleSplit, normalizePool, 
 import { DocDb } from '../server/db.js';
 import { openPglite } from '../server/pglite.js';
 import { createApp } from '../server/app.js';
+import { signIn } from './helpers/signin.js';
 
 const WEEK = '2026-09-28'; // a Monday
 const TUE = '2026-09-29';
@@ -428,7 +429,7 @@ test('HTTP: staff get their own tips and nothing else; managers enter and finali
       if (set.length) cookie = set.map((c) => c.split(';')[0]).join('; ');
       return { status: res.status, body: await res.json().catch(() => null) };
     };
-    assert.equal((await post('/api/auth/login', { email, password: 'demo1234' })).status, 200);
+    assert.equal((await signIn(post, email)).status, 200);
     return (method, args) => post(`/api/rpc/${method}`, args);
   };
   try {

@@ -11,6 +11,7 @@ import { PHOTO_MAX_BYTES } from '../core/training.js';
 import { DocDb } from '../server/db.js';
 import { openPglite } from '../server/pglite.js';
 import { createApp } from '../server/app.js';
+import { tokenFor } from './helpers/signin.js';
 
 // A small restaurant: managers, a supervisor, servers (one reads Spanish), two bartenders, a barback and a cook.
 function fresh() {
@@ -364,8 +365,7 @@ test('the API: read-only methods, reports and errors in the caller’s language'
   await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
   const signIn = async (email) => {
-    const r = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: 'demo1234', client: 'mobile' }) });
-    const { token } = await r.json();
+    const token = await tokenFor(base, email);
     return async (method, args = {}) => {
       const res = await fetch(`${base}/api/rpc/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(args) });
       return { status: res.status, body: await res.json() };
@@ -404,7 +404,7 @@ test('a new restaurant gets its Bar and Kitchen lists on the first read, through
   await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
-    const { token } = await (await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: env.ADMIN_EMAIL, password: env.ADMIN_PASSWORD, client: 'mobile' }) })).json();
+    const token = await tokenFor(base, env.ADMIN_EMAIL, env.ADMIN_PASSWORD);
     const rpc = async (method, args = {}) => (await (await fetch(`${base}/api/rpc/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(args) })).json()).result;
     const first = await rpc('eightySix.board.get');
     assert.deepEqual(first.lists.map((l) => [l.name, l.kind]), [['Bar', 'bar'], ['Kitchen', 'kitchen']]);
@@ -506,7 +506,7 @@ test('photo bytes stay in Postgres (not in any instance’s memory) and are serv
   await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
   const signIn = async (email) => {
-    const { token } = await (await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: 'demo1234', client: 'mobile' }) })).json();
+    const token = await tokenFor(base, email);
     const auth = { Authorization: `Bearer ${token}` };
     const rpc = async (method, args = {}) => {
       const res = await fetch(`${base}/api/rpc/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...auth }, body: JSON.stringify(args) });

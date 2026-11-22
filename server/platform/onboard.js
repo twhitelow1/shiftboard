@@ -13,6 +13,7 @@ import { DEFAULT_SETTINGS } from '../../core/service.js';
 import { slugProblem, schemaForSlug } from './slugs.js';
 import { PLAN_KEYS, DEFAULT_PLAN, STATUSES, TRIAL_DAYS, cleanOverrides } from './plans.js';
 import { EMPTY_BILLING } from '../billing.js';
+import { CONSENT_MIGRATION } from '../../core/consent.js';
 
 const EMAIL = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/;
 
@@ -108,11 +109,13 @@ export async function createTenant(platform, input, { actor = null, base = '', s
     await db.migrate();
     ownerId = await db.run((store) => {
       if (!store.get('settings', 'settings')) store.insert('settings', starterSettings(v.name));
+      // A new restaurant has nobody from before consent records: its people agree on the consent screen.
+      if (!store.get('migrations', CONSENT_MIGRATION)) store.insert('migrations', { id: CONSENT_MIGRATION, at: new Date().toISOString(), users: 0 });
       const already = store.list('users', (u) => u.email === v.owner.email)[0];
       if (already) return already.id;
       return store.insert('users', {
         id: uid('usr'), name: v.owner.name, email: v.owner.email, role: 'super_admin', jobCodes: [], active: true, availability: {},
-        createdAt: new Date().toISOString(),
+        smsConsent: false, emailConsent: false, createdAt: new Date().toISOString(),
       }).id;
     }, { write: true });
   } catch (e) {

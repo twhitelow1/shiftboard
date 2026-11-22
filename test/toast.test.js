@@ -13,6 +13,7 @@ import { cronAuthorized } from '../server/toast-routes.js';
 import { DocDb } from '../server/db.js';
 import { openPglite } from '../server/pglite.js';
 import { createApp } from '../server/app.js';
+import { cookieFor } from './helpers/signin.js';
 
 const HOST = 'https://toast.example.test';
 const GUID = 'rest-0000-test';
@@ -422,10 +423,7 @@ test('HTTP: status and Sync now are for managers; the cron needs the secret', as
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
-  const login = async (email) => {
-    const r = await realFetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: 'demo1234' }) });
-    return r.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
-  };
+  const login = (email) => cookieFor(base, email, 'demo1234', { fetchImpl: realFetch });
   const req = (path, { cookie, method = 'GET', body, auth } = {}) => realFetch(base + path, {
     method, headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}), ...(auth ? { Authorization: auth } : {}) },
     body: body ? JSON.stringify(body) : undefined,
@@ -477,8 +475,7 @@ test('without Toast env vars the cron does nothing and Sync now explains what to
     const cron = await fetch(`${base}/api/cron/toast`, { headers: { Authorization: 'Bearer cron-test-value' } });
     assert.equal(cron.status, 200);
     assert.match((await cron.json()).result.skipped, /not set up/);
-    const login = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'moe@demo.shiftboard', password: 'demo1234' }) });
-    const cookie = login.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
+    const cookie = await cookieFor(base, 'moe@demo.shiftboard');
     const r = await fetch(`${base}/api/toast/sync`, { method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' }, body: '{}' });
     assert.equal(r.status, 400);
     assert.match((await r.json()).error, /TOAST_CLIENT_ID, TOAST_CLIENT_SECRET, TOAST_RESTAURANT_GUID/);

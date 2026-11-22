@@ -285,6 +285,27 @@ The words ShiftBoard uses in Spanish, so the phone app, the website and emails s
 ## Notifications, emails and errors
 
 - Notifications start with what happened, then the shift: "Turno nuevo: Server (Restaurant) mar, 6 de oct · 4 pm–cierre", "Ana quiere intercambiar su turno … por tu turno …".
-- Emails open with "Hola, Ana:" and use the same words as the app ("Abrir ShiftBoard", "Elegir mi contraseña").
-- The welcome text: "Recibirás mensajes sobre tu horario, cambios de turno y días libres. Pueden aplicar tarifas de mensajes y datos. Responde STOP para dejar de recibir mensajes, HELP para ayuda."
+- Emails open with "Hola, Ana:" and use the same words as the app ("Abrir ShiftBoard", "Configurar mi cuenta").
+- The welcome text (first opt-in only; exact words in core/consent.js): "ShiftBoard de DubLow Digital: Te suscribiste a las alertas de tu horario de turnos. La frecuencia de los mensajes varía. Pueden aplicar tarifas de mensajes y datos. Responde HELP para ayuda, STOP para cancelar." *review*
 - Error messages say what to do: "Elige una semana", "Falta la fecha", "Solo para gerentes", "No encontramos ese turno".
+
+## Sign-in, two-step and consent
+
+| English | Español | Notes |
+|---|---|---|
+| sign in / sign-in link | iniciar sesión / enlace para iniciar sesión | |
+| two-step sign-in | verificación en dos pasos | "Dos pasos activado" on badges |
+| second step | segundo paso | |
+| authenticator app | app de autenticación | Google Authenticator, etc. stay as named |
+| 6-digit code | código de 6 dígitos | |
+| passkey | llave de acceso | Apple's and Google's Spanish word |
+| recovery codes | códigos de recuperación | |
+| secure your account | protege tu cuenta | |
+| My settings | Mi configuración | the page; "Inicio de sesión y seguridad" is its section |
+| invitation / invite | invitación / invitar | "Reenviar invitación" |
+| Joined (status) | Ya entró | *review* |
+| consent | consentimiento | |
+| I agree to… | Acepto… | checkbox sentences: exact words in core/consent.js, *review* |
+| required / optional | obligatorio / opcional | |
+| Privacy Policy / Terms | Política de privacidad / Términos | |
+| texts on / off / stopped | mensajes activados / desactivados / detenidos | STOP and HELP stay in English |

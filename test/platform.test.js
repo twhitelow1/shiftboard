@@ -22,6 +22,7 @@ import { _tokenCache } from '../server/toast.js';
 import { addDays, todayStr } from '../core/time.js';
 import { fakeResend } from './helpers/fake-resend.js';
 import { hostClient, request } from './helpers/hosts.js';
+import { onboard, secondStep } from './helpers/signin.js';
 
 const PG_URL = process.env.TEST_DATABASE_URL;
 
@@ -82,17 +83,17 @@ async function createRestaurant(admin, body) {
   return r.body.result;
 }
 
-/** The owner accepts the invite (email or link) and signs in on the restaurant's host. */
+/** The owner accepts the invite (email or link): the welcome wizard on the restaurant's host, then signed in. */
 async function acceptInvite(p, host, { link, email }) {
   let url = link;
   if (!url) {
     const mail = p.resend.emails().filter((m) => m.to.includes(email)).at(-1);
     assert.ok(mail, `an email to ${email}`);
-    url = /https?:\/\/\S+#\/reset\?token=[\w-]+/.exec(mail.text)?.[0];
+    url = /https?:\/\/\S+#\/welcome\?token=[\w-]+/.exec(mail.text)?.[0];
   }
   const token = /token=([\w-]+)/.exec(url)[1];
   const c = p.at(host);
-  const r = await c.post('/api/auth/reset', { token, password: 'owner-password-1' });
+  const r = await onboard((path, body) => c.post(path, body), token, { password: 'bright-kitchen-77' });
   assert.equal(r.status, 200, r.text);
   return c;
 }
@@ -240,8 +241,7 @@ test('the default restaurant keeps schema shiftboard: its data, sessions, iCal l
   const before = hostClient(server.address().port, 'shiftboard-gamma.vercel.app');
   await before.login('styves@demo.shiftboard');
   const oldCookie = before.cookies();
-  const mobile = await before.post('/api/auth/login', { email: 'moe@demo.shiftboard', password: 'demo1234', client: 'mobile' });
-  const oldBearer = mobile.body.token;
+  const oldBearer = await before.token('moe@demo.shiftboard');
   assert.equal(JSON.parse(Buffer.from(oldBearer.split('.')[1], 'base64url')).t, undefined, 'old tokens carry no restaurant');
   const ical = (await before.post('/api/rpc-ical-link')).body.result;
   const db0 = new DocDb(conn);
@@ -284,12 +284,15 @@ test('the default restaurant keeps schema shiftboard: its data, sessions, iCal l
     assert.deepEqual(await meta(), meta0);
 
     // A reset link made before the platform still works, once.
-    const reset = await p.at('shiftboard-gamma.vercel.app').post('/api/auth/reset', { token: resetToken, password: 'victor-new-1' });
+    const resetter = p.at('shiftboard-gamma.vercel.app');
+    const reset = await resetter.post('/api/auth/reset', { token: resetToken, password: 'night-shift-42' });
     assert.equal(reset.status, 200, reset.text);
-    assert.equal((await p.at('shiftboard-gamma.vercel.app').post('/api/auth/reset', { token: resetToken, password: 'again-123' })).status, 400);
+    assert.equal(reset.body.mfa, 'enroll', 'then the second step, like any sign-in');
+    assert.equal((await secondStep((path, body) => resetter.post(path, body), reset, { email: 'victor@demo.shiftboard' })).status, 200);
+    assert.equal((await p.at('shiftboard-gamma.vercel.app').post('/api/auth/reset', { token: resetToken, password: 'again-again-123' })).status, 400);
     // New sessions name their restaurant.
-    const fresh = await p.at('shiftboard-gamma.vercel.app').post('/api/auth/login', { email: 'moe@demo.shiftboard', password: 'demo1234', client: 'mobile' });
-    assert.equal(JSON.parse(Buffer.from(fresh.body.token.split('.')[1], 'base64url')).t, 'default');
+    const freshToken = await p.at('shiftboard-gamma.vercel.app').token('moe@demo.shiftboard');
+    assert.equal(JSON.parse(Buffer.from(freshToken.split('.')[1], 'base64url')).t, 'default');
 
     // Once PLATFORM_DOMAIN is set, a host that isn't the platform's, a restaurant's or a legacy one finds nothing.
     const stray = await p.at('localhost').get('/api/config');
@@ -367,11 +370,12 @@ test('creating a restaurant: its own schema with row-level security, its owner a
     // The invite came from the restaurant's own name on the platform's address and links to its host.
     const mail = p.resend.emails().find((m) => m.to.includes('pat@bistro.local'));
     assert.equal(mail.from, 'Bistro Test <schedule@mail.dublow.test>');
-    assert.match(mail.text, /http:\/\/bistro\.lvh\.test\/#\/reset\?token=/);
+    assert.match(mail.text, /http:\/\/bistro\.lvh\.test\/#\/welcome\?token=/);
     const owner = await acceptInvite(p, 'bistro.lvh.test', { email: 'pat@bistro.local' });
     const boot = (await owner.rpc('app.bootstrap')).body.result;
     assert.equal(boot.me.role, 'super_admin');
     assert.equal(boot.me.email, 'pat@bistro.local');
+    assert.deepEqual([boot.me.emailConsent, boot.me.smsConsent, boot.me.needsTerms], [false, false, false], 'a new restaurant’s owner agreed in the wizard, nothing grandfathered');
     assert.equal(boot.settings.restaurantName, 'Bistro Test');
     assert.ok(!boot.settings.rooms.includes('Rabbit Hole'), 'none of the first restaurant’s room names');
     assert.equal(boot.employees.length, 1, 'just the owner, no demo data');
@@ -384,7 +388,7 @@ test('creating a restaurant: its own schema with row-level security, its owner a
       const a2 = await noMail.console();
       const r = await createRestaurant(a2, { name: 'Cafe Two', slug: 'cafe-two', ownerEmail: 'sam@cafe.local' });
       assert.equal(r.invite.emailed, false);
-      assert.match(r.invite.link, /^http:\/\/cafe-two\.lvh\.test\/#\/reset\?token=[\w-]+$/);
+      assert.match(r.invite.link, /^http:\/\/cafe-two\.lvh\.test\/#\/welcome\?token=[\w-]+$/);
       const sam = await acceptInvite(noMail, 'cafe-two.lvh.test', { link: r.invite.link });
       assert.equal((await sam.rpc('app.bootstrap')).body.result.me.name, 'Pat Owner');
       assert.equal((await a2.get(`/api/platform/tenants/${r.tenant.id}`)).body.result.trialEndsAt != null, true, 'a 14-day trial by default');
@@ -417,7 +421,7 @@ test('isolation: a session from one restaurant is refused on another, and no dat
     bistroOnCr.setCookies(bistro.cookies());
     assert.equal((await bistroOnCr.rpc('app.bootstrap')).status, 401);
     // Bearer tokens (the phone app) too.
-    const token = (await p.at('bistro.lvh.test').post('/api/auth/login', { email: 'pat@bistro.local', password: 'owner-password-1', client: 'mobile' })).body.token;
+    const token = await p.at('bistro.lvh.test').token('pat@bistro.local', 'bright-kitchen-77');
     const asBearer = (host) => request(p.port, { host, method: 'POST', path: '/api/rpc/app.bootstrap', body: {}, headers: { Authorization: `Bearer ${token}` } });
     assert.equal((await asBearer('bistro.lvh.test')).status, 200);
     assert.equal((await asBearer('legacy.example.test')).status, 401);
@@ -545,7 +549,7 @@ test('a suspended or canceled restaurant can’t sign in, its data is kept, and 
 
     for (const status of ['suspended', 'canceled']) {
       assert.equal((await admin.patch(`/api/platform/tenants/${made.tenant.id}`, { status })).status, 200);
-      const login = await p.at('paused.lvh.test').post('/api/auth/login', { email: 'lee@paused.local', password: 'owner-password-1' });
+      const login = await p.at('paused.lvh.test').post('/api/auth/login', { email: 'lee@paused.local', password: 'bright-kitchen-77' });
       assert.equal(login.status, 403);
       assert.equal(login.body.error, 'This restaurant’s account is paused. Contact DubLow Digital.');
       const es = await p.at('paused.lvh.test').post('/api/auth/login', { email: 'lee@paused.local', password: 'x' }, { 'X-ShiftBoard-Language': 'es' });

@@ -26,11 +26,15 @@ import { billingPortal } from './billing.js';
 import { mountAdp } from './adp-routes.js';
 import { mountTripleseat } from './tripleseat-routes.js';
 import { mountIntegrations } from './integrations-routes.js';
+import { createAuth } from './auth.js';
+import { mountOnboarding } from './onboarding.js';
+import { publicRoutes } from './public-routes.js';
+import { migrateConsents, emailConsentOf, legalLinks, CONSENT_MIGRATION, CONSENT_TEXT, CONSENT_VERSION } from '../core/consent.js';
 
 const COOKIE = 'sb_session';
-const MAX_LOGIN_ATTEMPTS = 10; // per IP + email, per 15 minutes
-// Not allowed while DubLow staff are signed in as the owner for support ("Sign in as owner").
-const NOT_IN_SUPPORT = new Set(['employees.changePassword', 'account.requestDeletion']);
+// Not allowed while DubLow staff are signed in as the owner for support ("Sign in as owner"): the owner's
+// password, account, consent (only the person can agree to texts or terms) and photo.
+const NOT_IN_SUPPORT = new Set(['employees.changePassword', 'account.requestDeletion', 'consent.accept', 'sms.preferences', 'profile.setPhoto', 'profile.removePhoto']);
 // Methods that only read. Purely a speed hint: if one of these ever writes, DocDb
 // notices and redoes it under the write lock.
 const READ_ONLY = /\.(bootstrap|list|get|eligible|week|summary|suggestStaffing|covers|publicKey)$/;
@@ -73,6 +77,11 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
       await db.sync();
       // A restaurant created in the platform console already has its owner; only the default one is set up from env.
       if (!db.store.col('users').size && (!tenant || tenant.isDefault)) await db.run(createFirstAccount, { write: true });
+      // Once per restaurant: people from before consent records keep what they had (core/consent.js).
+      if (!db.store.get('migrations', CONSENT_MIGRATION)) {
+        const st = createService(db.store).settings();
+        await db.run((s) => migrateConsents(s, { at: new Date(now()).toISOString(), langOf: (u) => langOf(u, st) }), { write: true });
+      }
     })().catch((e) => {
       booting = null; // try again on the next request
       throw e;
@@ -91,8 +100,10 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     const password = env.ADMIN_PASSWORD || crypto.randomBytes(6).toString('base64url');
     store.insert('users', {
       id: uid('usr'), name: env.ADMIN_NAME || 'Admin', email, role: 'admin', jobCodes: [], active: true, availability: {},
-      passwordHash: hashPassword(password), createdAt: new Date().toISOString(),
+      passwordHash: hashPassword(password), smsConsent: false, emailConsent: false, createdAt: new Date().toISOString(),
     });
+    // A new install has nobody from before consent records (the demo data is treated as if it had).
+    store.insert('migrations', { id: CONSENT_MIGRATION, at: new Date().toISOString(), users: 0 });
     console.log(`Created admin account: ${email} / ${env.ADMIN_PASSWORD ? '(from ADMIN_PASSWORD)' : password}`);
   }
 
@@ -108,6 +119,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     if (!token) return null;
     try {
       const claims = jwt.verify(token, secret);
+      if (claims.p) return null; // a sign-in ticket or an onboarding session is never a session
       if (tenant && (claims.t ?? (tenant.isDefault ? tenant.id : null)) !== tenant.id) return null; // another restaurant's session
       if (claims.sup && !(Number(claims.sup.until) > now())) return null; // support session over
       const u = store.get('users', claims.sub);
@@ -157,7 +169,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     const messages = [];
     for (const n of notes) {
       const u = db.store.get('users', n.userId);
-      if (!u || u.active === false || u.emailNotifications === false || !deliverable(u.email)) continue;
+      // Notification emails need the person's email consent; account emails (invites, resets, links) don't.
+      if (!u || u.active === false || !emailConsentOf(u) || !deliverable(u.email)) continue;
       messages.push(notificationEmail({ user: u, note: n, appUrl: url, restaurant: st.restaurantName, brand: brandOf(req), lang: langOf(u, st) }));
     }
     if (messages.length) background(mailer.sendMany(messages, { idempotencyKey: `ntf-${notes[0].id}` }));
@@ -174,14 +187,15 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   const stamp = (userIds, field) => userIds.length && db.run((s) => { for (const id of userIds) s.update('users', id, { [field]: new Date().toISOString() }); }, { write: true });
 
   /**
-   * Email someone a link to set their password: a welcome invite (7 days) for someone who has
-   * never signed in, or a reset link (24 hours) for someone who has. True when Resend accepted it.
+   * Email someone a link: an invitation (7 days, single use) to the welcome wizard for someone who has never
+   * signed in, or a password reset link (24 hours) for someone who has. True when Resend accepted it.
+   * Invitations go by email only, never by text.
    */
   async function sendInvite(user, invitedBy, req) {
     if (!mailer.enabled || !deliverable(user.email)) return false;
     const returning = !!user.lastLoginAt;
     const token = await db.createToken(user.id, returning ? 'reset' : 'invite', returning ? 24 * 60 : 7 * 24 * 60);
-    const link = `${appUrl(req)}/#/reset?token=${token}`;
+    const link = `${appUrl(req)}/#/${returning ? 'reset' : 'welcome'}?token=${token}`;
     const lang = langFor(user);
     await mailer.send(returning
       ? resetEmail({ user, link, restaurant: restaurantName(), hours: 24, sentBy: invitedBy, brand: brandOf(req), lang })
@@ -200,6 +214,9 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
       billing: user && canChangeSettings(user) ? billingBanner({ status: tenant.status, trial_ends_at: tenant.trialEndsAt }, now()) : null,
     };
   }
+
+  // The Privacy Policy and Terms (PRIVACY_URL / TERMS_URL override the defaults in core/consent.js).
+  const legal = legalLinks(env);
 
   const sendError = (res, e, label) => {
     const status = e instanceof AppError ? e.status : 500;
@@ -229,7 +246,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     }
     const token = await db.createToken(user.id, 'invite', 7 * 24 * 60);
     await stamp([user.id], 'invitedAt');
-    return { emailed: false, link: `${appUrl(fakeReq)}/#/reset?token=${token}` };
+    return { emailed: false, link: `${appUrl(fakeReq)}/#/welcome?token=${token}` };
   };
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
@@ -293,28 +310,14 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     app.use(prefix, (req, res, next) => (has(feature) ? next() : res.status(403).json({ error: NOT_IN_PLAN })));
   }
 
-  app.post('/api/auth/login', async (req, res) => {
-    const email = String(req.body?.email || '').trim().toLowerCase();
-    const password = String(req.body?.password || '');
-    // Hashed so the rate-limit table doesn't hold IPs or emails.
-    const key = crypto.createHash('sha256').update(`${req.ip}|${email}`).digest('hex');
-    const [attempts] = await Promise.all([db.countAttempts(key), db.sync()]);
-    if (attempts >= MAX_LOGIN_ATTEMPTS) return res.status(429).json({ error: 'Too many attempts. Try again in 15 minutes.' });
-    const u = db.store.list('users', (x) => x.email === email)[0];
-    if (!u || u.active === false || !(await bcrypt.compare(password, u.passwordHash || ''))) {
-      await db.recordAttempt(key);
-      return res.status(401).json({ error: 'Wrong email or password' });
-    }
-    await db.clearAttempts(key);
-    await stamp([u.id], 'lastLoginAt');
-    // The phone app asks for the session as a token ({ client: 'mobile' }) and keeps it in the phone's secure storage.
-    if (req.body?.client === 'mobile') return res.json({ ok: true, token: sign(u), expiresIn: 30 * 24 * 60 * 60 });
-    res.cookie(COOKIE, sign(u), cookieOpts).json({ ok: true });
+  // Signing in, the second step, passkeys, email links, password reset and sign-in settings (server/auth.js),
+  // and the invitation wizard (server/onboarding.js).
+  const auth = createAuth({
+    db, env, tenant, now, mailer, secret: () => secret, sign, session, sessionToken, cookie: COOKIE, cookieOpts,
+    appUrl, restaurantName, brandOf, langFor, background, stamp, hashPassword,
   });
-
-  app.post('/api/auth/logout', (req, res) => {
-    res.clearCookie(COOKIE, { ...cookieOpts, maxAge: undefined }).json({ ok: true });
-  });
+  auth.routes(app);
+  mountOnboarding(app, { db, env, tenant, now, auth, channels, langFor, hashPassword, cookieOpts, secret: () => secret });
 
   app.post('/api/rpc/:method', async (req, res) => {
     const method = req.params.method;
@@ -331,10 +334,15 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
       if (sess.claims.sup && NOT_IN_SUPPORT.has(method)) throw new AppError(403, 'Not available while DubLow Digital is signed in for support');
 
       if (isLang(caller.language)) req.sbLang = caller.language; // errors in the caller's language
+      // Support sessions can't change the owner's email consent either (language and appearance are fine).
+      const args = structuredClone(body);
+      if (sess.claims.sup && method === 'account.preferences') { delete args.emailConsent; delete args.emailNotifications; }
+      // Consent records keep where the choice came from.
+      const request = { ip: req.ip, userAgent: req.get('user-agent') || null };
       const out = await db.run((store) => {
         const actor = userFromToken(store, token);
         if (!actor) throw new AppError(401, 'Please sign in');
-        const result = createService(store, { hashPassword, channels: channels.info }).call(actor, method, structuredClone(body));
+        const result = createService(store, { hashPassword, channels: channels.info, request, legal }).call(actor, method, structuredClone(args));
         // Changing your password signs out other devices; this one gets a fresh cookie.
         const rotated = method === 'employees.changePassword'
           ? store.update('users', actor.id, { sessionVersion: (actor.sessionVersion || 0) + 1 })
@@ -349,14 +357,16 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
         },
       });
 
-      // A new person with an email gets a link to set their own password.
-      if (method === 'employees.save' && out.result?.tempPassword && out.result.email) {
+      // A new person with an email gets an invitation by email (never by text).
+      if (method === 'employees.save' && out.result?.created && out.result.email) {
         try {
           out.result.invited = await sendInvite(out.result, caller.name, req);
+          if (!out.result.invited && !out.result.tempPassword) out.result.inviteError = 'Email isn’t set up yet, so no invitation went out. Set a temporary password from their profile, or set up email.';
         } catch (e) {
           console.error('Invite email failed:', e.message);
           out.result.invited = false;
-          out.result.inviteError = 'The welcome email could not be sent. Share the temporary password instead.';
+          out.result.inviteError = out.result.tempPassword ? 'The welcome email could not be sent. Share the temporary password instead.'
+            : 'The invitation email could not be sent. Try Resend invite in a minute.';
         }
       }
 
@@ -383,7 +393,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
         logo: st.logoVersion ? `/api/branding/logo?v=${st.logoVersion}` : '' };
       language = isLang(st.language) ? st.language : 'auto'; // the restaurant's default language, for the sign-in page
     } catch { /* the sign-in page still works with ShiftBoard's look */ }
-    res.json({ email: mailer.enabled, emailFrom: mailer.enabled ? mailer.from : null, brand, language, ...channels.config(),
+    // legal and consent: the links and the exact consent words (and versions), for the phone app's consent screen.
+    res.json({ email: mailer.enabled, emailFrom: mailer.enabled ? mailer.from : null, brand, language, legal, consent: { text: CONSENT_TEXT, versions: CONSENT_VERSION }, ...channels.config(),
       ...(tenant ? { restaurant: tenant.slug, features: { ...tenant.features }, managed: !tenant.isDefault, ...(paused ? { paused: true } : {}) } : {}) });
   });
 
@@ -446,7 +457,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     const messages = [];
     for (const u of ready) {
       const token = await db.createToken(u.id, 'invite', 7 * 24 * 60);
-      messages.push(inviteEmail({ user: u, link: `${base}/#/reset?token=${token}`, restaurant, invitedBy: actor.name, brand: brandOf(req), lang: langFor(u) }));
+      messages.push(inviteEmail({ user: u, link: `${base}/#/welcome?token=${token}`, restaurant, invitedBy: actor.name, brand: brandOf(req), lang: langFor(u) }));
     }
     try {
       await mailer.sendMany(messages, { idempotencyKey: `invite-all-${actor.id}-${Date.now()}` });
@@ -456,43 +467,6 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     }
     await stamp(ready.map((u) => u.id), 'invitedAt');
     res.json({ result: { sent: ready.length, noEmail: waiting.length - ready.length } });
-  });
-
-  app.post('/api/auth/forgot', async (req, res) => {
-    const email = String(req.body?.email || '').trim().toLowerCase();
-    if (!mailer.enabled) return res.status(400).json({ error: 'Password reset by email isn’t set up. Ask a manager to reset it.' });
-    const key = crypto.createHash('sha256').update(`forgot|${req.ip}|${email}`).digest('hex');
-    const [attempts] = await Promise.all([db.countAttempts(key), db.sync()]);
-    if (attempts >= 5) return res.status(429).json({ error: 'Too many requests. Try again in 15 minutes.' });
-    await db.recordAttempt(key);
-    const u = db.store.list('users', (x) => x.email === email)[0];
-    if (u && u.active !== false && deliverable(u.email)) {
-      // Sent in the background so the reply takes the same time whether or not the account exists.
-      background((async () => {
-        const token = await db.createToken(u.id, 'reset', 60);
-        await mailer.send(resetEmail({ user: u, link: `${appUrl(req)}/#/reset?token=${token}`, restaurant: restaurantName(), brand: brandOf(req), lang: langFor(u) }));
-      })());
-    }
-    res.json({ ok: true }); // same answer either way, so this can't be used to find accounts
-  });
-
-  app.post('/api/auth/reset', async (req, res) => {
-    try {
-      const password = String(req.body?.password || '');
-      if (password.length < 6) throw new AppError(400, 'Password must be at least 6 characters');
-      const t = await db.consumeToken(req.body?.token);
-      if (!t) throw new AppError(400, 'This link has expired or was already used. Ask for a new one.');
-      const user = await db.run((store) => {
-        const u = store.get('users', t.userId);
-        if (!u || u.active === false) throw new AppError(400, 'This account is inactive. Ask a manager.');
-        return store.update('users', u.id, { passwordHash: hashPassword(password), sessionVersion: (u.sessionVersion || 0) + 1 });
-      }, { write: true });
-      await db.revokeTokens(user.id);
-      await stamp([user.id], 'lastLoginAt');
-      res.cookie(COOKIE, sign(db.store.get('users', user.id) || user), cookieOpts).json({ ok: true });
-    } catch (e) {
-      sendError(res, e, 'reset');
-    }
   });
 
   // "Sign in as owner" from the platform console: a one-time link (a few minutes) opens a session as the
@@ -558,6 +532,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   });
 
   channels.routes(app); // /api/push/test, /api/sms/test, /api/twilio/inbound
+  // Profile photos, the consent log CSV (admins) and the public text opt-in page (server/public-routes.js).
+  publicRoutes(app, { db, env, legal, signedIn: (req) => userFromToken(db.store, sessionToken(req)), restaurantName });
   // Toast POS: status, Sync now, and the daily Vercel Cron (server/toast-routes.js).
   mountToast(app, { db, env, userOf: (req) => userFromToken(db.store, req.cookies[COOKIE]), managed: !!tenant && !tenant.isDefault });
   // ADP: status, Sync now, and its daily Vercel Cron (server/adp-routes.js). The CSV import is plain RPC.

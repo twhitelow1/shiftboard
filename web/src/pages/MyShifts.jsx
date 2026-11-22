@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useApp, Icon, shiftTime, JobDot, Empty, useAction, startTimesOnly } from '../ui.jsx';
+import { useApp, Icon, Avatar, shiftTime, JobDot, Empty, useAction, startTimesOnly } from '../ui.jsx';
 import { canManageUser } from '../../../core/roles.js';
 import { addDays, weekStart, parseDate, dow } from '../../../core/time.js';
 import { hoursOf } from '../../../core/forecast.js';
@@ -11,6 +11,7 @@ import { ModCard } from './TrainingShared.jsx';
 import { EightySixBanner } from './EightySix.jsx';
 import { useT, tx, dowShort, fmtTime, prettyDate, LANGUAGE_NAMES } from '../i18n/index.js';
 import { STATUS } from './TimeOff.jsx';
+import { CONSENT_TEXT } from '../../../core/consent.js';
 
 export default function MyShifts() {
   const t = useT();
@@ -116,7 +117,7 @@ export default function MyShifts() {
       <AppearanceCard />
       {!IS_DEMO && <EmailPrefCard />}
       <PhoneCards />
-      {!IS_DEMO && <PasswordCard />}
+      <MySettingsCard />
 
       {dialog && <ShiftDialog shift={dialog} startIn={startIn} events={data.events} onClose={(c) => { setDialog(null); if (c) load(); }} />}
     </div>
@@ -222,34 +223,34 @@ function AppearanceCard() {
   );
 }
 
+/** Notification emails: the person's email consent, with the exact words (core/consent.js), recorded each time. */
 function EmailPrefCard() {
   const t = useT();
   const { call, me, emailEnabled } = useApp();
   const [run, busy] = useAction();
   if (!emailEnabled || !me.email) return null;
-  const on = me.emailNotifications !== false;
+  const on = me.emailConsent === true;
   return (
     <div className="card card-pad section">
       <h3>{t('myShifts.emailNotifications')}</h3>
-      <label className="check" style={{ marginTop: 8 }}>
+      <label className="consent-box" style={{ marginTop: 8 }}>
         <input type="checkbox" checked={on} disabled={busy}
-          onChange={(e) => run(() => call('account.preferences', { emailNotifications: e.target.checked }), e.target.checked ? t('myShifts.emailNotificationsOn') : t('myShifts.emailNotificationsOff'))} />{t('myShifts.emailMeAtEmailWhen', { email: me.email })}</label>
+          onChange={(e) => run(() => call('account.preferences', { emailConsent: e.target.checked, lang: t.lang }), e.target.checked ? t('myShifts.emailNotificationsOn') : t('myShifts.emailNotificationsOff'))} />
+        <span>{CONSENT_TEXT[t.lang === 'es' ? 'es' : 'en'].email}</span></label>
+      <div className="help">{t('consent.emailsGoTo', { email: me.email })}</div>
     </div>
   );
 }
 
-function PasswordCard() {
+/** My settings, with my photo: profile photo, phone, password, two-step sign-in (pages/Security.jsx). */
+function MySettingsCard() {
   const t = useT();
-  const { call } = useApp();
-  const [pw, setPw] = useState('');
-  const [run, busy] = useAction();
+  const { me } = useApp();
   return (
-    <div className="card card-pad section">
-      <h3>{t('myShifts.changeMyPassword')}</h3>
-      <div className="row" style={{ marginTop: 8 }}>
-        <input className="input" type="password" placeholder={t('myShifts.newPassword6Characters')} value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" style={{ maxWidth: 300 }} />
-        <button className="btn" disabled={busy || pw.length < 6} onClick={() => run(() => call('employees.changePassword', { password: pw }), t('myShifts.passwordChanged')).then(() => setPw(''))}>{t('common.save')}</button>
-      </div>
-    </div>
+    <a className="card card-pad section row my-settings-link" href="#/account">
+      <Avatar user={me} size="lg" />
+      <span className="grow"><b>{t('security.mySettings')}</b><span className="small muted block">{t('security.mySettingsHelp')}</span></span>
+      <Icon name="right" size={16} />
+    </a>
   );
 }
