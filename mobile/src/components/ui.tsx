@@ -37,7 +37,7 @@ export function Button({ title, onPress, kind = 'secondary', icon, disabled, bus
     secondary: { bg: c.surface, fg: c.text, border: c.border },
     ghost: { bg: 'transparent', fg: c.brand, border: 'transparent' },
     danger: { bg: c.surface, fg: c.bad, border: c.border },
-    ok: { bg: c.ok, fg: '#ffffff', border: c.ok },
+    ok: { bg: c.ok, fg: c.dark ? '#052e16' : '#ffffff', border: c.ok }, // dark mode's green is light: dark text on it
   }[kind];
   const off = disabled || busy;
   return (

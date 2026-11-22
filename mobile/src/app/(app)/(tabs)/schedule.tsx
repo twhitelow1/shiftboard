@@ -22,7 +22,7 @@ export default function Schedule() {
   const { t, date, time, num, stamp } = useI18n();
   const c = useColors();
   const params = useLocalSearchParams<{ date?: string }>();
-  const { me, today, settings, jobs, people, has } = useApp();
+  const { me, today, settings, jobs, people, has, offlineSince } = useApp();
   const shiftTime = useShiftTime();
   const [ws, setWs] = useState(() => weekStart(params.date || today, settings.weekStartDow));
   const days = range(ws, 7);
@@ -54,7 +54,7 @@ export default function Schedule() {
 
   return (
     <Screen title={t('schedule.title')} onRefresh={() => Promise.all([reload(), coversQ.reload()])}>
-      {offline && updatedAt ? <OfflineNote text={t('common.offline', { when: stamp(updatedAt) })} /> : null}
+      {offline && updatedAt && !offlineSince ? <OfflineNote text={t('common.offline', { when: stamp(updatedAt) })} /> : null}
       <Row>
         <Pressable onPress={() => setWs(addDays(ws, -7))} style={styles.arrow} accessibilityRole="button" accessibilityLabel={t('schedule.prevWeek')}><Icon name="left" color={c.text} /></Pressable>
         <View style={{ flex: 1, alignItems: 'center' }}>

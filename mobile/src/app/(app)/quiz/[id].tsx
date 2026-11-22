@@ -142,7 +142,7 @@ function Result({ att }: { att: Attempt }) {
   const text = (q: AttemptQuestion, id?: string | null) => q.choices.find((x) => x.id === id)?.text || '';
   return (
     <Screen title={att.title} back bottomInset>
-      <View style={[styles.score, { backgroundColor: att.passed ? c.ok : c.bad }]} accessible
+      <View style={[styles.score, { backgroundColor: att.passed ? '#15803d' : '#b91c1c' }]} accessible
         accessibilityLabel={`${att.title}: ${att.pct}%, ${t('quiz.nRight', { score: att.score ?? 0, total: att.total })}, ${att.passed ? t('quiz.passed') : t('quiz.notPassed')}`}>
         <Text style={styles.scoreKicker}>{att.title}{!mine && people[att.userId] ? ` · ${people[att.userId].name}` : ''}</Text>
         <Text style={styles.scoreBig}>{att.pct}%</Text>

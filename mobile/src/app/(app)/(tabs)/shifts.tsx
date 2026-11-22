@@ -24,7 +24,7 @@ const openShift = (s: Shift) => router.push({ pathname: '/shift/[id]', params: {
 export default function MyShifts() {
   const { t, tn, date, stamp } = useI18n();
   const c = useColors();
-  const { me, boot, today, settings, people, has, canApprove, isLead } = useApp();
+  const { me, boot, today, settings, people, has, canApprove, isLead, offlineSince } = useApp();
   const shiftTime = useShiftTime();
   const what = useShiftWhat();
   const thisWeek = weekStart(today, settings.weekStartDow);
@@ -52,7 +52,7 @@ export default function MyShifts() {
 
   return (
     <Screen title={t('myShifts.title')} onRefresh={() => Promise.all([list.reload(), timeOff.reload(), tips.reload()])}>
-      {list.offline && list.updatedAt ? <OfflineNote text={t('common.offline', { when: stamp(list.updatedAt) })} /> : null}
+      {list.offline && list.updatedAt && !offlineSince ? <OfflineNote text={t('common.offline', { when: stamp(list.updatedAt) })} /> : null}
       {!data && !list.error ? <Loading label={t('common.loading')} /> : null}
       {list.error && !data ? <Empty icon="alert" title={t('common.networkError')}><Button title={t('common.retry')} onPress={list.reload} /></Empty> : null}
 
