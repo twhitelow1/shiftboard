@@ -1,6 +1,7 @@
 {
   "expo": {
     "slug": "shiftboard",
+    "owner": "dublow-digital",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -68,6 +69,11 @@
     ],
     "experiments": {
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "b4088dee-86cd-49ba-b972-d46c435c5576"
+      }
     }
   }
 }

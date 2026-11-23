@@ -107,6 +107,19 @@ npx expo start          # then: i (iOS simulator), a (Android emulator), or scan
 - **Expo Go** (the store app) runs everything except push notifications: since SDK 53, Expo Go on Android can't receive push. Use Expo Go for screens and flows.
 - **Development build** for push and anything native: `npx eas-cli@latest build --profile development --platform ios|android`, install it, then `npx expo start` and open it from the dev build. (Or locally: `npx expo run:ios` / `npx expo run:android` with Xcode / Android Studio.)
 
+### In a browser: <restaurant>/app
+
+Every deploy also builds the app's **browser version** into `dist/app` (`npm run build:app`: `expo export --platform web` with `WEB_BASE_URL=/app`), so it opens at **https://<restaurant's address>/app**, for example on an iPhone before there's a TestFlight build. It's the same screens and the same sign-in (with the second step); the restaurant is the site it's opened on (`src/lib/hosted.web.ts`), so there's no address to type, and the session stays in the browser's storage. No push notifications, camera or native modules there: it's for trying the app, not a replacement for the store app. Add it to the Home Screen from the browser's Share menu.
+
+### On a phone, no computer (Expo Go + EAS Update)
+
+Every push that changes `mobile/` runs **.github/workflows/expo-preview.yml**: it publishes the app to Expo with EAS Update (`eas update --auto`) under the expo.dev project **@dublow-digital/shiftboard**. Open the run in GitHub → Actions → "Phone app preview (Expo Go)": its summary has
+
+- the `exp://u.expo.dev/<project id>/group/<update group>` link: open it on the phone (Expo Go installed) and the app loads,
+- the update's page on expo.dev, and a QR code to scan from another screen.
+
+On a pull request the same links go in a comment. It needs the **EXPO_TOKEN** repository secret (expo.dev → Account settings → Access tokens), and Expo Go from the store has to support the app's SDK (58): Expo Go only opens updates built for its own SDK (`runtimeVersion` policy `sdkVersion` → `exposdk:58.0.0`). Until the store's Expo Go is on SDK 58, use a development or preview build instead (`eas build --profile preview --platform android` gives an APK to install).
+
 ### Point it at a server
 
 On the first screen, type the restaurant address:

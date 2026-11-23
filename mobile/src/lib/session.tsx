@@ -12,6 +12,7 @@ import { ApiError, createClient, fetchConfig, login, verifySignIn, type Client, 
 import { clearCache, readCache, writeCache } from './cache';
 import { featureOn, featuresOf, type Feature, type Features } from './features';
 import { registerForPush, unregisterPush, onPushReceived } from './push';
+import { hostedServer } from './hosted';
 import { getItem, setItem } from './storage';
 import { palette, type Palette } from './theme';
 import { todayStr } from './time';
@@ -145,7 +146,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   // Read what's saved on the phone. Version 1 kept one restaurant and one token: move them into the list.
   useEffect(() => {
     (async () => {
-      const [s, raw, old] = await Promise.all([getItem('server'), getItem('accounts'), getItem('token')]);
+      const [saved, raw, old] = await Promise.all([getItem('server'), getItem('accounts'), getItem('token')]);
+      const s = saved || hostedServer(); // the browser version at <restaurant>/app: that restaurant
       let list: Account[] = [];
       try { list = (JSON.parse(raw || '[]') as Account[]).filter((a) => a && typeof a.server === 'string'); } catch { list = []; }
       if (s && !list.some((a) => a.server === s)) list.push({ server: s });

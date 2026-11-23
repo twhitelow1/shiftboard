@@ -558,6 +558,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   if (staticDir && fs.existsSync(staticDir)) {
     app.use(express.static(staticDir, { index: false, maxAge: '1h', extensions: ['html'] })); // /privacy → privacy.html
     // root: send() refuses absolute paths that go through a dot-directory; relative to root it checks only 'index.html'.
+    // The phone app's browser version (dist/app, npm run build:app) has its own page for its routes.
+    if (fs.existsSync(`${staticDir}/app/index.html`)) app.get(/^\/app(\/.*)?$/, (req, res) => res.sendFile('app/index.html', { root: staticDir }));
     app.get(/^\/(?!api\/).*/, (req, res) => res.sendFile('index.html', { root: staticDir }));
   }
 
