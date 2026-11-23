@@ -10,7 +10,8 @@
     "start": "node server/index.js",
     "test": "node --test test/*.test.js",
     "db:import-sqlite": "node scripts/import-sqlite.js",
-    "vapid-keys": "node scripts/vapid-keys.js"
+    "vapid-keys": "node scripts/vapid-keys.js",
+    "build:app": "cd mobile && npm ci --no-audit --no-fund && WEB_BASE_URL=/app EXPO_OFFLINE=1 EXPO_NO_TELEMETRY=1 npx expo export --platform web --output-dir ../dist/app"
   },
   "license": "UNLICENSED",
   "dependencies": {

@@ -1,3 +1,3 @@
-# The phone app (mobile/) is built with Expo/EAS, not Vercel; the docs aren't deployed either.
-mobile/
+# The docs aren't deployed. mobile/ is: its browser version is built into dist/app (npm run build:app);
+# the phone app itself is built with Expo/EAS, and the API function leaves mobile/ out (vercel.json).
 docs/

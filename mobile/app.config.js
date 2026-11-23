@@ -44,6 +44,8 @@ module.exports = ({ config }) => {
     web: { ...config.web, name: BRAND.name, shortName: BRAND.name },
     android: { ...config.android, ...(googleServicesFile ? { googleServicesFile } : {}) },
     runtimeVersion: { policy: 'sdkVersion' },
+    // The browser version a ShiftBoard server hosts at /app is built with WEB_BASE_URL=/app (npm run build:app).
+    ...(process.env.WEB_BASE_URL ? { experiments: { ...config.experiments, baseUrl: process.env.WEB_BASE_URL } } : {}),
     ...(projectId ? {
       extra: { ...config.extra, eas: { ...config.extra?.eas, projectId } },
       updates: { ...config.updates, url: `https://u.expo.dev/${projectId}` },
