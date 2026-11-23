@@ -1,0 +1,87 @@
+name: Phone app preview (Expo Go)
+
+# Publishes the phone app (mobile/) to Expo with EAS Update whenever it changes, so it can be opened in
+# Expo Go on a phone without a computer. Each run's summary has the links; on a pull request the same
+# links go in a comment. Needs the EXPO_TOKEN repository secret (an expo.dev access token).
+# More: docs/mobile-app/DEVELOPING.md, "On a phone, no computer".
+
+on:
+  push:
+    branches: [main, 'claude/**']
+    paths: ['mobile/**', '.github/workflows/expo-preview.yml']
+  pull_request:
+    paths: ['mobile/**', '.github/workflows/expo-preview.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: expo-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EXPO_FULL_NAME: '@dublow-digital/shiftboard'
+    steps:
+      - name: Check the Expo token
+        if: env.EXPO_TOKEN == ''
+        run: |
+          echo "::error::Add the EXPO_TOKEN secret (repository Settings → Secrets and variables → Actions)."
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install
+        working-directory: mobile
+        run: npm ci
+
+      # The project's ID on expo.dev, by its full name (it's also put in app.json once known).
+      - name: Find the project on expo.dev
+        run: |
+          body=$(jq -nc --arg n "$EXPO_FULL_NAME" '{query: "query($n: String!) { app { byFullName(fullName: $n) { id } } }", variables: {n: $n}}')
+          res=$(curl -sS https://api.expo.dev/graphql -H 'content-type: application/json' -H "authorization: Bearer $EXPO_TOKEN" -d "$body")
+          id=$(jq -r '.data.app.byFullName.id // empty' <<<"$res")
+          if [ -z "$id" ]; then
+            echo "::error::$EXPO_FULL_NAME wasn't found on expo.dev: $(jq -c '.errors // .' <<<"$res")"
+            exit 1
+          fi
+          echo "EAS_PROJECT_ID=$id" >> "$GITHUB_ENV"
+          echo "Expo project $EXPO_FULL_NAME, ID \`$id\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish to Expo
+        id: preview
+        uses: expo/expo-github-action/preview@v8
+        with:
+          working-directory: mobile
+          command: eas update --auto --non-interactive ${{ github.event_name == 'pull_request' && format('--branch {0}', github.event.pull_request.head.ref) || '' }}
+          qr-target: expo-go
+          comment: ${{ github.event_name == 'pull_request' }}
+
+      - name: Links
+        env:
+          GROUP: ${{ steps.preview.outputs.groupId }}
+          QR: ${{ steps.preview.outputs.qr }}
+        run: |
+          {
+            echo "### Open the phone app in Expo Go"
+            echo ""
+            echo "- **On your phone** (with Expo Go installed): open \`exp://u.expo.dev/$EAS_PROJECT_ID/group/$GROUP\`"
+            echo "- **On expo.dev:** https://expo.dev/projects/$EAS_PROJECT_ID/updates/$GROUP"
+            echo "- **QR code** (scan from another screen): $QR"
+          } >> "$GITHUB_STEP_SUMMARY"

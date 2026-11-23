@@ -6,6 +6,11 @@
 //    on EAS it comes from the file environment variable GOOGLE_SERVICES_JSON (see
 //    docs/mobile-app/REGISTRATION-RUNBOOK.md, "Push credentials"); locally, put the file at
 //    mobile/google-services.json (git-ignored).
+// 3. EAS (Expo's cloud) knows the app as @dublow-digital/shiftboard (owner + slug in app.json). Its project ID is
+//    extra.eas.projectId in app.json once known; until then the GitHub workflow looks it up with EXPO_TOKEN and
+//    passes it as EAS_PROJECT_ID. With it, EAS Update publishes the app (updates.url), and runtimeVersion
+//    "sdkVersion" (exposdk:58.0.0) is what Expo Go on a phone needs to open those updates
+//    (.github/workflows/expo-preview.yml, docs/mobile-app/DEVELOPING.md "On a phone, no computer").
 const fs = require('fs');
 const path = require('path');
 const BRAND = require('./brand');
@@ -15,6 +20,7 @@ const withName = (s) => s.replace(/\{app\}/g, BRAND.name);
 module.exports = ({ config }) => {
   const local = path.join(__dirname, 'google-services.json');
   const googleServicesFile = process.env.GOOGLE_SERVICES_JSON || (fs.existsSync(local) ? './google-services.json' : undefined);
+  const projectId = process.env.EAS_PROJECT_ID || config.extra?.eas?.projectId || undefined;
   const en = BRAND.permissions.en;
   const es = BRAND.permissions.es;
   const plugins = (config.plugins || []).map((p) => (Array.isArray(p) && p[0] === 'expo-image-picker'
@@ -37,5 +43,10 @@ module.exports = ({ config }) => {
     },
     web: { ...config.web, name: BRAND.name, shortName: BRAND.name },
     android: { ...config.android, ...(googleServicesFile ? { googleServicesFile } : {}) },
+    runtimeVersion: { policy: 'sdkVersion' },
+    ...(projectId ? {
+      extra: { ...config.extra, eas: { ...config.extra?.eas, projectId } },
+      updates: { ...config.updates, url: `https://u.expo.dev/${projectId}` },
+    } : {}),
   };
 };
