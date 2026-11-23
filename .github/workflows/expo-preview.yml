@@ -6,8 +6,9 @@ name: Phone app preview (Expo Go)
 # More: docs/mobile-app/DEVELOPING.md, "On a phone, no computer".
 
 on:
+  # main on every change; work branches through their pull request (one publish per change, not two)
   push:
-    branches: [main, 'claude/**']
+    branches: [main]
     paths: ['mobile/**', '.github/workflows/expo-preview.yml']
   pull_request:
     paths: ['mobile/**', '.github/workflows/expo-preview.yml']
@@ -51,7 +52,8 @@ jobs:
         working-directory: mobile
         run: npm ci
 
-      # The project's ID on expo.dev, by its full name (it's also put in app.json once known).
+      # The project's ID on expo.dev, by its full name: a check that the token can see the project. app.json has
+      # the same ID (extra.eas.projectId), which push notifications need.
       - name: Find the project on expo.dev
         run: |
           body=$(jq -nc --arg n "$EXPO_FULL_NAME" '{query: "query($n: String!) { app { byFullName(fullName: $n) { id } } }", variables: {n: $n}}')
