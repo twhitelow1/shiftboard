@@ -16,6 +16,7 @@ import { restaurantView, allowedKeys, GROUPS } from '../server/platform/integrat
 import { resolveFeatures } from '../server/platform/plans.js';
 import { fakeResend } from './helpers/fake-resend.js';
 import { hostClient } from './helpers/hosts.js';
+import { cookieFor, onboard } from './helpers/signin.js';
 
 test('the view: plan decides the integrations; secrets only as set + last 4; env fallback marked', () => {
   const tenant = { id: 't1', slug: 'bistro', name: 'Bistro', is_default: false, integrations: { TOAST_RESTAURANT_GUID: '11111111-2222-3333-4444-555555555555' }, resolved: resolveFeatures('starter') };
@@ -56,8 +57,7 @@ test('single-restaurant install: admins see what env sets, read-only; managers a
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
-  const login = async (email) => (await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: 'demo1234' }) }))
-    .headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
+  const login = (email) => cookieFor(base, email); // password + second step (test/helpers/signin.js)
   const req = (path, cookie, { method = 'GET', body, lang } = {}) => fetch(base + path, {
     method, headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}), ...(lang ? { 'X-ShiftBoard-Language': lang } : {}) }, body: body ? JSON.stringify(body) : undefined,
   }).then(async (r) => ({ status: r.status, text: await r.clone().text(), body: await r.json().catch(() => null) }));
@@ -114,7 +114,9 @@ test('on the platform: each restaurant’s admins save their own settings (encry
     const accept = async (host, email) => {
       const token = /token=([\w-]+)/.exec(resend.emails().filter((m) => m.to.includes(email)).at(-1).text)[1];
       const c = at(host);
-      assert.equal((await c.post('/api/auth/reset', { token, password: 'owner-password-1' })).status, 200);
+      // The owner's invitation opens the welcome wizard: password, a second step, profile, consent; then signed in.
+      const done = await onboard((path, body) => c.post(path, body), token, { password: 'bright-kitchen-77' });
+      assert.equal(done.status, 200, done.text);
       return c;
     };
     const pat = await accept('bistro.lvh.test', 'pat@bistro.local');

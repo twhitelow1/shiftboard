@@ -3,6 +3,9 @@
 // fails or slows the request: the work starts after the response is on its way, and every error
 // is logged and dropped. Push subscriptions the push service says are gone (404/410) are removed,
 // and a number Twilio reports as unsubscribed (it replied STOP) has its texts turned off.
+//
+// Texts need the person's own consent (users.smsConsent, core/consent.js), checked when the texts are picked
+// and again right before each one is sent, so a STOP that arrived in between always wins.
 import express from 'express';
 import { createService } from '../core/service.js';
 import { canChangeSettings } from '../core/roles.js';
@@ -37,13 +40,21 @@ export function createChannels({ db, env = process.env, pusher = createPusher(en
   const settings = () => createService(db.store).settings();
   const restaurant = () => settings().restaurantName || 'ShiftBoard';
 
-  /** Send pushes and texts; never rejects. Returns { sent, failed, removed }. */
+  /** Is this text still allowed? The latest data (a STOP may have just come in on another instance). */
+  function stillAllowed(job) {
+    const u = job.userId ? db.store.get('users', job.userId) : null; // every text is for one person who agreed to texts
+    return !!u && smsAllowed(u, settings()) && u.smsPhone === job.to;
+  }
+
+  /** Send pushes and texts; never rejects. Returns { sent, failed, removed, skipped }. */
   async function deliver(pushes, texts) {
     await new Promise((r) => setImmediate(r)); // let the response go out first
     const gone = [];
     const stopped = new Set();
     let sent = 0;
     let failed = 0;
+    let skipped = 0;
+    if (texts.length) { try { await db.sync(); } catch (e) { console.error('Could not re-check text consent:', e.message); texts = []; } }
     const jobs = [...pushes.map((job) => ({ kind: 'push', job })), ...texts.map((job) => ({ kind: 'text', job }))];
     await eachLimited(jobs, CONCURRENCY, async ({ kind, job }) => {
       try {
@@ -51,6 +62,7 @@ export function createChannels({ db, env = process.env, pusher = createPusher(en
           const r = await pusher.send(job.sub, job.message);
           if (r?.gone) { gone.push(job.sub); return; }
         } else {
+          if (!stillAllowed(job)) { skipped++; return; } // consent re-checked right before sending
           await texter.send(job.to, job.body);
         }
         sent++;
@@ -68,26 +80,25 @@ export function createChannels({ db, env = process.env, pusher = createPusher(en
             const cur = s.get('pushSubscriptions', sub.id);
             if (cur && cur.endpoint === sub.endpoint) s.remove('pushSubscriptions', sub.id);
           }
-          for (const phone of stopped) applyTextReply(s, { from: phone, action: 'stop' });
+          for (const phone of stopped) applyTextReply(s, { from: phone, action: 'stop', word: 'STOP', body: 'Twilio error 21610: the number replied STOP' });
         }, { write: true });
       } catch (e) {
         console.error('Could not clean up phone notification settings:', e.message);
       }
     }
-    return { sent, failed, removed: gone.length };
+    return { sent, failed, removed: gone.length, skipped };
   }
 
   const pushMessage = (title, body, link) => ({ title, body, url: `/${String(link || '').startsWith('#') ? link : ''}` });
-  // Just turned texts on (this request): their consent was recorded a moment ago.
-  const justOptedIn = (u) => u?.smsNotifications === true && u.smsPhone && Date.now() - Date.parse(u.smsConsentAt || 0) < 60_000;
+  // The first opt-in ever: core stamps smsWelcomedAt once (consent screen, My Shifts); never on START or a re-opt-in.
+  const welcomeDue = (c) => c.col === 'users' && c.doc?.smsWelcomedAt && c.doc.smsWelcomedAt !== c.prev?.smsWelcomedAt;
 
   /** After a commit: push and text each new notification (one message per person per change). Never throws. */
   function afterCommit(changes, req) {
     try {
       if (!pusher.enabled && !texter.enabled) return;
       const notes = changes.filter((c) => c.col === 'notifications' && c.isNew && c.doc).map((c) => c.doc);
-      const optIns = req?.params?.method === 'sms.preferences'
-        ? changes.filter((c) => c.col === 'users' && justOptedIn(c.doc)).map((c) => c.doc) : [];
+      const optIns = changes.filter(welcomeDue).map((c) => c.doc);
       if (!notes.length && !optIns.length) return;
       const st = settings();
       const name = st.restaurantName || 'ShiftBoard';
@@ -108,11 +119,12 @@ export function createChannels({ db, env = process.env, pusher = createPusher(en
           for (const sub of db.store.list('pushSubscriptions', (s) => s.userId === userId)) pushes.push({ sub, message });
         }
         if (texter.enabled && smsAllowed(u, st)) {
-          texts.push({ to: u.smsPhone, body: textMessage({ restaurant: name, text: first.text, url: linkFor(url, first.link), more, lang }) });
+          texts.push({ userId, to: u.smsPhone, body: textMessage({ restaurant: name, text: first.text, url: linkFor(url, first.link), more, lang }) });
         }
       }
-      if (texter.enabled && st.smsNotifications !== false) {
-        for (const u of optIns) texts.push({ to: u.smsPhone, body: welcomeText({ restaurant: name, url, lang: langOf(u, st) }) });
+      if (texter.enabled) {
+        // The welcome goes first, and only to someone texts are allowed for right now.
+        for (const u of optIns) if (smsAllowed(u, st)) texts.unshift({ userId: u.id, to: u.smsPhone, body: welcomeText({ lang: langOf(u, st) }) });
       }
       if (pushes.length || texts.length) background(deliver(pushes, texts));
     } catch (e) {
@@ -137,7 +149,8 @@ export function createChannels({ db, env = process.env, pusher = createPusher(en
       res.json({ result: r });
     });
 
-    // Settings → Text messages → Send me a test text (admins).
+    // Settings → Text messages → Send me a test text (admins): only to the admin's own number, and only once
+    // they've agreed to texts on it themselves (My Shifts → Text messages).
     app.post('/api/sms/test', async (req, res) => {
       await db.sync();
       const u = signedIn(req);
@@ -146,6 +159,10 @@ export function createChannels({ db, env = process.env, pusher = createPusher(en
       if (!texter.enabled) return res.status(400).json({ error: 'Text messages aren’t set up yet. Add the TWILIO_ settings in Vercel, then redeploy.' });
       const to = normalizePhone(req.body?.phone || u.smsPhone || u.phone);
       if (!to) return res.status(400).json({ error: 'Enter your mobile number, like (303) 555-0123' });
+      const me = db.store.get('users', u.id);
+      if (!smsAllowed(me, settings()) || me.smsPhone !== to) {
+        return res.status(400).json({ error: 'Turn on texts for this number in My Shifts first (you have to agree to texts yourself).' });
+      }
       try {
         await texter.send(to, testText({ restaurant: restaurant(), lang: langOf(u, settings()) }));
         res.json({ result: { ok: true, to: formatPhone(to) } });
@@ -166,7 +183,9 @@ export function createChannels({ db, env = process.env, pusher = createPusher(en
       const action = replyKeyword(params.Body, params.OptOutType);
       if (action) {
         try {
-          await db.run((s) => applyTextReply(s, { from: params.From, action }), { write: true });
+          // A consent record per person: source 'keyword', version 'keyword:STOP', Twilio's IP (trust proxy).
+          await db.run((s) => applyTextReply(s, { from: params.From, action, body: params.Body, word: params.Body, ip: req.ip,
+            userAgent: req.get('user-agent') || null, at: new Date().toISOString() }), { write: true });
         } catch (e) {
           console.error('Text reply could not be saved:', e.message);
           return res.status(500).type('text/plain').send('Try again');

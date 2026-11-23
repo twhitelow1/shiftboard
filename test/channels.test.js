@@ -13,6 +13,7 @@ import { DocDb } from '../server/db.js';
 import { openPglite } from '../server/pglite.js';
 import { createApp } from '../server/app.js';
 import { addDays, todayStr } from '../core/time.js';
+import { signIn } from './helpers/signin.js';
 
 // ---------- fakes ----------
 
@@ -165,21 +166,22 @@ test('push.subscribe / push.unsubscribe: checked, one per phone, only your own',
 test('texts: each person opts in themselves; managers can’t; the restaurant switch is admin-only', () => {
   const { store, as } = service(ON);
   const alex = as('usr_alexd'), moe = as('usr_moe'), kelly = as('usr_kelly');
-  assert.equal(store.get('users', 'usr_alexd').smsNotifications, undefined, 'off by default');
-  assert.throws(() => alex('sms.preferences', { on: true, phone: '555-0123' }), /mobile number/);
-  assert.deepEqual(alex('sms.preferences', { on: true, phone: '(303) 555-0123' }), { smsNotifications: true, smsPhone: '+13035550123' });
+  assert.equal(store.get('users', 'usr_alexd').smsConsent, undefined, 'off by default');
+  assert.throws(() => alex('sms.preferences', { on: true, phone: '555-0123', consent: true }), /mobile number/);
+  assert.throws(() => alex('sms.preferences', { on: true, phone: '(303) 555-0123' }), /Tick the box/, 'never without the consent box');
+  assert.deepEqual(alex('sms.preferences', { on: true, phone: '(303) 555-0123', consent: true }), { smsConsent: true, smsPhone: '+13035550123', smsStatus: 'on' });
   const consent = store.get('users', 'usr_alexd').smsConsentAt;
   assert.ok(consent);
-  assert.deepEqual(alex('sms.preferences', { on: false }), { smsNotifications: false, smsPhone: '+13035550123' });
+  assert.deepEqual(alex('sms.preferences', { on: false }), { smsConsent: false, smsPhone: '+13035550123', smsStatus: 'off' });
 
   // A manager editing Alex can't switch texts on or change the number.
   const me = store.get('users', 'usr_alexd');
-  moe('employees.save', { ...me, smsNotifications: true, smsPhone: '+17205550199' });
-  assert.equal(store.get('users', 'usr_alexd').smsNotifications, false);
+  moe('employees.save', { ...me, smsConsent: true, smsNotifications: true, smsPhone: '+17205550199' });
+  assert.equal(store.get('users', 'usr_alexd').smsConsent, false);
   assert.equal(store.get('users', 'usr_alexd').smsPhone, '+13035550123');
   // sms.preferences only ever changes the caller.
-  moe('sms.preferences', { on: true, phone: '7205550100', userId: 'usr_alexd' });
-  assert.equal(store.get('users', 'usr_alexd').smsNotifications, false);
+  moe('sms.preferences', { on: true, phone: '7205550100', userId: 'usr_alexd', consent: true });
+  assert.equal(store.get('users', 'usr_alexd').smsConsent, false);
   assert.equal(store.get('users', 'usr_moe').smsPhone, '+17205550100');
 
   // Restaurant-wide switch.
@@ -190,8 +192,8 @@ test('texts: each person opts in themselves; managers can’t; the restaurant sw
   assert.throws(() => alex('sms.preferences', { on: true }), /turned off/);
   assert.doesNotThrow(() => alex('sms.preferences', { on: false }), 'turning off always works');
   moe('sms.setRestaurant', { on: true });
-  alex('sms.preferences', { on: true });
-  assert.equal(store.get('users', 'usr_alexd').smsNotifications, true, 'the saved number is reused');
+  alex('sms.preferences', { on: true, consent: true });
+  assert.equal(store.get('users', 'usr_alexd').smsConsent, true, 'the saved number is reused');
 });
 
 test('STOP and START replies', () => {
@@ -200,13 +202,13 @@ test('STOP and START replies', () => {
   assert.equal(replyKeyword('Can I swap Friday?'), null);
   assert.equal(replyKeyword('please', 'STOP'), 'stop', 'Twilio’s OptOutType wins');
   const { store, as } = service(ON);
-  as('usr_alexd')('sms.preferences', { on: true, phone: '3035550123' });
+  as('usr_alexd')('sms.preferences', { on: true, phone: '3035550123', consent: true });
   assert.equal(applyTextReply(store, { from: '+13035550123', action: 'stop' }), 1);
-  assert.equal(store.get('users', 'usr_alexd').smsNotifications, false);
+  assert.equal(store.get('users', 'usr_alexd').smsConsent, false);
   assert.ok(store.get('users', 'usr_alexd').smsStoppedAt);
   assert.equal(applyTextReply(store, { from: '+19995550123', action: 'stop' }), 0, 'unknown number');
   assert.equal(applyTextReply(store, { from: '+13035550123', action: 'start' }), 1);
-  assert.equal(store.get('users', 'usr_alexd').smsNotifications, true);
+  assert.equal(store.get('users', 'usr_alexd').smsConsent, true);
 });
 
 // ---------- HTTP API: sent after the commit, never breaking the request ----------
@@ -237,7 +239,7 @@ function client(base) {
   return {
     post,
     rpc: (method, args) => post(`/api/rpc/${method}`, args),
-    async login(email) { assert.equal((await post('/api/auth/login', { email, password: 'demo1234' })).status, 200); return this; },
+    async login(email) { const r = await signIn(post, email); assert.equal(r.status, 200, JSON.stringify(r.body)); return this; },
   };
 }
 const newShift = (mgr, userId, days = 20) => mgr.rpc('shifts.save', { date: addDays(todayStr(), days), start: '16:00', end: '22:00', jobCodeId: 'job_srv', userId, published: true });
@@ -253,11 +255,11 @@ test('new notifications go to phones and opted-in mobiles; expired phones are re
     assert.equal((await alex.rpc('push.publicKey', {})).body.result.publicKey, 'test-public-key', 'read-only RPC');
     assert.equal((await alex.rpc('push.subscribe', { subscription: sub('alex-phone') })).status, 200);
     assert.equal((await alex.rpc('push.subscribe', { subscription: sub('gone') })).status, 200);
-    assert.equal((await alex.rpc('sms.preferences', { on: true, phone: '(303) 555-0123' })).status, 200);
+    assert.equal((await alex.rpc('sms.preferences', { on: true, phone: '(303) 555-0123', consent: true })).status, 200);
     await styves.rpc('push.subscribe', { subscription: sub('styves-phone') }); // Styves: push only, no texts
     await A.app.locals.settled();
     assert.deepEqual(A.twilio.texts().map((t) => t.To), ['+13035550123'], 'a welcome text after opting in');
-    assert.match(A.twilio.texts()[0].Body, /Reply STOP to opt out/);
+    assert.equal(A.twilio.texts()[0].Body, "ShiftBoard by DubLow Digital: You're subscribed to shift schedule alerts. Msg freq varies. Msg & data rates may apply. Reply HELP for help, STOP to cancel.");
 
     assert.equal((await newShift(mgr, 'usr_alexd')).status, 200);
     assert.equal((await newShift(mgr, 'usr_styves')).status, 200);
@@ -300,7 +302,7 @@ test('a failed or hanging push or text never fails or slows the request', async 
       const alex = await client(A.base).login('alexd@demo.shiftboard');
       const mgr = await client(A.base).login('moe@demo.shiftboard');
       await alex.rpc('push.subscribe', { subscription: sub('p') });
-      await alex.rpc('sms.preferences', { on: true, phone: '3035550123' });
+      await alex.rpc('sms.preferences', { on: true, phone: '3035550123', consent: true });
       const t0 = Date.now();
       const r = await newShift(mgr, 'usr_alexd');
       assert.equal(r.status, 200, `${label}: ${JSON.stringify(r.body)}`);
@@ -309,7 +311,7 @@ test('a failed or hanging push or text never fails or slows the request', async 
       if (label === 'errors') {
         await A.app.locals.settled();
         assert.equal(A.db.store.list('pushSubscriptions').length, 1, 'a 500 doesn’t remove the phone');
-        assert.equal(A.db.store.get('users', 'usr_alexd').smsNotifications, true);
+        assert.equal(A.db.store.get('users', 'usr_alexd').smsConsent, true);
       }
       assert.ok(A.push.sent.length >= 1 && A.twilio.calls.length >= 1, `${label}: the sends were attempted`);
     } finally { await A.close(); }
@@ -320,9 +322,9 @@ test('Twilio says a number unsubscribed: its texts are turned off', async () => 
   const A = await startApp({ twilio: fakeTwilio({ fail: { code: 21610, message: 'Attempt to send to unsubscribed recipient' } }) });
   try {
     const alex = await client(A.base).login('alexd@demo.shiftboard');
-    await alex.rpc('sms.preferences', { on: true, phone: '3035550123' }); // the welcome text fails with 21610
+    await alex.rpc('sms.preferences', { on: true, phone: '3035550123', consent: true }); // the welcome text fails with 21610
     await A.app.locals.settled();
-    assert.equal(A.db.store.get('users', 'usr_alexd').smsNotifications, false);
+    assert.equal(A.db.store.get('users', 'usr_alexd').smsConsent, false);
   } finally { await A.close(); }
 });
 
@@ -330,7 +332,7 @@ test('STOP / START webhook: only signed requests from Twilio count', async () =>
   const A = await startApp();
   try {
     const alex = await client(A.base).login('alexd@demo.shiftboard');
-    await alex.rpc('sms.preferences', { on: true, phone: '3035550123' });
+    await alex.rpc('sms.preferences', { on: true, phone: '3035550123', consent: true });
     const url = `${A.base}/api/twilio/inbound`;
     const inbound = (params, signature = twilioSignature('test-auth-token', url, params)) => fetch(url, {
       method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Twilio-Signature': signature }, body: new URLSearchParams(params),
@@ -338,20 +340,20 @@ test('STOP / START webhook: only signed requests from Twilio count', async () =>
     const stop = { From: '+13035550123', To: '+17205550100', Body: 'STOP', MessageSid: 'SM1', OptOutType: 'STOP' };
     assert.equal((await inbound(stop, 'forged')).status, 403);
     assert.equal((await inbound(stop, twilioSignature('wrong-token', url, stop))).status, 403);
-    assert.equal(A.db.store.get('users', 'usr_alexd').smsNotifications, true);
+    assert.equal(A.db.store.get('users', 'usr_alexd').smsConsent, true);
 
     const r = await inbound(stop);
     assert.equal(r.status, 200);
     assert.match(r.headers.get('content-type'), /xml/);
     assert.match(await r.text(), /<Response><\/Response>/);
     await A.db.sync();
-    assert.equal(A.db.store.get('users', 'usr_alexd').smsNotifications, false);
+    assert.equal(A.db.store.get('users', 'usr_alexd').smsConsent, false);
     assert.ok(A.db.store.get('users', 'usr_alexd').smsStoppedAt);
 
     assert.equal((await inbound({ ...stop, Body: 'Running late', OptOutType: '' })).status, 200, 'other texts are ignored');
     assert.equal((await inbound({ ...stop, Body: 'START', OptOutType: 'START' })).status, 200);
     await A.db.sync();
-    assert.equal(A.db.store.get('users', 'usr_alexd').smsNotifications, true);
+    assert.equal(A.db.store.get('users', 'usr_alexd').smsConsent, true);
   } finally { await A.close(); }
 });
 
@@ -371,6 +373,8 @@ test('test buttons: push to my phones; test text for admins only', async () => {
     assert.equal((await alex.post('/api/sms/test', { phone: '3035550123' })).status, 403);
     assert.equal((await kelly.post('/api/sms/test', { phone: '3035550123' })).status, 403, 'managers aren’t admins');
     assert.equal((await moe.post('/api/sms/test', { phone: 'nope' })).status, 400);
+    assert.equal((await moe.post('/api/sms/test', { phone: '720 555 0100' })).status, 400, 'the admin has to agree to texts on that number first');
+    assert.equal((await moe.rpc('sms.preferences', { on: true, phone: '720 555 0100', consent: true })).status, 200);
     const s = await moe.post('/api/sms/test', { phone: '720 555 0100' });
     assert.equal(s.status, 200);
     assert.equal(s.body.result.to, '(720) 555-0100');
@@ -385,7 +389,7 @@ test('test buttons: push to my phones; test text for admins only', async () => {
     const moe = await client(B.base).login('moe@demo.shiftboard');
     assert.equal((await moe.rpc('push.publicKey', {})).body.result.enabled, false);
     assert.equal((await moe.rpc('push.subscribe', { subscription: sub('a') })).status, 400);
-    assert.equal((await moe.rpc('sms.preferences', { on: true, phone: '3035550123' })).status, 400);
+    assert.equal((await moe.rpc('sms.preferences', { on: true, phone: '3035550123', consent: true })).status, 400);
     assert.equal((await moe.post('/api/sms/test', { phone: '3035550123' })).status, 400);
     assert.equal((await fetch(`${B.base}/api/twilio/inbound`, { method: 'POST' })).status, 403);
   } finally { await B.close(); }

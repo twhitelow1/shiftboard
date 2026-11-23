@@ -85,7 +85,7 @@ const migrations = (S) => [
  * all documents in memory, so photos there would grow memory and cold starts with the photo library.
  * The cache keeps the rest of each document; routes read the bytes on demand with DocDb.lazyData.
  */
-export const LAZY_DATA = ['menuPhotos', 'eightySixPhotos'];
+export const LAZY_DATA = ['menuPhotos', 'eightySixPhotos', 'profilePhotos'];
 const LAZY_SQL = `ARRAY[${LAZY_DATA.map((c) => `'${c}'`).join(',')}]::text[]`;
 
 // A cached lazy document has no `data`; saving it again keeps the bytes already stored.
@@ -225,7 +225,8 @@ export class DocDb {
    *  write: true   -> go straight to the lock.
    *  synced: true  -> the caller already synced this request; skip the first sync.
    *  onCommit(changes) -> called once after a successful commit with every change
-   *                       ({ col, id, doc, isNew }); use it for side effects such as email.
+   *                       ({ col, id, doc, isNew, prev }); use it for side effects such as email.
+   *                       prev is the document as it was before this write (null when new).
    * fn must be synchronous and free of side effects outside the store (it may run twice).
    */
   async run(fn, { write = false, synced = false, onCommit } = {}) {
@@ -241,8 +242,11 @@ export class DocDb {
       await this.sync(client);
       const view = new OverlayStore(this.store);
       const out = fn(view);
-      // isNew is decided here, while the cache still shows the state before this write.
-      changes = view.changeList().map((c) => ({ ...c, isNew: !!c.doc && !this.store.col(c.col).has(c.id) }));
+      // isNew and prev are decided here, while the cache still shows the state before this write.
+      changes = view.changeList().map((c) => {
+        const prev = this.store.col(c.col).get(c.id) ?? null;
+        return { ...c, isNew: !!c.doc && !prev, prev };
+      });
       written = await this.writeDocs(client, changes);
       return out;
     });
@@ -263,11 +267,16 @@ export class DocDb {
     return result;
   }
 
-  // ----- one-time password links (invite / reset) -----
-  /** Create a link token for a user. Returns the raw token (only its hash is stored). */
+  // ----- one-time tokens: invite / reset / sign-in links, passkey challenges -----
+  /** The stored form of a token (only this is kept). */
+  static tokenHash(token) {
+    return crypto.createHash('sha256').update(String(token || '')).digest('hex');
+  }
+
+  /** Create a one-time token for a user ('' when nobody is known yet). Returns the raw token (only its hash is stored). */
   async createToken(userId, purpose, minutes) {
     const token = crypto.randomBytes(32).toString('base64url');
-    const hash = crypto.createHash('sha256').update(token).digest('hex');
+    const hash = DocDb.tokenHash(token);
     await this.query(
       `INSERT INTO ${this.S}.auth_tokens (token_hash, user_id, purpose, expires_at) VALUES ($1, $2, $3, now() + make_interval(mins => $4::int))`,
       [hash, userId, purpose, minutes],
@@ -278,17 +287,31 @@ export class DocDb {
 
   /** Use a token once. Returns { userId, purpose } or null if it's unknown, used or expired. */
   async consumeToken(token) {
-    const hash = crypto.createHash('sha256').update(String(token || '')).digest('hex');
+    return this.consumeTokenHash(DocDb.tokenHash(token));
+  }
+
+  /** Use a token once by its hash (purpose: only a token made for that purpose). */
+  async consumeTokenHash(hash, purpose = null) {
     const { rows } = await this.query(
-      `UPDATE ${this.S}.auth_tokens SET used_at = now() WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now() RETURNING user_id, purpose`,
-      [hash],
+      `UPDATE ${this.S}.auth_tokens SET used_at = now() WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now()
+         AND ($2::text IS NULL OR purpose = $2) RETURNING user_id, purpose`,
+      [String(hash || ''), purpose],
     );
     return rows[0] ? { userId: rows[0].user_id, purpose: rows[0].purpose } : null;
   }
 
-  /** Cancel a user's outstanding links (after a password change). */
-  async revokeTokens(userId) {
-    await this.query(`UPDATE ${this.S}.auth_tokens SET used_at = now() WHERE user_id = $1 AND used_at IS NULL`, [userId]);
+  /** Look at a token without using it: { userId, purpose, expiresAt } or null if it's unknown, used or expired. */
+  async peekTokenHash(hash) {
+    const { rows } = await this.query(
+      `SELECT user_id, purpose, expires_at FROM ${this.S}.auth_tokens WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now()`,
+      [String(hash || '')],
+    );
+    return rows[0] ? { userId: rows[0].user_id, purpose: rows[0].purpose, expiresAt: new Date(rows[0].expires_at).toISOString() } : null;
+  }
+
+  /** Cancel a user's outstanding links (after a password change), or only those for one purpose. */
+  async revokeTokens(userId, purpose = null) {
+    await this.query(`UPDATE ${this.S}.auth_tokens SET used_at = now() WHERE user_id = $1 AND used_at IS NULL AND ($2::text IS NULL OR purpose = $2)`, [userId, purpose]);
   }
 
   // ----- login rate limiting (shared across instances) -----
