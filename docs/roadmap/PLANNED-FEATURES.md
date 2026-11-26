@@ -15,25 +15,25 @@ _Working name "ShiftBoard"; a new product name is still to be chosen (see Busine
 | Events: tentative counts as confirmed within 2 weeks | #12 | |
 | Onboarding, consent records, STOP handling, two-step sign-in | #13 | |
 | Phone app in a browser at /app; Expo Go publishing via GitHub | #14 | |
+| Roadmap, seasons for reports, legal name vs common name | #15 | |
 
 ## Building
 | Feature | Notes |
 |---|---|
-| Seasons (Winter Nov–Apr, Summer May–Oct) for reports | in this PR |
-| "View as" (Super Admins) + role editor (features per role) | |
-| Trades & pickups report by season + Announcements (mass push/email/text) | texts limited to schedule-related messages |
-| OpenTable (API + CSV import) + Positive impact (5-star mentions, guest requests, kudos) | |
-| Reports section + 86 List report; 86 List refocused on stock/supplies | |
-| Claude connector (MCP) for claude.ai / Claude Code, OAuth with two-step sign-in | tools shared with Ask ShiftBoard |
+| **In PR #16:** View as + Roles & features; Reports + 86 List report (86 List for stock/supplies); Unpublish (notify on/off); Trades & pickups by season; Announcements | merge pending |
+| OpenTable (API + CSV import) + Positive impact (5-star mentions, guest requests, kudos) | paused by usage limit, resumes Nov 28 |
+| Claude connector (MCP) for claude.ai / Claude Code, OAuth with two-step sign-in | paused, resumes Nov 28 |
+| Beta error tracking + "Report a problem" | paused, resumes Nov 28 |
+| Schedule PDF (like the wall sheet), publish options (notify, attach PDF), editable notification emails, all managers on duty | paused, resumes Nov 28 |
 
 ## Next
 | Feature | Notes |
 |---|---|
 | **Ask ShiftBoard** (built-in Claude chat for staff and managers, EN/ES) | Claude Haiku 5.5; Anthropic key in Vercel; **usage metered and capped per restaurant**, shown in Settings and the DubLow console; reuses the connector's tools and permissions |
 | Google Business Profile + Yelp reviews | pull reviews, match staff mentions, alert managers, **AI-drafted replies** (post to Google via API; Yelp: copy/paste, its API can't reply) |
-| Beta error tracking + "Report a problem" | server and browser errors captured, DubLow alerted, console page |
 
 ## Planned: AI
+- Push notifications in the /app browser version (the website already has them)
 - Schedule drafting for managers (draft → review → publish)
 - Monday digest (labor vs forecast, 86 trends, trades, kudos, upcoming events)
 - Review insights (themes, sentiment) on top of review matching
