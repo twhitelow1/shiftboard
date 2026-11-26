@@ -8,15 +8,18 @@ import { uid } from './store.js';
 import { checkPhoto } from './training.js';
 import { normalizePhone, formatPhone } from './notify-prefs.js';
 import { applyConsents, consentState, LEGAL_LINKS } from './consent.js';
+import { legalNamePatch } from './names.js';
 
 export const PROFILE_PHOTO_MAX = 200 * 1024;
 
 export function profileApi({ store, now, fail, needAuth, settings, langOf, request, channels, legal }) {
   const me = (actor) => store.get('users', actor.id);
-  const view = (u) => ({ id: u.id, name: u.name, phone: u.phone || '', photoId: u.photoId || null });
+  const view = (u) => ({ id: u.id, name: u.name, phone: u.phone || '', photoId: u.photoId || null,
+    legalFirstName: u.legalFirstName || '', legalLastName: u.legalLastName || '' });
 
   return {
-    // Change my own name and mobile number (managers still edit people in Team).
+    // Change my own name, legal name (for payroll; core/names.js) and mobile number (managers still edit people in Team).
+    // The legal name is mine to correct: it's saved as typed, with when I last changed it for payroll to see.
     'profile.update': (actor, a = {}) => {
       needAuth(actor);
       const patch = {};
@@ -29,6 +32,11 @@ export function profileApi({ store, now, fail, needAuth, settings, langOf, reque
         const raw = String(a.phone ?? '').trim();
         if (raw && !normalizePhone(raw)) fail(400, 'Enter your mobile number, like (303) 555-0123');
         patch.phone = raw ? formatPhone(normalizePhone(raw)) : '';
+      }
+      const legal = legalNamePatch(a);
+      const was = me(actor);
+      if (Object.entries(legal).some(([k, v]) => v !== (was[k] || ''))) {
+        Object.assign(patch, legal, { legalNameChangedAt: now().toISOString() });
       }
       return view(store.update('users', actor.id, patch));
     },

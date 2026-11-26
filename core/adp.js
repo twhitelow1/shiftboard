@@ -60,7 +60,7 @@ export function apiWorkerDoc(w, cur, at) {
   const status = String(w?.workerStatus?.statusCode?.codeValue || '').toLowerCase();
   return {
     id: `aoid:${w.associateOID}`, origin: 'api', aoid: w.associateOID,
-    name: [first, last].filter(Boolean).join(' ') || legal.formattedName || 'Unnamed', first, last,
+    name: [first, last].filter(Boolean).join(' ') || legal.formattedName || 'Unnamed', first, last, legalFirst: legal.givenName || '',
     email: emails[0] || '', ids: [...new Set(ids)], employeeId: primary.payrollFileNumber || w?.workerID?.idValue || '',
     department: dept?.shortName || dept?.longName || dept?.codeValue || primary.jobTitle || '',
     deleted: !!status && status !== 'active' && status !== 'leave',
@@ -74,7 +74,7 @@ export function csvWorkerDoc(p, cur, at) {
   const id = normId(p.employeeId);
   return {
     id: csvWorkerKey(p), origin: cur?.origin || 'csv', aoid: cur?.aoid || null,
-    name: cur?.origin === 'api' ? cur.name : display || cur?.name || p.employeeId, first: cur?.first || first, last: cur?.last || last,
+    name: cur?.origin === 'api' ? cur.name : display || cur?.name || p.employeeId, first: cur?.first || first, last: cur?.last || last, ...(cur?.legalFirst ? { legalFirst: cur.legalFirst } : {}),
     email: cur?.email || '', ids: [...new Set([...(cur?.ids || []), ...(id ? [id] : [])])], employeeId: cur?.employeeId || p.employeeId || '',
     department: cur?.department || p.department || '', deleted: false,
     userId: cur?.userId ?? null, matchedBy: cur?.matchedBy ?? null, seenAt: at,
@@ -84,7 +84,8 @@ export function csvWorkerDoc(p, cur, at) {
 /**
  * Suggest a ShiftBoard person for each unmatched ADP worker: by email, then by employee ID / file
  * number saved on the person (user.adpId), then by name (full name, first name + last initial, first
- * name alone; each only when unambiguous). Matches made by hand, and people already taken, are left alone.
+ * name alone; each only when unambiguous, the legal name before the name they go by). Matches made by
+ * hand, and people already taken, are left alone.
  * @returns Map(workerId -> { userId, by: 'email' | 'id' | 'name' })
  */
 export function matchWorkers(workers, users) {
@@ -110,7 +111,9 @@ export function matchWorkers(workers, users) {
     }
     // Names: the Toast matcher's rules, on everyone not matched yet.
     const shaped = mine.map((w) => ({
-      id: w.id, firstName: (w.first || nameParts(w.name).first).replace(/\s+[a-z]\.?$/i, ''), lastName: w.last || nameParts(w.name).last, chosenName: '', email: '',
+      // ADP's legal first name (API workers) is matched as the first name, the preferred one as Toast's chosen name.
+      id: w.id, firstName: (w.legalFirst || w.first || nameParts(w.name).first).replace(/\s+[a-z]\.?$/i, ''), lastName: w.last || nameParts(w.name).last,
+      chosenName: w.legalFirst && w.first && w.first !== w.legalFirst ? w.first : '', email: '',
       userId: w.userId || out.get(w.id)?.userId || null, matchedBy: w.matchedBy,
     }));
     for (const [id, m] of matchEmployees(shaped, active.filter((u) => !taken.has(u.id)))) out.set(id, { userId: m.userId, by: 'name' });

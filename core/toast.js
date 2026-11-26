@@ -9,6 +9,8 @@
 //   toastJobs       Toast's jobs and which ShiftBoard job code each one is
 //   integrations    'toast': restaurant name, time zone, last sync
 
+import { nameTiers } from './names.js';
+
 export const SOURCE = 'toast';
 export const INTEGRATION_ID = 'toast';
 
@@ -142,6 +144,7 @@ function jobDoc(j, cur, at) {
  * Suggest a ShiftBoard person for each unmatched Toast employee: by email, then by name.
  * Name rules, each used only when the match is unambiguous on both sides:
  *   full name ("Mary Ann Lopez"), first name + last initial ("Alex D"), then first name alone ("Moe").
+ * Each rule tries the person's legal name first (payroll has it), then the name they go by (core/names.js).
  * People already matched (including by hand) are never suggested twice.
  * @returns Map(toastEmployeeId -> { userId, by: 'email' | 'name' })
  */
@@ -161,22 +164,24 @@ export function matchEmployees(toastEmployees, users) {
   }
   // 2–4. Names
   const firstOf = (e) => [norm(e.firstName), norm(e.chosenName)].filter(Boolean);
-  const keysOf = (u) => [norm(u.name), norm(u.sheetName)].filter(Boolean);
+  const tiers = [(u) => nameTiers(u, { payroll: true })[0], (u) => nameTiers(u, { payroll: true })[1]];
   const rules = [
     (e) => firstOf(e).map((f) => norm(`${f} ${e.lastName}`)),
     (e) => (norm(e.lastName) ? firstOf(e).map((f) => `${f} ${norm(e.lastName)[0]}`) : []),
     (e) => firstOf(e),
   ];
   for (const [i, keys] of rules.entries()) {
-    for (const e of open) {
-      if (out.has(e.id)) continue;
-      const mine = new Set(keys(e));
-      if (!mine.size) continue;
-      const hits = free().filter((u) => keysOf(u).some((k) => mine.has(k)));
-      if (hits.length !== 1) continue;
-      // First-name-only: no other Toast employee may answer to the same name.
-      if (i === 2 && toastEmployees.some((o) => o.id !== e.id && firstOf(o).some((f) => mine.has(f)))) continue;
-      claim(e, hits[0], 'name');
+    for (const keysOf of tiers) {
+      for (const e of open) {
+        if (out.has(e.id)) continue;
+        const mine = new Set(keys(e));
+        if (!mine.size) continue;
+        const hits = free().filter((u) => keysOf(u).some((k) => mine.has(k)));
+        if (hits.length !== 1) continue;
+        // First-name-only: no other Toast employee may answer to the same name.
+        if (i === 2 && toastEmployees.some((o) => o.id !== e.id && firstOf(o).some((f) => mine.has(f)))) continue;
+        claim(e, hits[0], 'name');
+      }
     }
   }
   return out;
