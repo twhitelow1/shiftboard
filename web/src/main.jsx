@@ -29,6 +29,13 @@ import { Welcome, ConsentGate } from './pages/Onboarding.jsx';
 import { AuthCard, SignInBrand, BrandMark, DEFAULT_NAME } from './pages/AuthCard.jsx';
 import { t as tr, useT, I18nCtx, setCurrentLang, resolveLang, saveDeviceLang, deviceLang, unsavedDeviceLang, clearUnsaved, isLang, prettyDate, stamp, fmtTime } from './i18n/index.js';
 import LanguageSwitch from './LanguageSwitch.jsx';
+import ErrorBoundary from './ErrorBoundary.jsx';
+import ReportProblem from './pages/ReportProblem.jsx';
+import { installErrorReporting } from './errors.js';
+import { getLang } from './i18n/index.js';
+
+// Crashes go to DubLow Digital (web/src/errors.js, Errors & reports in the console). Not from the demo: no server.
+installErrorReporting({ enabled: !IS_DEMO, lang: getLang });
 export { BrandMark }; // the sign-in card lives in pages/AuthCard.jsx now
 
 function useHashRoute() {
@@ -152,6 +159,7 @@ function App() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [viewAsOpen, setViewAsOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false); // Report a problem
   const [toast, toasts] = useToasts();
   const parts = useHashRoute();
   const [config, setConfig] = useState({ email: false, emailFrom: null });
@@ -310,6 +318,7 @@ function App() {
                 <div className="tiny" style={{ color: '#94a3b8' }}>{roleLabel(ctx.me, lang)}</div>
               </div>
             </div>
+            {!IS_DEMO && <button className="nav-item" onClick={() => setReportOpen(true)}><Icon name="alert" />{t('report.menu')}</button>}
             {ctx.viewAs ? <button className="nav-item" onClick={exitView}><Icon name="x" />{t('viewAs.exitView')}</button>
               : !IS_DEMO && <button className="nav-item" onClick={signOut}><Icon name="logout" />{t('main.signOut')}</button>}
           </div>
@@ -320,7 +329,7 @@ function App() {
           <TenantBanners onEndSupport={signOut} />
           {ctx.viewAs ? <div className="viewas-head"><ViewAsBanner onSwitch={() => setViewAsOpen(true)} />{header}</div> : header}
           <main className="content">
-            <Page parts={parts} key={ctx.me.id} />{/* a new person (View as, or its Exit): every page starts fresh */}
+            <ErrorBoundary key={`${route}:${ctx.me.id}`} where="page" reportable={!IS_DEMO}><Page parts={parts} /></ErrorBoundary>{/* a new page or person (View as, or its Exit): every page starts fresh */}
           </main>
         </div>
 
@@ -348,12 +357,14 @@ function App() {
                   {n.badge && badges[n.badge] > 0 && <span className="count">{badges[n.badge]}</span>}
                 </div>
               ))}
+              {!IS_DEMO && <div className="list-item click" onClick={() => { setMoreOpen(false); setReportOpen(true); }}><Icon name="alert" size={20} /><span style={{ fontWeight: 600 }}>{t('report.menu')}</span></div>}
               {ctx.canViewAs && <div className="list-item click" onClick={() => { setMoreOpen(false); setViewAsOpen(true); }}><Icon name="eye" size={20} /><span style={{ fontWeight: 600 }}>{t('main.viewAs')}</span></div>}
               {ctx.viewAs ? <div className="list-item click" onClick={() => { setMoreOpen(false); exitView(); }}><Icon name="x" size={20} /><span style={{ fontWeight: 600 }}>{t('viewAs.exitView')}</span></div>
                 : !IS_DEMO && <div className="list-item click" onClick={signOut}><Icon name="logout" size={20} /><span style={{ fontWeight: 600 }}>{t('main.signOut')}</span></div>}
             </div>
           </Modal>
         )}
+        {reportOpen && <ReportProblem page={t(current.label)} onClose={() => setReportOpen(false)} />}
         {notifOpen && <Notifications viewing={!!ctx.viewAs} onClose={() => { setNotifOpen(false); refresh(); }} />}
         {viewAsOpen && <ViewAsDialog onClose={() => setViewAsOpen(false)} />}
         {ctx.viewAs && <div className="viewas-frame" aria-hidden="true" />}
@@ -382,4 +393,4 @@ function DemoBar({ onSwitch }) {
   );
 }
 
-createRoot(document.getElementById('root')).render(<App />);
+createRoot(document.getElementById('root')).render(<ErrorBoundary where="app" reportable={!IS_DEMO}><App /></ErrorBoundary>);

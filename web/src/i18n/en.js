@@ -5,6 +5,7 @@ import auth from './en-auth.js'; // signing in, two-step, the welcome wizard, co
 import legal from './en-legal.js'; // legal name vs. the name people go by
 import reports from './en-reports.js'; // Reports (managers)
 import trades from './en-trades.js'; // Trades & pickups by season, Settings → Seasons, Announcements
+import report from './en-report.js'; // Report a problem, and the screen when something crashes
 const catalog = {
   lang: {
     change: 'Change language',
@@ -2274,6 +2275,7 @@ const catalog = {
   ...legal,
   ...trades,
   ...reports,
+  ...report,
 };
 
 export default catalog;

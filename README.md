@@ -142,6 +142,10 @@ Events booked in Tripleseat come into **Events & BEOs** by themselves: date, tim
 
 On the platform, each restaurant's admins connect their own integrations in **Settings → Integrations**: ADP, Toast, Tripleseat, the text sender and the email From, with a panel each (status, the fields to paste credentials into, help on where to find them, Save, and Sync now or a test where there is one). Only the integrations in the restaurant's plan show. The text-message sending number and the email From address are DubLow's to set (in the console): texts go out under DubLow Digital's registered Twilio texting program, and a From address only works on a domain verified in DubLow's Resend account, so restaurant admins see those two but can't change them (they can change the From name and reply-to). Keys are stored encrypted and only ever shown as "set, ends in 1234"; every change goes in the platform's audit log. It's the same storage the DubLow console edits. Chasing Rabbits keeps its env vars as a fallback, and values saved in Settings take their place. A single-restaurant install shows what its env vars set, read-only. Code: `server/integrations-routes.js`, `server/platform/integrations.js`, `web/src/pages/IntegrationsSettings.jsx`.
 
+### Beta error tracking
+
+Server errors, crashes in the web app, the console and the phone app, and **Report a problem** (in each app's user menu or More) go to the DubLow console's **Errors & reports**, with an email to `PLATFORM_ADMIN_EMAIL` for each new problem or report and a daily digest. What's captured, what's never captured, and how to read a fingerprint: [docs/BETA-TESTING.md](docs/BETA-TESTING.md).
+
 ### Moving data from the old SQLite version
 
 If ShiftBoard has been running on Render or Docker with SQLite, copy its `shiftboard.db` file locally, then:

@@ -7,6 +7,7 @@ import { seedAnnouncementDemo, DEMO_CHANNELS } from '../../core/announce-seed.js
 import { startServiceWorker, forgetThisDevice } from './push.js';
 import { getLang, translateError } from './i18n/index.js';
 import { viewCall, viewedPerson } from '../../core/view-as.js';
+import { noteRpc } from './errors.js';
 
 // The server answers errors in the caller's language; this tells it the app's language (which it uses
 // when the person hasn't picked one, and before sign-in). See server/app.js and core/errors.js.
@@ -51,12 +52,14 @@ export async function call(method, args = {}) {
       throw new ApiError(e.status || 500, translateError(e.message)); // the demo has no server to translate it
     }
   }
+  const started = Date.now();
   const res = await fetch(`/api/rpc/${method}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...langHeader() },
     credentials: 'same-origin',
     body: JSON.stringify(args),
-  });
+  }).catch((e) => { noteRpc(method, 0, Date.now() - started); throw e; });
+  noteRpc(method, res.status, Date.now() - started); // for Report a problem: the name and status only
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, body.error || translateError(`Request failed (${res.status})`));
   return body.result;

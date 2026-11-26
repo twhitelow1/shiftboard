@@ -16,7 +16,8 @@ export default defineConfig({
   root: 'web',
   publicDir: DEMO ? false : 'public',
   plugins: [react(), ...(DEMO ? [viteSingleFile(), demoWithoutAppFiles] : [])],
-  define: { __DEMO__: JSON.stringify(DEMO) },
+  // __APP_VERSION__: the commit being built (Vercel sets VERCEL_GIT_COMMIT_SHA), sent with error reports.
+  define: { __DEMO__: JSON.stringify(DEMO), __APP_VERSION__: JSON.stringify((process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 7) || 'dev') },
   build: {
     outDir: DEMO ? '../dist-demo' : '../dist',
     emptyOutDir: true,

@@ -9,6 +9,9 @@ import { useI18n } from '@/i18n';
 import { useErrorText } from '@/lib/hooks';
 import { useSession } from '@/lib/session';
 
+// A crash in a signed-in screen: "Something went wrong" with Reload and Report this (components/CrashScreen.tsx).
+export { CrashScreen as ErrorBoundary } from '@/components/CrashScreen';
+
 export default function AppLayout() {
   const { token, server, boot, bootError, refresh, colors } = useSession();
   const { t } = useI18n();
