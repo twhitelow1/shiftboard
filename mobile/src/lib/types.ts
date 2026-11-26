@@ -27,7 +27,7 @@ export interface Person {
 }
 
 /** One weekday's availability (0 = Sunday): any time, some hours (from/to), or unavailable. */
-export interface DayAvailability { available?: boolean; from?: string; to?: string }
+export interface DayAvailability { available?: boolean; from?: string; to?: string; note?: string; standing?: boolean; requestedAt?: string; source?: string }
 
 export interface Me extends Person {
   availability?: Record<string, DayAvailability>;

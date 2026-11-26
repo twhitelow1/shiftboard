@@ -13,6 +13,10 @@ import { useAction, useRpc } from '@/lib/hooks';
 import { useApp } from '@/lib/session';
 import type { ShiftsList, TimeOff } from '@/lib/types';
 
+/** When each request came in and its place in line (core/time-off.js timeOff.queue). */
+interface QueueInfo { requestedAt: string | null; approx: boolean; source?: string; enteredByName?: string; place?: number; of?: number; date?: string; others?: { name: string; requestedAt: string | null; place: number }[] }
+interface Scope { scope: { mode: string; timeOff?: boolean }; label: { en: string; es: string } }
+
 const STATUS: Record<TimeOff['status'], [MsgKey, Tone]> = {
   pending: ['timeOff.pending', 'warn'], approved: ['timeOff.approved', 'ok'], denied: ['timeOff.denied', 'bad'], cancelled: ['timeOff.cancelled', 'neutral'],
 };
@@ -22,8 +26,13 @@ export function TimeOffView({ asTab }: { asTab?: boolean }) {
   const c = useColors();
   const { me, today, canApprove, people } = useApp();
   const { data, error, reload } = useRpc<TimeOff[]>('timeOff.list');
+  const queue = useRpc<Record<string, QueueInfo>>('timeOff.queue');
+  const scope = useRpc<Scope>('approvalScope.get', {}, [], canApprove);
+  const { lang } = useI18n();
   const [tab, setTab] = useState<'mine' | 'approve' | null>(null);
-  const toApprove = (data || []).filter((x) => x.status === 'pending' && x.userId !== me.id);
+  // To approve: in my "Approves for" scope only, oldest request first.
+  const at = (x: TimeOff) => queue.data?.[x.id]?.requestedAt || '9';
+  const toApprove = (data || []).filter((x) => x.status === 'pending' && x.userId !== me.id && !(x as TimeOff & { outOfScope?: boolean }).outOfScope).sort((a, b) => at(a).localeCompare(at(b)));
   const cur = tab || (canApprove && toApprove.length ? 'approve' : 'mine');
   const rows = cur === 'approve' ? toApprove : (data || []).filter((x) => x.userId === me.id);
   // Approvers: who has shifts during the days asked for.
@@ -37,6 +46,10 @@ export function TimeOffView({ asTab }: { asTab?: boolean }) {
         <Button kind="primary" icon="plus" title={t('timeOff.request')} onPress={() => router.push('/request-time-off')} style={{ flexGrow: 1 }} />
         <Button icon="clock" title={t('timeOff.availability')} onPress={() => router.push('/availability')} style={{ flexGrow: 1 }} />
       </Row>
+      {canApprove ? <Button icon="user" title={t('timeOffAdd.button')} onPress={() => router.push({ pathname: '/request-time-off', params: { for: '1' } })} /> : null}
+      {canApprove && cur === 'approve' && scope.data && !(scope.data.scope.mode === 'all' || scope.data.scope.timeOff === false) ? (
+        <Txt v="small" tone="muted">{t('scope.youApprove', { scope: lang === 'es' ? scope.data.label.es : scope.data.label.en })} {t('scope.elsewhere')}</Txt>
+      ) : null}
       {canApprove ? (
         <Tabs value={cur} onChange={setTab} tabs={[{ value: 'mine', label: t('timeOff.mine') }, { value: 'approve', label: t('timeOff.toApprove'), count: toApprove.length }]} />
       ) : null}
@@ -48,7 +61,7 @@ export function TimeOffView({ asTab }: { asTab?: boolean }) {
       {rows.length ? (
         <Card pad={false} style={{ overflow: 'hidden' }}>
           {rows.map((x) => (
-            <RequestRow key={x.id} x={x} approving={cur === 'approve'} today={today} name={people[x.userId]?.name || ''}
+            <RequestRow key={x.id} x={x} q={queue.data?.[x.id]} approving={cur === 'approve'} today={today} name={people[x.userId]?.name || ''}
               clashes={cur === 'approve' && shifts.data ? clashes(x) : null} border={c.border} />
           ))}
         </Card>
@@ -57,7 +70,7 @@ export function TimeOffView({ asTab }: { asTab?: boolean }) {
   );
 }
 
-function RequestRow({ x, approving, today, name, clashes, border }: { x: TimeOff; approving: boolean; today: string; name: string; clashes: number | null; border: string }) {
+function RequestRow({ x, q, approving, today, name, clashes, border }: { x: TimeOff; q?: QueueInfo; approving: boolean; today: string; name: string; clashes: number | null; border: string }) {
   const { t, tn, date } = useI18n();
   const { client } = useApp();
   const [run, busy] = useAction();
@@ -75,6 +88,7 @@ function RequestRow({ x, approving, today, name, clashes, border }: { x: TimeOff
           {x.reason ? <Txt v="small" tone="muted">{x.reason}</Txt> : null}
           {x.note ? <Txt v="small" tone="muted">{t('swaps.resolution', { text: x.note })}</Txt> : null}
           {clashes ? <Txt v="small" tone="warn">{tn('timeOff.shiftsThen', clashes)}</Txt> : null}
+          {q ? <Requested q={q} mine={!approving} /> : null}
         </View>
         <Badge tone={tone} text={t(label)} />
       </Row>
@@ -90,6 +104,22 @@ function RequestRow({ x, approving, today, name, clashes, border }: { x: TimeOff
           </Row>
         </>
       ) : null}
+    </View>
+  );
+}
+
+/** "Requested Nov 3, 4:12 PM" · "Added by Moe · by email on Nov 3" · "#1 of 3 for Sat, Dec 13". */
+function Requested({ q, mine }: { q: QueueInfo; mine: boolean }) {
+  const { t, date } = useI18n();
+  const when = q.requestedAt ? `${date(q.requestedAt.slice(0, 10))} ${new Date(q.requestedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '—';
+  const how = q.source && q.source !== 'app' ? t(`timeOffQueue.src_${q.source}` as 'timeOffQueue.src_other') : t('timeOffQueue.src_other');
+  return (
+    <View style={{ gap: 2 }}>
+      <Txt v="small" tone="faint">{q.enteredByName ? t('timeOffQueue.addedBy', { name: q.enteredByName, how, when }) : t('timeOffQueue.requested', { when })}{q.approx ? ` ${t('timeOffQueue.approx')}` : ''}</Txt>
+      {q.place && q.of && q.date ? (
+        <Badge tone={q.place === 1 ? 'ok' : 'warn'} text={t(mine ? 'timeOffQueue.yourPlace' : 'timeOffQueue.place', { place: t('timeOffQueue.ord', { n: q.place }), of: q.of, date: date(q.date) })} />
+      ) : null}
+      {q.others?.length ? <Txt v="small" tone="faint">{t('timeOffQueue.others', { list: q.others.map((o) => `${t('timeOffQueue.ord', { n: o.place })} ${o.name}`).join(', ') })}</Txt> : null}
     </View>
   );
 }
