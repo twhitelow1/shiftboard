@@ -2,6 +2,10 @@
 // (web/src/pages/Schedule.jsx): a room's banner (Restaurant, Rabbit Hole…), then each position
 // worked there, in the order of Settings → Rooms & positions (core/layout.js). Area matching is
 // copied from core/areas.js.
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+import { daySort, type DaySort } from './dayList';
+import { getItem, setItem } from './storage';
 import type { JobCode, Layout, Person, Settings, Shift } from './types';
 
 const BOOKING_ONLY = /full buyout/i;
@@ -73,6 +77,39 @@ export function daySections(shifts: Shift[], jobs: Record<string, JobCode>, sett
   return [...groups.values()]
     .sort((a, b) => rank(a) - rank(b) || a.banner.localeCompare(b.banner) || (a.job.order ?? 0) - (b.job.order ?? 0) || a.job.name.localeCompare(b.job.name))
     .map(({ isArea, ...g }) => ({ ...g, shifts: g.shifts.sort((x, y) => x.start.localeCompare(y.start)) }));
+}
+
+/**
+ * The layout the day lists sort with: the server's, or for an older server that sends none, the rooms and
+ * positions the old grouping finds in these shifts (daySections), in its order.
+ */
+export function dayLayout(shifts: Shift[], jobs: Record<string, JobCode>, settings: Settings, layout?: Layout): Layout {
+  if (layout) return layout;
+  const rooms: Layout['rooms'] = [];
+  for (const sec of daySections(shifts, jobs, settings)) {
+    let r = rooms.find((x) => sameArea(x.room, sec.banner));
+    if (!r) rooms.push((r = { room: sec.banner, positions: [] }));
+    if (!r.positions.some((p) => p.jobCodeId === sec.job.id)) r.positions.push({ jobCodeId: sec.job.id });
+  }
+  return { rev: 0, rooms };
+}
+
+/**
+ * How a day list is sorted (lib/dayList.ts), remembered on this phone per screen (storage `daySort.<screen>`).
+ * Until a choice is saved, `fallback`: the order that screen has always used.
+ */
+export function useDaySort(screen: 'schedule' | 'floor', fallback: DaySort): [DaySort, (v: DaySort) => void] {
+  const [value, setValue] = useState<DaySort>(fallback);
+  const touched = useRef(false);
+  useEffect(() => {
+    getItem(`daySort.${screen}`).then((v) => { if (v && !touched.current) setValue(daySort(v, fallback)); }).catch(() => {});
+  }, [screen]); // eslint-disable-line react-hooks/exhaustive-deps
+  const set = useCallback((v: DaySort) => {
+    touched.current = true;
+    setValue(v);
+    setItem(`daySort.${screen}`, v).catch(() => {});
+  }, [screen]);
+  return [value, set];
 }
 
 export const byStart = (a: Shift, b: Shift) => (a.date + a.start).localeCompare(b.date + b.start);

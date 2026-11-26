@@ -11,6 +11,7 @@ import impact from './en-impact.js'; // Positive impact and OpenTable
 import print from './en-print.js'; // the schedule PDF, the Publish dialog, Settings → Email notifications
 import assistant from './en-assistant.js'; // Ask ShiftBoard: the chat and Settings → Ask ShiftBoard
 import reviews, { integrations as reviewIntegrations } from './en-reviews.js'; // Google Business Profile, Yelp, answering reviews, review alerts
+import dayList from './en-daylist.js'; // the day lists' sort (room, position, time, name) and the week grid by position
 const catalog = {
   lang: {
     change: 'Change language',
@@ -2302,6 +2303,7 @@ const catalog = {
   ...print,
   ...assistant,
   ...reviews,
+  ...dayList,
 };
 Object.assign(catalog.integrations, reviewIntegrations); // Settings → Integrations: the Google and Yelp cards
 
