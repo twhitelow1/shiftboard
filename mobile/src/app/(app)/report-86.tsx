@@ -1,4 +1,5 @@
-// Report something 86'd or running low: pick the list, search the Training menu or type it, then one tap.
+// Report an ingredient or supply that's 86'd or running low: pick the list, type it (or, on a list set to suggest
+// menu items, pick one from the Training menu), then one tap. The server fills in the category it was filed under.
 // With an itemId it updates that item (running low → 86'd, a new count or note). Up to 3 optional photos, shrunk on
 // the phone (src/lib/photos.ts) and uploaded one per request after the report is saved.
 import { Image } from 'expo-image';

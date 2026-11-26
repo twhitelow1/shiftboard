@@ -3,6 +3,7 @@
 // Restaurant data (names, positions, areas, notes) is passed in as a placeholder and never translated here.
 import auth from './en-auth.js'; // signing in, two-step, the welcome wizard, consent, My settings
 import legal from './en-legal.js'; // legal name vs. the name people go by
+import reports from './en-reports.js'; // Reports (managers)
 const catalog = {
   lang: {
     change: 'Change language',
@@ -1460,14 +1461,14 @@ const catalog = {
   eightySix: {
     // the page
     whatsOut: 'What’s out right now',
-    intro: 'Report what’s 86’d or running low. Tap Back in stock when it’s back.',
+    intro: 'Ingredients and supplies we’re out of or running low on, like Bacardi, napkins, rocks glasses, limes or oat milk. Not menu items. Tap Back in stock when it’s back.',
     report: 'Report',
     tabLists: 'Lists',
     tabHistory: 'History',
     all: 'All',
     barColumn: 'Bar',
     floorColumn: 'Kitchen & floor',
-    allGood: 'All good: nothing’s out or low.',
+    allGood: 'All stocked: nothing’s out or low.',
     pillOut: '86',
     pillLow: 'Low',
     backInStock: 'Back in stock',
@@ -1480,17 +1481,20 @@ const catalog = {
     clearsAt: 'Clears each night at {time}',
     seesOnly: 'You can see this list. Its own team reports on it.',
     // reporting
-    reportItem: 'Report an item',
+    reportItem: 'What’s out or low?',
     updateItem: 'Update {name}',
     list: 'List',
-    search: 'Search the menu or type an item',
+    search: 'Type it: Bacardi, napkins, limes…',
+    searchLabel: 'What’s out or low',
+    searchHelp: 'Ingredients and supplies we stock or order, not menu items.',
+    reportedBefore: 'Reported here before',
     useTyped: 'Use “{text}”',
     fromMenu: 'From the menu',
     change: 'Change',
     howMany: 'How many left? (optional)',
     countPlaceholder: 'e.g. 3',
     note: 'Note (optional)',
-    notePlaceholder: 'e.g. back Friday, use … instead',
+    notePlaceholder: 'e.g. order Tuesday, use the 12 oz cups for now',
     area: 'Area (optional)',
     anyArea: '—',
     alreadyOut: 'Already on the list as 86’d. Saving updates it.',
@@ -1500,7 +1504,10 @@ const catalog = {
     reportedOut: '{name} is 86’d',
     reportedLow: '{name} is running low',
     told: { one: 'Told 1 person working today', other: 'Told {count} people working today' },
-    pickFirst: 'Pick an item or type one first',
+    pickFirst: 'Type what’s out or pick one first',
+    category: 'Category (optional)',
+    noCategory: 'None',
+    categoryHelp: 'Remembered for next time.',
     // photos
     addPhoto: 'Photos (optional)',
     photo: 'Photo',
@@ -1523,6 +1530,7 @@ const catalog = {
     // history (managers)
     mostTitle: 'Most 86’d in the last {days} days',
     mostHelp: 'To help with ordering.',
+    reportLink: 'See the 86 List report',
     times: { one: '{count} time', other: '{count} times' },
     logTitle: 'Log',
     lastDays: 'Last {days} days',
@@ -1537,7 +1545,7 @@ const catalog = {
     durHours: '{count} h',
     durDays: { one: '{count} day', other: '{count} days' },
     // Settings → 86 List (admins)
-    settingsHelp: 'The lists staff report on. Keep the bar on its own list, or add one per bar (pick its area).',
+    settingsHelp: 'The lists staff report on: the ingredients and supplies each team stocks or orders to do the work (Bacardi, limes, napkins, rocks glasses, CO2…), not menu items. Keep the bar on its own list, or add one per bar (pick its area).',
     addList: 'Add a list',
     newList: 'New list',
     nameEs: 'Name in Spanish (optional)',
@@ -1547,10 +1555,11 @@ const catalog = {
     kindOther: 'Other',
     kindHelp: 'Bar lists show on their own, apart from the rest.',
     suggest: 'Menu items it suggests (from Training)',
+    suggestMenu: 'Also suggest menu items',
+    suggestMenuHelp: 'Off by default: the 86 List is for ingredients and supplies. Turn it on only if this list tracks dishes too; Training then shows “86’d today” on the ones reported here.',
     menuDrinks: 'Drinks',
     menuFood: 'Food',
     menuAll: 'Everything',
-    menuNone: 'None (type only)',
     menuSections: 'Only these sections (optional)',
     whoReports: 'Who can report and clear',
     whoReportsHelp: 'Managers and admins always can.',
@@ -1570,6 +1579,19 @@ const catalog = {
     listSaved: 'List saved',
     listDeleted: 'List deleted',
     itemsNow: { one: '{count} item on it now', other: '{count} items on it now' },
+    // Settings → 86 List: categories
+    categoriesTitle: 'Categories',
+    categoriesHelp: 'Staff can file each item under one (optional), and it’s remembered for next time. The 86 List report and its shopping list group by them.',
+    categoryName: 'Name',
+    categoryNameEs: 'Name in Spanish (optional)',
+    newCategory: 'New category',
+    addCategory: 'Add a category',
+    removeCategory: 'Remove {name}',
+    moveUp: 'Move {name} up',
+    moveDown: 'Move {name} down',
+    saveCategories: 'Save categories',
+    categoriesSaved: 'Categories saved',
+    otherStays: 'Other always stays: items from a removed category show there.',
   },
   venue: {
     leaveThisFloorPlanWithout: 'Leave this floor plan without saving your changes?',
@@ -2159,6 +2181,7 @@ const catalog = {
   },
   ...auth,
   ...legal,
+  ...reports,
 };
 
 export default catalog;

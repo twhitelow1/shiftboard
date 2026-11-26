@@ -22,6 +22,7 @@ export const FEATURES = [
   { key: 'sms', label: 'Text messages', hint: 'Notifications by text (Twilio)' },
   { key: 'venue', label: 'Venue & floor plans', hint: 'Rooms, floor plans and server sections' },
   { key: 'multiLocation', label: 'Multiple locations', hint: 'Placeholder for a later phase; nothing uses it yet' },
+  { key: 'reports', label: 'Reports', hint: 'Reports for managers, starting with the 86 List report (each report also needs its own feature)' },
 ];
 export const FEATURE_KEYS = FEATURES.map((f) => f.key);
 
@@ -33,11 +34,11 @@ export const FEATURE_KEYS = FEATURES.map((f) => f.key);
 export const PLANS = {
   starter: {
     label: 'Starter', priceCents: 4900, interval: 'month', selfServe: true, stripePriceEnv: 'STRIPE_PRICE_STARTER',
-    features: ['training', 'tips', 'eightySix'],
+    features: ['training', 'tips', 'eightySix', 'reports'],
   },
   pro: {
     label: 'Pro', priceCents: 9900, interval: 'month', selfServe: true, stripePriceEnv: 'STRIPE_PRICE_PRO',
-    features: ['training', 'tips', 'eightySix', 'events', 'forecast', 'toast', 'adp', 'tripleseat', 'sms', 'venue'],
+    features: ['training', 'tips', 'eightySix', 'events', 'forecast', 'toast', 'adp', 'tripleseat', 'sms', 'venue', 'reports'],
   },
   beta: {
     label: 'Beta (everything, free)', priceCents: 0, interval: 'month', selfServe: false, stripePriceEnv: null,
@@ -108,14 +109,22 @@ const NAMESPACE_FEATURE = {
   clock: 'forecast', calibration: 'forecast',
   sms: 'sms',
   venue: 'venue', sections: 'venue',
+  reports: 'reports',
 };
 const METHOD_FEATURE = { 'settings.laborRules': 'forecast' };
+// Methods that need more than one feature: each report needs Reports and its own feature.
+const PREFIX_FEATURES = [['reports.eightySix.', ['reports', 'eightySix']]];
 
-/** The feature an RPC method needs, or null when it's in every plan. */
-export function featureForMethod(method) {
+/** Every feature an RPC method needs ([] when it's in every plan). */
+export function featuresForMethod(method) {
   const m = String(method || '');
-  return METHOD_FEATURE[m] || NAMESPACE_FEATURE[m.split('.')[0]] || null;
+  const multi = PREFIX_FEATURES.find(([prefix]) => m.startsWith(prefix));
+  if (multi) return [...multi[1]];
+  const one = METHOD_FEATURE[m] || NAMESPACE_FEATURE[m.split('.')[0]] || null;
+  return one ? [one] : [];
 }
+/** The (first) feature an RPC method needs, or null when it's in every plan. */
+export const featureForMethod = (method) => featuresForMethod(method)[0] || null;
 
 // HTTP routes (server/app.js and the modules it mounts) that belong to a feature.
 export const ROUTE_FEATURES = [
