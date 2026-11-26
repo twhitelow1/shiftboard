@@ -18,6 +18,9 @@ import { saveIntegrations } from './integrations.js';
 import { createTenant, OnboardError } from './onboard.js';
 import { encryptionKey } from './secrets.js';
 import { errorConsoleRoutes } from './errors-console.js';
+import { cleanAi } from './registry.js';
+import { capFor } from '../ai/index.js';
+import { monthOf } from '../ai/usage.js';
 
 const COOKIE = 'sb_platform';
 const MAX_ATTEMPTS = 10;
@@ -127,17 +130,31 @@ export function consoleRouter({ platform }) {
     const port = /:(\d+)$/.exec(req.get('host') || '')?.[1] || '';
     return tenantAddress(t, hostCfg, { proto: req.protocol, port: ['80', '443'].includes(port) ? '' : port, consoleHost: req.headers.host });
   };
-  const summary = async (req, t) => ({
+  // AI (server/ai/): this month's usage per restaurant from the platform's ledger, and each one's cap.
+  const aiMonth = async () => {
+    const month = monthOf(Date.now());
+    try { return { month, rows: new Map((await platform.aiUsage.byTenant(month)).map((r) => [r.tenantId, r])) }; } catch (e) {
+      console.error('AI usage:', e.message);
+      return { month, rows: new Map() };
+    }
+  };
+  const aiOf = (t, usage) => {
+    const r = usage.rows.get(t.id) || {};
+    return { month: usage.month, usedUsd: r.platformUsd || 0, ownUsd: r.ownUsd || 0, calls: r.calls || 0, errors: r.errors || 0, capUsd: capFor({ plan: t.plan, ai: t.ai }),
+      planCapUsd: capFor({ plan: t.plan, ai: {} }), override: t.ai?.capUsd ?? null, inPlan: !!t.resolved?.assistant };
+  };
+  const summary = async (req, t, usage = null) => ({
     id: t.id, slug: t.slug, name: t.name, status: t.status, plan: t.plan, isDefault: t.is_default, schema: t.schema_name,
     address: addressFor(req, t), domains: t.domains, createdAt: t.created_at, trialEndsAt: t.trial_ends_at, ownerEmail: t.owner_email,
-    ...(await registry.tenantStats(t)),
+    ...(await registry.tenantStats(t)), ...(usage ? { ai: aiOf(t, usage) } : {}),
   });
 
   // ---------- restaurants ----------
   r.get('/tenants', wrap(async (req) => {
     await signedIn(req);
     const snap = await registry.snapshot({ fresh: true });
-    return Promise.all(snap.list.map((t) => summary(req, t)));
+    const usage = await aiMonth();
+    return Promise.all(snap.list.map((t) => summary(req, t, usage)));
   }));
 
   r.get('/slug-check', wrap(async (req) => {
@@ -166,7 +183,7 @@ export function consoleRouter({ platform }) {
 
   async function detail(req, t) {
     return {
-      ...(await summary(req, t)),
+      ...(await summary(req, t, await aiMonth())),
       features: t.features, resolved: t.resolved, notes: t.notes, ownerName: t.owner_name, billing: t.billing, updatedAt: t.updated_at,
       integrations: integrationsView(t, await registry.secretView(t.id), env),
       audit: await registry.auditLog({ tenantId: t.id, limit: 30 }),
@@ -214,9 +231,15 @@ export function consoleRouter({ platform }) {
     }
     if ('ownerName' in b) patch.owner_name = String(b.ownerName || '').trim().slice(0, 80);
     if ('ownerEmail' in b) patch.owner_email = String(b.ownerEmail || '').trim().toLowerCase().slice(0, 200);
+    // Ask ShiftBoard's monthly cap on DubLow's key (USD); empty or null goes back to the plan's.
+    if ('aiCapUsd' in b) {
+      const v = b.aiCapUsd;
+      if (v !== null && v !== '' && !(Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= 10_000)) throw new HttpError(400, 'The AI cap is a number of dollars, 0 to 10,000');
+      patch.ai = cleanAi({ ...t.ai, capUsd: v === '' ? null : v });
+    }
     if (!Object.keys(patch).length) throw new HttpError(400, 'Nothing to change');
 
-    const before = { name: t.name, status: t.status, plan: t.plan, features: t.features, domains: t.domains, trial_ends_at: t.trial_ends_at, owner_email: t.owner_email, owner_name: t.owner_name };
+    const before = { name: t.name, status: t.status, plan: t.plan, features: t.features, domains: t.domains, trial_ends_at: t.trial_ends_at, owner_email: t.owner_email, owner_name: t.owner_name, ai: t.ai };
     const updated = await registry.updateTenant(t.id, patch);
     const changes = {};
     for (const k of Object.keys(patch)) {

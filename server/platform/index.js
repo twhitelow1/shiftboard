@@ -37,6 +37,7 @@ import { isPaused } from './plans.js';
 import { announcementsCronAll } from '../announcements.js';
 import { capture } from '../errors-routes.js';
 import { createPlatformErrors, recordCronFailure, mountErrorCron } from './errors-console.js';
+import { UsageLog } from '../ai/usage.js';
 
 const NOT_FOUND_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Restaurant not found · ShiftBoard</title><style>body{font:16px/1.5 system-ui,sans-serif;margin:0;display:grid;place-items:center;min-height:100vh;background:#f8fafc;color:#0f172a}
@@ -53,8 +54,9 @@ main{max-width:420px;padding:32px;text-align:center}h1{font-size:22px;margin:0 0
  * @param {Function} [o.texterFor] (env, tenant) => texter, for tests
  * @param {object} [o.pusher] [o.expoPush]  shared phone notification senders (tests)
  * @param {Function} [o.now]      clock in ms (tests)
+ * @param {Function} [o.aiClient] ({ apiKey }) => an Anthropic client, for tests (server/ai/)
  */
-export function createPlatformApp({ conn, env = process.env, staticDir, mailerFor, texterFor, pusher, expoPush, now } = {}) {
+export function createPlatformApp({ conn, env = process.env, staticDir, mailerFor, texterFor, pusher, expoPush, now, aiClient } = {}) {
   const registry = new Registry({ conn, env });
   const hostCfg = hostConfig(env);
   const cache = new TenantCache({ max: Number(env.TENANT_CACHE_MAX) || 25 });
@@ -65,8 +67,10 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
   let secretPromise = null;
   // Errors & reports from every restaurant (server/errors.js), read in the console (errors-console.js).
   const errors = createPlatformErrors({ conn, env, registry, hostCfg, mailerFor, texterFor, now, background: env.VERCEL ? waitUntil : null });
+  // AI usage from every restaurant (server/ai/usage.js): one ledger in the platform schema, tagged by restaurant.
+  const aiUsage = new UsageLog({ conn, schema: 'platform' });
   const platform = {
-    registry, conn, env, hostCfg, cache, errors,
+    registry, conn, env, hostCfg, cache, errors, aiUsage,
     /** Signs console sessions: derived from JWT_SECRET, else generated once and kept in platform.meta. */
     consoleSecret: () => (secretPromise ??= env.JWT_SECRET
       ? Promise.resolve(crypto.createHmac('sha256', env.JWT_SECRET).update('shiftboard-platform-console').digest('hex'))
@@ -92,6 +96,7 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
     return {
       id: t.id, slug: t.slug, name: t.name, isDefault: t.is_default, status: t.status, plan: t.plan,
       features: t.resolved, trialEndsAt: t.trial_ends_at, errors: errors.forTenant(t),
+      ai: t.ai || {}, aiUsage: aiUsage.forTenant(t), // AI: DubLow's cap override and the platform's usage ledger (server/ai/)
       consumeSupportGrant: (token) => registry.consumeSupportGrant(token, t.id),
       // Settings → Integrations for the restaurant's own admins (server/integrations-routes.js): the same
       // settings and encrypted secrets as the console, for the integrations in its plan only, audited.
@@ -132,6 +137,7 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
         ...(pusher ? { pusher } : {}),
         ...(expoPush ? { expoPush } : {}),
         ...(now ? { now } : {}),
+        ...(aiClient ? { aiClient } : {}),
       });
       // Requests still running on a replaced entry finish on it; the new entry starts with none.
       const entry = { id: t.id, version: t.version, tenant: t, db, app, env: tEnv, inflight: 0 };

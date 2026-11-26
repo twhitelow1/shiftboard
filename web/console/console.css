@@ -155,3 +155,9 @@ ul.plain li { padding: 6px 0; border-bottom: 1px solid var(--border); }
   table.responsive td[data-label="Restaurant"]::before { display: none; }
   table.responsive td.num { text-align: left; }
 }
+
+/* Ask ShiftBoard: the AI spend meter */
+.ai-meter { height: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin-top: 10px; }
+.ai-meter span { display: block; height: 100%; background: #16a34a; border-radius: 999px; }
+.ai-meter span.warn { background: #d97706; }
+.ai-meter span.full { background: #dc2626; }

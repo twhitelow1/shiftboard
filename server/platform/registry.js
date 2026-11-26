@@ -2,7 +2,8 @@
 //
 //   platform.tenants         one row per restaurant: slug, name, its Postgres schema, status, plan,
 //                            feature overrides, domains, owner, trial end, notes, integration settings
-//                            (non-secret) and billing (phase 2: Stripe ids, see server/billing.js)
+//                            (non-secret), billing (phase 2: Stripe ids, see server/billing.js) and ai (DubLow's
+//                            AI cap override for the restaurant: server/ai/)
 //   platform.tenant_secrets  per-restaurant secrets, AES-256-GCM encrypted (secrets.js)
 //   platform.admins          DubLow staff who can use the platform console
 //   platform.audit_log       every platform action
@@ -19,7 +20,7 @@ import { resolveFeatures, cleanOverrides, STATUSES } from './plans.js';
 import { SECRET_KEYS } from './tenant-env.js';
 
 const P = 'platform';
-const VERSION = '1';
+const VERSION = '2';
 const LOCK = lockKeyFor('platform:registry');
 export const DEFAULT_TENANT_ID = 'default';
 const GRANT_MINUTES = 3; // how long a "Sign in as owner" link can be opened
@@ -91,6 +92,8 @@ const MIGRATIONS = [
   `CREATE INDEX IF NOT EXISTS platform_login_attempts_idx ON ${P}.login_attempts (key, at)`,
   // A temporary password (the first admin's from env, or one an admin set for a new admin) must be changed at first sign-in.
   `ALTER TABLE ${P}.admins ADD COLUMN IF NOT EXISTS must_change boolean NOT NULL DEFAULT false`,
+  // Version 2: AI settings DubLow keeps per restaurant ({ capUsd }: the monthly cap on DubLow's key, server/ai/).
+  `ALTER TABLE ${P}.tenants ADD COLUMN IF NOT EXISTS ai jsonb NOT NULL DEFAULT '{}'::jsonb`,
   ...['meta', 'tenants', 'tenant_secrets', 'admins', 'audit_log', 'support_grants', 'login_attempts']
     .map((t) => `ALTER TABLE ${P}.${t} ENABLE ROW LEVEL SECURITY`),
 ];
@@ -108,8 +111,16 @@ export function toTenant(r) {
     domains: [...(r.domains || [])], owner_email: r.owner_email || '', owner_name: r.owner_name || '',
     created_at: iso(r.created_at), updated_at: iso(r.updated_at), version: Number(r.version || 1),
     trial_ends_at: iso(r.trial_ends_at), notes: r.notes || '', billing: r.billing || {}, integrations: r.integrations || {},
-    is_default: !!r.is_default,
+    ai: cleanAi(r.ai), is_default: !!r.is_default,
   };
+}
+
+/** DubLow's AI settings for a restaurant: { capUsd } (a number of dollars; absent means the plan's). */
+export function cleanAi(raw) {
+  const out = {};
+  const cap = raw?.capUsd;
+  if (cap !== null && cap !== undefined && cap !== '' && Number.isFinite(Number(cap)) && Number(cap) >= 0 && Number(cap) <= 10_000) out.capUsd = Math.round(Number(cap) * 100) / 100;
+  return out;
 }
 
 export class Registry {
@@ -240,11 +251,11 @@ export class Registry {
 
   /**
    * Update a restaurant. patch: any of name, status, plan, features, domains, notes, trial_ends_at,
-   * owner_email, owner_name, integrations, billing. Domains must not belong to another restaurant.
+   * owner_email, owner_name, integrations, billing, ai. Domains must not belong to another restaurant.
    */
   async updateTenant(id, patch) {
     const cols = { name: 'text', status: 'text', plan: 'text', features: 'jsonb', domains: 'text[]', notes: 'text', trial_ends_at: 'timestamptz',
-      owner_email: 'text', owner_name: 'text', integrations: 'jsonb', billing: 'jsonb' };
+      owner_email: 'text', owner_name: 'text', integrations: 'jsonb', billing: 'jsonb', ai: 'jsonb' };
     const sets = [];
     const params = [id];
     for (const [k, type] of Object.entries(cols)) {

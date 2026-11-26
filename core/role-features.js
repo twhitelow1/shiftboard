@@ -54,6 +54,8 @@ export const ROLE_FEATURES = [
   { key: 'announcements', group: 'feature', plan: 'announcements', cells: ALL(true) },
   { key: 'reports', group: 'feature', plan: 'reports', cells: MGR(true) }, // managers and up only (core/reports.js)
   { key: 'coversForStaff', group: 'feature', plan: 'forecast', cells: ALL(true) },
+  // Ask ShiftBoard (server/assistant/): everyone by default; it acts with the person's own permissions anyway.
+  { key: 'assistant', group: 'feature', plan: 'assistant', cells: ALL(true) },
   { key: 'coworkerContacts', group: 'feature', plan: null, cells: { employee: false, supervisor: true, manager: 'on', admin: 'on' } },
   { key: 'tradeRequests', group: 'capability', plan: null, cells: ALL(true) },
   { key: 'approve', group: 'capability', plan: null, cells: { employee: null, supervisor: true, manager: 'on', admin: 'on' }, setting: 'supervisorsCanApprove' },

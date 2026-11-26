@@ -1,4 +1,5 @@
-// Each restaurant's integration settings (ADP, Toast, Tripleseat, the Twilio sender, the email From),
+// Each restaurant's integration settings (ADP, Toast, Tripleseat, the Twilio sender, the email From, its own
+// Anthropic key for Ask ShiftBoard),
 // saved by DubLow in the platform console or by the restaurant's own admins in Settings → Integrations.
 // Both go through saveIntegrations(): the same checks (tenant-env.js cleanIntegrations), the same encrypted
 // secrets (registry.setSecrets), the same audit log, and the restaurant's runtime is rebuilt with the new
@@ -8,8 +9,8 @@ import { INTEGRATION_FIELDS, PLAIN_KEYS, cleanIntegrations, tenantEnv, parseFrom
 import { NOT_IN_PLAN } from './plans.js';
 
 /** The integrations in the order Settings shows them, and the plan feature each needs (email: every plan). */
-export const GROUPS = ['adp', 'toast', 'tripleseat', 'opentable', 'twilio', 'email'];
-export const GROUP_FEATURE = { adp: 'adp', toast: 'toast', tripleseat: 'tripleseat', opentable: 'opentable', twilio: 'sms', email: null };
+export const GROUPS = ['adp', 'toast', 'tripleseat', 'opentable', 'twilio', 'email', 'anthropic'];
+export const GROUP_FEATURE = { adp: 'adp', toast: 'toast', tripleseat: 'tripleseat', opentable: 'opentable', twilio: 'sms', email: null, anthropic: 'assistant' };
 export const groupAllowed = (group, resolved) => !GROUP_FEATURE[group] || !resolved || resolved[GROUP_FEATURE[group]] !== false;
 /**
  * Sender identities DubLow manages, set only in the platform console: texts go out under DubLow Digital's
@@ -62,6 +63,7 @@ const NEEDS = {
   opentable: (e) => ['OPENTABLE_CLIENT_ID', 'OPENTABLE_CLIENT_SECRET', 'OPENTABLE_RID'].filter((k) => !e[k]),
   twilio: (e) => (e.TWILIO_MESSAGING_SERVICE_SID || e.TWILIO_FROM_NUMBER ? [] : ['TWILIO_MESSAGING_SERVICE_SID']),
   email: (e) => (parseFrom(e.EMAIL_FROM).address ? [] : ['EMAIL_FROM_ADDRESS']),
+  anthropic: () => [], // optional: without its own key the restaurant uses DubLow's (capped)
 };
 const ACCOUNT = { twilio: (e) => !!(e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN), email: (e) => !!e.RESEND_API_KEY };
 
@@ -90,8 +92,11 @@ export function restaurantView({ tenant, secretView = {}, env = process.env, mod
     const missing = NEEDS[g](e);
     const account = ACCOUNT[g] ? ACCOUNT[g](e) : true;
     const touched = fields.some((f) => f.set || f.value || f.fromEnv);
+    // Anthropic: connected with the restaurant's own key, else on DubLow's key (Ask ShiftBoard works either way).
+    const status = g === 'anthropic' ? (fields[0]?.set ? 'connected' : 'platformKey')
+      : !account ? 'noAccount' : !missing.length ? 'connected' : touched ? 'partial' : 'notSetUp';
     return {
-      key: g, status: !account ? 'noAccount' : !missing.length ? 'connected' : touched ? 'partial' : 'notSetUp', missing, fields,
+      key: g, status, missing, fields,
       ...(g === 'email' && e.EMAIL_FROM ? { from: e.EMAIL_FROM } : {}), // what emails go out as (the platform's address, under the restaurant's name, until it has its own)
     };
   });

@@ -13,6 +13,8 @@
 //     token stay platform-wide (DubLow owns one Twilio account and registers each restaurant as a brand).
 //   * Email: the From name and address and the reply-to. The Resend API key stays platform-wide.
 //   * VAPID (web push) and Expo push stay platform-wide.
+//   * AI (server/ai/): ANTHROPIC_API_KEY stays platform-wide (DubLow pays); a restaurant's own key, if it brings
+//     one, comes as ANTHROPIC_OWN_API_KEY (secret).
 //
 // The default restaurant (Chasing Rabbits) keeps the platform env as it is, with any console setting
 // taking its place, so production keeps working unchanged. Any other restaurant never sees the default
@@ -48,6 +50,8 @@ export const INTEGRATION_FIELDS = [
   { key: 'EMAIL_FROM_NAME', group: 'email', label: 'From name', placeholder: 'Bistro Schedule' },
   { key: 'EMAIL_FROM_ADDRESS', group: 'email', label: 'From address (domain verified in Resend)', placeholder: 'schedule@mail.bistro.com' },
   { key: 'EMAIL_REPLY_TO', group: 'email', label: 'Reply-to (optional)', placeholder: 'manager@bistro.com' },
+  // Ask ShiftBoard (server/ai/): a restaurant that brings its own Anthropic key. Its calls are metered but not capped.
+  { key: 'ANTHROPIC_OWN_API_KEY', group: 'anthropic', label: 'Anthropic API key (the restaurant’s own; optional)', secret: true },
 ];
 export const SECRET_KEYS = INTEGRATION_FIELDS.filter((f) => f.secret).map((f) => f.key);
 export const PLAIN_KEYS = INTEGRATION_FIELDS.filter((f) => !f.secret).map((f) => f.key);
@@ -81,6 +85,7 @@ const CHECKS = {
   EMAIL_FROM_NAME: (v) => (v.length <= 80 && !/[<>"\r\n]/.test(v)) || 'The From name can’t have < > or quotes',
   EMAIL_FROM_ADDRESS: (v) => EMAIL.test(v) || 'The From address isn’t an email address',
   EMAIL_REPLY_TO: (v) => EMAIL.test(v) || 'The reply-to isn’t an email address',
+  ANTHROPIC_OWN_API_KEY: (v) => /^sk-ant-[A-Za-z0-9_-]{20,300}$/.test(v) || 'An Anthropic API key starts with sk-ant- and has no spaces',
 };
 
 /** Trim and validate console input. Returns { plain, secrets } with '' meaning "clear"; throws a 400 on bad input. */
@@ -115,7 +120,7 @@ const OPENTABLE_KEYS = INTEGRATION_FIELDS.filter((f) => f.group === 'opentable')
 const DEFAULT_RESTAURANT_ONLY = ['ADMIN_EMAIL', 'ADMIN_PASSWORD', 'ADMIN_NAME', 'SEED_DEMO', 'DEMO_PASSWORD', 'EMAIL_FROM', 'EMAIL_REPLY_TO',
   'APP_URL', 'VERCEL_PROJECT_PRODUCTION_URL', 'TOAST_CLIENT_ID', 'TOAST_CLIENT_SECRET', 'TOAST_RESTAURANT_GUID', 'TOAST_API_HOST',
   'ADP_CLIENT_ID', 'ADP_CLIENT_SECRET', 'ADP_CERT_PEM', 'ADP_KEY_PEM', 'ADP_MANAGER_AOID', ...TRIPLESEAT_KEYS, 'TRIPLESEAT_TOKEN_URL', ...OPENTABLE_KEYS,
-  'TWILIO_MESSAGING_SERVICE_SID', 'TWILIO_FROM_NUMBER', 'TWILIO_WEBHOOK_URL'];
+  'TWILIO_MESSAGING_SERVICE_SID', 'TWILIO_FROM_NUMBER', 'TWILIO_WEBHOOK_URL', 'ANTHROPIC_OWN_API_KEY'];
 
 /** The signing secret for a restaurant other than the default: derived from JWT_SECRET, so it differs per restaurant. */
 export const tenantJwtSecret = (jwtSecret, tenantId) => crypto.createHmac('sha256', jwtSecret).update(`shiftboard-tenant:${tenantId}`).digest('hex');
@@ -141,6 +146,9 @@ export function tenantEnv(env, tenant, secrets = {}) {
   for (const k of ['ADP_CLIENT_ID', 'ADP_CLIENT_SECRET', 'ADP_CERT_PEM', 'ADP_KEY_PEM', 'ADP_MANAGER_AOID']) if (val(k)) out[k] = val(k);
   for (const k of TRIPLESEAT_KEYS) if (val(k)) out[k] = val(k);
   for (const k of OPENTABLE_KEYS) if (val(k)) out[k] = val(k);
+  // AI: the restaurant's own Anthropic key, next to the platform's ANTHROPIC_API_KEY (DubLow's), never instead of
+  // it, so server/ai/ knows who pays.
+  if (val('ANTHROPIC_OWN_API_KEY')) out.ANTHROPIC_OWN_API_KEY = val('ANTHROPIC_OWN_API_KEY');
 
   // The sender: a console setting replaces both env values, so the env's Messaging Service can't win over it.
   if (val('TWILIO_MESSAGING_SERVICE_SID') || val('TWILIO_FROM_NUMBER')) {
