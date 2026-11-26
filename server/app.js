@@ -31,6 +31,8 @@ import { mountOnboarding } from './onboarding.js';
 import { mountAnnouncements } from './announcements.js';
 import { publicRoutes } from './public-routes.js';
 import { migrateConsents, emailConsentOf, legalLinks, CONSENT_MIGRATION, CONSENT_TEXT, CONSENT_VERSION } from '../core/consent.js';
+import { roleAllows, cleanDraft, ROLE_ROUTES, ROLE_OFF } from '../core/role-features.js';
+import { createViewAs } from './view-as.js';
 
 const COOKIE = 'sb_session';
 // Not allowed while DubLow staff are signed in as the owner for support ("Sign in as owner"): the owner's
@@ -136,6 +138,9 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   // instead of the cookie. Same JWT, same 30-day expiry, same sign-out on password change.
   const bearer = (req) => /^Bearer\s+(\S+)$/i.exec(req.get('authorization') || '')?.[1] || null;
   const sessionToken = (req) => bearer(req) || req.cookies[COOKIE];
+  /** Who a request is computed as: the viewed person while a Super Admin views as someone (server/view-as.js), else the signed-in person. */
+  const whoIs = (req, token = sessionToken(req)) => req.sbView?.actor ?? userFromToken(db.store, token);
+  const planFeatures = () => (tenant ? tenant.features || null : null); // Roles & features: plan ∩ role (core/role-features.js)
 
   // ---------- email ----------
   // Links in emails point at APP_URL, else the production domain, else this request's host.
@@ -310,6 +315,21 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   for (const [prefix, feature] of ROUTE_FEATURES) {
     app.use(prefix, (req, res, next) => (has(feature) ? next() : res.status(403).json({ error: NOT_IN_PLAN })));
   }
+  // View as (server/view-as.js): a Super Admin sees the app as someone else, read-only. Marks the request
+  // (req.sbView) and refuses every write route; RPCs are handled in /api/rpc below.
+  const viewAs = createViewAs({ db, tenant, now, secret: () => secret, session, bearer, cookie: COOKIE, cookieOpts, langFor });
+  app.use('/api', viewAs.middleware);
+  viewAs.routes(app);
+  // Routes of features the caller's role doesn't include (Settings → Roles & features; RPCs: core/service.js).
+  for (const [prefix, feature] of ROLE_ROUTES) {
+    app.use(prefix, async (req, res, next) => {
+      try { await db.sync(); } catch (e) { return next(e); }
+      const u = whoIs(req);
+      const st = { ...createService(db.store).settings(), ...(req.sbView?.draft ? cleanDraft(req.sbView.draft) : {}) };
+      if (u && roleAllows(u, st)[feature] === false) return res.status(403).json({ error: ROLE_OFF });
+      next();
+    });
+  }
 
   // Signing in, the second step, passkeys, email links, password reset and sign-in settings (server/auth.js),
   // and the invitation wizard (server/onboarding.js).
@@ -337,6 +357,12 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
       if (sess.claims.sup && NOT_IN_SUPPORT.has(method)) throw new AppError(403, 'Not available while DubLow Digital is signed in for support');
 
       if (isLang(caller.language)) req.sbLang = caller.language; // errors in the caller's language
+      // View as: reads only, computed as the viewed person, never saved (server/view-as.js).
+      if (req.sbView) {
+        let result = await viewAs.rpc(req.sbView, method, body, { hashPassword, channels: channels.info, request: { ip: req.ip, userAgent: req.get('user-agent') || null }, legal, planFeatures: planFeatures() });
+        if (method === 'app.bootstrap' && tenant && result) result = { ...result, tenant: tenantInfo(req.sbView.actor) };
+        return res.json({ result: result ?? null });
+      }
       // Support sessions can't change the owner's email consent either (language and appearance are fine).
       const args = structuredClone(body);
       if (sess.claims.sup && method === 'account.preferences') { delete args.emailConsent; delete args.emailNotifications; }
@@ -345,7 +371,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
       const out = await db.run((store) => {
         const actor = userFromToken(store, token);
         if (!actor) throw new AppError(401, 'Please sign in');
-        const result = createService(store, { hashPassword, channels: channels.info, request, legal, announce: announcer.info }).call(actor, method, structuredClone(args));
+        const result = createService(store, { hashPassword, channels: channels.info, request, legal, announce: announcer.info, planFeatures: planFeatures() }).call(actor, method, structuredClone(args));
         // Changing your password signs out other devices; this one gets a fresh cookie.
         const rotated = method === 'employees.changePassword'
           ? store.update('users', actor.id, { sessionVersion: (actor.sessionVersion || 0) + 1 })
@@ -536,24 +562,24 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
 
   channels.routes(app); // /api/push/test, /api/sms/test, /api/twilio/inbound
   // Profile photos, the consent log CSV (admins) and the public text opt-in page (server/public-routes.js).
-  publicRoutes(app, { db, env, legal, signedIn: (req) => userFromToken(db.store, sessionToken(req)), restaurantName });
+  publicRoutes(app, { db, env, legal, signedIn: (req) => whoIs(req), restaurantName });
   // Toast POS: status, Sync now, and the daily Vercel Cron (server/toast-routes.js).
-  mountToast(app, { db, env, userOf: (req) => userFromToken(db.store, req.cookies[COOKIE]), managed: !!tenant && !tenant.isDefault });
+  mountToast(app, { db, env, userOf: (req) => whoIs(req, req.cookies[COOKIE]), managed: !!tenant && !tenant.isDefault });
   // ADP: status, Sync now, and its daily Vercel Cron (server/adp-routes.js). The CSV import is plain RPC.
-  mountAdp(app, { db, env, userOf: (req) => userFromToken(db.store, req.cookies[COOKIE]) });
+  mountAdp(app, { db, env, userOf: (req) => whoIs(req, req.cookies[COOKIE]) });
   // Tripleseat: status, Sync now, its webhook and daily Vercel Cron (server/tripleseat-routes.js). A sync's
   // notifications (staff on a changed event) go out like any other: email, web push, texts, the phone app.
   mountTripleseat(app, {
-    db, env, userOf: (req) => userFromToken(db.store, req.cookies[COOKIE]), managed: !!tenant && !tenant.isDefault,
+    db, env, userOf: (req) => whoIs(req, req.cookies[COOKIE]), managed: !!tenant && !tenant.isDefault,
     onCommit: (changes, req) => { channels.afterCommit(changes, req); emailNotifications(changes, req); pushToPhones(changes); },
   });
   // Settings → Integrations: the restaurant's admins set up ADP, Toast, Tripleseat, the text sender and the
   // email From themselves (server/integrations-routes.js); read-only from env on a single-restaurant install.
-  mountIntegrations(app, { db, env, tenant, userOf: (req) => userFromToken(db.store, sessionToken(req)) });
+  mountIntegrations(app, { db, env, tenant, userOf: (req) => whoIs(req) });
   // Training photos (menu study guide, quizzes), for signed-in staff only (cookie on the web, bearer token in the phone app).
-  trainingRoutes(app, { db, signedIn: (req) => userFromToken(db.store, sessionToken(req)) });
+  trainingRoutes(app, { db, signedIn: (req) => whoIs(req) });
   // 86 List photos, for people who can see the item's list (cookie on the web, bearer token in the phone app).
-  eightySixRoutes(app, { db, signedIn: (req) => userFromToken(db.store, sessionToken(req)) });
+  eightySixRoutes(app, { db, signedIn: (req) => whoIs(req) });
 
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 

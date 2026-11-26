@@ -22,6 +22,8 @@ import Reports from './pages/Reports.jsx';
 import Account from './pages/Security.jsx';
 import Announcements from './pages/Announcements.jsx';
 import TradeStats from './pages/reports/TradeStats.jsx';
+import { ViewAsButton, ViewAsBanner, ViewAsDialog, endView } from './pages/ViewAs.jsx';
+import { setTradesOn } from './pages/TradeHint.jsx';
 import { SignIn, ResetPassword, LinkSignIn } from './pages/SignIn.jsx';
 import { Welcome, ConsentGate } from './pages/Onboarding.jsx';
 import { AuthCard, SignInBrand, BrandMark, DEFAULT_NAME } from './pages/AuthCard.jsx';
@@ -41,23 +43,24 @@ function useHashRoute() {
 }
 const go = (path) => { location.hash = `#/${path}`; };
 
-// feature: the plan feature a page needs (server/platform/plans.js); pages without one are in every plan.
+// feature: the feature a page needs: the plan's (server/platform/plans.js) and the role's (Settings → Roles &
+// features, core/role-features.js). bootstrap's `features` has both; pages without one are always there.
 const NAV = [
-  { key: 'schedule', label: 'main.schedule', icon: 'grid' },
-  { key: 'calendar', label: 'main.calendar', icon: 'calendar' },
-  { key: 'my', label: 'main.myShifts', icon: 'user' },
+  { key: 'schedule', label: 'main.schedule', icon: 'grid', feature: 'schedule' },
+  { key: 'calendar', label: 'main.calendar', icon: 'calendar', feature: 'calendar' },
+  { key: 'my', label: 'main.myShifts', icon: 'user', feature: 'myShifts' },
   { key: '86', label: 'main.eightySix', icon: 'ban', feature: 'eightySix' },
-  { key: 'swaps', label: 'main.swapsTrades', short: 'main.swaps', icon: 'swap', badge: 'swaps' },
+  { key: 'swaps', label: 'main.swapsTrades', short: 'main.swaps', icon: 'swap', badge: 'swaps', feature: 'trades' },
   { key: 'announcements', label: 'announcements.title', icon: 'megaphone', feature: 'announcements' },
   { key: 'trade-stats', label: 'tradeStats.title', icon: 'chart', mgr: true, hide: true }, // linked from Team and Swaps
   { key: 'events', label: 'main.eventsBeos', short: 'common.events', icon: 'glass', feature: 'events' },
-  { key: 'timeoff', label: 'main.timeOff', icon: 'sun', badge: 'timeoff' },
+  { key: 'timeoff', label: 'main.timeOff', icon: 'sun', badge: 'timeoff', feature: 'timeOff' },
   { key: 'tips', label: 'main.tips', icon: 'dollar', feature: 'tips' },
   { key: 'training', label: 'main.training', icon: 'book', feature: 'training' },
   { key: 'forecast', label: 'main.forecastLabor', icon: 'chart', mgr: true, feature: 'forecast' },
   { key: 'reports', label: 'reports.nav', icon: 'report', mgr: true, feature: 'reports' }, // managers and up (core/reports.js)
   { key: 'venue', label: 'main.venueFloorPlans', short: 'main.venue', icon: 'map', mgr: true, feature: 'venue' },
-  { key: 'team', label: 'main.teamJobCodes', icon: 'users', mgr: true },
+  { key: 'team', label: 'main.teamJobCodes', icon: 'users', mgr: true, feature: 'team' },
   // Managers get Settings for Rooms & positions (the schedule's layout); the rest of it is admins'.
   { key: 'settings', label: 'main.settings', icon: 'settings', mgr: true },
   { key: 'account', label: 'security.mySettings', icon: 'lock' }, // My settings: profile, Sign-in & security
@@ -117,12 +120,12 @@ function TenantBanners({ onEndSupport }) {
   );
 }
 
-function Notifications({ onClose }) {
+function Notifications({ onClose, viewing }) {
   const t = useT();
   const [items, setItems] = useState(null);
   useEffect(() => {
-    call('notifications.list').then((r) => { setItems(r); call('notifications.readAll'); });
-  }, []);
+    call('notifications.list').then((r) => { setItems(r); if (!viewing) call('notifications.readAll'); }); // View as: read-only
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
       <div className="overlay" style={{ background: 'rgba(15,23,42,.25)' }} onClick={onClose} />
@@ -148,6 +151,7 @@ function App() {
   const [version, setVersion] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [viewAsOpen, setViewAsOpen] = useState(false);
   const [toast, toasts] = useToasts();
   const parts = useHashRoute();
   const [config, setConfig] = useState({ email: false, emailFrom: null });
@@ -175,12 +179,16 @@ function App() {
 
   // ----- language (web/src/i18n): the person's, the restaurant's, this device's or the browser's -----
   const [, setLangTick] = useState(0);
-  const lang = resolveLang(boot ? { me: boot.me, settings: boot.settings } : { configLanguage: config.language });
+  // While viewing as someone (View as), the app speaks the Super Admin's language, not the viewed person's.
+  const lang = resolveLang(boot ? { me: boot.viewAs ? { ...boot.me, language: boot.viewAs.by.language } : boot.me, settings: boot.settings } : { configLanguage: config.language });
   setCurrentLang(lang); // before the pages render, for the plain helpers (t, prettyDate…)
   const t = useMemo(() => (key, params) => tr(key, params), [lang]); // eslint-disable-line react-hooks/exhaustive-deps
   /** Switch language right away, on the same screen. Signed in, it's saved on the account too ('' = automatic). */
   const setLang = useCallback((l) => {
-    if (boot) {
+    if (boot?.viewAs) { // read-only while viewing: this device only
+      saveDeviceLang(isLang(l) ? l : null);
+      setBoot((b) => ({ ...b, viewAs: { ...b.viewAs, by: { ...b.viewAs.by, language: isLang(l) ? l : '' } } }));
+    } else if (boot) {
       saveDeviceLang(isLang(l) ? l : null);
       setBoot((b) => (b ? { ...b, me: { ...b.me, language: isLang(l) ? l : '' } } : b));
       // Then reload, so what the server writes (notifications, warnings) comes in the new language too.
@@ -195,7 +203,7 @@ function App() {
   const meId = boot?.me?.id;
   const meLang = boot?.me?.language || '';
   useEffect(() => {
-    if (!meId) return;
+    if (!meId || boot?.viewAs) return;
     const pending = unsavedDeviceLang();
     clearUnsaved();
     if (pending && pending !== meLang) { setLang(pending); return; }
@@ -210,12 +218,14 @@ function App() {
     const people = Object.fromEntries(boot.employees.map((e) => [e.id, e]));
     const isMgr = canManageSchedule(boot.me);
     setStartTimesOnly(boot.settings?.startTimesOnly);
-    // On the platform the restaurant's plan decides its features; the demo and a single-restaurant install have them all.
-    const features = boot.tenant?.features || null;
+    // The features this person gets: the restaurant's plan (on the platform) ∩ their role's (Roles & features).
+    const features = boot.features || boot.tenant?.features || null;
     const has = (feature) => !features || features[feature] !== false;
+    setTradesOn(has('trades') && has('tradeRequests')); // the Trade buttons on shifts
     return { ...boot, jobs, people, isMgr, emailEnabled: config.email, emailFrom: config.emailFrom, isAdmin: canChangeSettings(boot.me), isEvents: canManageEvents(boot.me),
       canApprove: canApprove(boot.me, boot.settings), call, toast, refresh, version, go, lang, setLang,
-      tenant: boot.tenant || null, has, managed: !!boot.tenant?.managed };
+      tenant: boot.tenant || null, has, managed: !!boot.tenant?.managed, viewAs: boot.viewAs || null,
+      canViewAs: !boot.viewAs && boot.me?.role === 'super_admin' && !boot.tenant?.support };
   }, [boot, toast, refresh, version, config, lang, setLang]);
 
   const notice = config.notFound ? { title: t('platform.notFoundTitle'), help: t('platform.notFoundHelp') }
@@ -238,17 +248,17 @@ function App() {
   if (!ctx) return <div className="empty" style={{ paddingTop: 120 }}>{t('common.loading')}</div>;
   // Signed in without having agreed to the terms (people from before consent records): the consent screen, once.
   // Not in the demo, and not while DubLow Digital is signed in for support (only the person can agree).
-  if (ctx.me.needsTerms && !IS_DEMO && !ctx.tenant?.support) {
+  if (ctx.me.needsTerms && !IS_DEMO && !ctx.tenant?.support && !ctx.viewAs) {
     const sms = !!config.sms && ctx.has('sms') && ctx.settings.smsNotifications !== false;
     return signedOut(<ConsentGate me={ctx.me} sms={sms} legal={config.legal} call={call} onDone={refresh} onSignOut={async () => { await logout(); setBoot(null); setAuthed(false); }} />);
   }
 
-  const home = ctx.isMgr ? 'schedule' : 'my';
+  const nav = NAV.filter((n) => (!n.mgr || ctx.isMgr) && (!n.admin || ctx.isAdmin) && (!n.feature || ctx.has(n.feature)) && !n.hide);
+  const home = [ctx.isMgr ? 'schedule' : 'my', 'my', 'schedule', 'calendar'].find((k) => nav.some((n) => n.key === k)) || nav[0]?.key || 'account';
   const offPlan = (key) => NAV.some((n) => n.key === key && n.feature && !ctx.has(n.feature));
   // The phone app sends people who still need a second step to #/security-setup: My settings → Sign-in & security.
   const asked = parts[0] === 'security-setup' ? 'account' : parts[0];
   const route = asked && !offPlan(asked) ? asked : home;
-  const nav = NAV.filter((n) => (!n.mgr || ctx.isMgr) && (!n.admin || ctx.isAdmin) && (!n.feature || ctx.has(n.feature)) && !n.hide);
   const badges = { swaps: (ctx.canApprove ? ctx.pendingApprovals : 0) + ctx.openOffers, timeoff: 0 };
   const current = NAV.find((n) => n.key === route) || NAV[0];
 
@@ -259,6 +269,21 @@ function App() {
   }[route] || Schedule;
 
   const signOut = async () => { await logout(); setBoot(null); setAuthed(false); };
+  const exitView = () => endView({ refresh, toast });
+  // View as: a bright banner the whole time (with the header, so it never scrolls away) and a frame around the screen.
+  const header = (
+    <header className="topbar">
+      <span className="mobile-only topbar-logo"><BrandMark name={ctx.settings.restaurantName} logo={logoUrl(ctx.settings, IS_DEMO)} size={28} /></span>
+      <h1 className="topbar-title"><span className="desktop-only">{t(current.label)}</span><span className="mobile-only">{t(PHONE_TITLE[current.key] || current.label)}</span></h1>
+      {ctx.canViewAs && <ViewAsButton onOpen={() => setViewAsOpen(true)} />}
+      <LanguageSwitch />
+      <button className="btn ghost icon topbar-bell" onClick={() => setNotifOpen(true)} aria-label={t('main.notifications')} style={{ position: 'relative' }}>
+        <Icon name="bell" />
+        {ctx.unread > 0 && <span className="count" style={{ position: 'absolute', top: -2, right: -4 }}>{ctx.unread}</span>}
+      </button>
+      <a className="mobile-only topbar-avatar" href="#/account" aria-label={t('security.mySettings')}><Avatar user={ctx.me} size="sm" /></a>
+    </header>
+  );
 
   return (
     <I18nCtx.Provider value={i18n}>
@@ -285,25 +310,17 @@ function App() {
                 <div className="tiny" style={{ color: '#94a3b8' }}>{roleLabel(ctx.me, lang)}</div>
               </div>
             </div>
-            {!IS_DEMO && <button className="nav-item" onClick={signOut}><Icon name="logout" />{t('main.signOut')}</button>}
+            {ctx.viewAs ? <button className="nav-item" onClick={exitView}><Icon name="x" />{t('viewAs.exitView')}</button>
+              : !IS_DEMO && <button className="nav-item" onClick={signOut}><Icon name="logout" />{t('main.signOut')}</button>}
           </div>
         </aside>
 
         <div className="main">
           {IS_DEMO && <DemoBar onSwitch={refresh} />}
           <TenantBanners onEndSupport={signOut} />
-          <header className="topbar">
-            <span className="mobile-only topbar-logo"><BrandMark name={ctx.settings.restaurantName} logo={logoUrl(ctx.settings, IS_DEMO)} size={28} /></span>
-            <h1 className="topbar-title"><span className="desktop-only">{t(current.label)}</span><span className="mobile-only">{t(PHONE_TITLE[current.key] || current.label)}</span></h1>
-            <LanguageSwitch />
-            <button className="btn ghost icon topbar-bell" onClick={() => setNotifOpen(true)} aria-label={t('main.notifications')} style={{ position: 'relative' }}>
-              <Icon name="bell" />
-              {ctx.unread > 0 && <span className="count" style={{ position: 'absolute', top: -2, right: -4 }}>{ctx.unread}</span>}
-            </button>
-            <a className="mobile-only topbar-avatar" href="#/account" aria-label={t('security.mySettings')}><Avatar user={ctx.me} size="sm" /></a>
-          </header>
+          {ctx.viewAs ? <div className="viewas-head"><ViewAsBanner onSwitch={() => setViewAsOpen(true)} />{header}</div> : header}
           <main className="content">
-            <Page parts={parts} />
+            <Page parts={parts} key={ctx.me.id} />{/* a new person (View as, or its Exit): every page starts fresh */}
           </main>
         </div>
 
@@ -313,7 +330,7 @@ function App() {
             { key: ctx.isMgr ? 'my' : 'schedule', label: ctx.isMgr ? t('main.mine') : t('main.schedule'), icon: ctx.isMgr ? 'user' : 'grid' },
             { key: 'swaps', label: t('main.swaps'), icon: 'swap', badge: badges.swaps },
             ctx.isMgr && ctx.has('events') ? { key: 'events', label: t('common.events'), icon: 'glass' } : { key: 'timeoff', label: t('main.timeOff'), icon: 'sun' },
-          ].map((n) => (
+          ].filter((n) => nav.some((x) => x.key === n.key)).map((n) => (
             <button key={n.key} className={route === n.key ? 'active' : ''} onClick={() => go(n.key)}>
               <Icon name={n.icon} />{n.label}
               {n.badge > 0 && <span className="dot" />}
@@ -331,11 +348,15 @@ function App() {
                   {n.badge && badges[n.badge] > 0 && <span className="count">{badges[n.badge]}</span>}
                 </div>
               ))}
-              {!IS_DEMO && <div className="list-item click" onClick={signOut}><Icon name="logout" size={20} /><span style={{ fontWeight: 600 }}>{t('main.signOut')}</span></div>}
+              {ctx.canViewAs && <div className="list-item click" onClick={() => { setMoreOpen(false); setViewAsOpen(true); }}><Icon name="eye" size={20} /><span style={{ fontWeight: 600 }}>{t('main.viewAs')}</span></div>}
+              {ctx.viewAs ? <div className="list-item click" onClick={() => { setMoreOpen(false); exitView(); }}><Icon name="x" size={20} /><span style={{ fontWeight: 600 }}>{t('viewAs.exitView')}</span></div>
+                : !IS_DEMO && <div className="list-item click" onClick={signOut}><Icon name="logout" size={20} /><span style={{ fontWeight: 600 }}>{t('main.signOut')}</span></div>}
             </div>
           </Modal>
         )}
-        {notifOpen && <Notifications onClose={() => { setNotifOpen(false); refresh(); }} />}
+        {notifOpen && <Notifications viewing={!!ctx.viewAs} onClose={() => { setNotifOpen(false); refresh(); }} />}
+        {viewAsOpen && <ViewAsDialog onClose={() => setViewAsOpen(false)} />}
+        {ctx.viewAs && <div className="viewas-frame" aria-hidden="true" />}
         {toasts}
       </div>
     </Ctx.Provider>
@@ -352,7 +373,7 @@ function DemoBar({ onSwitch }) {
       <strong>{t('main.liveDemo')}</strong>
       <span className="desktop-only" style={{ opacity: .85 }}>{t('main.clockSetToDateThe', { date: prettyDate('2026-09-27') })}</span>
       <span className="spacer" />
-      <label className="row" style={{ gap: 6 }}><span className="desktop-only">{t('main.viewAs')}</span><span className="mobile-only">{t('main.viewingAs')}</span>
+      <label className="row" style={{ gap: 6 }}><span>{t('viewAs.demoSignedInAs')}</span>
         <select value={cur} onChange={(e) => { demoSwitch(e.target.value); setCur(e.target.value); onSwitch(); location.hash = '#/'; }}>
           {personas.map((p) => <option key={p.id} value={p.id}>{p.name} ({roleLabel(p.role, t.lang)})</option>)}
         </select>

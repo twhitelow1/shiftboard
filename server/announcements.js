@@ -15,8 +15,8 @@
 //             end of the time budget puts a delivery back in the queue for the next run.
 //
 // What starts a run: any API request to the restaurant (kick, after the response's commit, kept alive with
-// waitUntil on Vercel), and the Vercel Cron /api/cron/announcements (vercel.json, every 5 minutes), which
-// sends scheduled announcements when their time comes and finishes big ones. Two instances never send the
+// waitUntil on Vercel), and the Vercel Cron /api/cron/announcements (vercel.json, once a day so it fits every Vercel plan; on Pro it
+// can run every few minutes), which sends scheduled announcements nobody's activity has picked up yet and finishes big ones. Two instances never send the
 // same delivery: claiming happens under the database's write lock.
 import crypto from 'node:crypto';
 import { createService } from '../core/service.js';

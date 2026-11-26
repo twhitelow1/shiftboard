@@ -10,13 +10,15 @@ import { PhotoPicker } from './ProfilePhoto.jsx';
 import { LegalNameFields } from './LegalName.jsx';
 import { TotpSetup, RecoveryCodesView } from './TwoStep.jsx';
 import { rememberDemoPhoto } from '../photo.js';
+import { SecurityHidden } from './ViewAs.jsx'; // View as: their sign-in details stay private
 import '../auth.css';
 
 export default function Account() {
+  const { viewAs } = useApp();
   return (
     <div style={{ maxWidth: 720 }} className="col">
       <ProfileCard />
-      <SecurityCard />
+      {viewAs ? <SecurityHidden /> : <SecurityCard />}
     </div>
   );
 }

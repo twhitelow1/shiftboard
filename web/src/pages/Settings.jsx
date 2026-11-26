@@ -11,6 +11,7 @@ import EightySixSettings from './EightySixSettings.jsx';
 import RoomsPositions from './RoomsPositions.jsx';
 import SeasonsCard from './SeasonsSettings.jsx'; // the seasons reports count by
 import { AnnouncementSettingsCard } from './Announcements.jsx'; // texts per person per day, quiet hours
+import RolesEditor, { RolesCard } from './RolesEditor.jsx'; // Settings → Roles & features
 import { tx, useT, dowLong, dowShort , LANGUAGE_NAMES } from '../i18n/index.js';
 
 export default function Settings({ parts = [] }) {
@@ -29,7 +30,7 @@ export default function Settings({ parts = [] }) {
 
   // Branding saves on its own (BrandingCard), and so do the rooms and their colors (Rooms & positions),
   // so this Save never overwrites them.
-  const save = () => run(() => call('settings.update', { ...s, brandColor: undefined, navColor: undefined, bgColor: undefined, appearance: undefined, areas: undefined, areaColors: undefined, sectionOrder: undefined,
+  const save = () => run(() => call('settings.update', { ...s, brandColor: undefined, navColor: undefined, bgColor: undefined, appearance: undefined, areas: undefined, areaColors: undefined, sectionOrder: undefined, supervisorsCanApprove: undefined,
     weekStartDow: Number(s.weekStartDow), dayparts: s.dayparts.map((d) => ({ ...d, share: Number(d.share) })) }), t('settings.settingsSaved'));
   // #/settings/rooms[/<room>]: open Rooms & positions (at that room).
   const rooms = parts[1] === 'rooms' ? <RoomsPositions key={parts[2] || ''} focus={decodeURIComponent(parts[2] || '')} /> : <RoomsPositions />;
@@ -43,6 +44,7 @@ export default function Settings({ parts = [] }) {
   );
   // Managers run the schedule's rooms and positions; the rest of Settings is for admins.
   if (!isAdmin) return <div style={{ maxWidth: 820 }} className="col">{isMgr && rooms}{passwordCard}</div>;
+  if (parts[1] === 'roles') return <RolesEditor />; // #/settings/roles (it saves on its own, like Rooms & positions)
 
   return (
     <div style={{ maxWidth: 820 }} className="col">
@@ -80,6 +82,8 @@ export default function Settings({ parts = [] }) {
 
       {rooms}
 
+      <RolesCard />
+
       <BrandingCard />
 
       <div className="card card-pad col" style={{ gap: 12 }}>
@@ -91,7 +95,7 @@ export default function Settings({ parts = [] }) {
         </div>
         <label className="check"><input type="checkbox" checked={s.requireSwapApproval} onChange={set('requireSwapApproval')} />{t('settings.managersMustApproveTradesGiveaways')}</label>
         <label className="check"><input type="checkbox" checked={s.requirePickupApproval} onChange={set('requirePickupApproval')} />{t('settings.managersMustApproveOpenShift')}</label>
-        <label className="check"><input type="checkbox" checked={s.supervisorsCanApprove !== false} onChange={set('supervisorsCanApprove')} />{t('settings.supervisorsCanApproveTradesPickups')}</label>
+        <a className="help" href="#/settings/roles">{t('roles.approveMoved')}</a>
         <label className="check"><input type="checkbox" checked={!!s.startTimesOnly} onChange={set('startTimesOnly')} />
           <span>{t('settings.showStartTimesOnlyThe')}</span></label>
         <Field label={t('settings.shiftTagsCommaSeparated')} help={t('settings.quickPicksWhenAddingA')}><input className="input" {...listField('tags')} /></Field>
