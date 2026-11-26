@@ -313,6 +313,21 @@ export const ERRORS_ES = {
   'That photo is too large. Try another one.': 'Esa foto es demasiado grande. Prueba con otra.',
   'Email isn’t set up yet, so no invitation went out. Set a temporary password from their profile, or set up email.': 'El correo todavía no está configurado, así que no se mandó ninguna invitación. Ponle una contraseña temporal desde su perfil o configura el correo.',
   'The invitation email could not be sent. Try Resend invite in a minute.': 'No se pudo enviar el correo de invitación. Usa Reenviar invitación en un minuto.',
+  // ----- trades & pickups by season, Settings → Seasons (core/trade-stats.js) -----
+  'Every month must be in exactly one season': 'Cada mes tiene que estar en una sola temporada',
+  // ----- announcements (core/announcements.js) -----
+  'Pick who gets the announcement': 'Elige quién recibe el aviso',
+  'Add a title': 'Agrega un título',
+  'Write the message': 'Escribe el mensaje',
+  'Only admins can mark an announcement urgent': 'Solo los administradores pueden marcar un aviso como urgente',
+  'Pick a time in the future': 'Elige una hora que todavía no haya pasado',
+  'Schedule it within 90 days': 'Prográmalo dentro de los próximos 90 días',
+  'Announcement not found': 'No encontramos ese aviso',
+  'Confirm that the text is about the schedule': 'Confirma que el mensaje de texto es sobre el horario',
+  'Nobody is in this audience': 'No hay nadie en este grupo',
+  'Only scheduled announcements can be cancelled': 'Solo se pueden cancelar los avisos programados',
+  'Texts per person per day is a number from 0 to 10': 'Los mensajes de texto por persona al día van del 0 al 10',
+  'Quiet hours need a start and an end time': 'El horario de silencio necesita una hora de inicio y una de fin',
 };
 
 /** Messages with names or numbers in them: [English pattern, Spanish]. */

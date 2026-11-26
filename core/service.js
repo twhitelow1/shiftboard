@@ -24,6 +24,8 @@ import { layoutService, addRoom, roomOfShift } from './layout.js';
 import { profileApi } from './profile.js';
 import { consentState, smsConsentOf, emailConsentOf, smsStatusOf, recordConsent, consentText } from './consent.js';
 import { SECRET_FIELDS, twoStepOf, twoStepMap, passwordProblem } from './auth-factors.js';
+import { tradeStatsApi } from './trade-stats.js';
+import { announcementApi } from './announcements.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -1568,6 +1570,10 @@ export function createService(store, opts = {}) {
     ...rosterApi({ store, settings, fail, needMgr, today, putSettings, layouts }),
     // ----- the schedule's rooms and their positions: Settings → Rooms & positions (core/layout.js) -----
     ...layouts.api,
+    // ----- trades & pickups by season, Settings → Seasons (core/trade-stats.js) -----
+    ...tradeStatsApi({ store, settings, fail, needAuth, needMgr, needAdmin, isMgr, today, langOf: L, putSettings }),
+    // ----- announcements: in-app, push, email and texts from management (core/announcements.js) -----
+    ...announcementApi({ store, now, settings, fail, needAuth, needAdmin, langOf: L, channels: opts.announce }),
 
     // ----- notifications -----
     'notifications.list': (actor) => {
