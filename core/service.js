@@ -42,6 +42,9 @@ import { emailTemplateApi } from './email-templates.js';
 import { importApi, employeeExtrasPatch } from './import-api.js';
 import { superAdminApi } from './super-admin.js';
 import { feedbackApi, configOf as feedbackConfig, canRead as canReadFeedback } from './feedback.js';
+import { availabilityOn } from './availability.js';
+import { availabilityApi } from './availability-api.js';
+import { approvalScopeApi, scopeOf, coversRequest, coversPerson } from './approval-scope.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -143,6 +146,24 @@ export function createService(store, opts = {}) {
   // The schedule's rooms and their positions (core/layout.js): made from today's schedule the first time.
   const layouts = layoutService({ store, settings, putSettings, fail, needMgr, now, today });
   const approvers = () => users().filter((u) => u.active !== false && canApprove(u, settings()));
+
+  // ----- "Approves for" (core/approval-scope.js): which requests each approver decides -----
+  // kind 'request' (a trade, giveaway or pickup: its shift, or either shift of a two-way trade) or 'timeOff' (the
+  // requester's positions). Admins always decide; when no manager or supervisor has it in scope, every manager does.
+  const shiftsOf = (r) => [store.get('shifts', r.shiftId), r.targetShiftId ? store.get('shifts', r.targetShiftId) : null];
+  const covered = (u, kind, item) => {
+    const scope = scopeOf(u, settings());
+    return kind === 'timeOff' ? coversPerson(scope, userById(item.userId), jobById) : coversRequest(scope, shiftsOf(item), jobById);
+  };
+  const partiesOf = (kind, item) => (kind === 'timeOff' ? [item.userId] : [item.requesterId, item.pickupUserId, item.targetUserId].filter(Boolean));
+  /** Approvers who'd decide it (in scope, admins) — or, when no manager or supervisor has it in scope, every manager and admin. */
+  function approversFor(kind, item, exclude = partiesOf(kind, item)) {
+    const all = approvers().filter((u) => !exclude.includes(u.id) || isMgr(u));
+    const inScope = all.filter((u) => !canChangeSettings(u) && covered(u, kind, item));
+    return inScope.length ? all.filter((u) => canChangeSettings(u) || covered(u, kind, item)) : all.filter((u) => isMgr(u));
+  }
+  /** May this approver decide it? (needApprover and notOwnRequest still apply.) */
+  const canDecide = (a, kind, item) => canChangeSettings(a) || covered(a, kind, item) || (isMgr(a) && !approvers().some((u) => !canChangeSettings(u) && u.id !== a.id && (!partiesOf(kind, item).includes(u.id) || isMgr(u)) && covered(u, kind, item)));
   /** 'Server (Restaurant) Tue, Sep 29 4p–10p' · 'Server (Restaurant) mar, 29 de sep · 4 pm–10 pm' (open-ended: '4 pm–cierre'). */
   const describe = (s, lang = 'en') => {
     const st = settings().startTimesOnly;
@@ -221,7 +242,7 @@ export function createService(store, opts = {}) {
     const tos = store.list('timeOff', (t) => t.userId === userId && t.status !== 'denied' && t.status !== 'cancelled' &&
       t.startDate <= shift.date && t.endDate >= shift.date);
     for (const t of tos) add(t.status === 'approved' ? 'timeOffApproved' : 'timeOffPending');
-    const av = user.availability?.[dow(shift.date)];
+    const av = availabilityOn(user, shift.date)[dow(shift.date)]; // an import's later effective date: the old week before it
     if (av) {
       if (av.available === false) add('unavailable');
       else if (av.from && toMin(shift.start) < toMin(av.from)) add('availableFrom', (lang) => fmtTime(av.from, lang));
@@ -416,6 +437,10 @@ export function createService(store, opts = {}) {
   /** The Feedback inbox for this person: the role feature ∩ who reads (supervisors only when an admin allows it). */
   const withFeedbackInbox = (features, actor, st) => ({ ...features, feedbackInbox: !!features.feedbackInbox && canReadFeedback(actor, feedbackConfig(store), st) });
 
+  // Weekly availability: who may change whose, the log and the person's notification (core/availability-api.js).
+  const availability = availabilityApi({ store, now, today, fail, needAuth, settings, notify, say, userById, isMgr, via: opts.via || null,
+    view: (actor, u) => legalNameFor(actor, u, PUBLIC_USER(u)) });
+
   // ---------- API ----------
   const api = {
     'app.bootstrap': (actor) => {
@@ -439,8 +464,8 @@ export function createService(store, opts = {}) {
       const consent = consentState(store, mine);
       const me = { ...(isMgr(actor) ? legalNameFor(actor, mine, userView(mine)) : mgrOnly(legalNameFor(actor, mine, userView(mine)))), consent, needsTerms: !consent.terms, security: twoStepOf(store, actor.id) };
       const unread = store.list('notifications', (n) => n.userId === actor.id && !n.read).length;
-      const pendingApprovals = isApprover(actor) ? store.list('requests', (r) => r.status === 'pending_approval').length
-        + store.list('timeOff', (t) => t.status === 'pending').length : 0;
+      const pendingApprovals = isApprover(actor) ? store.list('requests', (r) => r.status === 'pending_approval' && canDecide(actor, 'request', r)).length
+        + store.list('timeOff', (t) => t.status === 'pending' && canDecide(actor, 'timeOff', t)).length : 0; // the ones in their scope
       const openOffers = store.list('requests', (r) => r.status === 'open' && (
         (r.type === 'swap' && r.targetUserId === actor.id) ||
         (r.type === 'drop' && r.requesterId !== actor.id && qualified(me, store.get('shifts', r.shiftId)?.jobCodeId)))).length;
@@ -452,13 +477,14 @@ export function createService(store, opts = {}) {
     'settings.update': (actor, patch) => {
       needAdmin(actor);
       const allowed = ['restaurantName', 'weekStartDow', 'closedDays', 'hours', 'openEndHours', 'overtimeHours', 'requireSwapApproval',
-        'requirePickupApproval', 'supervisorsCanApprove', 'startTimesOnly', 'emailNotifications', 'minSwapNoticeHours', 'tags', 'rooms', 'areas', 'areaColors', 'brandColor', 'navColor', 'bgColor', 'appearance', 'departments', 'dayparts', 'forecastWeeks', 'targetLaborPct', 'laborRules', 'language'];
+        'requirePickupApproval', 'supervisorsCanApprove', 'startTimesOnly', 'emailNotifications', 'minSwapNoticeHours', 'tags', 'rooms', 'areas', 'areaColors', 'brandColor', 'navColor', 'bgColor', 'appearance', 'departments', 'dayparts', 'forecastWeeks', 'targetLaborPct', 'laborRules', 'language', 'notifyAvailabilityChanges'];
       const clean = {};
       for (const k of allowed) if (k in patch) clean[k] = patch[k];
       if ('areas' in clean) clean.areas = uniqueAreas(Array.isArray(clean.areas) ? clean.areas : []);
       if ('areaColors' in clean) clean.areaColors = cleanColors(clean.areaColors);
       if ('appearance' in clean) clean.appearance = ['light', 'dark'].includes(clean.appearance) ? clean.appearance : 'auto';
       if ('language' in clean) clean.language = ['en', 'es'].includes(clean.language) ? clean.language : 'auto';
+      if ('notifyAvailabilityChanges' in clean) clean.notifyAvailabilityChanges = clean.notifyAvailabilityChanges !== false; // tell people when someone else changes their availability
       for (const k of ['brandColor', 'navColor', 'bgColor']) {
         if (k in clean) clean[k] = /^#[0-9a-f]{6}$/i.test(String(clean[k] || '')) ? String(clean[k]).toLowerCase() : '';
       }
@@ -688,13 +714,10 @@ export function createService(store, opts = {}) {
       const merged = store.update('users', into.id, patch);
       return { ...out, into: legalNameFor(actor, merged, userView(merged)) };
     },
-    'employees.setAvailability': (actor, { userId, availability }) => {
-      needAuth(actor);
-      const id = userId || actor.id;
-      if (id !== actor.id && !isMgr(actor)) fail(403, 'You can only edit your own availability');
-      const u = store.update('users', id, { availability });
-      return legalNameFor(actor, u, PUBLIC_USER(u));
-    },
+    // Anyone's own; someone else's: managers and up (and supervisors for employees if Roles & features allows it).
+    // Logged with before → after per day, and the person is told when it wasn't them (core/availability-api.js).
+    'employees.setAvailability': (actor, a = {}) => availability.rpc(actor, a),
+    ...availability.methods,
     'employees.resetPassword': (actor, { userId }) => {
       needMgr(actor);
       const u = userById(userId);
@@ -1078,7 +1101,7 @@ export function createService(store, opts = {}) {
       const view = all.filter((r) => (r.createdAt || '').slice(0, 10) >= recentCut || ['open', 'pending_approval'].includes(r.status));
       const lang = L(actor);
       const rv = (r) => requestView(r, lang);
-      const approvals = isApprover(actor) ? view.filter((r) => r.status === 'pending_approval').map(rv) : [];
+      const approvals = isApprover(actor) ? view.filter((r) => r.status === 'pending_approval' && canDecide(actor, 'request', r)).map(rv) : []; // waiting on you: in your scope
       const mine = view.filter((r) => r.requesterId === actor.id || r.pickupUserId === actor.id || r.targetUserId === actor.id).map(rv);
       const offers = view.filter((r) => r.status === 'open' && r.requesterId !== actor.id && (
         (r.type === 'swap' && r.targetUserId === actor.id) ||
@@ -1118,7 +1141,7 @@ export function createService(store, opts = {}) {
           return { ok: true, autoApproved: true };
         }
         store.insert('requests', r);
-        notify(approvers().map((m) => m.id), say('wantsPickup', nameOf(actor.id), desc(s)), '#/swaps');
+        notify(approversFor('request', r, []).map((m) => m.id), say('wantsPickup', nameOf(actor.id), desc(s)), '#/swaps');
         return r;
       }
       if (s.userId !== actor.id) fail(403, 'You can only trade your own shifts');
@@ -1168,7 +1191,7 @@ export function createService(store, opts = {}) {
       }
       store.update('requests', r.id, { ...patch, status: 'pending_approval' });
       notify([r.requesterId], say(r.type === 'swap' ? 'acceptedTrade' : 'acceptedShift', nameOf(actor.id)), '#/swaps');
-      notify(approvers().map((m) => m.id).filter((id) => ![r.requesterId, actor.id].includes(id) || isMgr(userById(id))), say('approvalNeeded', r.type, desc(s), nameOf(r.requesterId), nameOf(actor.id)), '#/swaps');
+      notify(approversFor('request', updated, [r.requesterId, actor.id]).map((m) => m.id), say('approvalNeeded', r.type, desc(s), nameOf(r.requesterId), nameOf(actor.id)), '#/swaps');
       return { ok: true };
     },
     'swaps.decline': (actor, { requestId }) => {
@@ -1193,6 +1216,7 @@ export function createService(store, opts = {}) {
       const r = store.get('requests', requestId);
       if (!r || r.status !== 'pending_approval') fail(409, 'Request is not waiting on approval');
       notOwnRequest(actor, [r.requesterId, r.pickupUserId, r.targetUserId]);
+      if (!canDecide(actor, 'request', r)) fail(403, 'You don’t approve requests for this position. A manager who does will decide it.');
       const s = store.get('shifts', r.shiftId);
       store.transaction(() => {
         executeRequest(r);
@@ -1207,6 +1231,7 @@ export function createService(store, opts = {}) {
       const r = store.get('requests', requestId);
       if (!r || r.status !== 'pending_approval') fail(409, 'Request is not waiting on approval');
       notOwnRequest(actor, [r.requesterId, r.pickupUserId, r.targetUserId]);
+      if (!canDecide(actor, 'request', r)) fail(403, 'You don’t approve requests for this position. A manager who does will decide it.');
       store.update('requests', r.id, { status: 'denied', resolvedAt: now().toISOString(), resolvedBy: actor.id, resolution: note || '' });
       const s = store.get('shifts', r.shiftId);
       notify([r.requesterId, r.pickupUserId, r.targetUserId], say('denied', desc(s), note), '#/swaps');
@@ -1217,7 +1242,9 @@ export function createService(store, opts = {}) {
     'timeOff.list': (actor) => {
       needAuth(actor);
       const rows = store.list('timeOff', (t) => isApprover(actor) || t.userId === actor.id).sort((a, b) => b.startDate.localeCompare(a.startDate));
-      return rows.filter((t) => t.endDate >= addDays(today(), -60));
+      // Pending requests outside an approver's scope ("Approves for") are marked, so "To approve" leaves them out.
+      return rows.filter((t) => t.endDate >= addDays(today(), -60))
+        .map((t) => (t.status === 'pending' && t.userId !== actor.id && isApprover(actor) && !canDecide(actor, 'timeOff', t) ? { ...t, outOfScope: true } : t));
     },
     'timeOff.create': (actor, a) => {
       needAuth(actor);
@@ -1226,7 +1253,7 @@ export function createService(store, opts = {}) {
       const endDate = a.endDate && a.endDate >= a.startDate ? a.endDate : a.startDate;
       const status = isMgr(actor) && a.userId && a.userId !== actor.id ? 'approved' : 'pending';
       const t = store.insert('timeOff', { id: uid('tof'), userId, startDate: a.startDate, endDate, reason: (a.reason || '').trim(), status, createdAt: now().toISOString() });
-      if (status === 'pending') notify(approvers().map((m) => m.id).filter((id) => id !== userId || isMgr(userById(id))), say('requestedOff', nameOf(userId), day(t.startDate), endDate !== t.startDate ? day(endDate) : ''), '#/timeoff');
+      if (status === 'pending') notify(approversFor('timeOff', t).map((m) => m.id), say('requestedOff', nameOf(userId), day(t.startDate), endDate !== t.startDate ? day(endDate) : ''), '#/timeoff');
       const clashes = store.list('shifts', (s) => s.userId === userId && s.date >= t.startDate && s.date <= endDate);
       return { ...t, clashes: clashes.length };
     },
@@ -1236,6 +1263,7 @@ export function createService(store, opts = {}) {
       const cur = store.get('timeOff', id);
       if (!cur) fail(404, 'Not found');
       notOwnRequest(actor, [cur.userId]);
+      if (!canDecide(actor, 'timeOff', cur)) fail(403, 'You don’t approve time off for this person’s positions. A manager who does will decide it.');
       const t = store.update('timeOff', id, { status, decidedBy: actor.id, decidedAt: now().toISOString(), note: note || '' });
       notify([t.userId], say('timeOffDecided', status, day(t.startDate), t.endDate !== t.startDate ? day(t.endDate) : ''), '#/timeoff');
       return t;
@@ -1691,6 +1719,9 @@ export function createService(store, opts = {}) {
     // feedbackKey: the server's secret for the rate limit's HMAC (server/app.js). mod.get: the safety note's call-out line.
     ...feedbackApi({ store, now, today, settings, fail, needAuth, needAdmin, langOf: L, notify, key: opts.feedbackKey || null,
       modToday: (a) => api['mod.get'](a, {}) }),
+    // ----- "Approves for": a person's approval scope and the role defaults (core/approval-scope.js) -----
+    ...approvalScopeApi({ store, settings, putSettings, fail, needAuth, needMgr, needAdmin, userById, canApprove, canManageUser, now, uid,
+      layoutRooms: () => [...(layouts.forViewer(true)?.rooms || []).map((r) => r.room), ...scheduleAreas(settings())] }),
     // ----- Settings → Roles & features: which parts of the app each role gets (core/role-features.js) -----
     ...roleFeatureApi({ settings, putSettings, fail, needAdmin, plan: opts.planFeatures || null }),
     // ----- an Admin making themselves Super Admin, and the switch that allows it (core/super-admin.js) -----
@@ -1753,7 +1784,7 @@ export function createService(store, opts = {}) {
   // Unpublish (back to draft) and the "what changed" notification when it's posted again. See core/unpublish.js.
   const unpublish = unpublishApi({ store, api, fail, needMgr, notify, say, day, describe, settings, nameOf, jobName, isFuture, cancelRequestsForShift, now });
   // Smart import: employees.import*, menu.import* and products.import* (core/import-api.js, core/smart-import.js).
-  Object.assign(api, importApi({ store, api, fail, needMgr, now }));
+  Object.assign(api, importApi({ store, api, fail, needMgr, now, settings, availability }));
   // Stock lists and the product catalog the 86 List shares (core/stock.js, core/products.js). Out → 86 goes through eightySix.report.
   Object.assign(api, stockApi({ store, now, settings, notify, fail, api, langOf: L, planHas: (k) => !opts.planFeatures || opts.planFeatures[k] !== false }));
   // Positive impact (impact.*: review mentions, reservation requests, kudos) and OpenTable (opentable.*): core/impact.js, core/opentable.js.

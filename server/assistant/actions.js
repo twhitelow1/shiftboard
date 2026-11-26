@@ -10,7 +10,7 @@ const TITLES = {
   delete_shift: ['Delete a shift', 'Borrar un turno'],
   publish_week: ['Publish the week', 'Publicar la semana'],
   request_time_off: ['Request time off', 'Pedir días libres'],
-  set_availability: ['Change your availability', 'Cambiar tu disponibilidad'],
+  set_availability: ['Change availability', 'Cambiar la disponibilidad'],
   offer_shift: ['Offer your shift', 'Ofrecer tu turno'],
   pick_up_shift: ['Pick up a shift', 'Recoger un turno'],
   cancel_request: ['Cancel a request', 'Cancelar una solicitud'],

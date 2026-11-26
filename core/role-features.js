@@ -68,6 +68,9 @@ export const ROLE_FEATURES = [
   { key: 'coworkerContacts', group: 'feature', plan: null, cells: { employee: false, supervisor: true, manager: 'on', admin: 'on' } },
   { key: 'tradeRequests', group: 'capability', plan: null, cells: ALL(true) },
   { key: 'approve', group: 'capability', plan: null, cells: { employee: null, supervisor: true, manager: 'on', admin: 'on' }, setting: 'supervisorsCanApprove' },
+  // Editing other people's weekly availability (core/availability-api.js): managers and up as before; supervisors (for
+  // employees) when turned on. Everyone always edits their own, so it's checked inside, never per RPC.
+  { key: 'editAvailability', group: 'capability', plan: null, cells: { employee: null, supervisor: false, manager: true, admin: 'on' } },
 ];
 export const ROLE_FEATURE_KEYS = ROLE_FEATURES.map((f) => f.key);
 const DEF = Object.fromEntries(ROLE_FEATURES.map((f) => [f.key, f]));
@@ -98,6 +101,9 @@ const METHOD_FEATURES = {
   'employees.importMapping': ['team'], // smart import (core/import-api.js)
   'employees.importPreview': ['team'],
   'employees.importApply': ['team'],
+  'availability.importMapping': ['team'], // the availability import (core/import-api.js)
+  'availability.importPreview': ['team'],
+  'availability.importApply': ['team'],
   // Feedback box: the readers' methods need the inbox (not submitting); its settings are admins' whatever their role has.
   ...Object.fromEntries(['feedback.inbox.list', 'feedback.inbox.get', 'feedback.setStatus', 'feedback.reply', 'feedback.note', 'feedback.share',
     'feedback.unshare', 'feedback.askName'].map((m) => [m, ['feedbackInbox']])),

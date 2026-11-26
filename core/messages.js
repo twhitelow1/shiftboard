@@ -65,6 +65,7 @@ export const MSG = {
     // ----- people -----
     roleNow: (role) => `Your role is now ${role}.`,
     deletionRequested: (name) => `${name} asked to delete their ShiftBoard account. Remove their sign-in and personal details in Team.`,
+    availabilityChanged: (by) => `${by || 'A manager'} updated your availability. Check it in Time off → My availability, where its history shows what changed.`,
     madeSuperAdmin: (name) => `${name} made themselves Super Admin.`,
     // ----- tips -----
     tipsFinal: (period, amount) => `Your tips for ${period} are final: ${amount}. Tap to see how it was worked out.`,
@@ -185,6 +186,7 @@ export const MSG = {
     // ----- personas -----
     roleNow: (role) => `Ahora tu rol es ${role}.`,
     deletionRequested: (name) => `${name} pidió borrar su cuenta de ShiftBoard. Quita su acceso y sus datos personales en Equipo.`,
+    availabilityChanged: (by) => `${by || 'Un gerente'} actualizó tu disponibilidad. Revísala en Días libres → Mi disponibilidad; su historial muestra qué cambió.`,
     madeSuperAdmin: (name) => `${name} se dio el rol de superadministrador.`,
     // ----- propinas -----
     tipsFinal: (period, amount) => `Tus propinas de ${period} ya son definitivas: ${amount}. Toca para ver cómo se calcularon.`,

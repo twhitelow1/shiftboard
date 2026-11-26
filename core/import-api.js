@@ -31,9 +31,11 @@ import { roleOf, canManageUser, assignableRoles } from './roles.js';
 import { nameKey, legalNameOf } from './names.js';
 import { canonicalAllergen, DEFAULT_CATEGORIES } from './training.js';
 import {
-  FIELDS, MAX_ROWS, normalizeEmployee, normalizeMenuItem, normalizeProduct, productLikeness, productLooseKey, groupRows, personLikeness, menuLikeness, POSSIBLE_AT,
+  FIELDS, MAX_ROWS, normalizeEmployee, normalizeAvailabilityRow, normalizeMenuItem, normalizeProduct, productLikeness, productLooseKey, groupRows, personLikeness, menuLikeness, POSSIBLE_AT,
   normEmail, phoneKey, idKey, itemKey, looseItemKey, isEmptyValue, sameValue, confidenceOf, headerKey, isSensitiveHeader, isMajorAllergen,
 } from './smart-import.js';
+import { DAY_FIELDS } from './weekdays.js';
+import { parseAvailabilityCell, cellDay, dayView, sameDay, parseLimit, storedDay } from './availability.js';
 
 /**
  * The profile fields an import brings that Team didn't have (employees.save keeps them; Team → a person shows them):
@@ -65,7 +67,7 @@ const clean = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
 const asList = (v) => (Array.isArray(v) ? v : isEmptyValue(v) ? [] : [v]);
 const show = (v) => (Array.isArray(v) ? v.join(', ') : typeof v === 'boolean' ? v : v == null ? '' : String(v));
 
-export function importApi({ store, api, fail, needMgr, now }) {
+export function importApi({ store, api, fail, needMgr, now, settings = () => ({}), availability = null }) {
   const iso = () => now().toISOString();
 
   // ---------------------------------------------------------------- shared
@@ -102,6 +104,7 @@ export function importApi({ store, api, fail, needMgr, now }) {
       action, id: typeof d.id === 'string' ? d.id : null,
       keep: Array.isArray(d.keep) ? d.keep.filter((k) => typeof k === 'string') : [],
       values: d.values && typeof d.values === 'object' ? d.values : {},
+      cells: d.cells && typeof d.cells === 'object' && !Array.isArray(d.cells) ? d.cells : {}, // availability: the manager's fix for a cell
     };
   };
   function pickConflicts(group, dec, existing, getExisting) {
@@ -129,7 +132,8 @@ export function importApi({ store, api, fail, needMgr, now }) {
       details: { fileName: clean(args.fileName).slice(0, 120), source: clean(args.source).slice(0, 20), rows: result.counts.total,
         created: result.created, updated: result.updated, unchanged: result.unchanged, skipped: result.skipped, failed: result.failed.length,
         ...(result.positionsCreated ? { positionsCreated: result.positionsCreated.length } : {}), ...(result.categoriesCreated ? { categoriesCreated: result.categoriesCreated.length } : {}),
-        ...(target === 'employees' ? { invite: !!args.options?.invite } : {}) },
+        ...(target === 'employees' ? { invite: !!args.options?.invite } : {}),
+        ...(target === 'availability' ? { notify: args.options?.notify === true, effectiveFrom: result.effectiveFrom || null } : {}) },
     });
   }
   function mappingMethod(target) {
@@ -212,7 +216,9 @@ export function importApi({ store, api, fail, needMgr, now }) {
       if (target_ && taken.has(target_.id)) { row.problems.push({ code: 'sameRecordAs', params: { row: taken.get(target_.id) } }); row.status = 'problem'; return row; }
       if (target_) taken.set(target_.id, key);
       const keep = [...(effective?.keep || []), ...(row.keepFromLink || [])];
-      hooks.finish(row, { data, target: target_, keep, options: args.options || {}, actor });
+      hooks.finish(row, { data, target: target_, keep, options: args.options || {}, actor, decision: dec });
+      if (row.extraNeeds?.length) needs.push(...row.extraNeeds); // availability: cells the manager has to look at
+      delete row.extraNeeds;
       if (needs.length) { row.status = 'check'; row.needs = needs; row.why = row.why || needs[0]; return row; }
       if (row.problems.length) row.status = 'problem';
       else if (target_) row.status = row.changes.length ? 'update' : 'unchanged';
@@ -292,14 +298,12 @@ export function importApi({ store, api, fail, needMgr, now }) {
     employeeId: (a, b) => idKey(a) === idKey(b), notes: (a, b) => clean(a) === clean(b),
   };
 
-  function employeePreview(actor, args) {
-    const users = store.list('users');
-    const settingsSuperAdmin = users.some((u) => roleOf(u) === 'super_admin' && u.active !== false);
-    const canAssign = assignableRoles(actor, { superAdminExists: settingsSuperAdmin });
-    const knownJobs = jobs();
-    const newPositions = new Map();
-    const prev = previewWith('employees', actor, args, {
-      normalize: normalizeEmployee,
+  /**
+   * Finding a person from a row: email, employee/payroll ID, phone, a decision made before, then the full or legal name
+   * (exact); else candidates by personLikeness ("Possible duplicate — check"). The team import and the availability
+   * import share it.
+   */
+  const personHooks = (users) => ({
       all: () => users,
       get: (id) => store.get('users', id),
       linkKey: (d) => nameKey(d.name),
@@ -327,6 +331,17 @@ export function importApi({ store, api, fail, needMgr, now }) {
         }
         return { hits: [], by: null };
       },
+  });
+
+  function employeePreview(actor, args) {
+    const users = store.list('users');
+    const settingsSuperAdmin = users.some((u) => roleOf(u) === 'super_admin' && u.active !== false);
+    const canAssign = assignableRoles(actor, { superAdminExists: settingsSuperAdmin });
+    const knownJobs = jobs();
+    const newPositions = new Map();
+    const prev = previewWith('employees', actor, args, {
+      normalize: normalizeEmployee,
+      ...personHooks(users),
       finish(row, { data, target: u, keep, options }) {
         row.linkKey = nameKey(data.name);
         const blank = options.blankClears === true;
@@ -453,6 +468,79 @@ export function importApi({ store, api, fail, needMgr, now }) {
     });
     const out = { ...result, counts: preview.counts, positionsCreated: [...made.keys()].map((k) => preview.newPositions.find((n) => nameKey(n) === k) || k), invite };
     audit(actor, 'employees', out, args);
+    return out;
+  }
+
+  // ---------------------------------------------------------------- availability
+  // One row per person, a column per weekday (core/smart-import.js FIELDS.availability). People are matched exactly like
+  // the team import (personHooks) and never made: a name that isn't on the team is a problem row, skipped. Each day's
+  // cell is read by parseAvailabilityCell; a cell it doesn't fully understand keeps its text as the day's note and makes
+  // the row a "check" until the manager fixes it (decision.cells[day] = a day) or takes the reading as it is
+  // (decision.cells[day] = 'accept'). Days whose column isn't in the file stay as they are.
+  // options: { effectiveFrom: 'YYYY-MM-DD' (from that date; shifts before it keep the old week), notify: tell the people }.
+  // Apply saves through availability.setFor: each person's change is in their Availability history (via 'import').
+  const fixOf = (v) => (v === 'accept' ? 'accept' : v && typeof v === 'object' ? storedDay(v) || {} : undefined);
+  function availabilityPreview(actor, args) {
+    const users = store.list('users');
+    const st = settings();
+    const prev = previewWith('availability', actor, args, {
+      normalize: normalizeAvailabilityRow,
+      ...personHooks(users),
+      finish(row, { data, target: u, options, decision }) {
+        row.days = [];
+        if (!u) {
+          // Never a new person from an availability sheet.
+          if (!row.candidates || row.decision === 'new') row.problems.push({ code: row.decision === 'new' ? 'noCreate' : 'notOnTeam', params: { name: data.name || '' } });
+          if (row.decision === 'new') row.decision = null;
+        } else if (availability && !availability.canEditOf(actor, u)) {
+          row.problems.push({ code: 'cantEditAvailability', params: { name: u.name } });
+        }
+        const cur = u?.availability || {};
+        const next = { ...cur };
+        const flagged = [];
+        for (const [d, k] of DAY_FIELDS.entries()) {
+          if (!(k in data)) continue;
+          const cell = parseAvailabilityCell(data[k], st);
+          const fix = fixOf(decision?.cells?.[k]);
+          const after = fix && fix !== 'accept' ? fix : cellDay(cell);
+          const day = { day: d, field: k, raw: data[k], before: dayView(cur[d]), after: dayView(after), kind: cell.kind };
+          if (cell.review && !fix) { day.review = true; flagged.push(k); }
+          if (fix) day.fixed = fix === 'accept' ? 'accept' : 'edit';
+          day.changed = !sameDay(cur[d], after);
+          if (after) next[d] = after; else delete next[d];
+          row.days.push(day);
+          if (day.changed) row.changes.push({ field: k, before: day.before, after: day.after });
+        }
+        const plan = { availability: next };
+        const field = (f, before, after) => { row.changes.push({ field: f, before: show(before), after: show(after) }); };
+        if ('notes' in data && data.notes && data.notes !== (u?.availabilityNotes || '')) { plan.notes = data.notes; field('notes', u?.availabilityNotes || '', data.notes); }
+        for (const [f, max] of [['maxHours', 80], ['maxDays', 7]]) {
+          if (!(f in data) || !data[f]) continue;
+          const n = parseLimit(data[f], max);
+          if (Number.isNaN(n)) { row.notes.push({ code: 'badLimit', params: { field: f, value: data[f] } }); continue; }
+          if (n !== (u?.[f] ?? null)) { plan[f] = n; field(f, u?.[f] ?? '', n); }
+        }
+        if (/^\d{4}-\d{2}-\d{2}$/.test(options.effectiveFrom || '')) plan.effectiveFrom = options.effectiveFrom;
+        if (!row.days.length && u) row.notes.push({ code: 'noDays' });
+        if (flagged.length && u && !row.problems.length) { row.extraNeeds = ['cells']; row.flagged = flagged; }
+        row.plan = plan;
+      },
+    });
+    prev.dayFields = DAY_FIELDS.filter((k) => records(args).some((r) => k in (r.values || {})));
+    return prev;
+  }
+  const records = (args) => (Array.isArray(args.records) ? args.records : []);
+  function availabilityApply(actor, args) {
+    if (!availability) fail(500, 'Something went wrong');
+    const preview = availabilityPreview(actor, args);
+    const opts = args.options || {};
+    const result = applyWith('availability', actor, args, preview, (row) => {
+      const u = store.get('users', row.match.id);
+      availability.setFor(actor, u, row.plan, { via: 'import', notify: opts.notify === true, fileName: args.fileName });
+      return u.id;
+    });
+    const out = { ...result, counts: preview.counts, effectiveFrom: /^\d{4}-\d{2}-\d{2}$/.test(opts.effectiveFrom || '') ? opts.effectiveFrom : null, notified: opts.notify === true ? result.updated : 0 };
+    audit(actor, 'availability', out, args);
     return out;
   }
 
@@ -631,6 +719,9 @@ export function importApi({ store, api, fail, needMgr, now }) {
   }
 
   return {
+    'availability.importMapping': mappingMethod('availability'),
+    'availability.importPreview': (actor, a = {}) => { needMgr(actor); const p = availabilityPreview(actor, a); return { ...publicView(p), dayFields: p.dayFields }; },
+    'availability.importApply': (actor, a = {}) => { needMgr(actor); return availabilityApply(actor, a); },
     'products.importMapping': mappingMethod('products'),
     'products.importPreview': (actor, a = {}) => { needMgr(actor); return publicView(productPreview(actor, a)); },
     'products.importApply': (actor, a = {}) => { needMgr(actor); return productApply(actor, a); },

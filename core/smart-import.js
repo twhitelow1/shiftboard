@@ -27,9 +27,11 @@ import { nameKey, aliasesOf, legalNameOf } from './names.js';
 import { nicknamesOf, fold } from './impact.js';
 import { canonicalAllergen, MAJOR_ALLERGENS, DIETARY_TAGS } from './training.js';
 import { normalizePhone } from './notify-prefs.js';
+import { DAY_HEADER_NAMES, DAY_FIELDS, dayOfHeader } from './weekdays.js';
 
 export { parseCsv };
-export const TARGETS = ['employees', 'menu', 'products']; // products: Stock lists' catalog (core/products.js)
+// products: Stock lists' catalog (core/products.js); availability: each person's weekly availability (core/availability.js)
+export const TARGETS = ['employees', 'menu', 'products', 'availability'];
 export const MAX_ROWS = 1000; // per import
 export const MAX_FILE_BYTES = 5 * 1024 * 1024; // read in the browser
 export const MAX_AI_CHARS = 40_000; // all of a document sent to the AI reader
@@ -92,6 +94,20 @@ export const FIELDS = {
     F('location', ['location', 'storage', 'stored', 'shelf', 'where', 'storage location', 'ubicacion', 'ubicación', 'almacen', 'almacén']),
     F('supplier', ['supplier', 'vendor', 'distributor', 'proveedor', 'distribuidor']),
     F('notes', ['notes', 'note', 'comments', 'notas', 'comentarios']),
+  ],
+  // Weekly availability (core/availability.js): one row per person, a column per weekday. People are only matched,
+  // never made. The day columns are also found by dayOfHeader ("Mon 9/28", "Lunes"), see autoMap.
+  availability: [
+    F('name', ['name', 'full name', 'employee name', 'employee', 'preferred name', 'goes by', 'nickname', 'nombre', 'nombre completo', 'empleado', 'apodo', 'staff', 'team member', 'person', 'persona']),
+    F('firstName', ['first', 'first name', 'given name', 'fname', 'primer nombre']),
+    F('lastName', ['last', 'last name', 'surname', 'family name', 'lname', 'apellido', 'apellidos']),
+    F('email', ['email', 'e mail', 'email address', 'mail', 'correo', 'correo electronico']),
+    F('phone', ['phone', 'phone number', 'cell', 'cell phone', 'mobile', 'telephone', 'tel', 'celular', 'telefono']),
+    F('employeeId', ['employee id', 'emp id', 'employee number', 'payroll id', 'file number', 'badge', 'id', 'numero de empleado', 'id de empleado']),
+    ...DAY_FIELDS.map((k, d) => F(k, DAY_HEADER_NAMES[d])).slice(1), F('sun', DAY_HEADER_NAMES[0]), // Monday first, like the sheets
+    F('notes', ['notes', 'note', 'comments', 'comment', 'availability notes', 'notas', 'nota', 'comentarios', 'observaciones']),
+    F('maxHours', ['max hours', 'max hrs', 'maximum hours', 'hours max', 'max hours per week', 'max hours week', 'hours per week', 'max weekly hours', 'horas maximas', 'max horas', 'horas por semana']),
+    F('maxDays', ['max days', 'maximum days', 'days max', 'max days per week', 'days per week', 'max shifts', 'shifts per week', 'dias maximos', 'max dias', 'dias por semana']),
   ],
 };
 export const fieldKeys = (target) => FIELDS[target].map((f) => f.key);
@@ -279,7 +295,8 @@ export function findHeaderRow(rows, target, { min = 2 } = {}) {
   let best = { i: -1, score: 0 };
   for (const [i, r] of (rows || []).slice(0, 15).entries()) {
     const keys = r.map(headerKey);
-    const score = FIELDS[target].filter((f) => keys.some((k) => headerScore(k, f.names) >= 2)).length;
+    let score = FIELDS[target].filter((f) => keys.some((k) => headerScore(k, f.names) >= 2)).length;
+    if (target === 'availability') score = Math.max(score, new Set(keys.map(dayOfHeader).filter((d) => d >= 0)).size + (keys.some((k) => headerScore(k, FIELDS.availability[0].names) >= 2) ? 1 : 0));
     if (score >= min && score > best.score) best = { i, score };
   }
   return best.i;
@@ -333,8 +350,21 @@ export function autoMap(header, target, { samples = [], remembered = null } = {}
     const guess = share(EMAIL) >= 0.8 ? 'email' : target === 'employees' && share(PHONE) >= 0.8 ? 'phone' : target === 'menu' && share(PRICE) >= 0.8 ? 'price' : null;
     if (guess && fields.some((f) => f.key === guess) && !used.has(guess)) { c.field = guess; used.add(guess); c.confidence = 'guess'; }
   }
+  // Availability: a header that names a weekday ("Mon 9/28", "Lunes") is that day; a sheet without a name header
+  // ("" or "Week of …" over the names) has the people in its first column.
+  if (target === 'availability') {
+    for (const c of out) {
+      if (c.field || c.sensitive || c.confidence === 'remembered') continue;
+      const d = dayOfHeader(headerKey(c.header));
+      if (d >= 0 && !used.has(DAY_FIELDS[d])) { c.field = DAY_FIELDS[d]; used.add(DAY_FIELDS[d]); c.confidence = 'likely'; }
+    }
+    if (!used.has('name') && !used.has('firstName') && !used.has('lastName') && used.size) {
+      const first = out.find((c) => !c.field && !c.sensitive && c.confidence !== 'remembered' && colSamples(c.index).length);
+      if (first && first.index < Math.min(...out.filter((c) => DAY_FIELDS.includes(c.field)).map((c) => c.index), Infinity)) { first.field = 'name'; used.add('name'); first.confidence = 'guess'; }
+    }
+  }
   // "Nombre" (or "First") with no last-name column and no name column: it's the whole name.
-  if (target === 'employees' && used.has('firstName') && !used.has('lastName') && !used.has('name')) {
+  if ((target === 'employees' || target === 'availability') && used.has('firstName') && !used.has('lastName') && !used.has('name')) {
     const c = out.find((x) => x.field === 'firstName' && x.confidence !== 'remembered');
     if (c) { c.field = 'name'; c.confidence = 'likely'; }
   }
@@ -601,6 +631,28 @@ export function normalizeProduct(values = {}) {
 }
 const titleCaseIfShouting = (s) => (s.length > 3 && s === s.toUpperCase() && /[A-Z]/.test(s) ? titleCase(s) : s);
 
+/**
+ * An availability row's values, cleaned: { data: { name, email?, phone?, employeeId?, mon … sun (the cell's text, as
+ * written: core/availability.js reads it), notes?, maxHours?, maxDays? }, issues }. Days not in the file are left out.
+ */
+export function normalizeAvailabilityRow(values = {}) {
+  const v = (k) => clean(values[k]);
+  const data = {};
+  const first = v('firstName'), last = v('lastName');
+  let name = v('name');
+  if (!name && (first || last)) name = [first, last].filter(Boolean).join(' ');
+  if (name.includes(',') && !first && !last) name = splitName(name).display;
+  data.name = name.slice(0, 80);
+  if ('email' in values) { data.email = normEmail(values.email); if (data.email && !EMAIL.test(data.email)) data.email = ''; }
+  if ('phone' in values) data.phone = v('phone').slice(0, 30);
+  if ('employeeId' in values) data.employeeId = v('employeeId').slice(0, 40);
+  for (const k of DAY_FIELDS) if (k in values) data[k] = v(k).slice(0, 200);
+  if ('notes' in values) data.notes = para(values.notes).slice(0, 500);
+  if ('maxHours' in values) data.maxHours = v('maxHours');
+  if ('maxDays' in values) data.maxDays = v('maxDays');
+  return { data, issues: [] };
+}
+
 // ---------------------------------------------------------------- likeness
 
 /** Levenshtein distance, stopping early past `max`. */
@@ -791,7 +843,7 @@ export function groupRows(normalized, target) {
   for (const rec of normalized) {
     const d = rec.data;
     let into = null;
-    if (target === 'employees') {
+    if (target === 'employees' || target === 'availability') {
       const k = personKeys(d);
       into = groups.find((g) => {
         const o = personKeys(g.data);
@@ -821,7 +873,7 @@ export function groupRows(normalized, target) {
 }
 /** Two values of one field the same? Names by their folded spelling, emails and phones as they compare, the rest as written. */
 export function sameField(target, f, a, b) {
-  if (f === 'name' || f === 'category' || f === 'nameEs' || f === 'legalFirstName' || f === 'legalLastName') return target !== 'employees' ? itemKey(a) === itemKey(b) : nameKey(a) === nameKey(b);
+  if (f === 'name' || f === 'category' || f === 'nameEs' || f === 'legalFirstName' || f === 'legalLastName') return target !== 'employees' && target !== 'availability' ? itemKey(a) === itemKey(b) : nameKey(a) === nameKey(b);
   if (f === 'email') return normEmail(a) === normEmail(b);
   if (f === 'phone') return phoneKey(a) === phoneKey(b) && (!!phoneKey(a) || clean(a) === clean(b));
   if (f === 'employeeId') return idKey(a) === idKey(b);
@@ -851,6 +903,11 @@ const TEMPLATES = {
     ['Name', 'Category', 'Description', 'Ingredients', 'Allergens', 'Dietary', 'Price', 'Selling notes', 'Recipe', 'Prep notes', 'Spanish name', 'Spanish description', 'Available'],
     ['Charred Carrots', 'Starters', 'Honey-glazed carrots with whipped feta', 'carrots, honey, feta, pistachio', 'milk, tree nuts', 'vegetarian, gluten-free', '11', 'Great to share; pairs with the rosé', '', 'Roast carrots ahead; glaze to order', 'Zanahorias asadas', 'Zanahorias glaseadas con miel y feta batido', 'Yes'],
     ['Garden Spritz', 'Cocktails', 'Elderflower, cucumber and soda', 'elderflower liqueur, cucumber, soda', '', 'vegan', '12', '', '1. Build over ice\n2. Top with soda', '', '', '', 'Yes'],
+  ],
+  availability: [
+    ['Name', 'Email', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday', 'Notes', 'Max hours'],
+    ['Jamie Rivers', 'jamie.rivers@example.com', '', 'OFF', 'after 4', 'after 4', '4p-cl', 'Doubles', 'AM', 'School until 2 on weekdays', '32'],
+    ['Sam Okafor', 'sam.okafor@example.com', '11-3', '11-3', 'OFF', '', '', 'until 3', 'Requested off', '', ''],
   ],
   products: [
     ['Name', 'Category', 'Unit', 'Size', 'Par', 'Location', 'Supplier', 'Notes'],
