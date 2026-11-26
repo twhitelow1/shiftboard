@@ -44,6 +44,8 @@ import { migrateConsents, emailConsentOf, legalLinks, CONSENT_MIGRATION, CONSENT
 import { roleAllows, cleanDraft, ROLE_ROUTES, ROLE_OFF } from '../core/role-features.js';
 import { createViewAs } from './view-as.js';
 import { mountAssistant } from './assistant/index.js';
+import { mountBeoAi } from './beo-ai-routes.js';
+import { mountImport } from './import-routes.js';
 
 const COOKIE = 'sb_session';
 // Not allowed while DubLow staff are signed in as the owner for support ("Sign in as owner"): the owner's
@@ -213,6 +215,22 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
       : inviteEmail({ user, link, restaurant: restaurantName(), invitedBy, brand: brandOf(req), lang }));
     await stamp([user.id], 'invitedAt');
     return true;
+  }
+
+  /**
+   * Invitations for people a smart import just made (only when the manager asked: options.invite / sendInvitations).
+   * Email only, never a text; people who can't get one (no real email, inactive, signed in before) are counted.
+   */
+  async function inviteImported(userIds, invitedBy, req) {
+    const out = { sent: 0, noEmail: 0, failed: 0 };
+    await db.sync();
+    for (const id of [...new Set(userIds || [])].slice(0, 500)) {
+      const u = db.store.get('users', id);
+      if (!u || u.active === false || u.lastLoginAt) continue;
+      if (!mailer.enabled || !deliverable(u.email)) { out.noEmail++; continue; }
+      try { if (await sendInvite(u, invitedBy, req)) out.sent++; else out.noEmail++; } catch (e) { console.error('Import invite failed:', e.message); out.failed++; }
+    }
+    return out;
   }
 
   /** What the web app needs to know about the restaurant on the platform (null without a tenant). */
@@ -407,6 +425,9 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
             : 'The invitation email could not be sent. Try Resend invite in a minute.';
         }
       }
+
+      // A smart import with "Send invitations now": the people it made get their invitation email (never a text).
+      if (method === 'employees.importApply' && out.result?.invite?.length) out.result.invited = await inviteImported(out.result.invite, caller.name, req);
 
       // On the platform, the app learns the restaurant's features, the support banner and (admins only) the billing banner.
       if (method === 'app.bootstrap' && tenant && out.result) out.result = { ...out.result, tenant: tenantInfo(caller, sess.claims) };
@@ -613,15 +634,21 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     db, env, tenant, now, has, paused, secret: () => secret, session, sessionToken, ready,
     serviceOpts: (req) => ({ hashPassword, channels: channels.info, request: { ip: req.ip, userAgent: req.get('user-agent') || null }, legal, announce: announcer.info, planFeatures: planFeatures() }),
     onCommit: (changes, req) => { channels.afterCommit(changes, req); emailNotifications(changes, req); pushToPhones(changes); },
+    invite: inviteImported,
   });
 
   // Ask ShiftBoard (server/assistant/): Claude in the app, as the signed-in person, with the same tools as the
   // connector; metered and capped per restaurant (server/ai/). What its confirmed changes do notifies people as usual.
   mountAssistant(app, {
-    db, env, tenant, now, has, session, sessionToken, planFeatures, aiClient,
+    db, env, tenant, now, has, session, sessionToken, planFeatures, aiClient, invite: inviteImported,
     serviceOpts: (req) => ({ hashPassword, channels: channels.info, request: { ip: req.ip, userAgent: req.get('user-agent') || null }, legal, announce: announcer.info, planFeatures: planFeatures() }),
     onCommit: (changes, req) => { channels.afterCommit(changes, req); emailNotifications(changes, req); pushToPhones(changes); },
   });
+
+  // "Read it with AI" for a BEO that isn't Tripleseat's layout (server/beo-ai-routes.js): metered like every AI call.
+  mountBeoAi(app, { db, env, tenant, now, has, userOf: (req) => whoIs(req), aiClient });
+  // Smart import → Read it with AI (server/import-routes.js); the rest of the import is plain RPC (core/import-api.js).
+  mountImport(app, { db, env, tenant, now, has, aiClient, signedIn: (req) => whoIs(req) });
 
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 

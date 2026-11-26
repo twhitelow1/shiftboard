@@ -660,6 +660,18 @@ const en = {
     av: 'A/V: {text}',
     thread: 'Team thread',
     threadHelp: 'To post a question or an update, open this event on the website.',
+    section: {
+      timeline: 'Timeline', menu: 'Menu', dietary: 'Dietary & allergies', bar: 'Bar', kitchen: 'Kitchen notes', setup: 'Setup & floor plan',
+      rentals: 'Rentals & room', av: 'A/V & entertainment', decor: 'Linens, decor & florals', vendors: 'Vendors', staffing: 'Staffing requests',
+      arrival: 'Arrival', parking: 'Parking & coat check', instructions: 'Special instructions', notes: 'Notes', signatures: 'Signed & updated',
+      contacts: 'Client contact', other: 'Other notes',
+    },
+    label: { package: 'Package', bar: 'Bar', notes: 'Notes', client: 'Client', contact: 'Contact', phone: 'Phone', email: 'Email', guaranteed: 'Guaranteed', updated: 'Updated', signed: 'Signed by' },
+    dietaryBanner: 'Dietary & allergy notes for this event: read them before service.',
+    managersOnly: 'Managers only',
+    location: 'Location',
+    areas: 'Areas',
+    salesManager: 'Sales manager',
     style: { plated: 'Plated dinner', family: 'Family style', buffet: 'Buffet', stations: 'Stations', reception: 'Reception / passed apps', cocktail: 'Bar / cocktail only' },
   },
   availability: {

@@ -300,7 +300,10 @@ export function TripleseatEventCard({ e, reload }) {
     if (r) { setLines(null); reload?.(); }
   };
   const clear = () => run(() => call('tripleseat.clearReview', { id: e.id })).then(() => reload?.());
-  const reviewText = (r) => t(`tripleseat.review_${r.code}`, { count: r.staffed || 0, from: r.from ? prettyDate(r.from) : '', to: r.to ? prettyDate(r.to) : '' });
+  // A possible duplicate the sync found (core/tripleseat.js): the same event already here from a BEO PDF or typed in.
+  const reviewText = (r) => (r.code === 'possibleDuplicate'
+    ? <>{t('beo.tsPossibleDuplicate', { name: r.otherName || '' })} <a href={`#/events/${r.otherId}`}>{t('beoImport.openEvent')}</a></>
+    : t(`tripleseat.review_${r.code}`, { count: r.staffed || 0, from: r.from ? prettyDate(r.from) : '', to: r.to ? prettyDate(r.to) : '' }));
 
   return (
     <div className="card card-pad section col no-print" style={{ gap: 8 }}>

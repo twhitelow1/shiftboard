@@ -194,7 +194,10 @@ test('caps per restaurant: the plan’s, DubLow’s override, the default; tenan
   // The SDK isn't used without a key: no_key.
   assert.equal(aiFor({ db: A.db, env: {} }).reason, 'no_key');
   assert.equal(aiFor({ db: A.db, env: { ANTHROPIC_API_KEY: KEY, AI_DISABLED: 'true' } }).reason, 'off');
-  assert.equal(aiFor({ db: A.db, tenant: { plan: 'starter', features: resolveFeatures('starter'), ai: {} }, env: { ANTHROPIC_API_KEY: KEY } }).reason, 'plan');
+  // No AI feature in the plan: 'plan'. Starter has Training, whose smart import reads menus with AI (AI_FEATURES), so
+  // it's only 'plan' with Training off too; Ask ShiftBoard itself still needs `assistant` (blocked() in server/assistant/).
+  assert.equal(aiFor({ db: A.db, tenant: { plan: 'starter', features: { ...resolveFeatures('starter'), training: false }, ai: {} }, env: { ANTHROPIC_API_KEY: KEY } }).reason, 'plan');
+  assert.equal(aiFor({ db: A.db, tenant: { plan: 'starter', features: resolveFeatures('starter'), ai: {} }, env: { ANTHROPIC_API_KEY: KEY } }).reason, undefined);
 });
 
 test('the tool loop: reads run as the person, then the answer streams; the system prompt and tools are cached', async () => {

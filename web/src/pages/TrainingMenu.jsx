@@ -7,6 +7,7 @@ import { localizeItem, categoryLabel, dietaryLabel, DIETARY_TAGS, MAJOR_ALLERGEN
 import { Photo, TIcon, Chips, LangTabs, photoFromFile, useT, useLang } from './TrainingShared.jsx';
 import { useEightySix } from './EightySix.jsx';
 import { tx } from '../i18n/index.js';
+import { SmartImportButton } from './SmartImportButton.jsx'; // Import menu items from a file (smart import)
 
 const money = (n) => (n == null || n === '' ? '' : `$${Number(n) % 1 ? Number(n).toFixed(2) : Number(n)}`);
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -63,6 +64,7 @@ export function MenuGuide() {
         <label className="tr-search"><TIcon name="search" /><input className="input" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.searchMenu} aria-label={t.searchMenu} /></label>
         <button className={`btn ${activeFilters ? 'primary' : ''}`} onClick={() => setFilters(!filters)} aria-expanded={filters}><TIcon name="filter" />{t.filters}{activeFilters ? ` (${activeFilters})` : ''}</button>
         <a className="btn" href="#/training/study"><TIcon name="cards" />{t.study}</a>
+        {isMgr && <SmartImportButton target="menu" className="btn" />}
         {isMgr && <button className="btn primary" onClick={() => setEditing({})}><Icon name="plus" />{t.addItem}</button>}
       </div>
       {filters && (

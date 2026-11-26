@@ -1,0 +1,65 @@
+/* Smart import (web/src/pages/SmartImport.jsx): Team → Import, Training → Menu → Import. Cards, not tables, so it
+   reads at 360px. The file step reuses .adp-drop / .adp-paste / .tp-help (labor.css). */
+
+.si-steps { display: flex; gap: 6px; list-style: none; padding: 0; margin: 0 0 12px; counter-reset: si; flex-wrap: wrap; }
+.si-steps li { counter-increment: si; font-size: 12px; font-weight: 600; color: var(--text-3); display: flex; align-items: center; gap: 5px; }
+.si-steps li::before { content: counter(si); display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--surface-3); color: var(--text-2); font-size: 11px; }
+.si-steps li + li::after { content: none; }
+.si-steps li.on { color: var(--brand); }
+.si-steps li.on::before { background: var(--brand); color: #fff; }
+.si-steps li.past::before { background: var(--ok-soft); color: var(--ok); }
+.si-text { white-space: pre-wrap; font-size: 12px; max-height: 240px; overflow: auto; background: var(--surface-2); padding: 8px; border-radius: 8px; margin: 8px 0 0; overflow-wrap: anywhere; }
+
+.si-header-row { flex-wrap: wrap; }
+.si-header-row select { max-width: 100%; min-width: 0; flex: 1 1 180px; }
+.si-columns { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.si-col { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; min-width: 0; background: var(--surface); }
+.si-col.on { border-color: var(--brand); }
+.si-col-head { display: flex; align-items: center; gap: 6px; justify-content: space-between; min-width: 0; }
+.si-col-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.si-col-sample { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.si-col select { width: 100%; }
+
+.si-options { display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.si-options .tiny { flex-basis: 100%; }
+.si-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.si-chip-check:not(.on) { border-color: var(--warn); color: var(--warn); }
+
+.si-rows { display: flex; flex-direction: column; gap: 8px; }
+.si-row { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; box-shadow: none; min-width: 0; }
+.si-row.si-st-check { border-color: var(--warn); }
+.si-row.si-st-problem { border-color: var(--bad); }
+.si-row.off { opacity: 0.55; }
+.si-row-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.si-row-head input { width: 17px; height: 17px; accent-color: var(--brand); }
+.si-row-name { flex: 1 1 120px; min-width: 0; overflow-wrap: anywhere; }
+.si-changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.si-changes li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; overflow-wrap: anywhere; }
+.si-field { font-weight: 600; color: var(--text-2); margin-right: 4px; }
+.si-before { color: var(--text-3); text-decoration: line-through; }
+.si-after { color: var(--text); font-weight: 600; }
+.si-problem { color: var(--bad); display: flex; gap: 6px; align-items: flex-start; }
+.si-kept { gap: 6px; }
+
+.si-decide { border-top: 1px dashed var(--border-strong); padding-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+.si-why { display: flex; align-items: center; gap: 6px; color: var(--warn); font-size: 13px; }
+.si-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+.si-side { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; min-width: 0; background: var(--surface-2); }
+.si-side.chosen { border-color: var(--brand); background: var(--brand-soft); }
+.si-side-title { font-size: 12px; font-weight: 700; color: var(--text-2); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.si-side .btn { align-self: flex-start; margin-top: 4px; }
+.si-kv { display: flex; gap: 8px; font-size: 12.5px; min-width: 0; }
+.si-kv span { color: var(--text-3); flex: 0 0 38%; min-width: 0; overflow-wrap: anywhere; }
+.si-kv b { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.si-choices { gap: 6px; }
+.si-decided { color: var(--brand); font-weight: 600; }
+.si-conflicts { display: flex; flex-direction: column; gap: 6px; }
+.si-conflict { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.si-conflict .chip { max-width: 100%; overflow-wrap: anywhere; white-space: normal; text-align: left; }
+.si-failed { margin: 0; padding-left: 18px; font-size: 13px; color: var(--bad); }
+
+@media (max-width: 480px) {
+  .si-columns { grid-template-columns: 1fr; }
+  .si-compare { grid-template-columns: 1fr; }
+  .si-kv span { flex-basis: 42%; }
+}

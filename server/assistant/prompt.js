@@ -28,6 +28,8 @@ Limits:
 
 // Added to the description of every tool that changes something (they're written for the Claude connector).
 const WRITE_NOTE = ' In Ask ShiftBoard: calling this shows the person a card with Confirm and Cancel; nothing changes until they tap Confirm. Leave out confirm.';
+const PREVIEW_NOTE = ' In Ask ShiftBoard: the call without confirm returns the preview to you (nothing changes); tell the person what it found and ask about every possible duplicate. '
+  + 'Then call again with confirm: true and their decisions: that shows them a card with Confirm and Cancel, and nothing changes until they tap Confirm.';
 
 /**
  * The tools for the model: the person's visible tools, in the registry's order, with confirm left out. Tool inputs
@@ -38,6 +40,9 @@ export function claudeTools(tools) {
   return tools.map((t) => {
     const c = { ...toClaudeTool(t), eager_input_streaming: true };
     if (!t.write) return c;
+    // An import (preview tools, server/tools/import.js): without confirm it only shows what would change and runs
+    // here like a read; with confirm: true it becomes the card. So the model keeps confirm for these.
+    if (t.preview) return { ...c, description: `${c.description}${PREVIEW_NOTE}` };
     const { confirm: _c, ...properties } = c.input_schema.properties || {};
     const required = (c.input_schema.required || []).filter((k) => k !== 'confirm');
     return { ...c, description: `${c.description}${WRITE_NOTE}`, input_schema: { ...c.input_schema, properties, ...(required.length ? { required } : { required: undefined }) } };

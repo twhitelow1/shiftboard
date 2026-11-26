@@ -87,7 +87,7 @@ export function mountAssistant(app, d) {
     const tools = visibleTools(TOOLS, user, { has, scopes: [READ, WRITE], settings });
     const ctx = createToolContext({
       db, userId: user.id, v: user.sessionVersion || 0, has, scopes: write ? [READ, WRITE] : [READ], now, via: 'assistant', client: 'Ask ShiftBoard',
-      serviceOpts: d.serviceOpts(req), onCommit: (changes) => d.onCommit(changes, req),
+      serviceOpts: d.serviceOpts(req), onCommit: (changes) => d.onCommit(changes, req), invite: d.invite ? (ids, by) => d.invite(ids, by, req) : null,
     });
     return { tools, ctx, settings };
   }

@@ -23,6 +23,8 @@ export default {
     can_publish: 'Publish a week’s schedule (only after asking you)',
     can_approve: 'Approve or deny trades, pickups and time off',
     can_events: 'Create and update events (BEOs)',
+    can_menuEdit: 'Add and update menu items, and import a menu (only after showing you a preview)',
+    can_teamEdit: 'Add and update people on the team from a list (only after showing you a preview; never their text or email consent)',
     readOnly: 'Read only: Claude can look things up but can’t change anything',
     readOnlyForced: 'Your restaurant lets staff connect Claude read-only, so Claude can look things up but can’t change anything.',
     readOnlyRequested: 'The app asked for read-only access.',

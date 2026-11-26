@@ -32,8 +32,16 @@ import { uid } from '../../core/store.js';
 export { MODEL, PRICES, costUsd, tokensOf } from './pricing.js';
 export { aiMessage } from './messages.js';
 
-/** The plan features that use AI. A restaurant with none of them has no AI (reason 'plan'); a new AI feature adds its key. */
-export const AI_FEATURES = ['assistant', 'reviews']; // plan features that use AI: Ask ShiftBoard; AI-drafted review replies (server/review-replies.js)
+/**
+ * The plan features that use AI. A restaurant with none of them has no AI (reason 'plan'); a new AI feature adds its key.
+ *   assistant  Ask ShiftBoard (server/assistant/)
+ *   reviews    AI-drafted review replies (server/review-replies.js)
+ *   events     "Read it with AI" for BEOs (server/beo-ai-routes.js)
+ *   training   smart import reading a menu (server/import-routes.js, purpose 'menu_import')
+ * Reading a roster (purpose 'employee_import') has no plan key of its own: Team is in every plan, so it works wherever
+ * one of these is (a key that isn't a plan feature would count as "in the plan" for every restaurant).
+ */
+export const AI_FEATURES = ['assistant', 'reviews', 'events', 'training'];
 export const DEFAULT_DAILY_MESSAGES = 50;
 const DEFAULT_CALLS_PER_MINUTE = 120; // per restaurant, every feature together
 const DEFAULT_MESSAGES_PER_MINUTE = 8; // per person (the assistant)

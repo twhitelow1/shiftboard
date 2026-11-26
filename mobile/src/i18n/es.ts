@@ -659,6 +659,18 @@ const es: Messages = {
     av: 'Audio y video: {text}',
     thread: 'Conversación del equipo',
     threadHelp: 'Para publicar una pregunta o una novedad, abre este evento en el sitio web.',
+    section: {
+      timeline: 'Cronograma', menu: 'Menú', dietary: 'Dietas y alergias', bar: 'Barra', kitchen: 'Notas de cocina', setup: 'Montaje y plano',
+      rentals: 'Renta y salón', av: 'Audio, video y entretenimiento', decor: 'Mantelería, decoración y flores', vendors: 'Proveedores', staffing: 'Personal solicitado',
+      arrival: 'Llegada', parking: 'Estacionamiento y guardarropa', instructions: 'Instrucciones especiales', notes: 'Notas', signatures: 'Firma y actualización',
+      contacts: 'Contacto del cliente', other: 'Otras notas',
+    },
+    label: { package: 'Paquete', bar: 'Barra', notes: 'Notas', client: 'Cliente', contact: 'Contacto', phone: 'Teléfono', email: 'Correo', guaranteed: 'Garantizados', updated: 'Actualizado', signed: 'Firmado por' },
+    dietaryBanner: 'Este evento tiene notas de dietas y alergias: léelas antes del servicio.',
+    managersOnly: 'Solo gerentes',
+    location: 'Lugar',
+    areas: 'Áreas',
+    salesManager: 'Gerente de ventas',
     style: { plated: 'Cena servida a la mesa', family: 'Estilo familiar', buffet: 'Bufé', stations: 'Estaciones', reception: 'Recepción / bocadillos pasados', cocktail: 'Solo barra / cóctel' },
   },
   availability: {

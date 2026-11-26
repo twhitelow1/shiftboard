@@ -5,7 +5,9 @@ import { SERVICE_STYLES, styleLabel } from '../../../core/beo.js';
 import { IS_DEMO } from '../api.js';
 import { EventPlans, useVenueRooms } from './Sections.jsx';
 import { TripleseatBadge, TripleseatEventCard, TripleseatEditorNote } from './TripleseatSettings.jsx';
-import BeoImport, { BeoExtras } from './BeoImport.jsx';
+import BeoImport, { OtherDates } from './BeoImport.jsx';
+import BeoSections from './BeoSections.jsx';
+import { visibleSections } from '../../../core/beo-sections.js';
 import { useT, dowShort, fmtTime, monthShort, prettyDate, stamp } from '../i18n/index.js';
 
 const STATUS_BADGE = { tentative: 'warn', confirmed: 'ok', completed: '', cancelled: 'bad' };
@@ -88,6 +90,22 @@ function EventDetail({ id }) {
   const drafts = e.shifts.filter((s) => !s.published).length;
   const captain = people[e.captainId];
 
+  // The details: only the ones this event has (no empty labels, no dashes).
+  const details = [
+    [t('events.type'), e.type],
+    [t('events.service'), styleLabel(SERVICE_STYLES[e.serviceStyle], t.lang)],
+    [t('events.banquetCaptain'), captain ? <span className="row" style={{ gap: 6 }}><Avatar user={captain} size="sm" />{captain.name}</span> : null],
+    [t('events.attire'), e.attire],
+    [t('beoImport.areas'), e.areas && norm(e.areas) !== norm(e.room) ? e.areas : ''],
+    [t('beo.location'), e.location],
+    [t('beoImport.salesManager'), e.salesManager],
+    [t('beoImport.eventManager'), e.eventManager],
+    [t('beoImport.invoice'), e.invoiceNumber ? `#${e.invoiceNumber}${e.beoUpdatedAt ? ` · ${t('beoImport.updatedOn', { when: stamp(e.beoUpdatedAt) })}` : ''}` : ''],
+    [t('beoImport.fbMinimum'), isEvents && e.fbMinimum > 0 ? money(e.fbMinimum) : ''],
+    [t('events.estRevenue'), isEvents && e.estRevenue > 0 ? money(e.estRevenue) : ''],
+  ].filter(([, v]) => v);
+  const dietary = visibleSections(e, { client: isEvents }).some((s) => s.key === 'dietary');
+
   const post = async () => {
     await run(() => call('events.comment', { eventId: id, text: comment }), t('events.posted'));
     setComment('');
@@ -116,106 +134,60 @@ function EventDetail({ id }) {
           </div>
         </div>
         {myShift && <div className="alert info" style={{ marginTop: 12 }}><Icon name="user" size={16} />{t('events.youreWorkingThisNameTime', { name: jobs[myShift.jobCodeId]?.name, time: shiftTime(myShift) })}</div>}
+        {dietary && <a className="alert warn beo-diet-banner no-print" href={`#/events/${id}`} onClick={(x) => { x.preventDefault(); document.getElementById('beo-dietary')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}><Icon name="alert" size={16} /><span>{t('beo.dietaryBanner')}</span></a>}
       </div>
 
       <TripleseatEventCard e={e} reload={load} />
       <EventPlans event={e} />
 
       <div className="beo">
-        <div className="card card-pad">
-          <h2 style={{ marginBottom: 10 }}>{t('events.details')}</h2>
-          <dl className="kv">
-            <dt>{t('events.type')}</dt><dd>{e.type || '—'}</dd>
-            <dt>{t('events.service')}</dt><dd>{styleLabel(SERVICE_STYLES[e.serviceStyle], t.lang) || '—'}</dd>
-            <dt>{t('events.banquetCaptain')}</dt><dd>{captain ? <span className="row" style={{ gap: 6 }}><Avatar user={captain} size="sm" />{captain.name}</span> : t('events.none')}</dd>
-            <dt>{t('events.client')}</dt><dd>{e.client || '—'}</dd>
-            {e.contactName && <><dt>{t('events.contact')}</dt><dd>{e.contactName}{e.contactPhone ? ` · ${e.contactPhone}` : ''}{e.contactEmail ? ` · ${e.contactEmail}` : ''}</dd></>}
-            {e.attire && <><dt>{t('events.attire')}</dt><dd>{e.attire}</dd></>}
-            {isEvents && e.estRevenue > 0 && <><dt>{t('events.estRevenue')}</dt><dd>{money(e.estRevenue)}</dd></>}
-          </dl>
-        </div>
-
-        <div className="card card-pad">
-          <div className="row" style={{ marginBottom: 10 }}>
-            <h2 style={{ flex: 1 }}>{t('events.staffing')}</h2>
-            {e.needed > 0 && <span className={`badge ${e.filled >= e.needed ? 'ok' : 'warn'}`}>{t('events.filledNeededFilled', { filled: e.filled, needed: e.needed })}</span>}
+        {(details.length > 0 || e.otherDates?.length > 0) && (
+          <div className="card card-pad">
+            <h2 style={{ marginBottom: 10 }}>{t('events.details')}</h2>
+            {details.length > 0 && <dl className="kv">{details.map(([k, v]) => <React.Fragment key={k}><dt>{k}</dt><dd>{v}</dd></React.Fragment>)}</dl>}
+            {e.otherDates?.length > 0 && <div style={{ marginTop: details.length ? 10 : 0 }}><OtherDates list={e.otherDates} /></div>}
           </div>
-          {!e.staffing.length ? <div className="muted small">{t('events.noStaffingRequirementsListed')}</div> : (
-            <div className="table-wrap"><table className="table">
-              <thead><tr><th>{t('common.position')}</th><th>{t('events.need')}</th><th>{t('events.callTime')}</th><th>{t('events.filled')}</th></tr></thead>
-              <tbody>
-                {e.staffing.map((l) => (
-                  <tr key={l.id}>
-                    <td><span className="row" style={{ gap: 6 }}><JobDot job={jobs[l.jobCodeId]} />{jobs[l.jobCodeId]?.name}</span>{l.notes && <div className="tiny faint">{l.notes}</div>}</td>
-                    <td className="num"><b>{l.count}</b></td>
-                    <td className="num">{fmtTime(l.start)}</td>
-                    <td><span className={`badge ${l.filled >= l.count ? 'ok' : 'warn'}`}>{l.filled}/{l.count}</span></td>
-                  </tr>
+        )}
+
+        {(e.staffing.length > 0 || isEvents) && (
+          <div className="card card-pad">
+            <div className="row" style={{ marginBottom: 10 }}>
+              <h2 style={{ flex: 1 }}>{t('events.staffing')}</h2>
+              {e.needed > 0 && <span className={`badge ${e.filled >= e.needed ? 'ok' : 'warn'}`}>{t('events.filledNeededFilled', { filled: e.filled, needed: e.needed })}</span>}
+            </div>
+            {!e.staffing.length ? <div className="muted small">{t('events.noStaffingRequirementsListed')}</div> : (
+              <div className="table-wrap"><table className="table">
+                <thead><tr><th>{t('common.position')}</th><th>{t('events.need')}</th><th>{t('events.callTime')}</th><th>{t('events.filled')}</th></tr></thead>
+                <tbody>
+                  {e.staffing.map((l) => (
+                    <tr key={l.id}>
+                      <td><span className="row" style={{ gap: 6 }}><JobDot job={jobs[l.jobCodeId]} />{jobs[l.jobCodeId]?.name}</span>{l.notes && <div className="tiny faint">{l.notes}</div>}</td>
+                      <td className="num"><b>{l.count}</b></td>
+                      <td className="num">{fmtTime(l.start)}</td>
+                      <td><span className={`badge ${l.filled >= l.count ? 'ok' : 'warn'}`}>{l.filled}/{l.count}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table></div>
+            )}
+            {e.shifts.length > 0 && (
+              <div className="row wrap" style={{ marginTop: 10, gap: 6 }}>
+                {e.shifts.sort((a, b) => a.jobCodeId.localeCompare(b.jobCodeId)).map((s) => (
+                  <span key={s.id} className={`badge ${s.userId ? '' : 'warn'}`}><JobDot job={jobs[s.jobCodeId]} />{s.userId ? people[s.userId]?.name : t('common.open')} · {fmtTime(s.start)}</span>
                 ))}
-              </tbody>
-            </table></div>
-          )}
-          {e.shifts.length > 0 && (
-            <div className="row wrap" style={{ marginTop: 10, gap: 6 }}>
-              {e.shifts.sort((a, b) => a.jobCodeId.localeCompare(b.jobCodeId)).map((s) => (
-                <span key={s.id} className={`badge ${s.userId ? '' : 'warn'}`}><JobDot job={jobs[s.jobCodeId]} />{s.userId ? people[s.userId]?.name : t('common.open')} · {fmtTime(s.start)}</span>
-              ))}
-            </div>
-          )}
-          {isMgr && (missing > 0 || drafts > 0) && (
-            <div className="row wrap no-print" style={{ marginTop: 12 }}>
-              {missing > 0 && <button className="btn sm primary" disabled={busy} onClick={() => run(() => call('events.generateShifts', { id, publish: true }), (r) => t('events.postedCreatedOpenShiftsFor', { created: r.created })).then(load)}><Icon name="plus" />{t('events.createCountOpenShiftsPost', { count: missing })}</button>}
-              {drafts > 0 && <button className="btn sm" disabled={busy} onClick={() => run(() => call('shifts.publish', { eventId: id }), t('events.eventShiftsPublished')).then(load)}><Icon name="send" />{t('events.publishCountDrafts', { count: drafts })}</button>}
-            </div>
-          )}
-        </div>
-
-        <div className="card card-pad">
-          <h2 style={{ marginBottom: 10 }}>{t('events.menu')}</h2>
-          {!e.menu?.length ? <div className="muted small">{t('events.noMenuItems')}</div> : (
-            <div className="col" style={{ gap: 10 }}>
-              {e.menu.map((m, i) => (
-                <div key={i}>{m.course !== e.menu[i - 1]?.course && <div className="tiny faint" style={{ fontWeight: 700, textTransform: 'uppercase' }}>{m.course}</div>}<div style={{ fontWeight: 600 }}>{m.item}{m.qty ? <span className="muted"> ×{m.qty}</span> : ''}{(m.dietary || []).map((d) => <span key={d} className="badge" style={{ marginLeft: 6 }}>{d}</span>)}</div>{m.notes && <div className="small muted">{m.notes}</div>}</div>
-              ))}
-            </div>
-          )}
-          {e.dietaryNotes && <div className="alert warn" style={{ marginTop: 12 }}><Icon name="alert" size={16} /><div>{t('events.bDietaryBDietarynotes', { dietaryNotes: e.dietaryNotes })}</div></div>}
-        </div>
-
-        <div className="card card-pad">
-          <h2 style={{ marginBottom: 10 }}>{t('events.beverage')}</h2>
-          <dl className="kv" style={{ marginBottom: 10 }}>
-            <dt>{t('events.package')}</dt><dd>{e.beverage?.package || '—'}</dd>
-            <dt>{t('events.bar')}</dt><dd>{e.beverage?.bar || '—'}</dd>
-            {e.beverage?.notes && <><dt>{t('common.notes')}</dt><dd>{e.beverage.notes}</dd></>}
-          </dl>
-          {e.specialDrinks?.length > 0 && <>
-            <h3 style={{ margin: '12px 0 8px' }}>{t('events.specialDrinks')}</h3>
-            <div className="col">
-              {e.specialDrinks.map((d, i) => (
-                <div key={i} className="drink"><div style={{ fontWeight: 700 }}>🍸 {d.name}{d.qty ? ` ×${d.qty}` : ''}</div><div className="small">{d.recipe}</div>{d.notes && <div className="tiny faint">{d.notes}</div>}{d.batch && <div className="tiny faint">{d.batch}</div>}</div>
-              ))}
-            </div>
-          </>}
-        </div>
-
-        {e.timeline?.length > 0 && (
-          <div className="card card-pad">
-            <h2 style={{ marginBottom: 10 }}>{t('events.timeline')}</h2>
-            <table className="table"><tbody>{e.timeline.map((t, i) => <tr key={i}><td className="num" style={{ width: 80, fontWeight: 700 }}>{fmtTime(t.time)}{t.end ? `–${fmtTime(t.end)}` : ''}</td><td>{t.item}</td></tr>)}</tbody></table>
+              </div>
+            )}
+            {isMgr && (missing > 0 || drafts > 0) && (
+              <div className="row wrap no-print" style={{ marginTop: 12 }}>
+                {missing > 0 && <button className="btn sm primary" disabled={busy} onClick={() => run(() => call('events.generateShifts', { id, publish: true }), (r) => t('events.postedCreatedOpenShiftsFor', { created: r.created })).then(load)}><Icon name="plus" />{t('events.createCountOpenShiftsPost', { count: missing })}</button>}
+                {drafts > 0 && <button className="btn sm" disabled={busy} onClick={() => run(() => call('shifts.publish', { eventId: id }), t('events.eventShiftsPublished')).then(load)}><Icon name="send" />{t('events.publishCountDrafts', { count: drafts })}</button>}
+              </div>
+            )}
           </div>
         )}
 
-        {(e.setupNotes || e.avNotes || e.notes) && (
-          <div className="card card-pad">
-            <h2 style={{ marginBottom: 10 }}>{t('events.setupNotes')}</h2>
-            {e.setupNotes && <p style={{ margin: '0 0 8px' }}>{t('events.bSetupBSetupnotes', { setupNotes: e.setupNotes })}</p>}
-            {e.avNotes && <p style={{ margin: '0 0 8px' }}>{t('events.bAVBAvnotes', { avNotes: e.avNotes })}</p>}
-            {e.notes && <p style={{ margin: 0 }}>{e.notes}</p>}
-          </div>
-        )}
-
-        <BeoExtras e={e} />
+        {/* Everything the BEO says, by section, only where it says something (core/beo-sections.js). */}
+        <BeoSections e={e} client={isEvents} />
 
         <div className="card card-pad full no-print">
           <h2 style={{ marginBottom: 6 }}>{t('events.teamThread')}</h2>

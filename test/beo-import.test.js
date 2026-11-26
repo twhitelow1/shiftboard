@@ -266,19 +266,30 @@ test('importing creates one event per BEO; importing a newer PDF updates them an
   assert.equal(mgr('events.importBeos', { events: payload(parsed({ older: true })), dryRun: true }).events[0].status, 'older');
 });
 
-test('without an invoice number, an event with the same name and date is updated, not duplicated', () => {
+test('without an invoice number, an event with the same name and date is a possible duplicate: the manager decides once', () => {
   const { store, mgr, payload } = restaurant();
   const typed = mgr('events.save', { name: 'Rivera  rehearsal DINNER', date: '2026-12-04', start: '18:00', guestCount: 20, status: 'confirmed', setupNotes: 'Typed in ShiftBoard', notes: 'Manager notes' });
   const [rivera] = payload(parsed());
-  const r = mgr('events.importBeos', { events: [{ ...rivera, invoiceNumber: '' }] }).events[0];
+  const noInvoice = { ...rivera, invoiceNumber: '' };
+  // Not an identifier match: the preview asks, and nothing is saved until someone decides.
+  const dry = mgr('events.importBeos', { events: [noInvoice], dryRun: true }).events[0];
+  assert.equal(dry.status, 'duplicate');
+  assert.deepEqual(dry.candidates.map((c) => [c.id, c.confidence]), [[typed.id, 'high']]);
+  assert.ok(dry.candidates[0].reasons.includes('sameName') && dry.candidates[0].reasons.includes('typedIn'));
+  assert.throws(() => mgr('events.importBeos', { events: [noInvoice] }), /Decide what to do with each possible duplicate first/);
+  assert.equal(store.list('events').length, 1);
+  const r = mgr('events.importBeos', { events: [{ ...noInvoice, decision: { action: 'update', id: typed.id } }] }).events[0];
   assert.deepEqual([r.status, r.id], ['update', typed.id]);
   assert.equal(store.list('events').length, 1);
   const e = store.get('events', typed.id);
   assert.deepEqual([e.name, e.start, e.guestCount, e.notes], ['Rivera Rehearsal Dinner', '19:00', 24, 'Manager notes']);
-  // The event takes the BEO's invoice number once it has one; a BEO with another invoice number is another event.
-  const other = mgr('events.importBeos', { events: [{ ...rivera, invoiceNumber: '99999999' }, { ...rivera, invoiceNumber: '99999999' }] }).events;
-  assert.deepEqual(other.map((x) => [x.status, x.id]), [['same', typed.id], ['same', typed.id]]);
+  // Decided once, remembered: the same BEO again needs no decision and changes nothing.
+  assert.deepEqual(mgr('events.importBeos', { events: [noInvoice], dryRun: true }).events.map((x) => [x.status, x.id]), [['same', typed.id]]);
+  // The same booking with an invoice number, twice in one file: one decision, one event, and it takes the number.
+  const other = mgr('events.importBeos', { events: [{ ...rivera, invoiceNumber: '99999999', decision: { action: 'update', id: typed.id } }, { ...rivera, invoiceNumber: '99999999' }] }).events;
+  assert.deepEqual(other.map((x) => [x.status, x.id || x.into]), [['merged', 1], ['same', typed.id]]);
   assert.equal(store.get('events', typed.id).invoiceNumber, '99999999');
+  // A BEO with another invoice number is another event: no question asked.
   const more = mgr('events.importBeos', { events: [{ ...rivera, invoiceNumber: '88888888' }] }).events[0];
   assert.equal(more.status, 'new');
   assert.equal(store.list('events').length, 2);
@@ -290,13 +301,19 @@ test('an event synced from Tripleseat keeps Tripleseat’s booking; the BEO PDF 
   // The same booking, already synced from Tripleseat (core/tripleseat.js owns its id, source and booking fields).
   store.insert('events', { id: 'evt_ts_4242', source: 'tripleseat', externalId: 4242, name: 'Rivera Rehearsal Dinner', date: rivera.date,
     start: '18:30', end: '21:00', guestCount: 30, status: 'confirmed', room: 'Library', roomId: null, staffing: [], captainId: null, menu: [] });
-  const r = mgr('events.importBeos', { events: [{ ...rivera, invoiceNumber: '' }] }).events[0];
+  const ask = mgr('events.importBeos', { events: [{ ...rivera, invoiceNumber: '' }], dryRun: true }).events[0];
+  assert.equal(ask.status, 'duplicate', 'a name-and-date match is checked by a person, Tripleseat or not');
+  assert.ok(ask.candidates[0].reasons.includes('fromTripleseat'));
+  const r = mgr('events.importBeos', { events: [{ ...rivera, invoiceNumber: '', decision: { action: 'update', id: 'evt_ts_4242' } }] }).events[0];
   assert.deepEqual([r.status, r.id], ['update', 'evt_ts_4242']);
   assert.equal(store.list('events').length, 1, 'not a second copy');
   const e = store.get('events', 'evt_ts_4242');
   assert.equal(e.source, 'tripleseat', 'the next Tripleseat sync still owns it');
   assert.deepEqual([e.start, e.end, e.guestCount, e.room], ['18:30', '21:00', 30, 'Library'], 'Tripleseat’s booking stays');
   assert.ok(e.menu.length > 0, 'the BEO’s menu came in');
+  // A Tripleseat BEO whose invoice number is the Tripleseat event id is the same event, no question asked.
+  const again = mgr('events.importBeos', { events: [{ ...rivera, invoiceNumber: '4242' }], dryRun: true }).events[0];
+  assert.deepEqual([again.status, again.id, again.match.how], ['same', 'evt_ts_4242', 'tripleseat']);
 });
 
 test('a blank BEO field keeps what someone typed in ShiftBoard, and clears what the last import wrote', () => {
