@@ -1,5 +1,5 @@
 // Today on the floor, for shift leads and managers: who's working now (and who's coming in later), requests to
-// approve, the 86 List, and (managers) publishing a drafted week, with a confirmation. Building and editing the
+// approve, the 86 List, and (managers) publishing a drafted week or unpublishing a posted one, with a confirmation. Building and editing the
 // schedule stays on the website; a button opens it. "Now" is the phone's clock on the restaurant's date.
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
@@ -9,7 +9,7 @@ import { StyleSheet, View } from 'react-native';
 import { ModCard } from '@/components/ModCard';
 import { Screen } from '@/components/Screen';
 import { useShiftTime } from '@/components/ShiftRow';
-import { Badge, Button, Card, Empty, JobDot, ListRow, Loading, Row, SectionTitle, Txt, useColors } from '@/components/ui';
+import { Badge, Button, Card, Empty, JobDot, ListRow, Loading, Row, SectionTitle, Txt, useColors, useToast } from '@/components/ui';
 import { useI18n } from '@/i18n';
 import { confirm } from '@/lib/confirm';
 import { useAction, useRpc } from '@/lib/hooks';
@@ -32,6 +32,8 @@ export default function Floor() {
   const shiftTime = useShiftTime();
   const now = useMinute();
   const [run, busy] = useAction();
+  const toast = useToast();
+  const [tell, setTell] = useState(true); // "Notify staff" for Unpublish, on by default
   const yesterday = addDays(today, -1);
   const day = useRpc<ShiftsList>('shifts.list', { start: yesterday, end: today });
   const swaps = useRpc<SwapsList>('swaps.list', {}, [], canApprove);
@@ -61,6 +63,21 @@ export default function Floor() {
     const ok = await confirm(t('floor.publishTitle', { date: date(w, 'dayMonth') }), tn('floor.publishBody', n), t('floor.publishYes'), t('common.cancel'));
     if (!ok) return;
     await run(() => client.call<{ published: number }>('shifts.publish', { start: w, end: addDays(w, 6) }), (r) => tn('floor.published', r.published));
+  };
+  // Unpublish: a posted week back to draft (core/unpublish.js). The server counts what it would do first.
+  const live = [thisWeek, addDays(thisWeek, 7)].map((w) => ({ w, n: (weeks.data?.shifts || []).filter((s) => s.published && s.date >= w && s.date <= addDays(w, 6) && s.date >= today).length }))
+    .filter((x) => x.n > 0);
+  const unpublish = async (w: string) => {
+    type Counts = { unpublished: number; kept: number; requestsCancelled: number; notified: number; people: number };
+    const args = { start: w, end: addDays(w, 6), notify: tell };
+    const plan = await run(() => client.call<Counts>('shifts.unpublish', { ...args, dryRun: true }));
+    if (!plan) return;
+    const body = plan.unpublished ? [tn('floor.unpublishShifts', plan.unpublished), plan.people ? tn(tell ? 'floor.unpublishPeople' : 'floor.unpublishPeopleQuiet', plan.people) : '',
+      plan.requestsCancelled ? tn('floor.unpublishRequests', plan.requestsCancelled) : '', plan.kept ? tn('floor.unpublishKept', plan.kept) : ''].filter(Boolean).join('\n\n') : '';
+    if (!body) { toast(t('floor.unpublishNothing')); return; }
+    const ok = await confirm(t('floor.unpublishTitle', { date: date(w, 'dayMonth') }), body, t('floor.unpublishYes'), t('common.cancel'), true);
+    if (!ok) return;
+    await run(() => client.call<Counts>('shifts.unpublish', args), (r) => tn('floor.unpublished', r.unpublished));
   };
   const person = (s: Shift) => {
     const eff = effectiveShift(s, settings);
@@ -128,6 +145,18 @@ export default function Floor() {
             <Card key={x.w} style={{ gap: 10 }}>
               <Txt bold>{tn('floor.drafts', x.n, { date: date(x.w, 'dayMonth') })}</Txt>
               <Button kind="primary" icon="send" title={t('floor.publishWeek', { date: date(x.w, 'dayMonth') })} busy={busy} onPress={() => publish(x.w, x.n)} />
+            </Card>
+          ))}
+          {live.length ? (
+            <Card pad={false} style={{ overflow: 'hidden' }}>
+              <ListRow icon="bell" title={t('floor.notifyStaff')} sub={tell ? undefined : t('floor.notifyOffHelp')} chevron={false} selected={tell}
+                onPress={() => setTell(!tell)} right={<Badge tone={tell ? 'ok' : 'neutral'} text={tell ? t('floor.notifyOn') : t('floor.notifyOff')} />} />
+            </Card>
+          ) : null}
+          {live.map((x) => (
+            <Card key={`live-${x.w}`} style={{ gap: 10 }}>
+              <Txt bold>{tn('floor.posted', x.n, { date: date(x.w, 'dayMonth') })}</Txt>
+              <Button icon="left" title={t('floor.unpublishWeek', { date: date(x.w, 'dayMonth') })} busy={busy} onPress={() => unpublish(x.w)} />
             </Card>
           ))}
           <Card style={{ gap: 8 }}>

@@ -17,6 +17,7 @@ import { ROLE_IDS, roleOf, roleLabel, canManageSchedule, canChangeSettings, canM
 import { channelApi } from './notify-prefs.js';
 import { venueLinks } from './venue-links.js';
 import { tripleseatLinks } from './tripleseat.js';
+import { unpublishApi } from './unpublish.js';
 import { trainingApi } from './training.js';
 import { eightySixApi } from './eighty-six.js';
 import { rosterApi } from './roster.js';
@@ -1014,14 +1015,16 @@ export function createService(store, opts = {}) {
       const drafts = store.list('shifts', (s) => !s.published && (eventId ? s.eventId === eventId : s.date >= start && s.date <= end));
       store.transaction(() => drafts.forEach((s) => store.update('shifts', s.id, { published: true, publishedAt: now().toISOString() })));
       const byUser = new Set(drafts.map((s) => s.userId).filter(Boolean));
-      notify([...byUser], eventId ? say('eventShiftsPosted', store.get('events', eventId)?.name) : say('schedulePosted', day(start, { dow: false }), day(end, { dow: false })), '#/my');
+      // Posted again after an unpublish: those people hear what changed for them instead (core/unpublish.js).
+      const told = eventId ? new Set() : unpublish.republished({ start, end, published: drafts });
+      notify([...byUser].filter((id) => !told.has(id)), eventId ? say('eventShiftsPosted', store.get('events', eventId)?.name) : say('schedulePosted', day(start, { dow: false }), day(end, { dow: false })), '#/my');
       const open = drafts.filter((s) => !s.userId);
       if (open.length) {
         const jobs = new Set(open.map((s) => s.jobCodeId));
         const eligible = users().filter((u) => u.active !== false && u.jobCodes?.some((j) => jobs.has(j.jobCodeId)) && !byUser.has(u.id)).map((u) => u.id);
         notify(eligible, say('openShiftsPosted', open.length), '#/my');
       }
-      return { published: drafts.length, notified: byUser.size };
+      return { published: drafts.length, notified: new Set([...byUser, ...told]).size };
     },
     'shifts.eligible': (actor, { shiftId }) => {
       needAuth(actor);
@@ -1626,6 +1629,8 @@ export function createService(store, opts = {}) {
   venueLinks({ store, api, fail, needAuth, needMgr, needEvents, visibleShift, now });
   // Events booked in Tripleseat: tripleseat.* methods, and what the server's sync writes. See core/tripleseat.js.
   const tripleseat = tripleseatLinks({ store, api, fail, needAuth, needMgr, needEvents, needAdmin, notify, say, day, now, cancelRequestsForShift });
+  // Unpublish (back to draft) and the "what changed" notification when it's posted again. See core/unpublish.js.
+  const unpublish = unpublishApi({ store, api, fail, needMgr, notify, say, day, describe, settings, nameOf, jobName, isFuture, cancelRequestsForShift, now });
 
   return {
     api,

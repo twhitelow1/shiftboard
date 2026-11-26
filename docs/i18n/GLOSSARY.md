@@ -45,6 +45,8 @@ The words ShiftBoard uses in Spanish, so the phone app, the website and emails s
 | Projected Covers (sheet row) | Cubiertos proyectados | |
 | day note / Notes line | nota del día / línea de Notas | |
 | publish / published | publicar / publicado | "Publicar (3)" |
+| unpublish (a posted week back to draft) / pulled back for changes | volver a borrador · regresar … a borrador / volvió a borrador para hacer cambios | button "Volver a borrador…", confirmation "¿Regresar la semana del … a borrador?"; not "despublicar" (reads like jargon) |
+| notify staff (checkbox on a schedule change) | avisar al personal | "no recibirá aviso" when it's off |
 | copy week / clear week / import | copiar semana / vaciar semana / importar | |
 | open shift (sheet) | DISPONIBLE | |
 | shift start / end | entrada / salida | shift dialog |
