@@ -116,7 +116,7 @@ export function cleanOverrides(raw) {
 
 // RPC namespaces (core/service.js and the modules it pulls in) that belong to a feature.
 const NAMESPACE_FEATURE = {
-  training: 'training', menu: 'training', quiz: 'training', leaderboard: 'training', manual: 'training', mod: 'training',
+  training: 'training', menu: 'training', quiz: 'training', leaderboard: 'training', manual: 'training', // mod.* (managers on duty) is in every plan
   tipPools: 'tips', tipEntries: 'tips', tips: 'tips', myTips: 'tips',
   eightySix: 'eightySix',
   events: 'events',

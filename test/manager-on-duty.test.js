@@ -92,3 +92,11 @@ test('the same rule for the printed M.O.D. block: manager role or a manager posi
   assert.deepEqual(friday, { kind: 'shift', parts: [{ time: '7-11PM', tag: '' }] });
   assert.equal(model.mod.find((r) => r.name === 'FINN FLOOR').cells[0].kind, 'off');
 });
+
+// The managers on duty are for every restaurant, not only those with Training (the floor screen and My shifts show them).
+test('mod.get is in every plan and for every role: not tied to Training', async () => {
+  const { featureForMethod } = await import('../server/platform/plans.js');
+  const { featuresForMethod } = await import('../core/role-features.js');
+  assert.equal(featureForMethod('mod.get'), null);
+  assert.deepEqual(featuresForMethod('mod.get'), []);
+});

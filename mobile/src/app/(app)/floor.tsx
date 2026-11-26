@@ -117,7 +117,7 @@ export default function Floor() {
 
   return (
     <Screen title={t('floor.title')} back bottomInset onRefresh={() => Promise.all([day.reload(), swaps.reload(), timeOff.reload(), e86.reload(), weeks.reload()])}>
-      {has('training') ? <ModCard /> : null}
+      <ModCard />
 
       {nowList.count || laterList.count ? <DaySortPicker value={sort} onChange={setSort} /> : null}
       <SectionTitle title={t('floor.workingNow')} right={nowList.count ? <Badge tone="ok" text={String(nowList.count)} /> : undefined} />

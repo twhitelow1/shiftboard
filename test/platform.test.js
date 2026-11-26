@@ -190,9 +190,9 @@ test('plans: features per plan with overrides, RPCs mapped to features, prices f
   assert.equal(PLANS.pro.priceCents, 9900);
   assert.equal(planForPrice('price_pro_x', { STRIPE_PRICE_PRO: 'price_pro_x' }), 'pro');
   assert.equal(planForPrice('price_unknown', {}), null);
-  for (const [m, f] of [['menu.list', 'training'], ['mod.get', 'training'], ['myTips.week', 'tips'], ['eightySix.board.get', 'eightySix'], ['events.list', 'events'],
+  for (const [m, f] of [['menu.list', 'training'], ['myTips.week', 'tips'], ['eightySix.board.get', 'eightySix'], ['events.list', 'events'],
     ['labor.week', 'forecast'], ['settings.laborRules', 'forecast'], ['toast.get', 'toast'], ['sms.preferences', 'sms'], ['sections.list', 'venue'],
-    ['reports.eightySix.missing.get', 'reports'], ['shifts.list', null], ['app.bootstrap', null], ['settings.update', null], ['push.subscribe', null]]) {
+    ['reports.eightySix.missing.get', 'reports'], ['shifts.list', null], ['mod.get', null], ['app.bootstrap', null], ['settings.update', null], ['push.subscribe', null]]) {
     assert.equal(featureForMethod(m), f, m);
   }
   const now = Date.parse('2026-11-01T12:00:00Z');

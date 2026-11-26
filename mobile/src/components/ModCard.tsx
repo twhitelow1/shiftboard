@@ -7,7 +7,6 @@ import { Linking, Pressable, StyleSheet, View } from 'react-native';
 
 import { useI18n } from '@/i18n';
 import { useRpc } from '@/lib/hooks';
-import { useSession } from '@/lib/session';
 import type { ModInfo, ModManager } from '@/lib/types';
 import { Icon } from './Icon';
 import { Badge, Button, Card, Txt, useColors, useToast } from './ui';
@@ -39,8 +38,7 @@ export function modManagers(mod: ModInfo): ModManager[] {
 export function ModCard({ mod: given, compact = false }: { mod?: ModInfo | null; compact?: boolean }) {
   const { t, time, date } = useI18n();
   const c = useColors();
-  const { has } = useSession();
-  const loaded = useRpc<ModInfo>('mod.get', {}, [], !given && has('training'));
+  const loaded = useRpc<ModInfo>('mod.get', {}, [], !given);
   const phone = usePhoneLink();
   const mod = given || loaded.data;
   if (!mod) return null;
@@ -50,8 +48,8 @@ export function ModCard({ mod: given, compact = false }: { mod?: ModInfo | null;
     const s = m.shift;
     if (!s) return m.state === 'now' ? t('mod.today') : '';
     const span = `${time(s.start)}${s.end ? `–${time(s.end)}` : ''}`;
-    if (m.state === 'now') return [t('mod.onNow'), s.end ? t('mod.until', { time: time(s.end) }) : ''].filter(Boolean).join(' · ');
-    if (m.state === 'later') return t('mod.inAt', { time: time(s.start) });
+    if (m.state === 'now') return `${t('mod.onNow')} · ${span}`;
+    if (m.state === 'later') return `${t('mod.inAt', { time: time(s.start) })}${s.end ? `–${time(s.end)}` : ''}`;
     if (m.state === 'earlier') return t('mod.earlierToday', { time: span });
     return t('mod.planned', { date: date(mod.date), time: time(s.start) });
   };
@@ -74,6 +72,7 @@ export function ModCard({ mod: given, compact = false }: { mod?: ModInfo | null;
                 {m.inCharge && list.length > 1 ? <Badge text={t('mod.inCharge')} tone="brand" /> : null}
               </View>
               {line(m) ? <Txt v="small" tone="muted">{line(m)}</Txt> : null}
+              {m.phone ? <Txt v="small" tone="brand">{m.phone}</Txt> : null}
             </View>
             {m.phone ? (
               <>

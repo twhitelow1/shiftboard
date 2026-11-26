@@ -91,7 +91,7 @@ export default function MyShifts() {
       ) : null}
 
       {has('eightySix') ? <EightySixBanner /> : null}
-      {has('training') ? <ModCard compact /> : null}
+      <ModCard compact />
 
       {myTips ? (
         <Pressable onPress={() => router.push('/tips')} accessibilityRole="button"

@@ -67,7 +67,7 @@ const DEF = Object.fromEntries(ROLE_FEATURES.map((f) => [f.key, f]));
 // A method can need several (asking for a trade needs Trades & pickups and the "can trade" capability).
 const NAMESPACE_FEATURE = {
   swaps: 'trades', timeOff: 'timeOff', events: 'events',
-  training: 'training', menu: 'training', quiz: 'training', leaderboard: 'training', manual: 'training', mod: 'training',
+  training: 'training', menu: 'training', quiz: 'training', leaderboard: 'training', manual: 'training', // mod.* (managers on duty) is for everyone
   tipPools: 'tips', tipEntries: 'tips', tips: 'tips', myTips: 'tips',
   eightySix: 'eightySix',
   forecast: 'forecast', sales: 'forecast', labor: 'forecast', clock: 'forecast', calibration: 'forecast',
