@@ -9,6 +9,7 @@ import { adpStatus, adpSyncRange } from '../adp-api.js';
 import { AdpImportButton } from './AdpImport.jsx';
 import { ToastPanel, SyncProgress } from './ToastSettings.jsx';
 import '../labor.css';
+import { nameWithLegal } from '../../../core/names.js';
 import { useT, prettyDate, stamp, t as tr } from '../i18n/index.js';
 
 export const ADP_ENV = ['ADP_CLIENT_ID', 'ADP_CLIENT_SECRET', 'ADP_CERT_PEM', 'ADP_KEY_PEM'];
@@ -225,7 +226,7 @@ function AdpMatching({ info }) {
             </div>
             <select className="input sm" value={valueOf(emp, w, 'userId')} onChange={(x) => setEmp({ ...emp, [w.id]: x.target.value })} aria-label={t('adp.personFor', { name: w.name })}>
               <option value="">{t('adp.notMatched')}</option>
-              {sortedPeople.map((p) => <option key={p.id} value={p.id}>{p.name}{p.active === false ? t('adp.inactive') : ''}</option>)}
+              {sortedPeople.map((p) => <option key={p.id} value={p.id}>{nameWithLegal(p)}{p.active === false ? t('adp.inactive') : ''}</option>)}
             </select>
           </div>
         ))}

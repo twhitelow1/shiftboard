@@ -8,7 +8,7 @@
 //   POST /api/onboarding/totp/setup · /totp/confirm {code}
 //   POST /api/onboarding/passkey/options · /passkey/verify {response, name?}
 //   POST /api/onboarding/recovery/regenerate · /recovery/ack
-//   POST /api/onboarding/profile {name, phone} · /photo {dataUrl}
+//   POST /api/onboarding/profile {name, phone, legalFirstName?, legalLastName?} · /photo {dataUrl}
 //   POST /api/onboarding/complete {terms, sms, email, phone, lang}   → signed in (cookie)
 //
 // Progress is kept on the server (authFactors onb_<userId>), so a reload picks up where it was. The password
@@ -19,6 +19,7 @@ import jwt from 'jsonwebtoken';
 import { isActiveFactor, passwordProblem } from '../core/auth-factors.js';
 import { applyConsents, consentState, legalLinks } from '../core/consent.js';
 import { normalizePhone, formatPhone } from '../core/notify-prefs.js';
+import { legalNamePatch } from '../core/names.js';
 import { createService, AppError } from '../core/service.js';
 import { DocDb } from './db.js';
 
@@ -67,7 +68,7 @@ export function mountOnboarding(app, d) {
     return {
       name: user.name, email: user.email, lang: d.langFor(user), restaurant: st.restaurantName,
       steps: { password: !!doc.passwordHash, factor, recoverySaved: !!doc.recoveryAckAt, profile: !!doc.profileAt },
-      profile: { name: user.name, phone: user.phone || '', photoId: user.photoId || null },
+      profile: { name: user.name, phone: user.phone || '', photoId: user.photoId || null, legalFirstName: user.legalFirstName || '', legalLastName: user.legalLastName || '' },
       consent: consentState(db.store, user),
       sms: !!(d.channels.info.sms.enabled && st.smsNotifications !== false && (!tenant || tenant.features?.sms !== false)),
       legal: legalLinks(d.env),
@@ -149,7 +150,7 @@ export function mountOnboarding(app, d) {
     res.json({ result: state(user, db.store.get('authFactors', doc.id)) });
   }));
 
-  // c) the profile: name, mobile number (needed only for texts), photo.
+  // c) the profile: the name they go by, their legal name for payroll (optional), mobile number (needed only for texts), photo.
   app.post('/api/onboarding/profile', wrap('onboarding', async (req, res) => {
     const { user, doc } = await current(req);
     const name = String(req.body?.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 80);
@@ -157,7 +158,7 @@ export function mountOnboarding(app, d) {
     const raw = String(req.body?.phone ?? '').trim();
     if (raw && !normalizePhone(raw)) fail(400, 'Enter your mobile number, like (303) 555-0123');
     await db.run((s) => {
-      s.update('users', user.id, { name, phone: raw ? formatPhone(normalizePhone(raw)) : '' });
+      s.update('users', user.id, { name, phone: raw ? formatPhone(normalizePhone(raw)) : '', ...legalNamePatch(req.body || {}) });
       s.update('authFactors', doc.id, { profileAt: new Date(now()).toISOString() });
     }, { write: true });
     res.json({ result: state(db.store.get('users', user.id), db.store.get('authFactors', doc.id)) });
