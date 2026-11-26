@@ -121,7 +121,7 @@ export default function Schedule() {
           {sections.map((sec, i) => (
             <View key={sec.key} style={{ gap: 6 }}>
               {sec.banner && sec.banner !== sections[i - 1]?.banner ? (
-                <View style={[styles.banner, { backgroundColor: c.surface2, borderColor: c.border }]}><Txt v="small" bold style={{ textTransform: 'uppercase', letterSpacing: 0.6 }}>{sec.banner}</Txt></View>
+                <View style={[styles.banner, { backgroundColor: sec.bannerColor, borderColor: sec.bannerColor }]}><Txt v="small" bold style={{ textTransform: 'uppercase', letterSpacing: 0.6, color: sec.bannerText }}>{sec.banner}</Txt></View>
               ) : null}
               <Row style={{ paddingHorizontal: 4 }}>
                 <JobDot color={sec.job.color} />

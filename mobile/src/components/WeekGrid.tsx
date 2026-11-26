@@ -18,7 +18,7 @@ const SECTION_H = 34;
 const BANNER_H = 28;
 const ROW_H = 54;
 
-interface Row { key: string; kind: 'banner' | 'section' | 'person'; label: string; color?: string; userId?: string | null; cells?: Shift[][] }
+interface Row { key: string; kind: 'banner' | 'section' | 'person'; label: string; color?: string; text?: string; userId?: string | null; cells?: Shift[][] }
 
 export function WeekGrid({ days, shifts, covers, onDay, onShift }: {
   days: string[]; shifts: Shift[]; covers: Record<string, number | undefined>; onDay: (d: string) => void; onShift: (s: Shift) => void;
@@ -31,7 +31,7 @@ export function WeekGrid({ days, shifts, covers, onDay, onShift }: {
   const rows: Row[] = [];
   const sections = daySections(shifts, jobs, settings, boot.layout); // the week, in Settings → Rooms & positions order
   sections.forEach((sec, i) => {
-    if (sec.banner && sec.banner !== sections[i - 1]?.banner) rows.push({ key: `b:${sec.key}`, kind: 'banner', label: sec.banner });
+    if (sec.banner && sec.banner !== sections[i - 1]?.banner) rows.push({ key: `b:${sec.key}`, kind: 'banner', label: sec.banner, color: sec.bannerColor, text: sec.bannerText });
     rows.push({ key: `s:${sec.key}`, kind: 'section', label: sec.job.name, color: sec.job.color });
     const order: (string | null)[] = [];
     for (const s of [...sec.shifts].sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start))) if (!order.includes(s.userId)) order.push(s.userId);
@@ -54,8 +54,8 @@ export function WeekGrid({ days, shifts, covers, onDay, onShift }: {
           <Text style={[styles.tiny, { color: c.text3 }]} numberOfLines={2}>{t('schedule.projected')}</Text>
         </View>
         {rows.map((r) => (r.kind === 'banner' ? (
-          <View key={r.key} style={[styles.sectionL, { height: BANNER_H, backgroundColor: c.border, borderColor: c.border }]}>
-            <Text style={[styles.tiny, { color: c.text, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase' }]} numberOfLines={1}>{r.label}</Text>
+          <View key={r.key} style={[styles.sectionL, { height: BANNER_H, backgroundColor: r.color, borderColor: c.border }]}>
+            <Text style={[styles.tiny, { color: r.text, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase' }]} numberOfLines={1}>{r.label}</Text>
           </View>
         ) : r.kind === 'section' ? (
           <View key={r.key} style={[styles.sectionL, { height: SECTION_H, backgroundColor: c.surface2, borderColor: c.border }]}>
@@ -87,7 +87,7 @@ export function WeekGrid({ days, shifts, covers, onDay, onShift }: {
             })}
           </View>
           {rows.map((r) => (r.kind !== 'person' ? (
-            <View key={r.key} style={[styles.sectionR, { height: r.kind === 'banner' ? BANNER_H : SECTION_H, width: COL_W * days.length, backgroundColor: r.kind === 'banner' ? c.border : c.surface2, borderColor: c.border }]} />
+            <View key={r.key} style={[styles.sectionR, { height: r.kind === 'banner' ? BANNER_H : SECTION_H, width: COL_W * days.length, backgroundColor: r.kind === 'banner' ? r.color : c.surface2, borderColor: c.border }]} />
           ) : (
             <View key={r.key} style={{ flexDirection: 'row', height: ROW_H, backgroundColor: r.userId === me.id ? c.brandSoft : 'transparent' }}>
               {r.cells!.map((cell, k) => (
