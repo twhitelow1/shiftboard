@@ -20,11 +20,11 @@ _Working name "ShiftBoard"; a new product name is still to be chosen (see Busine
 ## Building
 | Feature | Notes |
 |---|---|
-| **In PR #16:** View as + Roles & features; Reports + 86 List report (86 List for stock/supplies); Unpublish (notify on/off); Trades & pickups by season; Announcements | merge pending |
-| OpenTable (API + CSV import) + Positive impact (5-star mentions, guest requests, kudos) | paused by usage limit, resumes Nov 28 |
-| Claude connector (MCP) for claude.ai / Claude Code, OAuth with two-step sign-in | paused, resumes Nov 28 |
-| Beta error tracking + "Report a problem" | paused, resumes Nov 28 |
-| Schedule PDF (like the wall sheet), publish options (notify, attach PDF), editable notification emails, all managers on duty | paused, resumes Nov 28 |
+| **In PR #16:** View as + Roles & features; Reports + 86 List report (86 List for stock/supplies); Unpublish (notify on/off); Trades & pickups by season; Announcements | built and tested; merge pending |
+| **In PR #16:** OpenTable (CSV import today; API once OpenTable approves DubLow as a partner) + Positive impact (5-star mentions, guest requests, kudos; a card in Reports, My Kudos for staff) | built and tested; merge pending |
+| **In PR #16:** Claude connector (MCP) for claude.ai / Claude Code: OAuth with two-step sign-in, 36 tools by role | built and tested; merge pending; first real connection after deploy |
+| **In PR #16:** Beta error tracking + "Report a problem", console Errors & reports, email alerts + daily digest | built and tested; merge pending |
+| **In PR #16:** Schedule PDF (like the wall sheet), Publish options (notify on/off, attach PDF), editable notification emails (EN/ES), all managers on duty | built and tested; merge pending |
 
 ## Next
 | Feature | Notes |
@@ -53,5 +53,7 @@ _Working name "ShiftBoard"; a new product name is still to be chosen (see Busine
 - Terms page at dublowdigital.com/terms; privacy policy SMS clause; Anthropic listed as a service provider
 - Twilio inbound webhook + 10DLC campaign text
 - Anthropic API key in Vercel (`ANTHROPIC_API_KEY`) with a spend limit
-- OpenTable / Google Business Profile / Yelp access
+- OpenTable partner application (Sync API + Reviews API) / Google Business Profile / Yelp access
+- Decide which plans get Positive impact and the Claude connector (now Pro and Beta)
+- Resend rate vs. the 30-second function limit before turning on "attach PDF" for restaurants with more than ~50 staff
 - GM questions doc: https://claude.ai/artifact/KAcj1WFSkXzktm78FX5zoC
