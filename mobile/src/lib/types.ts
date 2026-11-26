@@ -1,4 +1,5 @@
 // Shapes of what the ShiftBoard API returns (see core/service.js). Only the fields the app uses.
+import type { BeoSection } from './beo';
 
 export type Role = 'super_admin' | 'admin' | 'manager' | 'supervisor' | 'employee';
 
@@ -307,12 +308,15 @@ export interface EventRow {
 export interface EventDetail extends EventRow {
   guaranteed?: number | string; serviceStyle?: string; client?: string; attire?: string;
   /** Only the events team gets these from the server; the app shows them only to the events team. */
-  contactName?: string; contactPhone?: string; contactEmail?: string;
-  menu?: { course: string; item: string; notes?: string }[];
+  contactName?: string; contactPhone?: string; contactEmail?: string; contactNotes?: string;
+  menu?: { course?: string; item?: string; notes?: string; qty?: number; dietary?: string[] }[];
   beverage?: { package?: string; bar?: string; notes?: string };
-  specialDrinks?: { name: string; recipe?: string; batch?: string }[];
-  timeline?: { time: string; item: string }[];
-  setupNotes?: string; dietaryNotes?: string; avNotes?: string; notes?: string;
+  specialDrinks?: { name: string; recipe?: string; notes?: string; batch?: string; qty?: number }[];
+  timeline?: { time: string; end?: string; item: string }[];
+  setupNotes?: string; dietaryNotes?: string; avNotes?: string; notes?: string; arrivalNotes?: string; specialInstructions?: string;
+  areas?: string; location?: string; salesManager?: string; eventManager?: string; invoiceNumber?: string;
+  /** The BEO's own sections (lib/beo.ts), and the mirrored fields a manager edited since the import. */
+  beoSections?: BeoSection[]; beoEdited?: string[];
   staffing: { id: string; jobCodeId: string; count: number; start?: string; notes?: string; created: number; filled: number }[];
   shifts: Shift[];
   comments?: { id: string; userId: string; userName: string; text: string; at: string }[];
