@@ -6,6 +6,7 @@ import { useApp, Icon, Modal, useAction } from '../ui.jsx';
 import { readAdpCsv, readPunches, mappingProblems, mappingToNames, mappingFromNames, detectColumns } from '../../../core/adp-csv.js';
 import { useT, prettyDate, fmtTime, num } from '../i18n/index.js';
 import '../labor.css';
+import { nameWithLegal } from '../../../core/names.js';
 
 const MAX_SHOWN = 200;
 // The columns a manager confirms, in order. in/out can be several columns (In, Out, In, Out): the first pair is shown.
@@ -224,7 +225,7 @@ function PreviewStep({ preview, parsed, people, jobs, matches, setMatch, busy, o
                 <div className="tp-who"><div style={{ fontWeight: 600 }}>{r.name}</div><div className="tiny faint">{[r.employeeId && t('adp.idN', { id: r.employeeId }), t('adp.clockInsInFile', { count: preview.rows.filter((x) => x.workerKey === r.workerKey).length })].filter(Boolean).join(' · ')}</div></div>
                 <select className="input sm" disabled={busy} value={matches[r.workerKey] ?? r.userId ?? ''} onChange={(e) => setMatch(r.workerKey, e.target.value)} aria-label={t('adp.personFor', { name: r.name })}>
                   <option value="">{t('adp.notMatched')}</option>
-                  {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  {people.map((p) => <option key={p.id} value={p.id}>{nameWithLegal(p)}</option>)}
                 </select>
               </div>
             ))}

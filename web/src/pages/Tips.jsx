@@ -8,6 +8,7 @@ import { fmtCents, toCents, fmtHours, fmtPoints, fmtPct, dayTotal, contributionL
 import { useWeek, WeekNav } from './Schedule.jsx';
 import TipPoolSettings, { poolSummary } from './TipPoolSettings.jsx';
 import '../tips.css';
+import { tipsCsvRows, toCsv } from '../../../core/exports.js';
 import { t, useT, stamp , t as tr } from '../i18n/index.js';
 
 const TAB_KEY = 'sb_tips_tab';
@@ -303,26 +304,14 @@ function sourceBadge(p) {
 
 function Report({ rep }) {
   const t = useT();
-  const { jobs } = useApp();
+  const { jobs, employees } = useApp();
   const jobName = (id) => jobs[id]?.name || t('common.position');
   const warnings = rep.pools.flatMap((pr) => pr.periods.flatMap((per) => per.warnings.map((w) => ({ ...w, text: tipWarningText(w, t.lang), where: `${pr.pool.name}, ${periodLabel(per.start, per.end, t.lang)}` }))));
   const noPunch = rep.pools.flatMap((pr) => pr.periods.flatMap((per) => per.people.filter((p) => p.noPunch.length).map((p) => `${p.name} (${pr.pool.name}, ${p.noPunch.map((d) => periodLabel(d, d, t.lang)).join(', ')})`)));
 
   const exportCsv = () => {
-    const rows = [['Pool', 'Period', 'Name', 'Positions', 'Hours', 'Hours from', 'Shifts', 'Points', 'Share %', 'Split', 'Adjustment', 'Adjustment notes', 'Amount']];
-    for (const pr of rep.pools) {
-      for (const per of pr.periods) {
-        for (const p of per.people) {
-          rows.push([pr.pool.name, per.label, p.name, p.jobs.map((j) => jobName(j.jobCodeId)).join(' + '), fmtHours(p.minutes), p.source + (p.estimated ? ' (estimated)' : ''), p.shifts,
-            pr.pool.method === 'equal' ? '' : fmtPoints(p.points), p.sharePct.toFixed(2), (p.split / 100).toFixed(2), (p.adjustment / 100).toFixed(2),
-            p.adjustments.map((a) => a.note).join('; '), (p.amount / 100).toFixed(2)]);
-        }
-      }
-    }
-    rows.push([]);
-    rows.push(['Week total', rep.label, '', '', '', '', '', '', '', '', '', '', (rep.total / 100).toFixed(2)]);
-    for (const p of rep.people) rows.push(['Week', rep.label, p.name, '', fmtHours(p.minutes), '', '', '', '', '', '', '', (p.amount / 100).toFixed(2)]);
-    const csv = rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    // Legal name and the name they go by, for payroll (core/exports.js).
+    const csv = toCsv(tipsCsvRows(rep, { people: Object.fromEntries(employees.map((e) => [e.id, e])), jobName }));
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     a.download = `tips-${rep.weekStart}.csv`;

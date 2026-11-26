@@ -7,6 +7,7 @@ import { addDays } from '../../../core/time.js';
 import { IS_DEMO } from '../api.js';
 import { toastStatus, toastSyncRange } from '../toast-api.js';
 import '../labor.css';
+import { nameWithLegal } from '../../../core/names.js';
 import { useT, prettyDate, stamp , t as tr } from '../i18n/index.js';
 
 export const ENV_NAMES = ['TOAST_CLIENT_ID', 'TOAST_CLIENT_SECRET', 'TOAST_RESTAURANT_GUID'];
@@ -201,7 +202,7 @@ function Matching({ info }) {
             </div>
             <select className="input sm" value={valueOf(emp, e, 'userId')} onChange={(x) => setEmp({ ...emp, [e.id]: x.target.value })} aria-label={t('toastSettings.shiftboardPersonForName', { name: e.name })}>
               <option value="">{t('toastSettings.notMatched')}</option>
-              {sortedPeople.map((p) => <option key={p.id} value={p.id}>{p.name}{p.active === false ? t('toastSettings.inactive') : ''}</option>)}
+              {sortedPeople.map((p) => <option key={p.id} value={p.id}>{nameWithLegal(p)}{p.active === false ? t('toastSettings.inactive') : ''}</option>)}
             </select>
           </div>
         ))}

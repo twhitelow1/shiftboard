@@ -204,6 +204,8 @@ export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password =
   }
   // Sample availability
   store.update('users', userId['Liz'], { availability: { 4: { available: false } } });
+  // A legal name for payroll that isn't the name everyone uses (core/names.js): Team shows "CJ (Carlos Javier Ortiz)" to admins.
+  store.update('users', userId['CJ'], { legalFirstName: 'Carlos Javier', legalLastName: 'Ortiz' });
 
   const laborRules = [
     { jobCodeId: jobId.SRV, daypart: 'Dinner', basis: 'covers', per: 22, min: 2 },

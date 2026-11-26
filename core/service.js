@@ -24,6 +24,7 @@ import { layoutService, addRoom, roomOfShift } from './layout.js';
 import { profileApi } from './profile.js';
 import { consentState, smsConsentOf, emailConsentOf, smsStatusOf, recordConsent, consentText } from './consent.js';
 import { SECRET_FIELDS, twoStepOf, twoStepMap, passwordProblem } from './auth-factors.js';
+import { legalNameFor, legalNamePatch } from './names.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -396,14 +397,14 @@ export function createService(store, opts = {}) {
       const twoStepOn = isMgr(actor) ? twoStepMap(store) : null; // Team shows who has two-step sign-in on
       const employees = users().map((u) => {
         const pub = userView(u, twoStepOn ? twoStepOn.has(u.id) : undefined);
-        if (isMgr(actor) || u.id === actor.id) return pub;
+        if (isMgr(actor) || u.id === actor.id) return legalNameFor(actor, u, pub); // the legal name: self, admins, their managers
         const basic = { id: u.id, name: u.name, sheetName: u.sheetName || '', role: pub.role, active: u.active, color: u.color, photoId: u.photoId || null, onSchedule: pub.onSchedule, order: u.order, jobCodes: (u.jobCodes || []).map((j) => ({ jobCodeId: j.jobCodeId, ...(j.areas?.length ? { areas: j.areas } : {}) })) };
         return canSeeContacts(actor) ? { ...basic, email: u.email, phone: u.phone } : basic;
       }).sort((a, b) => a.name.localeCompare(b.name));
       // My own consent and two-step status: the app shows the one-time consent screen when terms are missing.
       const mine = userById(actor.id);
       const consent = consentState(store, mine);
-      const me = { ...userView(mine), consent, needsTerms: !consent.terms, security: twoStepOf(store, actor.id) };
+      const me = { ...legalNameFor(actor, mine, userView(mine)), consent, needsTerms: !consent.terms, security: twoStepOf(store, actor.id) };
       const unread = store.list('notifications', (n) => n.userId === actor.id && !n.read).length;
       const pendingApprovals = isApprover(actor) ? store.list('requests', (r) => r.status === 'pending_approval').length
         + store.list('timeOff', (t) => t.status === 'pending').length : 0;
@@ -584,6 +585,7 @@ export function createService(store, opts = {}) {
         jobCodes: (a.jobCodes || []).filter((j) => jobById(j.jobCodeId)).map((j) => ({ jobCodeId: j.jobCodeId, rate: j.rate === '' || j.rate == null ? null : Number(j.rate), primary: !!j.primary,
           ...(Array.isArray(j.areas) && j.areas.length ? { areas: uniqueAreas(j.areas) } : {}) })), // areas they usually work this job in
         active, color: a.color || null, maxHours: Number(a.maxHours) || null,
+        ...legalNamePatch(a), // legal name for payroll (core/names.js); left as it is when not sent
       };
       if (cur) {
         const patch = { ...doc };
@@ -594,7 +596,7 @@ export function createService(store, opts = {}) {
         if (!active && cur.active !== false) patch.sessionVersion = (patch.sessionVersion ?? cur.sessionVersion ?? 0) + 1;
         const u = store.update('users', cur.id, patch);
         if (role !== roleOf(cur)) notify([cur.id], (lang) => msg(lang).roleNow(roleLabel(role, lang)), '#/my');
-        return userView(u);
+        return legalNameFor(actor, u, userView(u));
       }
       // Team → Add employee (invite: true, with an email): no password at all; the invitation's wizard sets one.
       // The full editor still makes a temporary password to share (or the one the manager typed).
@@ -602,7 +604,7 @@ export function createService(store, opts = {}) {
       const tempPassword = invited ? null : a.password || randomPassword();
       const u = store.insert('users', { id: uid('usr'), ...doc, availability: {}, passwordHash: tempPassword ? hashPassword(tempPassword) : null,
         smsConsent: false, emailConsent: false, createdAt: now().toISOString(), createdBy: actor.id });
-      return { ...userView(u), created: true, ...(tempPassword ? { tempPassword } : {}) };
+      return { ...legalNameFor(actor, u, userView(u)), created: true, ...(tempPassword ? { tempPassword } : {}) };
     },
     // Two records for one person (e.g. "Moe" made by an import and "Louis Henson" added in Team):
     // everything of `from` moves to `into` (shifts, time off, trades, notifications, event comments,
@@ -643,17 +645,19 @@ export function createService(store, opts = {}) {
       if (!into.sheetName) patch.sheetName = from.sheetName || (from.name !== into.name ? from.name : '');
       if (!into.email && from.email) patch.email = from.email;
       if (!into.phone && from.phone) patch.phone = from.phone;
+      if (!into.legalFirstName && !into.legalLastName && (from.legalFirstName || from.legalLastName)) Object.assign(patch, legalNamePatch(from));
       if (into.order == null && from.order != null) patch.order = from.order;
       if (from.onSchedule !== false && into.onSchedule === false) patch.onSchedule = true; // they work shifts
       store.remove('users', from.id);
-      store.update('users', into.id, patch);
-      return { ...out, into: userView(userById(into.id)) };
+      const merged = store.update('users', into.id, patch);
+      return { ...out, into: legalNameFor(actor, merged, userView(merged)) };
     },
     'employees.setAvailability': (actor, { userId, availability }) => {
       needAuth(actor);
       const id = userId || actor.id;
       if (id !== actor.id && !isMgr(actor)) fail(403, 'You can only edit your own availability');
-      return PUBLIC_USER(store.update('users', id, { availability }));
+      const u = store.update('users', id, { availability });
+      return legalNameFor(actor, u, PUBLIC_USER(u));
     },
     'employees.resetPassword': (actor, { userId }) => {
       needMgr(actor);
@@ -677,7 +681,8 @@ export function createService(store, opts = {}) {
       }
       if ('appearance' in a) patch.appearance = ['auto', 'light', 'dark'].includes(a.appearance) ? a.appearance : '';
       if ('language' in a) patch.language = ['en', 'es'].includes(a.language) ? a.language : ''; // '' = follow the phone/browser
-      return userView(store.update('users', actor.id, patch));
+      const u = store.update('users', actor.id, patch);
+      return legalNameFor(actor, u, userView(u));
     },
     'employees.changePassword': (actor, { password }) => {
       needAuth(actor);

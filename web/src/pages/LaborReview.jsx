@@ -9,6 +9,7 @@ import { useToast, useToastSync, SyncProgress } from './ToastSettings.jsx';
 import { ClockSetupButton, useAdp, useAdpSync } from './AdpSettings.jsx';
 import { AdpImportButton } from './AdpImport.jsx';
 import '../labor.css';
+import { hoursCsvRows, toCsv } from '../../../core/exports.js';
 import { tx, dowShort, fmtTime, prettyDate, stamp, num } from '../i18n/index.js';
 
 const h = (n) => (n == null ? '—' : num(Math.round(n * 10) / 10, { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
@@ -34,8 +35,16 @@ function PctBadge({ value, target }) {
 const STORE_KEY = 'sb_labor_week';
 const saved = () => { try { return sessionStorage.getItem(STORE_KEY); } catch { return null; } };
 
+/** Save a CSV made in the browser (the hours export for payroll: legal name and name, core/exports.js). */
+function downloadCsv(csv, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = filename;
+  a.click();
+}
+
 export default function LaborReview() {
-  const { call, version, today, settings, jobs, isMgr, has } = useApp();
+  const { call, version, today, settings, jobs, isMgr, has, employees } = useApp();
   const current = weekStartOf(today, settings.weekStartDow);
   const [ws, setWsState] = useState(() => saved() || addDays(current, -7));
   const setWs = (v) => { setWsState(v); try { sessionStorage.setItem(STORE_KEY, v); } catch { /* ignore */ } };
@@ -177,6 +186,9 @@ export default function LaborReview() {
         <div className="card-head row wrap">
           <h2 style={{ flex: 1 }}>{view === 'people' ? tx('laborReview.byPerson') : tx('laborReview.byPosition')}</h2>
           <div className="seg"><button className={view === 'people' ? 'on' : ''} onClick={() => setView('people')}>{tx('common.people')}</button><button className={view === 'positions' ? 'on' : ''} onClick={() => setView('positions')}>{tx('laborReview.positions')}</button></div>
+          {view === 'people' && r.people.length > 0 && <button className="btn sm ghost" title={tx('legalName.hoursCsvTitle')} onClick={() => downloadCsv(
+            toCsv(hoursCsvRows(r, { people: Object.fromEntries(employees.map((e) => [e.id, e])), jobName: (id) => jobs[id]?.name })), `hours-${r.weekStart}.csv`)}>
+            <Icon name="download" />{tx('legalName.hoursCsv')}</button>}
         </div>
         {!(view === 'people' ? r.people : r.positions).length ? <Empty icon="users" title={tx('laborReview.nobodyScheduledOrClockedIn')} /> : (
           <div className="table-wrap">

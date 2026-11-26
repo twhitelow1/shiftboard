@@ -7,6 +7,8 @@ import { roomsForPosition, homeRoom, entryRooms } from '../../../core/layout.js'
 import { sendSignInLink, inviteAll, IS_DEMO } from '../api.js';
 import { t, useT, stampDay } from '../i18n/index.js';
 import { AddEmployeeDialog, PersonBadges, SignInHelp, PreviewOnboardingLink } from './TeamInvite.jsx'; // invitations, status, sign-in help
+import { LegalNameFields, LegalNameNote } from './LegalName.jsx'; // legal name for payroll (core/names.js)
+import { nameMatches, canSeeLegalName } from '../../../core/names.js';
 
 const COLORS = ['#2563eb', '#16a34a', '#65a30d', '#0891b2', '#9333ea', '#a855f7', '#dc2626', '#e11d48', '#d97706', '#ca8a04', '#475569', '#0f766e', '#334155', '#7c2d12', '#db2777'];
 const JOB_ROLES = ['employee', 'supervisor', 'manager'];
@@ -34,7 +36,7 @@ export default function Team() {
   const [adding, setAdding] = useState(false);
   const [run, busy] = useAction();
 
-  const list = employees.filter((e) => (showInactive || e.active !== false) && (!q || `${e.name} ${e.sheetName || ''}`.toLowerCase().includes(q.toLowerCase()))
+  const list = employees.filter((e) => (showInactive || e.active !== false) && nameMatches(e, q)
     && (!job || e.jobCodes?.some((j) => j.jobCodeId === job)) && (!role || roleOf(e) === role));
   const depts = [...new Set(jobCodes.map((j) => j.department))];
   // People this manager can invite: never signed in, active, with a real email.
@@ -86,7 +88,7 @@ export default function Team() {
                 <Avatar user={e} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="row wrap" style={{ gap: 6 }}>
-                    <b>{e.name}</b>
+                    <b>{e.name}</b><LegalNameNote person={e} />
                     {e.sheetName && <span className="small muted" title={t('team.nameOnTheSchedule')}>“{e.sheetName}”</span>}
                     {roleOf(e) !== 'employee' && <span className="badge brand">{roleLabel(e, t.lang)}</span>}
                     {e.eventsAccess && roleOf(e) !== 'manager' && !['admin', 'super_admin'].includes(roleOf(e)) && <span className="badge">{t('common.events')}</span>}
@@ -222,6 +224,7 @@ function EmployeeDialog({ emp, onClose }) {
           <Field label={t('team.nameOnTheSchedule')} help={t('team.howTheScheduleSheetWrites')}>
             <input className="input" value={f.sheetName || ''} onChange={set('sheetName')} placeholder={f.name ? String(f.name).split(' ')[0].toUpperCase() : t('team.eGMoe')} maxLength={40} />
           </Field>
+          {(!emp.id || canSeeLegalName(me, emp)) && <LegalNameFields value={f} onChange={(v) => setF({ ...f, ...v })} help={t('legalName.teamHelp')} own={self} style={{ gridColumn: '1 / -1' }} />}
           <Field label={t('team.emailSignIn')}><input className="input" type="email" value={f.email || ''} onChange={(e) => { setConnecting(false); set('email')(e); }} placeholder={t('team.nameExampleCom')} /></Field>
           <Field label={t('team.phone')}><input className="input" type="tel" value={f.phone || ''} onChange={set('phone')} /></Field>
           <Field label={t('team.status')}><label className="check" style={{ height: 38 }}><input type="checkbox" checked={f.active !== false} onChange={set('active')} disabled={self} />{t('team.activeCanSignInAnd')}</label></Field>

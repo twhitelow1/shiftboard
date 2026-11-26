@@ -1,6 +1,7 @@
 // Parses schedules pasted from a spreadsheet (the classic "names down, days across"
 // restaurant grid) or a simple CSV (date,employee,job,start,end,tag).
 import { addDays, pad } from './time.js';
+import { legalNameOf } from './names.js';
 
 const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const dayIndex = (s) => {
@@ -161,11 +162,13 @@ const SYNONYMS = { mod: ['manager'], managerondut: ['manager'], runner: ['foodru
 /**
  * Match every name on a sheet to people, most certain first, and never the same person twice:
  *  1. the person's name on the schedule (sheetName): MOE → Louis Henson
- *  2. their full name: MARYANN → Mary Ann
- *  3. a unique first name: LOUIS → Louis Henson
+ *  2. their full name: MARYANN → Mary Ann; then their legal name (core/names.js), for a sheet that writes it
+ *  3. a unique first name: LOUIS → Louis Henson; then a unique legal first name
  *  4. a guess for names of 4+ letters (LUCAS → Chef Lucas), only among people with no name on the
  *     schedule. Short names like LOU are never guessed, so they can't land on the wrong person.
- * Returns Map(sheet name → { id, person, how: 'sheet' | 'name' | 'first' | 'guess' }).
+ * The schedule writes the name people go by, so it comes before the legal name here (payroll sources
+ * do it the other way round: core/toast.js matchEmployees).
+ * Returns Map(sheet name → { id, person, how: 'sheet' | 'name' | 'legal' | 'first' | 'legalFirst' | 'guess' }).
  */
 export function matchPeople(names, employees) {
   const out = new Map();
@@ -183,7 +186,9 @@ export function matchPeople(names, employees) {
   };
   pass('sheet', (e, n) => !!e.sheetName && norm(e.sheetName) === n);
   pass('name', (e, n) => norm(e.name) === n);
+  pass('legal', (e, n) => !!legalNameOf(e) && norm(legalNameOf(e)) === n);
   pass('first', (e, n) => !e.sheetName && first(e) === n);
+  pass('legalFirst', (e, n) => !e.sheetName && !!e.legalFirstName && norm(String(e.legalFirstName).trim().split(/\s+/)[0]) === n);
   pass('guess', (e, n) => !e.sheetName && n.length >= 4 && (norm(e.name).startsWith(n) || n.startsWith(norm(e.name)) || norm(e.name).endsWith(n)));
   return out;
 }
