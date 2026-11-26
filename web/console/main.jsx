@@ -5,6 +5,11 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { createRoot } from 'react-dom/client';
 import './console.css';
 import { api, ago, day, stamp, money, dateInput, fromDateInput } from './api.js';
+import ErrorsPage, { ConsoleBoundary } from './Errors.jsx';
+import { installErrorReporting, reportError } from '../src/errors.js';
+
+// The console's own crashes go to Errors & reports too.
+installErrorReporting({ endpoint: '/api/platform/client-errors', app: 'console' });
 
 const STATUS_LABEL = { trialing: 'Trial', active: 'Active', past_due: 'Past due', suspended: 'Suspended', canceled: 'Canceled' };
 const STATUS_HELP = {
@@ -18,6 +23,7 @@ const ACTION_LABEL = {
   'admin.signin': 'Signed in to the console', 'admin.create': 'Added a platform admin', 'admin.password': 'Changed their password',
   'tenant.create': 'Created the restaurant', 'tenant.update': 'Changed settings', 'tenant.pause': 'Paused the restaurant', 'tenant.resume': 'Reactivated the restaurant',
   'tenant.integrations': 'Changed integrations', 'tenant.invite': 'Sent the owner an invite', 'support.start': 'Started a support sign-in', 'support.signin': 'Signed in as the owner (support)',
+  'error.status': 'Changed an error’s status (Errors & reports)',
 };
 
 const Flash = createContext(() => {});
@@ -585,19 +591,22 @@ function App() {
   if (admin.mustChange) return <Flash.Provider value={flash}><FirstPassword admin={admin} onDone={() => setAdmin({ ...admin, mustChange: false })} /></Flash.Provider>;
 
   const signOut = async () => { await api('/logout', { method: 'POST', body: {} }).catch(() => {}); setAdmin(null); };
-  const [page, arg] = parts;
-  const view = page === 'new' ? <NewTenant meta={meta} />
+  const [rawPage, arg] = parts;
+  const page = (rawPage || '').split('?')[0];
+  const view = page === 'errors' ? <ErrorsPage id={arg} flash={flash} />
+    : page === 'new' ? <NewTenant meta={meta} />
     : page === 't' && arg ? <TenantDetail key={arg} id={arg} meta={meta} />
       : page === 'audit' ? <AuditPage />
         : page === 'admins' ? <AdminsPage admin={admin} />
           : <TenantList meta={meta} />;
-  const tab = page === 'audit' ? 'audit' : page === 'admins' ? 'admins' : 'restaurants';
+  const tab = page === 'audit' ? 'audit' : page === 'admins' ? 'admins' : page === 'errors' ? 'errors' : 'restaurants';
   return (
     <Flash.Provider value={flash}>
       <header className="top">
         <a className="brand-row" href="#/"><div className="logo">S</div><div className="brand-name">ShiftBoard <span className="muted">Platform</span></div></a>
         <nav className="tabs">
           <a className={tab === 'restaurants' ? 'on' : ''} href="#/">Restaurants</a>
+          <a className={tab === 'errors' ? 'on' : ''} href="#/errors">Errors &amp; reports</a>
           <a className={tab === 'audit' ? 'on' : ''} href="#/audit">Audit log</a>
           <a className={tab === 'admins' ? 'on' : ''} href="#/admins">Admins</a>
         </nav>
@@ -609,4 +618,4 @@ function App() {
   );
 }
 
-createRoot(document.getElementById('root')).render(<App />);
+createRoot(document.getElementById('root')).render(<ConsoleBoundary onError={(e, info) => reportError(e, 'boundary', { componentStack: info?.componentStack })}><App /></ConsoleBoundary>);

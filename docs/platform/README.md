@@ -104,6 +104,7 @@ New (all optional; without them the deployment behaves as a single restaurant):
 | `PLATFORM_ADMIN_EMAIL`, `PLATFORM_ADMIN_PASSWORD` | The first platform admin, created while there are none (like `ADMIN_EMAIL`). `PLATFORM_ADMIN_NAME` optional. |
 | `PLATFORM_ENCRYPTION_KEY` | 32 random bytes, base64 or hex (`openssl rand -base64 32`). Encrypts per-restaurant secrets. Mark it Sensitive. Keep it: losing it means re-entering those secrets. |
 | `PLATFORM_EMAIL_FROM` | The default sender for restaurants without their own, e.g. `ShiftBoard <schedule@mail.dublowdigital.com>` (domain verified in Resend). Restaurants get "<Restaurant name> <that address>". |
+| `PLATFORM_ALERT_PHONE` | Optional. DubLow's own phone (E.164) for a text on each new server 500. Errors & reports, alerts and the daily digest (to `PLATFORM_ADMIN_EMAIL`): [docs/BETA-TESTING.md](../BETA-TESTING.md). |
 | `TENANT_CACHE_MAX` | Restaurants each instance keeps open (default 25). |
 | `TENANT_REGISTRY_TTL_MS` | How long an instance trusts its copy of the registry (default 5000). Console changes apply at once on the instance that made them, and on the others within this time. |
 | `CRON_BUDGET_MS` | Time the Toast cron spends per run, across restaurants (default 18000, inside the 30 s function limit). |

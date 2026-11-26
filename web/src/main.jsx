@@ -24,6 +24,13 @@ import { Welcome, ConsentGate } from './pages/Onboarding.jsx';
 import { AuthCard, SignInBrand, BrandMark, DEFAULT_NAME } from './pages/AuthCard.jsx';
 import { t as tr, useT, I18nCtx, setCurrentLang, resolveLang, saveDeviceLang, deviceLang, unsavedDeviceLang, clearUnsaved, isLang, prettyDate, stamp, fmtTime } from './i18n/index.js';
 import LanguageSwitch from './LanguageSwitch.jsx';
+import ErrorBoundary from './ErrorBoundary.jsx';
+import ReportProblem from './pages/ReportProblem.jsx';
+import { installErrorReporting } from './errors.js';
+import { getLang } from './i18n/index.js';
+
+// Crashes go to DubLow Digital (web/src/errors.js, Errors & reports in the console). Not from the demo: no server.
+installErrorReporting({ enabled: !IS_DEMO, lang: getLang });
 export { BrandMark }; // the sign-in card lives in pages/AuthCard.jsx now
 
 function useHashRoute() {
@@ -142,6 +149,7 @@ function App() {
   const [version, setVersion] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false); // Report a problem
   const [toast, toasts] = useToasts();
   const parts = useHashRoute();
   const [config, setConfig] = useState({ email: false, emailFrom: null });
@@ -279,6 +287,7 @@ function App() {
                 <div className="tiny" style={{ color: '#94a3b8' }}>{roleLabel(ctx.me, lang)}</div>
               </div>
             </div>
+            {!IS_DEMO && <button className="nav-item" onClick={() => setReportOpen(true)}><Icon name="alert" />{t('report.menu')}</button>}
             {!IS_DEMO && <button className="nav-item" onClick={signOut}><Icon name="logout" />{t('main.signOut')}</button>}
           </div>
         </aside>
@@ -297,7 +306,7 @@ function App() {
             <a className="mobile-only topbar-avatar" href="#/account" aria-label={t('security.mySettings')}><Avatar user={ctx.me} size="sm" /></a>
           </header>
           <main className="content">
-            <Page parts={parts} />
+            <ErrorBoundary key={route} where="page" reportable={!IS_DEMO}><Page parts={parts} /></ErrorBoundary>
           </main>
         </div>
 
@@ -325,10 +334,12 @@ function App() {
                   {n.badge && badges[n.badge] > 0 && <span className="count">{badges[n.badge]}</span>}
                 </div>
               ))}
+              {!IS_DEMO && <div className="list-item click" onClick={() => { setMoreOpen(false); setReportOpen(true); }}><Icon name="alert" size={20} /><span style={{ fontWeight: 600 }}>{t('report.menu')}</span></div>}
               {!IS_DEMO && <div className="list-item click" onClick={signOut}><Icon name="logout" size={20} /><span style={{ fontWeight: 600 }}>{t('main.signOut')}</span></div>}
             </div>
           </Modal>
         )}
+        {reportOpen && <ReportProblem page={t(current.label)} onClose={() => setReportOpen(false)} />}
         {notifOpen && <Notifications onClose={() => { setNotifOpen(false); refresh(); }} />}
         {toasts}
       </div>
@@ -355,4 +366,4 @@ function DemoBar({ onSwitch }) {
   );
 }
 
-createRoot(document.getElementById('root')).render(<App />);
+createRoot(document.getElementById('root')).render(<ErrorBoundary where="app" reportable={!IS_DEMO}><App /></ErrorBoundary>);

@@ -1,6 +1,7 @@
 // Español (Latinoamérica neutro, "tú"): the same keys as en.js. Vocabulary: docs/i18n/GLOSSARY.md, and
 // the phone app (mobile/src/i18n/es.ts) for the words they share. Restaurant data stays as entered.
 import auth from './es-auth.js'; // iniciar sesión, dos pasos, la bienvenida, el consentimiento, Mi configuración
+import report from './es-report.js'; // Reportar un problema, y la pantalla cuando algo falla
 const catalog = {
   lang: {
     change: 'Cambiar idioma',
@@ -2126,6 +2127,7 @@ const catalog = {
     textsAfter: 'Cuando esté conectado, aquí puedes mandarte un mensaje de prueba.',
   },
   ...auth,
+  ...report,
 };
 
 export default catalog;

@@ -29,6 +29,9 @@ import { mountIntegrations } from './integrations-routes.js';
 import { createAuth } from './auth.js';
 import { mountOnboarding } from './onboarding.js';
 import { publicRoutes } from './public-routes.js';
+import { ErrorLog } from './errors.js';
+import { capture as captureErrors, clientRoutes as errorRoutes } from './errors-routes.js';
+import { createTexter } from './sms.js';
 import { migrateConsents, emailConsentOf, legalLinks, CONSENT_MIGRATION, CONSENT_TEXT, CONSENT_VERSION } from '../core/consent.js';
 
 const COOKIE = 'sb_session';
@@ -282,6 +285,10 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     };
     next();
   });
+  // Errors & reports (server/errors.js): the platform's log tagged with this restaurant, else this schema's own.
+  const errors = tenant?.errors || new ErrorLog({ conn: db.conn, schema: db.schema, env, mailer, texter: texter || createTexter(env), now, background: env.VERCEL ? waitUntil : null }).forTenant(null);
+  app.locals.errors = errors;
+  app.use(captureErrors({ recorder: errors, userOf: (req) => userFromToken(db.store, sessionToken(req)) })); // 500s and failed syncs
   app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
@@ -551,6 +558,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   trainingRoutes(app, { db, signedIn: (req) => userFromToken(db.store, sessionToken(req)) });
   // 86 List photos, for people who can see the item's list (cookie on the web, bearer token in the phone app).
   eightySixRoutes(app, { db, signedIn: (req) => userFromToken(db.store, sessionToken(req)) });
+  // The apps' own crashes and "Report a problem", signed in or out (server/errors-routes.js).
+  errorRoutes(app, { recorder: errors, userOf: async (req) => { await db.sync(); return userFromToken(db.store, sessionToken(req)); }, now });
 
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
