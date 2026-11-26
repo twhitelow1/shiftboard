@@ -16,24 +16,24 @@ _Working name "ShiftBoard"; a new product name is still to be chosen (see Busine
 | Onboarding, consent records, STOP handling, two-step sign-in | #13 | |
 | Phone app in a browser at /app; Expo Go publishing via GitHub | #14 | |
 | Roadmap, seasons for reports, legal name vs common name | #15 | |
+| View as + Roles & features; Reports + 86 List report (86 List for stock/supplies); Unpublish (notify on/off); Trades & pickups by season; Announcements | #16 | live Nov 26 |
+| OpenTable (CSV import today; API once OpenTable approves DubLow as a partner) + Positive impact (5-star mentions, guest requests, kudos; a card in Reports, My Kudos for staff) | #16 | live Nov 26 |
+| Claude connector (MCP) for claude.ai / Claude Code: OAuth with two-step sign-in, 36 tools by role | #16 | first real Claude connection still to do |
+| Beta error tracking + "Report a problem", console Errors & reports, email alerts + daily digest | #16 | live Nov 26 |
+| Schedule PDF (like the wall sheet), Publish options (notify on/off, attach PDF), editable notification emails (EN/ES), all managers on duty | #16 | live Nov 26 |
 
 ## Building
 | Feature | Notes |
 |---|---|
-| **In PR #16:** View as + Roles & features; Reports + 86 List report (86 List for stock/supplies); Unpublish (notify on/off); Trades & pickups by season; Announcements | built and tested; merge pending |
-| **In PR #16:** OpenTable (CSV import today; API once OpenTable approves DubLow as a partner) + Positive impact (5-star mentions, guest requests, kudos; a card in Reports, My Kudos for staff) | built and tested; merge pending |
-| **In PR #16:** Claude connector (MCP) for claude.ai / Claude Code: OAuth with two-step sign-in, 36 tools by role | built and tested; merge pending; first real connection after deploy |
-| **In PR #16:** Beta error tracking + "Report a problem", console Errors & reports, email alerts + daily digest | built and tested; merge pending |
-| **In PR #16:** Schedule PDF (like the wall sheet), Publish options (notify on/off, attach PDF), editable notification emails (EN/ES), all managers on duty | built and tested; merge pending |
+| Ask ShiftBoard (built-in Claude, Haiku; usage metered and capped per restaurant) | building |
+| Google Business Profile + Yelp reviews: alerts, AI-drafted replies | building |
 
 ## Next
 | Feature | Notes |
 |---|---|
-| **Ask ShiftBoard** (built-in Claude chat for staff and managers, EN/ES) | Claude Haiku 5.5; Anthropic key in Vercel; **usage metered and capped per restaurant**, shown in Settings and the DubLow console; reuses the connector's tools and permissions |
-| Google Business Profile + Yelp reviews | pull reviews, match staff mentions, alert managers, **AI-drafted replies** (post to Google via API; Yelp: copy/paste, its API can't reply) |
+| Push notifications in the /app browser version | the website already has them |
 
 ## Planned: AI
-- Push notifications in the /app browser version (the website already has them)
 - Schedule drafting for managers (draft → review → publish)
 - Monday digest (labor vs forecast, 86 trends, trades, kudos, upcoming events)
 - Review insights (themes, sentiment) on top of review matching
