@@ -13,6 +13,7 @@ import RoomsPositions from './RoomsPositions.jsx';
 import SeasonsCard from './SeasonsSettings.jsx'; // the seasons reports count by
 import { AnnouncementSettingsCard } from './Announcements.jsx'; // texts per person per day, quiet hours
 import RolesEditor, { RolesCard } from './RolesEditor.jsx'; // Settings → Roles & features
+import { ImpactSettingsCard } from './ImpactShared.jsx'; // Positive impact: notifications, alerts, words that are never names
 import { tx, useT, dowLong, dowShort , LANGUAGE_NAMES } from '../i18n/index.js';
 
 export default function Settings({ parts = [] }) {
@@ -119,6 +120,7 @@ export default function Settings({ parts = [] }) {
       <SeasonsCard />
       <IntegrationsCard />
       <ClaudeConnectorCard />
+      <ImpactSettingsCard />
 
       <div className="card card-pad col" style={{ gap: 12 }}>
         <h2>{t('settings.forecasting')}</h2>

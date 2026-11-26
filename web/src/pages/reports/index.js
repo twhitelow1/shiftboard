@@ -7,11 +7,12 @@
 //   title     catalog key of its name, desc: catalog key of its one-line description
 //   headline  async (call, t) => ({ text, tone: 'bad' | 'warn' | 'ok' | '' }): the live number on its card
 //   Page      the report itself; it gets the route's parts (['reports', path, …])
+//   href      instead of Page: a report with its own address (#/impact, #/trade-stats); the card links there
 // Reports run on the server, one RPC per tab, and send back small answers (see core/reports-86.js).
 //
-// Other branches are building "Trades & pickups by season" and "Positive impact (reviews and guest requests)".
-// They join here once their code and plan features land; until then they have no entry (no empty cards).
 import EightySixReport from './EightySixReport.jsx';
+import { headline as tradeHeadline } from './TradeStats.jsx';
+import { headline as impactHeadline } from './Impact.jsx';
 
 export const REPORTS = [
   {
@@ -28,6 +29,25 @@ export const REPORTS = [
       return { text: t('reports.e86.headline', { out: s.out, low: s.low }), tone: s.out ? 'bad' : 'warn' };
     },
     Page: EightySixReport,
+  },
+  {
+    key: 'impact',
+    path: 'impact',
+    feature: 'impact',
+    icon: 'star',
+    title: 'main.impact',
+    desc: 'impact.cardDesc',
+    headline: async (call, t) => ({ text: (await impactHeadline({ call, t })) || t('reports.e86.headlineNone').slice(0, 0), tone: '' }),
+    href: '#/impact',
+  },
+  {
+    key: 'tradeStats',
+    path: 'trades',
+    icon: 'chart',
+    title: 'tradeStats.title',
+    desc: 'tradeStats.subtitle',
+    headline: async (call, t) => ({ text: await tradeHeadline({ call, t }), tone: '' }),
+    href: '#/trade-stats',
   },
 ];
 

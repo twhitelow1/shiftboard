@@ -25,6 +25,7 @@ import { featuresForMethod, ROUTE_FEATURES, NOT_IN_PLAN, PAUSED, isPaused, billi
 import { billingPortal } from './billing.js';
 import { mountAdp } from './adp-routes.js';
 import { mountTripleseat } from './tripleseat-routes.js';
+import { mountOpenTable } from './opentable-routes.js';
 import { mountIntegrations } from './integrations-routes.js';
 import { createAuth } from './auth.js';
 import { mountOnboarding } from './onboarding.js';
@@ -579,6 +580,12 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   // notifications (staff on a changed event) go out like any other: email, web push, texts, the phone app.
   mountTripleseat(app, {
     db, env, userOf: (req) => whoIs(req, req.cookies[COOKIE]), managed: !!tenant && !tenant.isDefault,
+    onCommit: (changes, req) => { channels.afterCommit(changes, req); emailNotifications(changes, req); pushToPhones(changes); },
+  });
+  // OpenTable's API: status, Sync now and its daily Vercel Cron (server/opentable-routes.js). Its exports are plain RPC.
+  // A sync's notifications ("you were mentioned in a 5-star review") go out like any other.
+  mountOpenTable(app, {
+    db, env, userOf: (req) => userFromToken(db.store, req.cookies[COOKIE]), managed: !!tenant && !tenant.isDefault,
     onCommit: (changes, req) => { channels.afterCommit(changes, req); emailNotifications(changes, req); pushToPhones(changes); },
   });
   // Settings → Integrations: the restaurant's admins set up ADP, Toast, Tripleseat, the text sender and the

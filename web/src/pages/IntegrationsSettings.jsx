@@ -10,12 +10,13 @@ import { getIntegrations, saveIntegrations } from '../integrations-api.js';
 import { AdpPanel } from './AdpSettings.jsx';
 import { ToastPanel } from './ToastSettings.jsx';
 import { TripleseatPanel } from './TripleseatSettings.jsx';
+import { OpenTablePanel } from './OpenTableSettings.jsx';
 import { normalizePhone } from '../../../core/notify-prefs.js';
 import '../labor.css';
 import { useT, translateError } from '../i18n/index.js';
 
 // Settings most restaurants never need: under "More options".
-const ADVANCED = new Set(['TOAST_API_HOST', 'ADP_MANAGER_AOID', 'TRIPLESEAT_SITE_ID', 'TRIPLESEAT_API_HOST', 'TRIPLESEAT_PUBLIC_KEY', 'TRIPLESEAT_SECRET_KEY', 'EMAIL_REPLY_TO']);
+const ADVANCED = new Set(['TOAST_API_HOST', 'ADP_MANAGER_AOID', 'TRIPLESEAT_SITE_ID', 'TRIPLESEAT_API_HOST', 'TRIPLESEAT_PUBLIC_KEY', 'TRIPLESEAT_SECRET_KEY', 'EMAIL_REPLY_TO', 'OPENTABLE_API_HOST', 'OPENTABLE_TOKEN_URL']);
 const STATUS_BADGE = { connected: 'ok', partial: 'warn', notSetUp: '', noAccount: 'warn', demo: '' };
 
 /** The restaurant's integration settings; reloads when the app's version changes. */
@@ -70,6 +71,7 @@ function IntegrationPanel({ group, data, onSaved }) {
           {group.key === 'adp' && <AdpPanel embedded connect={connect} />}
           {group.key === 'toast' && <ToastPanel embedded connect={connect} />}
           {group.key === 'tripleseat' && <TripleseatPanel embedded connect={connect} />}
+          {group.key === 'opentable' && <OpenTablePanel embedded connect={connect} />}
           {group.status === 'demo' && ['twilio', 'email'].includes(group.key) && <div className="help">{t('integrations.demo')}</div>}
           {group.key === 'twilio' && group.status !== 'demo' && <TextTest group={group} />}
           {group.key === 'email' && <EmailTest group={group} />}

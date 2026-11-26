@@ -24,6 +24,8 @@ import Announcements from './pages/Announcements.jsx';
 import TradeStats from './pages/reports/TradeStats.jsx';
 import { ViewAsButton, ViewAsBanner, ViewAsDialog, endView } from './pages/ViewAs.jsx';
 import { setTradesOn } from './pages/TradeHint.jsx';
+import ImpactReport from './pages/reports/Impact.jsx'; // Positive impact (the Reports hub registers it later)
+import Kudos from './pages/Kudos.jsx';
 import { SignIn, ResetPassword, LinkSignIn } from './pages/SignIn.jsx';
 import { Welcome, ConsentGate } from './pages/Onboarding.jsx';
 import ConnectClaude from './pages/ConnectClaude.jsx'; // connecting Claude (OAuth sign-in and consent)
@@ -67,6 +69,8 @@ const NAV = [
   { key: 'training', label: 'main.training', icon: 'book', feature: 'training' },
   { key: 'forecast', label: 'main.forecastLabor', icon: 'chart', mgr: true, feature: 'forecast' },
   { key: 'reports', label: 'reports.nav', icon: 'report', mgr: true, feature: 'reports' }, // managers and up (core/reports.js)
+  { key: 'impact', label: 'main.impact', icon: 'star', mgr: true, feature: 'impact', hide: true }, // a card in Reports
+  { key: 'kudos', label: 'main.myKudos', icon: 'sparkle', feature: 'impact' },
   { key: 'venue', label: 'main.venueFloorPlans', short: 'main.venue', icon: 'map', mgr: true, feature: 'venue' },
   { key: 'team', label: 'main.teamJobCodes', icon: 'users', mgr: true, feature: 'team' },
   // Managers get Settings for Rooms & positions (the schedule's layout); the rest of it is admins'.
@@ -276,6 +280,8 @@ function App() {
     schedule: Schedule, calendar: CalendarPage, my: MyShifts, swaps: Swaps, events: Events, tips: Tips,
     forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue, training: Training, 86: EightySix, reports: Reports,
     account: Account, announcements: Announcements, 'trade-stats': TradeStats,
+    forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue, training: Training, 86: EightySix,
+    account: Account, impact: ImpactReport, kudos: Kudos,
   }[route] || Schedule;
 
   const signOut = async () => { await logout(); setBoot(null); setAuthed(false); };

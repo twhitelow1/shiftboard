@@ -14,7 +14,8 @@ export default function Reports({ parts = [] }) {
   if (!canSeeReports(me)) return <Empty icon="report" title={t('reports.managersOnly')} />;
   const reports = availableReports(has);
   const open = reports.find((r) => r.path === parts[1]);
-  if (open) return <open.Page parts={parts} />;
+  if (open?.Page) return <open.Page parts={parts} />;
+  if (open?.href) { location.replace(open.href); return null; }
   return (
     <div className="rp">
       <div className="rp-head">
@@ -38,7 +39,7 @@ function ReportCard({ report }) {
     return () => { live = false; };
   }, [version, t.lang]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <a className="card rp-card" href={`#/reports/${report.path}`}>
+    <a className="card rp-card" href={report.href || `#/reports/${report.path}`}>
       <span className="rp-card-ico"><Icon name={report.icon} size={20} /></span>
       <span className="rp-card-body">
         <span className="rp-card-title">{t(report.title)}</span>

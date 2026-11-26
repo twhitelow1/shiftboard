@@ -368,12 +368,15 @@ export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password =
   seedTripleseatDemo(store, { week: WEEK, userId });
   // SAMPLE trade history over three seasons, for Trades & pickups (core/trade-seed.js)
   seedTradeHistory(store, { userId });
+  // SAMPLE OpenTable reservations and reviews, Google and Yelp reviews and kudos (Positive impact): core/impact-seed.js
+  seedImpactDemo(store, { userId, now: clock });
 
   return { userId, jobId, eventId };
 }
 
 import { seedLaborDemo } from './labor-demo.js';
 import { seedEightySix } from './eighty-six.js';
+import { seedImpactDemo } from './impact-seed.js';
 
 // ---------- SAMPLE ADP time entries (Forecast & Labor, Settings → Integrations → ADP) ----------
 // As if last Friday's and Saturday's ADP timecard export had been imported (core/adp.js): demo people

@@ -18,6 +18,8 @@ import { channelApi } from './notify-prefs.js';
 import { venueLinks } from './venue-links.js';
 import { tripleseatLinks } from './tripleseat.js';
 import { unpublishApi } from './unpublish.js';
+import { openTableLinks, bookingBlend } from './opentable.js';
+import { impactLinks } from './impact.js';
 import { trainingApi } from './training.js';
 import { eightySixApi } from './eighty-six.js';
 import { rosterApi } from './roster.js';
@@ -345,8 +347,9 @@ export function createService(store, opts = {}) {
       return Number(own ?? jobById(s.jobCodeId)?.defaultRate ?? 0) || 0;
     };
 
+    const booked = bookingBlend(store, st, today(), ws); // OpenTable bookings for upcoming days (core/opentable.js)
     const out = days.map((date) => {
-      const f = forecastDay(date, salesByDate, st, overrides[date]);
+      const f = booked(forecastDay(date, salesByDate, st, overrides[date]));
       const dayEvents = events.filter((e) => e.date === date);
       const eventGuests = dayEvents.reduce((t, e) => t + (Number(e.guestCount) || 0), 0);
       const eventRevenue = dayEvents.reduce((t, e) => t + (Number(e.estRevenue) || 0), 0);
@@ -1645,6 +1648,9 @@ export function createService(store, opts = {}) {
   const tripleseat = tripleseatLinks({ store, api, fail, needAuth, needMgr, needEvents, needAdmin, notify, say, day, now, cancelRequestsForShift });
   // Unpublish (back to draft) and the "what changed" notification when it's posted again. See core/unpublish.js.
   const unpublish = unpublishApi({ store, api, fail, needMgr, notify, say, day, describe, settings, nameOf, jobName, isFuture, cancelRequestsForShift, now });
+  // Positive impact (impact.*: review mentions, reservation requests, kudos) and OpenTable (opentable.*): core/impact.js, core/opentable.js.
+  const impact = impactLinks({ store, api, fail, needAuth, needMgr, needAdmin, notify, now, settings, langOf: L });
+  const opentable = openTableLinks({ store, api, fail, needMgr, now, settings, impact });
 
   return {
     api,
@@ -1659,5 +1665,9 @@ export function createService(store, opts = {}) {
     langOf: L,
     /** For server/tripleseat-sync.js: apply Tripleseat events inside a write. */
     tripleseat,
+    /** For server/opentable-sync.js: apply OpenTable reservations and reviews inside a write. */
+    opentable,
+    /** Positive impact: applyReviews() for any review source (a Google or Yelp connector only fetches). */
+    impact,
   };
 }

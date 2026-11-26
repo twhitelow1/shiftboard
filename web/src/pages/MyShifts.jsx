@@ -9,6 +9,7 @@ import { PhoneCards } from './PhoneCards.jsx';
 import { ShiftSection } from './Sections.jsx';
 import { ModCard } from './TrainingShared.jsx';
 import { EightySixBanner } from './EightySix.jsx';
+import { KudosCard } from './Kudos.jsx';
 import { useT, tx, dowShort, fmtTime, prettyDate, LANGUAGE_NAMES } from '../i18n/index.js';
 import { STATUS } from './TimeOff.jsx';
 import { CONSENT_TEXT } from '../../../core/consent.js';
@@ -61,6 +62,7 @@ export default function MyShifts() {
       <MyAnnouncements />
       {has('training') && <div className="section"><ModCard compact /></div>}
       {has('eightySix') && <EightySixBanner className="section" />}
+      {has('impact') && <div className="section"><KudosCard /></div>}
 
       {openShifts.length > 0 && (
         <div className="section">

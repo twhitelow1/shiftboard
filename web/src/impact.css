@@ -1,0 +1,56 @@
+/* Positive impact and OpenTable: pages/reports/Impact.jsx, Kudos.jsx, ImpactShared.jsx, OpenTableSettings.jsx. Phone first. */
+.imp-page { gap: 12px; }
+.imp-period { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
+.imp-period select, .imp-period input { font-size: 16px; max-width: 100%; }
+.imp-range { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.imp-range input { width: 150px; }
+
+.imp-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 640px) { .imp-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.imp-stat { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.imp-stat-v { font-size: 24px; font-weight: 800; display: flex; align-items: center; gap: 6px; color: var(--text); }
+.imp-stat-v svg { color: var(--brand); }
+.imp-stat-l { font-size: 12.5px; color: var(--text-2); }
+.imp-trend { font-size: 11.5px; font-weight: 600; color: var(--text-3); white-space: nowrap; }
+.imp-trend.up { color: var(--ok); }
+.imp-trend.down { color: var(--bad); }
+
+.imp-row { width: 100%; border: 0; border-bottom: 1px solid var(--border); background: none; text-align: left; font: inherit; color: inherit; gap: 10px; }
+.imp-rank { width: 20px; text-align: right; font-weight: 700; color: var(--text-3); flex: none; }
+.imp-who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.imp-who b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.imp-who .imp-trend { white-space: normal; line-height: 1.25; }
+.imp-nums { display: grid; grid-template-columns: repeat(4, 44px); gap: 4px; flex: none; text-align: center; }
+.imp-nums > span { display: flex; flex-direction: column; line-height: 1.15; }
+.imp-nums .tiny { color: var(--text-3); }
+@media (max-width: 420px) { .imp-nums { grid-template-columns: repeat(4, 34px); } .imp-row .avatar { display: none; } }
+
+.imp-item { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); min-width: 0; }
+.card.imp-item { padding: 14px; }
+.imp-item-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.imp-quote { font-size: 14.5px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.imp-mark { background: color-mix(in srgb, var(--brand) 22%, transparent); color: inherit; border-radius: 4px; padding: 0 2px; font-weight: 700; }
+.imp-stars { color: #f59e0b; letter-spacing: 1px; font-size: 15px; white-space: nowrap; }
+.imp-stars.sm { font-size: 13px; }
+.imp-stars-off { color: var(--border-strong); }
+.imp-decide { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-top: 6px; border-top: 1px dashed var(--border); }
+.imp-decide select { max-width: 100%; font-size: 16px; }
+.imp-other { max-width: 180px; font-size: 16px; }
+.imp-byrating { gap: 6px; }
+.imp-src-opentable { background: #fdecec; color: #b42318; }
+.imp-src-google { background: #e8f0fe; color: #1a56db; }
+.imp-src-yelp { background: #fde8e8; color: #c81e1e; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) :is(.imp-src-opentable, .imp-src-google, .imp-src-yelp) { background: var(--surface-3); color: var(--text); } }
+:root[data-theme="dark"] :is(.imp-src-opentable, .imp-src-google, .imp-src-yelp) { background: var(--surface-3); color: var(--text); }
+
+.imp-card { display: flex; align-items: center; gap: 12px; color: inherit; text-decoration: none; }
+.imp-card > svg:first-child { color: #f59e0b; flex: none; }
+
+.imp-name { flex-wrap: wrap; }
+.imp-name-who { flex: 1 1 180px; min-width: 0; }
+.imp-name-aka { flex: 1 1 240px; gap: 6px; min-width: 0; }
+.imp-name-aka input { flex: 1; min-width: 0; font-size: 16px; }
+
+.ot-upcoming { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; }
+.ot-upcoming > div { display: flex; flex-direction: column; align-items: center; padding: 6px 4px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); }
+.ot-upcoming b { font-size: 17px; }
