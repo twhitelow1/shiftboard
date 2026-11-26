@@ -34,7 +34,7 @@ import { roleAllows } from './role-features.js';
 import { todayStr, fmtTime } from './time.js';
 import { scheduleAreas, uniqueAreas, sameArea } from './areas.js';
 import { checkPhoto } from './training.js';
-import { canReportList, canSeeList } from './eighty-six.js';
+import { canReportList, canSeeList, nameKey, categoriesOf as categories86 } from './eighty-six.js';
 import {
   buyersFor, productCategories, DEFAULT_CATEGORIES, UNITS, unitName, matchesFor, newProduct, productKey, cleanUnit, ensureCatalog, cleanAliases,
   PHOTOS_PER_PRODUCT, MAX_CATEGORIES,
@@ -664,7 +664,11 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
       const target = listId ? store.get('eightySixLists', String(listId)) : list86For(p, l, u);
       if (!target) fail(400, 'There’s no 86 list you can report on');
       const st = status === 'low' ? 'low' : 'out';
-      const r = api['eightySix.report'](actor, { listId: target.id, name: p?.name || '', productId: p?.id, status: st, count: st === 'low' ? (count ?? line.brought ?? '') : '', note: '' });
+      // The 86 category: what the name was filed under before, else the catalog's category in 86 words.
+      const TO86 = { spirits: 'liquor', beer: 'liquor', wine: 'liquor', mixers: 'dry', garnish: 'produce', glassware: 'glassware', smallwares: 'glassware', paper: 'paper', cleaning: 'cleaning', dry: 'dry', other: 'other' };
+      const filed = store.get('eightySixNames', nameKey(p?.name || ''))?.category;
+      const cat86 = !filed && categories86(store).some((c) => c.id === TO86[p?.category]) ? { category: TO86[p.category] } : {};
+      const r = api['eightySix.report'](actor, { listId: target.id, name: p?.name || '', productId: p?.id, ...cat86, status: st, count: st === 'low' ? (count ?? line.brought ?? '') : '', note: '' });
       const at = nowIso();
       const lines = l.lines.map((x) => (x.id === line.id ? { ...x, reported86: { itemId: r.item.id, listId: target.id, status: st, at } } : x));
       store.update('stockLists', l.id, { lines, log: logEntry(l, { by: u.id, what: 'reported86', lineId, state: st, to: target.name }) });
