@@ -294,7 +294,7 @@ export interface MyTipsWeek {
 }
 
 // ---------- Venue: rooms, floor plans and server sections (core/venue-links.js) ----------
-export interface PlanItem { id: string; type: string; x: number; y: number; w: number; h: number; r: number; label: string; seats: number }
+export interface PlanItem { id: string; type: string; x: number; y: number; w: number; h: number; r: number; label: string; seats: number; zone?: string; toastGuid?: string }
 export interface Room { id: string; name: string; level?: string; locationId?: string; plan?: { width: number; height: number; items: PlanItem[] } }
 export interface SectionEntry {
   shiftId: string; userId: string | null; jobCodeId: string; start: string; end: string | null; published: boolean;
