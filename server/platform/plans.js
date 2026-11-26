@@ -157,6 +157,7 @@ export const ROUTE_FEATURES = [
   ['/api/reviews', 'reviews'],
   ['/api/training', 'training'],
   ['/api/eighty-six', 'eightySix'],
+  ['/api/venue', 'venue'],
   ['/api/sms', 'sms'],
   ['/api/twilio', 'sms'],
 ];

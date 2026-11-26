@@ -140,6 +140,15 @@ export const ERRORS_ES = {
   'That room is gone. Pick another one.': 'Ese salón ya no existe. Elige otro.',
   'Pick a room for these tables': 'Elige un salón para estas mesas',
   'Too many tables': 'Demasiadas mesas',
+  // floor plan imports (core/floor-import.js, server/venue-import-routes.js)
+  'Pick what to import': 'Elige qué importar',
+  'There’s nothing to import': 'No hay nada que importar',
+  'Toast isn’t connected yet. Connect it in Settings → Integrations, or import a picture or CSV instead.': 'Toast todavía no está conectado. Conéctalo en Configuración → Integraciones, o importa una foto o un CSV.',
+  'Toast didn’t answer. Try again in a minute.': 'Toast no respondió. Vuelve a intentarlo en un minuto.',
+  'Pick a picture (PNG, JPG, WebP) or a PDF of the floor plan': 'Elige una foto (PNG, JPG, WebP) o un PDF del plano',
+  'That picture is too large. Try a smaller one or a screenshot.': 'Esa foto es demasiado grande. Prueba con una más chica o una captura de pantalla.',
+  'The AI couldn’t read a floor plan in that picture. Try a clearer one, or a CSV.': 'La IA no pudo leer un plano en esa foto. Prueba con una más clara, o con un CSV.',
+  'The AI couldn’t read that picture. Try again, or import a CSV.': 'La IA no pudo leer esa foto. Vuelve a intentarlo, o importa un CSV.',
   'Pick a manager or supervisor': 'Elige a un gerente o supervisor',
   // ----- settings and branding -----
   'Upload a PNG, JPG or WebP image': 'Sube una imagen PNG, JPG o WebP',
@@ -449,6 +458,7 @@ export const ERROR_PATTERNS_ES = [
   [/^There's already a room called (.+) here$/, (m) => `Ya hay un salón llamado ${m[1]} aquí`],
   [/^There’s already a room called (.+)$/, (m) => `Ya hay un salón llamado ${m[1]}`],
   [/^Pick at most (\d+) days$/, (m) => `Elige ${m[1]} días como máximo`],
+  [/^Import at most (\d+) rooms at a time$/, (m) => `Importa como máximo ${m[1]} salones a la vez`],
   [/^That table isn’t on the (.+) floor plan$/, (m) => `Esa mesa no está en el plano de ${m[1]}`],
   [/^(.+) is already matched to another Toast employee$/, (m) => `${m[1]} ya está vinculado a otro empleado de Toast`],
   [/^Toast isn’t set up yet\. Add (.+) in Vercel, then redeploy\.$/, (m) => `Toast todavía no está configurado. Agrega ${m[1]} en Vercel y vuelve a publicar.`],

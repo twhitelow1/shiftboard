@@ -98,6 +98,7 @@ export function featuresForMethod(method) {
 export const ROLE_ROUTES = [
   ['/api/training', 'training'],
   ['/api/eighty-six', 'eightySix'],
+  ['/api/venue', 'venue'], // floor plan imports (managers)
   ['/api/users', 'team'], // send a sign-in link, invite everyone, reset someone's two-step sign-in
 ];
 
