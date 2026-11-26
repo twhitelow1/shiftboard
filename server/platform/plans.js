@@ -24,6 +24,9 @@ export const FEATURES = [
   { key: 'venue', label: 'Venue & floor plans', hint: 'Rooms, floor plans and server sections' },
   { key: 'multiLocation', label: 'Multiple locations', hint: 'Placeholder for a later phase; nothing uses it yet' },
   { key: 'reports', label: 'Reports', hint: 'Reports for managers, starting with the 86 List report (each report also needs its own feature)' },
+  // Claude connector (server/mcp/): Pro and Beta. Not Starter: most of what it does for a restaurant is managers'
+  // work (drafts, approvals, forecast, events) that's Pro already; DubLow can switch it on for one restaurant.
+  { key: 'mcp', label: 'Claude connector', hint: 'People use ShiftBoard from Claude (claude.ai, Desktop, phone, Claude Code) as themselves' },
 ];
 export const FEATURE_KEYS = FEATURES.map((f) => f.key);
 
@@ -39,7 +42,7 @@ export const PLANS = {
   },
   pro: {
     label: 'Pro', priceCents: 9900, interval: 'month', selfServe: true, stripePriceEnv: 'STRIPE_PRICE_PRO',
-    features: ['training', 'tips', 'eightySix', 'events', 'forecast', 'toast', 'adp', 'tripleseat', 'sms', 'venue', 'reports', 'announcements'],
+    features: ['training', 'tips', 'eightySix', 'events', 'forecast', 'toast', 'adp', 'tripleseat', 'sms', 'venue', 'reports', 'announcements', 'mcp'],
   },
   beta: {
     label: 'Beta (everything, free)', priceCents: 0, interval: 'month', selfServe: false, stripePriceEnv: null,

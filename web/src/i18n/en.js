@@ -6,6 +6,7 @@ import legal from './en-legal.js'; // legal name vs. the name people go by
 import reports from './en-reports.js'; // Reports (managers)
 import trades from './en-trades.js'; // Trades & pickups by season, Settings → Seasons, Announcements
 import report from './en-report.js'; // Report a problem, and the screen when something crashes
+import claude from './en-claude.js'; // the Claude connector: connecting, Connected apps, Settings → Claude connector
 const catalog = {
   lang: {
     change: 'Change language',
@@ -2276,6 +2277,7 @@ const catalog = {
   ...trades,
   ...reports,
   ...report,
+  ...claude,
 };
 
 export default catalog;

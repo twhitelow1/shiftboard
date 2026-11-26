@@ -5,6 +5,7 @@ import legal from './es-legal.js'; // nombre legal y nombre con el que se conoce
 import reports from './es-reports.js'; // Informes (gerentes)
 import trades from './es-trades.js'; // Trades & pickups by season, Settings → Seasons, Announcements
 import report from './es-report.js'; // Reportar un problema, y la pantalla cuando algo falla
+import claude from './es-claude.js'; // el conector de Claude
 const catalog = {
   lang: {
     change: 'Cambiar idioma',
@@ -2275,6 +2276,7 @@ const catalog = {
   ...trades,
   ...reports,
   ...report,
+  ...claude,
 };
 
 export default catalog;

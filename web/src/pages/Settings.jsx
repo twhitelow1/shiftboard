@@ -6,6 +6,7 @@ import { applyBranding, logoUrl, imageToPng, THEMES } from '../theme.js';
 import TipPoolSettings from './TipPoolSettings.jsx';
 import { TextSettingsCard } from './PhoneCards.jsx';
 import { IntegrationsCard } from './IntegrationsSettings.jsx'; // ADP, Toast, Tripleseat, the text sender, the email From
+import ClaudeConnectorCard from './ClaudeConnector.jsx'; // the Claude connector (MCP)
 import { TrainingSettingsCard } from './TrainingShared.jsx';
 import EightySixSettings from './EightySixSettings.jsx';
 import RoomsPositions from './RoomsPositions.jsx';
@@ -117,6 +118,7 @@ export default function Settings({ parts = [] }) {
       <AnnouncementSettingsCard />
       <SeasonsCard />
       <IntegrationsCard />
+      <ClaudeConnectorCard />
 
       <div className="card card-pad col" style={{ gap: 12 }}>
         <h2>{t('settings.forecasting')}</h2>

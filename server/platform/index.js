@@ -269,7 +269,8 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
       // The Host header itself (Vercel passes the requested domain), not X-Forwarded-Host, which a client could set.
       where = resolveHost(req.headers.host, hostCfg, await registry.snapshot());
     } catch (e) { return next(e); }
-    const api = req.path.startsWith('/api/');
+    // The Claude connector's endpoints (server/mcp/) answer in JSON too.
+    const api = req.path.startsWith('/api/') || /^\/(mcp$|oauth\/(register|token|revoke)$|\.well-known\/oauth-)/.test(req.path);
 
     if (where.kind === 'console') {
       // admin.<PLATFORM_DOMAIN>: the console. The web app at / reads /api/config and goes to /platform.

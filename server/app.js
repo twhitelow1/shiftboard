@@ -33,6 +33,7 @@ import { publicRoutes } from './public-routes.js';
 import { ErrorLog } from './errors.js';
 import { capture as captureErrors, clientRoutes as errorRoutes } from './errors-routes.js';
 import { createTexter } from './sms.js';
+import { mountMcp } from './mcp/index.js';
 import { migrateConsents, emailConsentOf, legalLinks, CONSENT_MIGRATION, CONSENT_TEXT, CONSENT_VERSION } from '../core/consent.js';
 import { roleAllows, cleanDraft, ROLE_ROUTES, ROLE_OFF } from '../core/role-features.js';
 import { createViewAs } from './view-as.js';
@@ -589,6 +590,13 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   eightySixRoutes(app, { db, signedIn: (req) => whoIs(req) });
   // The apps' own crashes and "Report a problem", signed in or out (server/errors-routes.js).
   errorRoutes(app, { recorder: errors, userOf: async (req) => { await db.sync(); return whoIs(req); }, now });
+  // The Claude connector (server/mcp/): /mcp, OAuth (/oauth/*, /.well-known/*), the consent screen and Connected apps.
+  // Its tools call the same RPCs as the app (server/tools/), and what they change notifies people the same way.
+  mountMcp(app, {
+    db, env, tenant, now, has, paused, secret: () => secret, session, sessionToken, ready,
+    serviceOpts: (req) => ({ hashPassword, channels: channels.info, request: { ip: req.ip, userAgent: req.get('user-agent') || null }, legal, announce: announcer.info, planFeatures: planFeatures() }),
+    onCommit: (changes, req) => { channels.afterCommit(changes, req); emailNotifications(changes, req); pushToPhones(changes); },
+  });
 
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
