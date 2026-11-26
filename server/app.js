@@ -31,6 +31,8 @@ import { mountOpenTable } from './opentable-routes.js';
 import { mountGoogle } from './google-routes.js';
 import { mountYelp } from './yelp-routes.js';
 import { mountReviewReplies } from './review-replies.js';
+import { mountVenueImport } from './venue-import-routes.js';
+import { migrateFloorPlans, FLOOR_PLAN_MIGRATION } from '../core/floor-plan.js';
 import { mountIntegrations } from './integrations-routes.js';
 import { createAuth } from './auth.js';
 import { mountOnboarding } from './onboarding.js';
@@ -104,6 +106,10 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
       if (!db.store.get('migrations', CONSENT_MIGRATION)) {
         const st = createService(db.store).settings();
         await db.run((s) => migrateConsents(s, { at: new Date(now()).toISOString(), langOf: (u) => langOf(u, st) }), { write: true });
+      }
+      // Once per restaurant: floor plans to version 2 (core/floor-plan.js; version 1 plans stay valid either way).
+      if (!db.store.get('migrations', FLOOR_PLAN_MIGRATION)) {
+        await db.run((s) => migrateFloorPlans(s, { at: new Date(now()).toISOString(), uid }), { write: true });
       }
     })().catch((e) => {
       booting = null; // try again on the next request
@@ -647,6 +653,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     ...(reviewClients.google ? { makeClient: reviewClients.google } : {}) });
   mountYelp(app, { db, env, userOf: (req) => whoIs(req, req.cookies[COOKIE]), onCommit: reviewCommit, managed: !!tenant && !tenant.isDefault, ...(reviewClients.yelp ? { makeClient: reviewClients.yelp } : {}) });
   mountReviewReplies(app, { db, env, tenant, userOf: (req) => whoIs(req, req.cookies[COOKIE]), now, onCommit: reviewCommit, google, ...(reviewClients.ai ? { aiImporter: reviewClients.ai } : {}) });
+  // Venue → Import: Toast's tables and the AI reading a picture of a floor plan (server/venue-import-routes.js).
+  mountVenueImport(app, { db, env, tenant, has, userOf: (req) => whoIs(req, req.cookies[COOKIE]), now, aiClient });
   // Settings → Integrations: the restaurant's admins set up ADP, Toast, Tripleseat, the text sender and the
   // email From themselves (server/integrations-routes.js); read-only from env on a single-restaurant install.
   mountIntegrations(app, { db, env, tenant, userOf: (req) => whoIs(req) });

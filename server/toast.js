@@ -163,6 +163,31 @@ export function createToastClient({ env = process.env, fetch, now = () => Date.n
     /** GET /labor/v1/timeEntries for one business date (labor:read). */
     timeEntries: async (date) => list((await get('/labor/v1/timeEntries', { businessDate: toToastDate(date) })).data),
     /**
+     * The floor plan setup (config:read): GET /config/v2/tables, /config/v2/serviceAreas and /config/v2/revenueCenters,
+     * every page (Toast-Next-Page-Token). Toast has no positions, shapes or seat counts, and no API to write any of it
+     * (docs/integrations/TOAST-FLOOR-PLAN.md). Venue → Import → From Toast uses this.
+     */
+    async floorConfig() {
+      const all = async (path) => {
+        const out = [];
+        let pageToken;
+        for (let page = 0; page < MAX_PAGES; page++) {
+          const { data, headers } = await get(path, pageToken ? { pageToken } : undefined);
+          out.push(...list(data));
+          pageToken = headers.get('toast-next-page-token');
+          if (!pageToken) return out;
+        }
+        return out;
+      };
+      const [tables, serviceAreas, revenueCenters] = [await all('/config/v2/tables'), await all('/config/v2/serviceAreas'), await all('/config/v2/revenueCenters').catch(() => [])];
+      const ref = (r) => (r?.guid ? { guid: String(r.guid) } : null);
+      return {
+        tables: tables.filter((t) => t?.guid && t?.name).map((t) => ({ guid: String(t.guid), name: String(t.name).slice(0, 40), serviceArea: ref(t.serviceArea), revenueCenter: ref(t.revenueCenter) })),
+        serviceAreas: serviceAreas.filter((a) => a?.guid && a?.name).map((a) => ({ guid: String(a.guid), name: String(a.name).slice(0, 60), revenueCenter: ref(a.revenueCenter), serviceAreaType: a.serviceAreaType || null })),
+        revenueCenters: revenueCenters.filter((r) => r?.guid).map((r) => ({ guid: String(r.guid), name: String(r.name || '').slice(0, 60) })),
+      };
+    },
+    /**
      * GET /orders/v2/ordersBulk for one business date, every page (orders:read). Follows the
      * Link rel="next" header; without one, keeps going while pages come back full.
      */

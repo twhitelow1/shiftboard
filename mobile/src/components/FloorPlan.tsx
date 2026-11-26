@@ -1,5 +1,5 @@
 // A room's floor plan, read only, drawn with react-native-svg from the same plan data the website uses
-// (venue.get rooms[].plan: { width, height, items: [{ id, type, x, y, w, h, r, label, seats }] }). Server sections
+// (venue.get rooms[].plan: { width, height, items: [{ id, type, x, y, w, h, r, label, seats, zone? }] }; core/floor-plan.js). Server sections
 // are drawn on it as colored halos with first names (marks): yours strong, coworkers' faded. The drawing follows
 // web/src/pages/FloorPlan.jsx (Shape, Halo, NameTag); keep the two in step. "My tables" frames your tables, like
 // the website's focus view; "Whole room" shows everything.
@@ -10,8 +10,10 @@ import Svg, { Circle, Ellipse, G, Line, Path, Rect, Text as SvgText } from 'reac
 import type { PlanItem } from '@/lib/types';
 import { Segmented, useColors } from './ui';
 
-export const SEATED = new Set(['table-round', 'table-square', 'table-rect', 'booth', 'bar']);
-const DARK = new Set(['bar', 'stage', 'dj']);
+// The same sets as core/floor-plan.js (the website's editor adds high-tops, dividers, kitchen doors and restrooms).
+export const SEATED = new Set(['table-round', 'table-square', 'table-rect', 'booth', 'bar', 'table-hightop']);
+const DARK = new Set(['bar', 'stage', 'dj', 'kitchen']);
+const ROUND = new Set(['table-round', 'table-hightop']);
 const PAD = 24;
 // SVG text falls back to a serif font in browsers (the web preview): use the system font there.
 const FONT = Platform.OS === 'web' ? 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' : undefined;
@@ -22,8 +24,8 @@ type Box = { x: number; y: number; w: number; h: number };
 
 function fpColors(dark: boolean) {
   return dark
-    ? { floor: '#141b2d', grid: '#1d263c', edge: '#2f3f63', table: '#1f2a44', line: '#8fa0c4', seat: '#3a4a6e', bar: '#6b4423', barTop: '#8c5a2e', stage: '#2a3147', stage2: '#3a4360', dance1: '#2a2650', dance2: '#36306a', wall: '#aab5cb', plant: '#4caf63', text: '#e6ebf5' }
-    : { floor: '#fbfaf7', grid: '#ece9e2', edge: '#d9d4c8', table: '#ffffff', line: '#8a7f6c', seat: '#c9bfae', bar: '#7a4f2a', barTop: '#a8743f', stage: '#3b4256', stage2: '#4b5470', dance1: '#e9e4f7', dance2: '#d7cff0', wall: '#374151', plant: '#3f8f4f', text: '#2b2b2b' };
+    ? { floor: '#141b2d', grid: '#1d263c', edge: '#2f3f63', table: '#1f2a44', line: '#8fa0c4', seat: '#3a4a6e', bar: '#6b4423', barTop: '#8c5a2e', stage: '#2a3147', stage2: '#3a4360', dance1: '#2a2650', dance2: '#36306a', wall: '#aab5cb', plant: '#4caf63', text: '#e6ebf5', fixture: '#26324f', kitchen: '#3a4560' }
+    : { floor: '#fbfaf7', grid: '#ece9e2', edge: '#d9d4c8', table: '#ffffff', line: '#8a7f6c', seat: '#c9bfae', bar: '#7a4f2a', barTop: '#a8743f', stage: '#3b4256', stage2: '#4b5470', dance1: '#e9e4f7', dance2: '#d7cff0', wall: '#374151', plant: '#3f8f4f', text: '#2b2b2b', fixture: '#eef0f4', kitchen: '#4b5563' };
 }
 type FP = ReturnType<typeof fpColors>;
 
@@ -31,9 +33,9 @@ const spread = (n: number, len: number) => Array.from({ length: n }, (_, i) => -
 function seatPositions(it: PlanItem): [number, number][] {
   const n = Math.min(40, Number(it.seats) || 0);
   const { w, h } = it;
-  const off = 13;
+  const off = it.type === 'table-hightop' ? 11 : 13;
   if (!n || it.type === 'booth') return [];
-  if (it.type === 'table-round') {
+  if (ROUND.has(it.type)) {
     return Array.from({ length: n }, (_, k) => {
       const a = (2 * Math.PI * k) / n - Math.PI / 2;
       return [Math.cos(a) * (w / 2 + off), Math.sin(a) * (h / 2 + off)];
@@ -59,11 +61,13 @@ function seatPositions(it: PlanItem): [number, number][] {
 function Shape({ it, fp }: { it: PlanItem; fp: FP }) {
   const { w, h } = it;
   const x0 = -w / 2, y0 = -h / 2;
-  const seats = seatPositions(it).map(([x, y], i) => <Circle key={i} cx={x} cy={y} r={8} fill={fp.seat} stroke={fp.line} strokeWidth={1} />);
+  const seats = seatPositions(it).map(([x, y], i) => <Circle key={i} cx={x} cy={y} r={it.type === 'table-hightop' ? 6.5 : 8} fill={fp.seat} stroke={fp.line} strokeWidth={1} />);
   const table = { fill: fp.table, stroke: fp.line, strokeWidth: 2 };
   switch (it.type) {
     case 'table-round':
       return <G>{seats}<Ellipse rx={w / 2} ry={h / 2} {...table} /></G>;
+    case 'table-hightop': // a smaller top on a pedestal (the inner ring), with stools
+      return <G>{seats}<Ellipse rx={w / 2} ry={h / 2} {...table} /><Ellipse rx={w / 4} ry={h / 4} fill="none" stroke={fp.line} strokeWidth={1.5} strokeDasharray="3 3" /></G>;
     case 'table-square':
     case 'table-rect':
       return <G>{seats}<Rect x={x0} y={y0} width={w} height={h} rx={6} {...table} /></G>;
@@ -93,8 +97,14 @@ function Shape({ it, fp }: { it: PlanItem; fp: FP }) {
     }
     case 'host':
       return <Rect x={x0} y={y0} width={w} height={h} rx={4} fill={fp.table} stroke={fp.wall} strokeWidth={2} />;
+    case 'kitchen':
+      return <G><Rect x={x0} y={y0} width={w} height={h} rx={3} fill={fp.kitchen} /><Line x1={x0 + 8} y1={y0 + h - 5} x2={x0 + w - 8} y2={y0 + h - 5} stroke={fp.fixture} strokeWidth={3} strokeLinecap="round" /></G>;
+    case 'restroom':
+      return <Rect x={x0} y={y0} width={w} height={h} rx={4} fill={fp.fixture} stroke={fp.wall} strokeWidth={2} />;
     case 'wall':
       return <Rect x={x0} y={y0} width={w} height={h} fill={fp.wall} />;
+    case 'divider':
+      return <Rect x={x0} y={y0} width={w} height={h} rx={Math.min(w, h) / 2} fill={fp.edge} stroke={fp.wall} strokeWidth={1} strokeDasharray="6 4" />;
     case 'door':
       return <G><Path d={`M ${x0} ${y0} A ${w} ${h} 0 0 1 ${x0 + w} ${y0 + h}`} fill="none" stroke={fp.wall} strokeWidth={2} strokeDasharray="5 4" /><Line x1={x0} y1={y0 + h} x2={x0} y2={y0} stroke={fp.wall} strokeWidth={3} /></G>;
     case 'plant': {
@@ -110,7 +120,7 @@ function Halo({ it, mark }: { it: PlanItem; mark: Mark }) {
   const grow = it.seats && it.type !== 'booth' ? 22 : 9;
   const fillOpacity = mark.faded ? 0.1 : mark.strong ? 0.45 : 0.3;
   const stroke = { stroke: mark.color, strokeWidth: mark.faded ? 2 : mark.strong ? 5 : 3, strokeOpacity: mark.faded ? 0.35 : 1, fill: mark.color, fillOpacity };
-  if (it.type === 'table-round') return <Ellipse rx={it.w / 2 + grow} ry={it.h / 2 + grow} {...stroke} />;
+  if (ROUND.has(it.type)) return <Ellipse rx={it.w / 2 + grow} ry={it.h / 2 + grow} {...stroke} />;
   return <Rect x={-it.w / 2 - grow} y={-it.h / 2 - grow} width={it.w + 2 * grow} height={it.h + 2 * grow} rx={14} {...stroke} />;
 }
 
@@ -171,7 +181,7 @@ export function FloorPlan({ plan, marks, focus = [], title, labels }: {
                   {mark ? <Halo it={it} mark={mark} /> : null}
                   <Shape it={it} fp={fp} />
                 </G>
-                {it.label && it.type !== 'wall' ? (
+                {it.label && it.type !== 'wall' && it.type !== 'divider' ? (
                   <SvgText x={cx} y={(it.type === 'door' ? cy + it.h / 2 + 14 : withTag ? cy - 11 : cy) + (big ? 7 : 5)} textAnchor="middle"
                     fill={DARK.has(it.type) ? '#ffffff' : fp.text} fontSize={big ? 20 : 15} fontWeight={big ? '700' : '600'} fontFamily={FONT}>{it.label}</SvgText>
                 ) : null}

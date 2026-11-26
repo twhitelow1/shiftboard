@@ -1,44 +1,53 @@
 // Floor plans: the SVG drawing, zoom & pan, a read-only viewer (sections, BEOs, shift details) and the editor.
-// Plan units are abstract (default room 1000 × 700); items are { id, type, x, y, w, h, r, label, seats }.
+// Plan units are abstract (default room 1000 × 700); the data model, its checks and the palette are in
+// core/floor-plan.js: items are { id, type, x, y, w, h, r, label, seats, zone?, toastGuid? } and a plan can have
+// server sections ({ zones: [{ id, name, color }] }) that color its tables.
 //
 // Gestures, the same everywhere: pinch to zoom and drag with two fingers to pan on phones; on a computer,
 // Ctrl/⌘ + wheel (or a trackpad pinch) zooms and dragging pans once zoomed in; the +/− buttons work for both.
 // In the editor, tap selects, long-press (or Select mode, or Shift-click) adds to the selection, dragging
 // moves everything selected, and dragging on empty floor with a mouse (or in Select mode) box-selects.
+// Keyboard (computers): see SHORTCUTS below; "?" shows them.
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { useApp, Icon } from '../ui.jsx';
+import { useApp, Icon, Modal } from '../ui.jsx';
 import '../venue.css';
 import { useT, t as tr } from '../i18n/index.js';
+import {
+  SEATED as CORE_SEATED, TYPE_DEFAULTS, PRESETS, PRESET_GROUPS, TABLE_TYPES, ZONE_COLORS, planWarnings, renumber, nextLabel, planCounts,
+} from '../../../core/floor-plan.js';
 
-// label and name are catalog keys (web/src/i18n): the item's kind, and the label a new one gets.
-export const ITEM_DEFS = {
-  'table-round': { label: 'floorPlan.roundTable', w: 80, h: 80, seats: 4, prefix: 'T' },
-  'table-square': { label: 'floorPlan.squareTable', w: 70, h: 70, seats: 4, prefix: 'T' },
-  'table-rect': { label: 'floorPlan.longTable', w: 140, h: 60, seats: 6, prefix: 'T' },
-  booth: { label: 'floorPlan.booth', w: 140, h: 70, seats: 4, prefix: 'B' },
-  bar: { label: 'floorPlan.bar', w: 300, h: 50, seats: 8, name: 'floorPlan.nameBar' },
-  stage: { label: 'floorPlan.stage', w: 260, h: 120, name: 'floorPlan.nameStage' },
-  dancefloor: { label: 'floorPlan.danceFloor', w: 220, h: 220, name: 'floorPlan.nameDanceFloor' },
-  dj: { label: 'floorPlan.djBooth', w: 90, h: 60, name: 'floorPlan.nameDj' },
-  host: { label: 'floorPlan.hostStand', w: 80, h: 40, name: 'floorPlan.nameHost' },
-  wall: { label: 'floorPlan.wall', w: 200, h: 10 },
-  door: { label: 'floorPlan.door', w: 60, h: 60 },
-  plant: { label: 'floorPlan.plant', w: 40, h: 40 },
-  label: { label: 'floorPlan.textLabel', w: 160, h: 40, name: 'floorPlan.nameLabel' },
+// label: the catalog key (web/src/i18n) for the item's kind; name: the label a new one gets.
+const KIND = {
+  'table-round': { label: 'floorPlan.roundTable' },
+  'table-square': { label: 'floorPlan.squareTable' },
+  'table-rect': { label: 'floorPlan.longTable' },
+  'table-hightop': { label: 'floor.type.hightop' },
+  booth: { label: 'floorPlan.booth' },
+  bar: { label: 'floorPlan.bar', name: 'floorPlan.nameBar' },
+  stage: { label: 'floorPlan.stage', name: 'floorPlan.nameStage' },
+  dancefloor: { label: 'floorPlan.danceFloor', name: 'floorPlan.nameDanceFloor' },
+  dj: { label: 'floorPlan.djBooth', name: 'floorPlan.nameDj' },
+  host: { label: 'floorPlan.hostStand', name: 'floorPlan.nameHost' },
+  kitchen: { label: 'floor.type.kitchen', name: 'floor.default.kitchen' },
+  restroom: { label: 'floor.type.restroom', name: 'floor.default.restroom' },
+  wall: { label: 'floorPlan.wall' },
+  divider: { label: 'floor.type.divider' },
+  door: { label: 'floorPlan.door' },
+  plant: { label: 'floorPlan.plant' },
+  label: { label: 'floorPlan.textLabel', name: 'floorPlan.nameLabel' },
 };
-/** Items people sit at: tables, booths and bars. These are what server sections are made of. */
-export const SEATED = new Set(['table-round', 'table-square', 'table-rect', 'booth', 'bar']);
-const DARK = new Set(['bar', 'stage', 'dj']);
-const SNAP = 10;
-const snap = (v) => Math.round(v / SNAP) * SNAP;
+/** Each type's kind (a catalog key), default name, size, seats and number prefix. */
+export const ITEM_DEFS = Object.fromEntries(Object.entries(KIND).map(([type, k]) => [type, { ...TYPE_DEFAULTS[type], ...k }]));
+/** Items people sit at: tables, booths, high-tops and bars. These are what server sections are made of. */
+export const SEATED = CORE_SEATED;
+const DARK = new Set(['bar', 'stage', 'dj', 'kitchen']);
+const GRID = 10;
 const newId = () => `itm_${Math.random().toString(36).slice(2, 10)}`;
+const presetKey = (p) => `floor.preset.${p.id.replace('-', '')}`;
 
 export function planStats(plan) {
-  const items = plan?.items || [];
-  const tables = items.filter((i) => i.type.startsWith('table-') || i.type === 'booth').length;
-  const seats = items.reduce((t, i) => t + (Number(i.seats) || 0), 0);
-  const barSeats = items.filter((i) => i.type === 'bar').reduce((t, i) => t + (Number(i.seats) || 0), 0);
-  return { tables, seats, barSeats, items: items.length };
+  const c = planCounts(plan);
+  return { ...c, items: (plan?.items || []).length };
 }
 export const statsText = (s) => `${tr('floorPlan.tablesCount', { count: s.tables })} · ${tr('floorPlan.seatsCount', { count: s.seats })}${s.barSeats ? tr('floorPlan.atTheBar', { count: s.barSeats }) : ''}`;
 
@@ -50,6 +59,18 @@ const FP_ICONS = {
   zoomIn: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35M11 8v6M8 11h6',
   zoomOut: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35M8 11h6',
   fit: 'M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3',
+  magnet: 'M6 3v8a6 6 0 0 0 12 0V3M6 3h4v8a2 2 0 0 0 4 0V3h4M6 7h4M14 7h4',
+  alignLeft: 'M4 3v18M8 7h10v4H8zM8 14h6v4H8z',
+  alignCenter: 'M12 3v18M6 7h12v4H6zM9 14h6v4H9z',
+  alignRight: 'M20 3v18M6 7h10v4H6zM10 14h6v4h-6z',
+  alignTop: 'M3 4h18M7 8h4v10H7zM14 8h4v6h-4z',
+  alignMiddle: 'M3 12h18M7 6h4v12H7zM14 9h4v6h-4z',
+  alignBottom: 'M3 20h18M7 6h4v10H7zM14 10h4v6h-4z',
+  distH: 'M4 3v18M20 3v18M9 8h6v8H9z',
+  distV: 'M3 4h18M3 20h18M8 9h8v6H8z',
+  hash: 'M4 9h16M4 15h16M10 3 8 21M16 3l-2 18',
+  keyboard: 'M2 6h20v12H2zM6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10',
+  alert: 'M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.7 3.86a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01',
 };
 export function FpIcon({ name, size = 16 }) {
   if (!FP_ICONS[name]) return <Icon name={name} size={size} />;
@@ -62,13 +83,14 @@ export function FpIcon({ name, size = 16 }) {
 
 // ---------- drawing ----------
 const spread = (n, len) => Array.from({ length: n }, (_, i) => -len / 2 + (len * (i + 0.5)) / n);
+const ROUND = new Set(['table-round', 'table-hightop']);
 
 function seatPositions(it) {
   const n = Math.min(40, Number(it.seats) || 0);
   const { w, h } = it;
-  const off = 13;
+  const off = it.type === 'table-hightop' ? 11 : 13;
   if (!n || it.type === 'booth') return [];
-  if (it.type === 'table-round') {
+  if (ROUND.has(it.type)) {
     return Array.from({ length: n }, (_, k) => {
       const a = (2 * Math.PI * k) / n - Math.PI / 2;
       return [Math.cos(a) * (w / 2 + off), Math.sin(a) * (h / 2 + off)];
@@ -98,10 +120,13 @@ function seatPositions(it) {
 function Shape({ it, ids }) {
   const { w, h } = it;
   const x0 = -w / 2, y0 = -h / 2;
-  const seats = seatPositions(it).map(([x, y], i) => <circle key={i} className="fp-seat" cx={x} cy={y} r={8} />);
+  const seatR = it.type === 'table-hightop' ? 6.5 : 8;
+  const seats = seatPositions(it).map(([x, y], i) => <circle key={i} className="fp-seat" cx={x} cy={y} r={seatR} />);
   switch (it.type) {
     case 'table-round':
       return <>{seats}<ellipse className="fp-table" rx={w / 2} ry={h / 2} /></>;
+    case 'table-hightop': // a high-top: a smaller top on a pedestal (the inner ring), with stools
+      return <>{seats}<ellipse className="fp-table" rx={w / 2} ry={h / 2} /><ellipse className="fp-hightop-ring" rx={w / 4} ry={h / 4} /></>;
     case 'table-square':
     case 'table-rect':
       return <>{seats}<rect className="fp-table" x={x0} y={y0} width={w} height={h} rx={6} /></>;
@@ -130,8 +155,15 @@ function Shape({ it, ids }) {
     }
     case 'host':
       return <rect className="fp-host" x={x0} y={y0} width={w} height={h} rx={4} />;
+    case 'kitchen': // the kitchen door: a dark block with a pass line along its floor side
+      return <><rect className="fp-kitchen" x={x0} y={y0} width={w} height={h} rx={3} />
+        <line className="fp-kitchen-pass" x1={x0 + 8} y1={y0 + h - 5} x2={x0 + w - 8} y2={y0 + h - 5} /></>;
+    case 'restroom':
+      return <rect className="fp-fixture" x={x0} y={y0} width={w} height={h} rx={4} />;
     case 'wall':
       return <rect className="fp-wall" x={x0} y={y0} width={w} height={h} />;
+    case 'divider':
+      return <rect className="fp-divider" x={x0} y={y0} width={w} height={h} rx={Math.min(w, h) / 2} />;
     case 'door':
       return <>
         <path className="fp-door" d={`M ${x0} ${y0} A ${w} ${h} 0 0 1 ${x0 + w} ${y0 + h}`} />
@@ -146,11 +178,13 @@ function Shape({ it, ids }) {
   }
 }
 
-/** A section's color behind a table (and its seats). */
-function Halo({ it, mark }) {
+/** A color behind a table (and its seats): a server's section for the day, or the table's usual section. */
+function Halo({ it, mark, zone }) {
   const grow = it.seats && it.type !== 'booth' ? 22 : 9;
-  const props = { className: `fp-halo ${mark.faded ? 'faded' : ''} ${mark.strong ? 'strong' : ''}`, style: { '--mark': mark.color } };
-  if (it.type === 'table-round') return <ellipse {...props} rx={it.w / 2 + grow} ry={it.h / 2 + grow} />;
+  const props = zone
+    ? { className: 'fp-zone', style: { '--mark': zone.color } }
+    : { className: `fp-halo ${mark.faded ? 'faded' : ''} ${mark.strong ? 'strong' : ''}`, style: { '--mark': mark.color } };
+  if (ROUND.has(it.type)) return <ellipse {...props} rx={it.w / 2 + grow} ry={it.h / 2 + grow} />;
   return <rect {...props} x={-it.w / 2 - grow} y={-it.h / 2 - grow} width={it.w + 2 * grow} height={it.h + 2 * grow} rx={14} />;
 }
 
@@ -196,35 +230,42 @@ export const fitBox = (plan) => ({ x: -PAD, y: -PAD, w: (plan?.width || 1000) + 
  * - view: the visible part of the plan ({ x, y, w, h } in plan units); the whole plan when left out.
  * - selected: Set of item ids drawn as selected (editor); handleR: resize handle radius for a single selection.
  * - marks: Map of item id → { color, name, faded, strong } for server sections.
- * - picked: Set of item ids picked for assigning.
+ * - picked: Set of item ids picked for assigning (or, in an import preview, the new ones).
+ * - showZones: color tables by the plan's own sections (the editor, exports, previews).
+ * - warnIds: Set of item ids drawn with a warning outline (overlaps).
+ * - backdrop: { href } a picture drawn under the plan (the picture an import was read from).
  */
-export function FloorPlanView({ plan, title, view, svgRef, handlers, editing, selected, handleR, marks, picked, marquee, touchAction, className = '' }) {
+export function FloorPlanView({ plan, title, view, svgRef, handlers, editing, selected, handleR, marks, picked, marquee, touchAction, showZones, warnIds, backdrop, className = '' }) {
   const t = useT();
   const ids = usePatternIds();
   const W = plan?.width || 1000, H = plan?.height || 700;
   const items = plan?.items || [];
   const vb = view || fitBox(plan);
+  const zones = useMemo(() => new Map((showZones ? plan?.zones || [] : []).map((z) => [z.id, z])), [showZones, plan?.zones]);
   return (
     <svg ref={svgRef} className={`fp-svg ${editing ? 'editing' : ''} ${className}`} viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
       style={touchAction ? { touchAction } : undefined} role="img" aria-label={title || t('floorPlan.floorPlan')}
       onContextMenu={handlers ? (e) => e.preventDefault() : undefined} {...handlers}>
       <Defs ids={ids} />
       <rect x={-PAD} y={-PAD} width={W + PAD * 2} height={H + PAD * 2} fill="var(--fp-floor)" />
-      <rect x={0} y={0} width={W} height={H} fill={`url(#${ids.grid})`} stroke="var(--fp-edge)" strokeWidth="2" />
+      {backdrop?.href && <image href={backdrop.href} x={0} y={0} width={W} height={H} preserveAspectRatio="none" opacity={backdrop.opacity ?? 0.55} />}
+      <rect x={0} y={0} width={W} height={H} fill={`url(#${ids.grid})`} stroke="var(--fp-edge)" strokeWidth="2" opacity={backdrop?.href ? 0.5 : 1} />
       {items.map((it) => {
         const cx = it.x + it.w / 2, cy = it.y + it.h / 2;
         const mark = marks?.get(it.id);
+        const zone = !mark && it.zone ? zones.get(it.zone) : null;
         const sel = !!selected?.has(it.id);
         const pick = !!picked?.has(it.id);
         const seated = SEATED.has(it.type);
         const withTag = mark?.name && it.h >= 40;
         return (
           <g key={it.id} className={`fp-item ${seated ? 'seated' : ''} ${pick ? 'picked' : ''}`} data-id={it.id}>
-            <title>{[ITEM_DEFS[it.type] && tr(ITEM_DEFS[it.type].label), it.label, it.seats ? tr('floorPlan.seatsCount', { count: it.seats }) : '', mark?.title || mark?.name].filter(Boolean).join(' · ')}</title>
+            <title>{[ITEM_DEFS[it.type] && tr(ITEM_DEFS[it.type].label), it.label, it.seats ? tr('floorPlan.seatsCount', { count: it.seats }) : '', zone?.name, mark?.title || mark?.name].filter(Boolean).join(' · ')}</title>
             <g transform={`translate(${cx} ${cy}) rotate(${it.r || 0})`}>
-              {mark && <Halo it={it} mark={mark} />}
+              {(mark || zone) && <Halo it={it} mark={mark} zone={zone} />}
               {it.type === 'label' && <rect x={-it.w / 2} y={-it.h / 2} width={it.w} height={it.h} fill="transparent" stroke={editing ? 'var(--fp-edge)' : 'none'} strokeDasharray="4 4" />}
               <Shape it={it} ids={ids} />
+              {warnIds?.has(it.id) && <rect className="fp-warn" x={-it.w / 2 - 4} y={-it.h / 2 - 4} width={it.w + 8} height={it.h + 8} rx={6} />}
               {pick && <rect className="fp-picked" x={-it.w / 2 - 10} y={-it.h / 2 - 10} width={it.w + 20} height={it.h + 20} rx={10} />}
               {sel && <rect className="fp-select" x={-it.w / 2 - 6} y={-it.h / 2 - 6} width={it.w + 12} height={it.h + 12} rx={6} />}
               {sel && handleR > 0 && (
@@ -234,8 +275,8 @@ export function FloorPlanView({ plan, title, view, svgRef, handlers, editing, se
                 </g>
               )}
             </g>
-            {it.label && it.type !== 'wall' && (
-              <text className={`fp-text ${DARK.has(it.type) ? 'inv' : ''} ${it.type === 'label' || it.type === 'stage' || it.type === 'dancefloor' ? 'big' : ''}`}
+            {it.label && it.type !== 'wall' && it.type !== 'divider' && (
+              <text className={`fp-text ${DARK.has(it.type) ? 'inv' : ''} ${it.type === 'label' || it.type === 'stage' || it.type === 'dancefloor' ? 'big' : ''} ${it.type === 'table-hightop' || it.w < 50 ? 'small' : ''}`}
                 x={cx} y={it.type === 'door' ? cy + it.h / 2 + 14 : withTag ? cy - 11 : cy}>{it.label}</text>
             )}
             {withTag && <NameTag x={cx} y={it.label ? cy + 12 : cy} mark={mark} />}
@@ -247,17 +288,17 @@ export function FloorPlanView({ plan, title, view, svgRef, handlers, editing, se
   );
 }
 
-function MiniShape({ type }) {
+/** A small drawing of a palette entry (a preset: type, size and seats). */
+export function MiniShape({ preset }) {
   const t = useT();
   const ids = usePatternIds();
-  const d = ITEM_DEFS[type];
-  const it = { type, w: d.w, h: d.h, seats: Math.min(d.seats || 0, 6), r: 0 };
-  const m = Math.max(d.w, d.h) / 2 + 26;
+  const it = { type: preset.type, w: preset.w, h: preset.h, seats: Math.min(preset.seats || 0, 10), r: 0 };
+  const m = Math.max(preset.w, preset.h) / 2 + 26;
   return (
     <svg className="fp-mini" viewBox={`${-m} ${-m * 0.75} ${m * 2} ${m * 1.5}`} aria-hidden="true">
       <Defs ids={ids} />
       <Shape it={it} ids={ids} />
-      {type === 'label' && <text className="fp-text big" x={0} y={0}>{t('floorPlan.aa')}</text>}
+      {preset.type === 'label' && <text className="fp-text big" x={0} y={0}>{t('floorPlan.aa')}</text>}
     </svg>
   );
 }
@@ -445,16 +486,29 @@ const fit = (it, plan) => {
   const h = Math.max(4, Math.min(plan.height, Math.round(it.h)));
   return { ...it, w, h, x: Math.max(0, Math.min(plan.width - w, Math.round(it.x))), y: Math.max(0, Math.min(plan.height - h, Math.round(it.y))) };
 };
-const normalize = (p) => ({ width: p?.width || 1000, height: p?.height || 700, items: (p?.items || []).map((i) => ({ ...i })) });
-function nextLabel(items, prefix) {
-  const re = new RegExp(`^${prefix}(\\d+)$`, 'i');
-  const max = items.reduce((m, i) => Math.max(m, Number((i.label || '').match(re)?.[1] || 0)), 0);
-  return `${prefix}${max + 1}`;
-}
+const normalize = (p) => ({
+  width: p?.width || 1000, height: p?.height || 700, items: (p?.items || []).map((i) => ({ ...i })),
+  ...(p?.zones?.length ? { zones: p.zones.map((z) => ({ ...z })) } : {}),
+});
 const boxOf = (a, b) => ({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) });
 const HISTORY = 100;
+const TABLE_SHAPES = ['table-square', 'table-round', 'table-rect', 'table-hightop', 'booth'];
+const ALIGNS = [
+  ['left', 'alignLeft'], ['hcenter', 'alignCenter'], ['right', 'alignRight'],
+  ['top', 'alignTop'], ['vcenter', 'alignMiddle'], ['bottom', 'alignBottom'],
+];
+/** Keyboard shortcuts (computers), shown with "?". */
+const SHORTCUTS = [
+  ['Ctrl/⌘ Z', 'floor.keys.undo'], ['Ctrl/⌘ Shift Z · Ctrl Y', 'floor.keys.redo'], ['Del · Backspace', 'floor.keys.delete'],
+  ['Ctrl/⌘ D', 'floor.keys.duplicate'], ['Ctrl/⌘ C · V', 'floor.keys.copyPaste'], ['Ctrl/⌘ A', 'floor.keys.selectAll'],
+  ['R · Shift R', 'floor.keys.rotate'], ['← ↑ → ↓', 'floor.keys.nudge'], ['Shift + ← ↑ → ↓', 'floor.keys.nudgeFine'],
+  ['G', 'floor.keys.snap'], ['+ · −', 'floor.keys.zoom'], ['0', 'floor.keys.fit'], ['Esc', 'floor.keys.clear'], ['?', 'floor.keys.help'],
+];
 
-export function FloorPlanEditor({ room, onSaved, onDirtyChange }) {
+/** The next section color not used yet on this plan. */
+const nextColor = (zones) => ZONE_COLORS.find((c) => !(zones || []).some((z) => z.color === c)) || ZONE_COLORS[(zones || []).length % ZONE_COLORS.length];
+
+export function FloorPlanEditor({ room, onSaved, onDirtyChange, onImport, onExport }) {
   const t = useT();
   const { call, toast } = useApp();
   const coarse = useCoarsePointer();
@@ -463,22 +517,34 @@ export function FloorPlanEditor({ room, onSaved, onDirtyChange }) {
   const planRef = useRef(plan);
   const history = useRef({ past: [], future: [] });
   const coalesce = useRef(null);
+  const clipboard = useRef([]);
   const [, bump] = useState(0);
   const [sel, setSelState] = useState([]);
   const selRef = useRef(sel);
   const [selectMode, setSelectModeState] = useState(false);
   const modeRef = useRef(false);
+  const [snapOn, setSnapOnState] = useState(true);
+  const snapRef = useRef(true);
+  const [group, setGroup] = useState('tables');
   const [marquee, setMarquee] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [keysOpen, setKeysOpen] = useState(false);
+  const [numbering, setNumbering] = useState(null); // { prefix, start } while renumbering a selection
   const svgRef = useRef(null);
 
   const setPlan = (p) => { planRef.current = p; setPlanState(p); };
   const setSel = (ids) => { selRef.current = ids; setSelState(ids); };
   const setSelectMode = (on) => { modeRef.current = on; setSelectModeState(on); };
+  const setSnapOn = (on) => { snapRef.current = on; setSnapOnState(on); };
+  const snap = (v) => (snapRef.current ? Math.round(v / GRID) * GRID : Math.round(v));
   const selected = useMemo(() => new Set(sel), [sel]);
   const dirty = useMemo(() => JSON.stringify(plan) !== JSON.stringify(saved), [plan, saved]);
   const single = sel.length === 1 ? plan.items.find((i) => i.id === sel[0]) || null : null;
   const chosen = plan.items.filter((i) => selected.has(i.id));
+  const chosenSeated = chosen.filter((i) => SEATED.has(i.type));
+  const zones = plan.zones || [];
+  const warnings = useMemo(() => planWarnings(plan).filter((w) => w.kind === 'overlap'), [plan]);
+  const warnIds = useMemo(() => new Set(warnings.flatMap((w) => w.ids)), [warnings]);
 
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty]);
   useEffect(() => {
@@ -490,9 +556,9 @@ export function FloorPlanEditor({ room, onSaved, onDirtyChange }) {
 
   // ----- history: every change can be undone; typing in one field counts as one change -----
   const snapshot = (key) => {
-    const t = Date.now();
-    if (key && coalesce.current?.key === key && t - coalesce.current.at < 1500) { coalesce.current.at = t; return; }
-    coalesce.current = key ? { key, at: t } : null;
+    const now = Date.now();
+    if (key && coalesce.current?.key === key && now - coalesce.current.at < 1500) { coalesce.current.at = now; return; }
+    coalesce.current = key ? { key, at: now } : null;
     const h = history.current;
     h.past = [...h.past.slice(1 - HISTORY), planRef.current];
     h.future = [];
@@ -521,12 +587,21 @@ export function FloorPlanEditor({ room, onSaved, onDirtyChange }) {
   // ----- changes to the selection -----
   const mapSel = (fn) => (p) => ({ ...p, items: p.items.map((i) => (selRef.current.includes(i.id) ? fit(fn(i), p) : i)) });
   const patch = (id, pt, key) => change((p) => ({ ...p, items: p.items.map((i) => (i.id === id ? fit({ ...i, ...pt }, p) : i)) }), key);
+  const patchSel = (fn, key) => change(mapSel(fn), key);
   const removeSel = () => {
     if (!selRef.current.length) return;
     change((p) => ({ ...p, items: p.items.filter((i) => !selRef.current.includes(i.id)) }));
     setSel([]);
   };
-  const rotateSel = (deg) => change(mapSel((i) => ({ ...i, r: (((i.r || 0) + deg) % 360 + 360) % 360 })));
+  const rotateSel = (deg) => {
+    if (!selRef.current.length) return;
+    // 45° steps: an odd angle (from an older plan) goes to the next step first.
+    patchSel((i) => {
+      const r = i.r || 0;
+      const next = r % 45 ? (deg > 0 ? Math.ceil(r / 45) : Math.floor(r / 45)) * 45 : r + deg;
+      return { ...i, r: ((next % 360) + 360) % 360 };
+    });
+  };
   const nudge = (dx, dy) => {
     const items = planRef.current.items.filter((i) => selRef.current.includes(i.id));
     if (!items.length) return;
@@ -535,30 +610,93 @@ export function FloorPlanEditor({ room, onSaved, onDirtyChange }) {
     const my = Math.max(-Math.min(...items.map((i) => i.y)), Math.min(p.height - Math.max(...items.map((i) => i.y + i.h)), dy));
     change(mapSel((i) => ({ ...i, x: i.x + mx, y: i.y + my })), 'nudge');
   };
-  const duplicateSel = () => {
-    const src = planRef.current.items.filter((i) => selRef.current.includes(i.id));
+  /** Copies of items, numbered on from the plan's highest number, offset so they're visible. */
+  const paste = (src, offset = 30) => {
     if (!src.length) return;
     const all = [...planRef.current.items];
     const copies = src.map((it) => {
       const d = ITEM_DEFS[it.type];
-      const c = fit({ ...it, id: newId(), x: it.x + 30, y: it.y + 30, label: d?.prefix ? nextLabel(all, d.prefix) : it.label }, planRef.current);
+      const { toastGuid, ...rest } = it; // a copy is a new table: never the same Toast table
+      const c = fit({ ...rest, id: newId(), x: it.x + offset, y: it.y + offset, label: d?.prefix ? nextLabel(all, d.prefix) : it.label }, planRef.current);
       all.push(c);
       return c;
     });
     change((p) => ({ ...p, items: [...p.items, ...copies] }));
     setSel(copies.map((c) => c.id));
   };
-  const add = (type) => {
-    const d = ITEM_DEFS[type];
+  const duplicateSel = () => paste(planRef.current.items.filter((i) => selRef.current.includes(i.id)));
+  const add = (preset) => {
     const p = planRef.current;
     const v = gz.view;
     const cx = Math.max(0, Math.min(p.width, v.x + v.w / 2)), cy = Math.max(0, Math.min(p.height, v.y + v.h / 2));
-    let x = snap(cx - d.w / 2), y = snap(cy - d.h / 2);
+    let x = snap(cx - preset.w / 2), y = snap(cy - preset.h / 2);
     for (let n = 0; n < 8 && p.items.some((i) => i.x === x && i.y === y); n++) { x += 20; y += 20; }
-    const item = fit({ id: newId(), type, w: d.w, h: d.h, r: 0, seats: d.seats || 0, x, y, label: d.prefix ? nextLabel(p.items, d.prefix) : d.name ? tr(d.name) : '' }, p);
+    const prefix = TYPE_DEFAULTS[preset.type]?.prefix;
+    const label = prefix ? nextLabel(p.items, prefix) : preset.label ? tr(preset.label) : ITEM_DEFS[preset.type]?.name ? tr(ITEM_DEFS[preset.type].name) : '';
+    const item = fit({ id: newId(), type: preset.type, w: preset.w, h: preset.h, r: 0, seats: preset.seats || 0, x, y, label }, p);
     change((pl) => ({ ...pl, items: [...pl.items, item] }));
     setSel([item.id]);
   };
+  /** Line up the selection (by each item's box), or spread it out evenly. */
+  const align = (how) => {
+    const items = planRef.current.items.filter((i) => selRef.current.includes(i.id));
+    if (items.length < 2) return;
+    const x0 = Math.min(...items.map((i) => i.x)), x1 = Math.max(...items.map((i) => i.x + i.w));
+    const y0 = Math.min(...items.map((i) => i.y)), y1 = Math.max(...items.map((i) => i.y + i.h));
+    const pos = {};
+    if (how === 'distH' || how === 'distV') {
+      const horiz = how === 'distH';
+      const c = (i) => (horiz ? i.x + i.w / 2 : i.y + i.h / 2);
+      const sorted = [...items].sort((a, b) => c(a) - c(b));
+      const first = c(sorted[0]), step = (c(sorted[sorted.length - 1]) - first) / (sorted.length - 1);
+      sorted.forEach((i, k) => { pos[i.id] = horiz ? { x: Math.round(first + k * step - i.w / 2) } : { y: Math.round(first + k * step - i.h / 2) }; });
+    } else {
+      for (const i of items) {
+        pos[i.id] = {
+          left: { x: x0 }, right: { x: x1 - i.w }, hcenter: { x: Math.round((x0 + x1) / 2 - i.w / 2) },
+          top: { y: y0 }, bottom: { y: y1 - i.h }, vcenter: { y: Math.round((y0 + y1) / 2 - i.h / 2) },
+        }[how];
+      }
+    }
+    patchSel((i) => ({ ...i, ...pos[i.id] }));
+  };
+  const renumberSel = ({ prefix, start }) => {
+    const seated = planRef.current.items.filter((i) => selRef.current.includes(i.id) && SEATED.has(i.type));
+    const labels = renumber(seated, seated.map((i) => i.id), { prefix: prefix.trim(), start: Number(start) || 1 });
+    change((p) => ({ ...p, items: p.items.map((i) => (labels[i.id] ? { ...i, label: labels[i.id] } : i)) }));
+    setNumbering(null);
+  };
+  const setShape = (type) => patchSel((i) => {
+    if (!SEATED.has(i.type) || i.type === 'bar' || i.type === type) return i;
+    const d = ITEM_DEFS[type];
+    const round = type === 'table-round' || type === 'table-hightop';
+    const size = round ? Math.max(d.w, Math.round(Math.max(i.w, i.h) * 0.9)) : null;
+    const w = round ? size : type === 'table-rect' || type === 'booth' ? Math.max(d.w, i.w) : Math.max(d.w, Math.min(i.w, i.h));
+    const h = round ? size : type === 'table-square' ? w : d.h;
+    return { ...i, type, w, h, x: Math.round(i.x + i.w / 2 - w / 2), y: Math.round(i.y + i.h / 2 - h / 2) };
+  });
+
+  // ----- sections (zones): a table's usual server section, colored on the plan -----
+  const addZone = () => {
+    const z = { id: `zone_${Math.random().toString(36).slice(2, 8)}`, name: t('floor.zones.defaultName', { n: zones.length + 1 }), color: nextColor(zones) };
+    // The tables picked, if any, go in it.
+    change((p) => ({ ...p, zones: [...(p.zones || []), z], items: p.items.map((i) => (selRef.current.includes(i.id) && SEATED.has(i.type) ? { ...i, zone: z.id } : i)) }));
+  };
+  const patchZone = (id, pt, key) => change((p) => ({ ...p, zones: (p.zones || []).map((z) => (z.id === id ? { ...z, ...pt } : z)) }), key);
+  const removeZone = (id) => change((p) => {
+    const rest = (p.zones || []).filter((z) => z.id !== id);
+    const items = p.items.map(({ zone, ...i }) => (zone && zone !== id ? { ...i, zone } : i));
+    const { zones: _, ...base } = p;
+    return { ...base, items, ...(rest.length ? { zones: rest } : {}) };
+  });
+  const setZoneSel = (zoneId) => change((p) => ({
+    ...p,
+    items: p.items.map((i) => {
+      if (!selRef.current.includes(i.id) || !SEATED.has(i.type)) return i;
+      const { zone, ...rest } = i;
+      return zoneId ? { ...rest, zone: zoneId } : rest;
+    }),
+  }));
 
   // ----- pointer actions (see usePlanGestures) -----
   function itemAction(e, p, id) {
@@ -627,6 +765,7 @@ export function FloorPlanEditor({ room, onSaved, onDirtyChange }) {
     const it = planRef.current.items.find((i) => i.id === selRef.current[0]);
     if (!it) return null;
     const c = { cx: it.x + it.w / 2, cy: it.y + it.h / 2, r: it.r || 0 };
+    const round = it.type === 'table-round' || it.type === 'table-hightop' || it.type === 'plant';
     let started = false;
     return {
       move(q) {
@@ -634,7 +773,8 @@ export function FloorPlanEditor({ room, onSaved, onDirtyChange }) {
         const a = (-c.r * Math.PI) / 180;
         const vx = q.x - c.cx, vy = q.y - c.cy;
         const lx = vx * Math.cos(a) - vy * Math.sin(a), ly = vx * Math.sin(a) + vy * Math.cos(a);
-        const w = Math.max(10, snap(2 * Math.abs(lx) - 12)), h = Math.max(10, snap(2 * Math.abs(ly) - 12));
+        let w = Math.max(10, snap(2 * Math.abs(lx) - 12)), h = Math.max(10, snap(2 * Math.abs(ly) - 12));
+        if (round && it.w === it.h) w = h = Math.max(w, h); // a round table stays round
         const cur = planRef.current;
         setPlan({ ...cur, items: cur.items.map((i) => (i.id === it.id ? fit({ ...i, w, h, x: c.cx - w / 2, y: c.cy - h / 2 }, cur) : i)) });
       },
@@ -674,8 +814,7 @@ export function FloorPlanEditor({ room, onSaved, onDirtyChange }) {
     onTap: () => { if (!modeRef.current) setSel([]); },
   });
 
-  // Keyboard: Delete removes, arrows nudge (Shift: 1 unit), Esc clears, Ctrl/⌘ Z / Shift Z / Y undo and redo,
-  // Ctrl/⌘ D duplicates, Ctrl/⌘ A selects everything. Ignored while typing in a field.
+  // Keyboard (see SHORTCUTS). Ignored while typing in a field or with a dialog open.
   useEffect(() => {
     const on = (e) => {
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
@@ -685,12 +824,22 @@ export function FloorPlanEditor({ room, onSaved, onDirtyChange }) {
       if (cmd && k === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
       if (cmd && k === 'y') { e.preventDefault(); redo(); return; }
       if (cmd && k === 'a') { e.preventDefault(); setSel(planRef.current.items.map((i) => i.id)); return; }
+      if (cmd && k === 'v') { e.preventDefault(); paste(clipboard.current); return; }
+      if (!cmd && !e.altKey) {
+        if (e.key === '?') { e.preventDefault(); setKeysOpen(true); return; }
+        if (k === 'g') { setSnapOn(!snapRef.current); return; }
+        if (e.key === '+' || e.key === '=') { gz.zoomBy(1.5); return; }
+        if (e.key === '-' || e.key === '_') { gz.zoomBy(1 / 1.5); return; }
+        if (e.key === '0') { gz.reset(); return; }
+      }
       if (!selRef.current.length) return;
-      const step = e.shiftKey ? 1 : SNAP;
+      const step = e.shiftKey ? 1 : GRID;
       const moves = { arrowleft: [-step, 0], arrowright: [step, 0], arrowup: [0, -step], arrowdown: [0, step] };
       if (cmd && k === 'd') { e.preventDefault(); duplicateSel(); }
+      else if (cmd && k === 'c') { clipboard.current = planRef.current.items.filter((i) => selRef.current.includes(i.id)); }
       else if (k === 'delete' || k === 'backspace') { e.preventDefault(); removeSel(); }
       else if (moves[k]) { e.preventDefault(); nudge(...moves[k]); }
+      else if (k === 'r' && !cmd) { e.preventDefault(); rotateSel(e.shiftKey ? -45 : 45); }
       else if (k === 'escape') { setSel([]); setSelectMode(false); }
     };
     window.addEventListener('keydown', on);
@@ -717,40 +866,71 @@ export function FloorPlanEditor({ room, onSaved, onDirtyChange }) {
     const next = { ...pl, [k]: Math.max(200, Math.min(5000, Number(e.target.value) || 0)) };
     return { ...next, items: next.items.map((i) => fit(i, next)) };
   }, `size:${k}`);
-  const seatsSel = chosen.reduce((t, i) => t + (Number(i.seats) || 0), 0);
+  const seatsSel = chosen.reduce((n, i) => n + (Number(i.seats) || 0), 0);
   const handleR = single ? (coarse ? 15 : 9) * gz.unitsPerPx : 0;
+  const zoneOfSel = chosenSeated.length && chosenSeated.every((i) => i.zone === chosenSeated[0].zone) ? chosenSeated[0].zone || '' : null;
+  const sameSeats = chosenSeated.length && chosenSeated.every((i) => i.seats === chosenSeated[0].seats) ? chosenSeated[0].seats : '';
+  const seatField = (value, onSet, key, label) => (
+    <label className="field"><span>{label}</span>
+      <div className="fp-stepper">
+        <button type="button" className="btn sm icon" aria-label={t('floor.fewerSeats')} onClick={() => onSet(Math.max(0, (Number(value) || 0) - 1))}>−</button>
+        <input className="input sm" type="number" min="0" max="40" inputMode="numeric" value={value} onChange={(e) => onSet(Math.max(0, Math.min(40, Number(e.target.value) || 0)), key)} />
+        <button type="button" className="btn sm icon" aria-label={t('floor.moreSeats')} onClick={() => onSet(Math.min(40, (Number(value) || 0) + 1))}>+</button>
+      </div>
+    </label>
+  );
+  const zonePicker = (value, onPick) => (
+    <label className="field"><span>{t('floor.zones.section')}</span>
+      <select className="input sm" value={value ?? ''} onChange={(e) => (e.target.value === '+' ? addZone() : onPick(e.target.value))}>
+        {value === null && <option value="" disabled>{t('floor.zones.mixed')}</option>}
+        <option value="">{t('floor.zones.none')}</option>
+        {zones.map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}
+        <option value="+">{t('floor.zones.addNew')}</option>
+      </select>
+    </label>
+  );
 
   return (
     <div className="col fp-edit" style={{ gap: 10 }}>
-      <div className="fp-palette" role="toolbar" aria-label={t('floorPlan.addToThePlan')}>
-        {Object.entries(ITEM_DEFS).map(([type, d]) => (
-          <button key={type} type="button" className="btn sm fp-add" onClick={() => add(type)} title={t('floorPlan.addLabel', { label: t(d.label).toLowerCase() })}><MiniShape type={type} />{t(d.label)}</button>
-        ))}
-      </div>
       <div className="fp-actions" role="toolbar" aria-label={t('common.edit')}>
-        <button type="button" className={`btn sm ${selectMode ? 'primary' : ''}`} aria-pressed={selectMode} onClick={() => setSelectMode(!selectMode)}
-          title={t('floorPlan.pickSeveralItemsTapEach')}>
-          <FpIcon name="select" />{selectMode ? t('common.done') : t('floorPlan.select')}
-        </button>
         <button type="button" className="btn sm icon" title={t('floorPlan.undoCtrlZ')} aria-label={t('common.undo')} disabled={!history.current.past.length} onClick={undo}><FpIcon name="undo" /></button>
         <button type="button" className="btn sm icon" title={t('floorPlan.redoCtrlShiftZ')} aria-label={t('floorPlan.redo')} disabled={!history.current.future.length} onClick={redo}><FpIcon name="redo" /></button>
+        <button type="button" className={`btn sm ${selectMode ? 'primary' : ''}`} aria-pressed={selectMode} onClick={() => setSelectMode(!selectMode)} title={t('floorPlan.pickSeveralItemsTapEach')}>
+          <FpIcon name="select" /><span className="fp-hide-narrow">{selectMode ? t('common.done') : t('floorPlan.select')}</span>
+        </button>
+        <button type="button" className={`btn sm ${snapOn ? 'on' : ''}`} aria-pressed={snapOn} onClick={() => setSnapOn(!snapOn)} title={t('floor.snapTitle')}>
+          <FpIcon name="magnet" /><span className="fp-hide-narrow">{snapOn ? t('floor.snapOn') : t('floor.snapOff')}</span>
+        </button>
+        {!coarse && <button type="button" className="btn sm icon ghost fp-hide-narrow" title={t('floor.keys.title')} aria-label={t('floor.keys.title')} onClick={() => setKeysOpen(true)}><FpIcon name="keyboard" /></button>}
         <span className="spacer" />
+        {onImport && <button type="button" className="btn sm" data-act="import" aria-label={t('floor.importButton')} onClick={() => (dirty ? toast(t('floor.saveFirst'), 'bad') : onImport())}><Icon name="upload" /><span className="fp-hide-narrow">{t('floor.importButton')}</span></button>}
+        {onExport && <button type="button" className="btn sm" data-act="export" aria-label={t('floor.exportButton')} onClick={() => onExport(planRef.current)}><Icon name="download" /><span className="fp-hide-narrow">{t('floor.exportButton')}</span></button>}
         {dirty ? <span className="badge warn fp-state">{t('floorPlan.unsaved')}</span> : <span className="badge ok fp-state">{t('common.saved')}</span>}
         <button type="button" className="btn sm primary" onClick={save} disabled={busy || !dirty}><Icon name="check" />{busy ? t('floorPlan.saving') : t('common.save')}</button>
+      </div>
+      <div className="fp-palette-wrap">
+        <div className="seg fp-groups" role="tablist" aria-label={t('floorPlan.addToThePlan')}>
+          {PRESET_GROUPS.map((g) => <button key={g} type="button" role="tab" aria-selected={group === g} className={group === g ? 'on' : ''} onClick={() => setGroup(g)}>{t(`floor.group.${g}`)}</button>)}
+        </div>
+        <div className="fp-palette" role="toolbar" aria-label={t('floorPlan.addToThePlan')}>
+          {PRESETS.filter((p) => p.group === group).map((p) => (
+            <button key={p.id} type="button" className="btn sm fp-add" onClick={() => add(p)} title={t('floorPlan.addLabel', { label: t(presetKey(p)).toLowerCase() })}><MiniShape preset={p} />{t(presetKey(p))}</button>
+          ))}
+        </div>
       </div>
       <div className="fp-editor">
         <div className="col" style={{ gap: 8, minWidth: 0 }}>
           <div className={`fp-stage ${selectMode ? 'selecting' : ''}`}>
             <FloorPlanView plan={plan} editing selected={selected} handleR={handleR} svgRef={svgRef} view={gz.view} handlers={gz.handlers}
-              marquee={marquee} touchAction="none" title={t('floorPlan.nameFloorPlan', { name: room.name })} />
+              marquee={marquee} touchAction="none" showZones warnIds={warnIds} title={t('floorPlan.nameFloorPlan', { name: room.name })} />
             <ZoomControls gz={gz} />
           </div>
           <div className="fp-selbar" aria-live="polite">
             {sel.length ? <>
               <span className="fp-selcount">{t('floorPlan.bSelcountBSelected', { selCount: sel.length })}{seatsSel ? t('floorPlan.seatsselSeats', { seatsSel }) : ''}</span>
               <span className="spacer" />
-              <button type="button" className="btn sm icon" title={t('floorPlan.rotateLeft15')} aria-label={t('floorPlan.rotateLeft')} onClick={() => rotateSel(-15)}><Icon name="rotateLeft" /></button>
-              <button type="button" className="btn sm icon" title={t('floorPlan.rotateRight15')} aria-label={t('floorPlan.rotateRight')} onClick={() => rotateSel(15)}><Icon name="rotateRight" /></button>
+              <button type="button" className="btn sm icon" title={t('floor.rotateLeft45')} aria-label={t('floorPlan.rotateLeft')} onClick={() => rotateSel(-45)}><Icon name="rotateLeft" /></button>
+              <button type="button" className="btn sm icon" title={t('floor.rotateRight45')} aria-label={t('floorPlan.rotateRight')} onClick={() => rotateSel(45)}><Icon name="rotateRight" /></button>
               <button type="button" className="btn sm icon" title={t('floorPlan.duplicateCtrlD')} aria-label={t('floorPlan.duplicate')} onClick={duplicateSel}><Icon name="copy" /></button>
               <button type="button" className="btn sm icon danger" title={t('floorPlan.deleteDel')} aria-label={t('common.delete')} onClick={removeSel}><Icon name="trash" /></button>
               <button type="button" className="btn sm icon ghost" title={t('floorPlan.clearSelectionEsc')} aria-label={t('floorPlan.clearSelection')} onClick={() => { setSel([]); setSelectMode(false); }}><Icon name="x" /></button>
@@ -758,35 +938,94 @@ export function FloorPlanEditor({ room, onSaved, onDirtyChange }) {
           </div>
           <div className="row wrap small muted">
             <span>{statsText(stats)}</span>
+            {warnings.length > 0 && (
+              <button type="button" className="btn sm ghost fp-warnbtn" onClick={() => setSel([...warnIds])} title={t('floor.overlapsHelp')}>
+                <FpIcon name="alert" size={14} />{t('floor.overlaps', { count: warnings.length })}
+              </button>
+            )}
             <span className="spacer" />
-            <span>{t('floorPlan.roomSize')}</span>
-            <input className="input sm" type="number" step="50" style={{ width: 80 }} value={plan.width} onChange={setSize('width')} aria-label={t('floorPlan.planWidth')} />
-            <span>×</span>
-            <input className="input sm" type="number" step="50" style={{ width: 80 }} value={plan.height} onChange={setSize('height')} aria-label={t('floorPlan.planHeight')} />
+            <span className="fp-size">
+              <span>{t('floorPlan.roomSize')}</span>
+              <input className="input sm" type="number" step="50" style={{ width: 80 }} value={plan.width} onChange={setSize('width')} aria-label={t('floorPlan.planWidth')} />
+              <span>×</span>
+              <input className="input sm" type="number" step="50" style={{ width: 80 }} value={plan.height} onChange={setSize('height')} aria-label={t('floorPlan.planHeight')} />
+            </span>
           </div>
         </div>
         <div className="fp-panel col">
           {single ? <>
             <b>{ITEM_DEFS[single.type] && t(ITEM_DEFS[single.type].label)}</b>
-            <label className="field"><span>{t('floorPlan.label')}</span><input className="input sm" maxLength={40} value={single.label || ''} onChange={(e) => patch(single.id, { label: e.target.value }, `label:${single.id}`)} /></label>
-            {SEATED.has(single.type) && (
-              <label className="field"><span>{single.type === 'bar' ? t('floorPlan.barStools') : t('floorPlan.seats')}</span>
-                <input className="input sm" type="number" min="0" max="40" inputMode="numeric" value={single.seats || 0} onChange={(e) => patch(single.id, { seats: Math.max(0, Math.min(40, Number(e.target.value) || 0)) }, `seats:${single.id}`)} /></label>
+            <label className="field"><span>{SEATED.has(single.type) && single.type !== 'bar' ? t('floor.tableNumber') : t('floorPlan.label')}</span>
+              <input className="input sm" maxLength={40} value={single.label || ''} onChange={(e) => patch(single.id, { label: e.target.value }, `label:${single.id}`)} /></label>
+            {SEATED.has(single.type) && seatField(single.seats || 0, (n, key) => patch(single.id, { seats: n }, key || `seats:${single.id}`), `seats:${single.id}`, single.type === 'bar' ? t('floorPlan.barStools') : t('floorPlan.seats'))}
+            {SEATED.has(single.type) && single.type !== 'bar' && (
+              <label className="field"><span>{t('floor.shape')}</span>
+                <select className="input sm" value={single.type} onChange={(e) => setShape(e.target.value)}>
+                  {TABLE_SHAPES.map((ty) => <option key={ty} value={ty}>{t(ITEM_DEFS[ty].label)}</option>)}
+                </select>
+              </label>
             )}
+            {SEATED.has(single.type) && zonePicker(single.zone || '', setZoneSel)}
             <div className="grid2">
               <label className="field"><span>{t('floorPlan.width')}</span><input className="input sm" type="number" step="10" inputMode="numeric" value={single.w} onChange={(e) => patch(single.id, { w: Number(e.target.value) || 4 }, `w:${single.id}`)} /></label>
               <label className="field"><span>{t('floorPlan.depth')}</span><input className="input sm" type="number" step="10" inputMode="numeric" value={single.h} onChange={(e) => patch(single.id, { h: Number(e.target.value) || 4 }, `h:${single.id}`)} /></label>
             </div>
-            <div className="small muted">{t('floorPlan.rotation')}{' '}{single.r || 0}{t('floorPlan.dragTheCornerDotTo')}</div>
-          </> : sel.length > 1
-            ? <div className="small muted">{t('floorPlan.selcountItemsSelectedDragAny', { selCount: sel.length })}</div>
-            : <div className="small muted">{t('floorPlan.addTablesABarA')}</div>}
-          <div className="help">{coarse
-            ? t('floorPlan.pinchToZoomTwoFingers')
-            : t('floorPlan.arrowKeysNudgeDelRemoves')}</div>
+            <div className="small muted">{t('floor.rotationIs', { deg: single.r || 0 })}</div>
+            {single.toastGuid && <div className="tiny muted">{t('floor.linkedToToast')}</div>}
+          </> : sel.length > 1 ? <>
+            <div className="small muted">{t('floorPlan.selcountItemsSelectedDragAny', { selCount: sel.length })}</div>
+            <div className="field"><span>{t('floor.align')}</span>
+              <div className="fp-align" role="group" aria-label={t('floor.align')}>
+                {ALIGNS.map(([how, icon]) => <button key={how} type="button" className="btn sm icon" title={t(`floor.alignTo.${how}`)} aria-label={t(`floor.alignTo.${how}`)} onClick={() => align(how)}><FpIcon name={icon} /></button>)}
+                <button type="button" className="btn sm icon" disabled={sel.length < 3} title={t('floor.alignTo.distH')} aria-label={t('floor.alignTo.distH')} onClick={() => align('distH')}><FpIcon name="distH" /></button>
+                <button type="button" className="btn sm icon" disabled={sel.length < 3} title={t('floor.alignTo.distV')} aria-label={t('floor.alignTo.distV')} onClick={() => align('distV')}><FpIcon name="distV" /></button>
+              </div>
+            </div>
+            {chosenSeated.length > 0 && seatField(sameSeats, (n, key) => patchSel((i) => (SEATED.has(i.type) ? { ...i, seats: n } : i), key || 'seats:many'), 'seats:many', t('floor.seatsEach'))}
+            {chosenSeated.length > 0 && zonePicker(zoneOfSel, setZoneSel)}
+            {chosenSeated.length > 0 && (numbering
+              ? <div className="fp-renumber">
+                <label className="field"><span>{t('floor.prefix')}</span><input className="input sm" maxLength={6} value={numbering.prefix} onChange={(e) => setNumbering({ ...numbering, prefix: e.target.value })} /></label>
+                <label className="field"><span>{t('floor.startAt')}</span><input className="input sm" type="number" min="0" value={numbering.start} onChange={(e) => setNumbering({ ...numbering, start: e.target.value })} /></label>
+                <div className="row"><button type="button" className="btn sm primary" onClick={() => renumberSel(numbering)}>{t('floor.renumberApply', { count: chosenSeated.length })}</button>
+                  <button type="button" className="btn sm ghost" onClick={() => setNumbering(null)}>{t('common.cancel')}</button></div>
+                <div className="tiny muted">{t('floor.renumberHelp')}</div>
+              </div>
+              : <button type="button" className="btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => setNumbering({ prefix: 'T', start: 1 })}><FpIcon name="hash" />{t('floor.renumber')}</button>)}
+          </> : <>
+            <div className="small muted">{t('floor.emptyHelp')}</div>
+            <div className="fp-zones">
+              <div className="row"><b className="small">{t('floor.zones.title')}</b><span className="spacer" /><button type="button" className="btn sm ghost" onClick={addZone}><Icon name="plus" />{t('floor.zones.add')}</button></div>
+              {!zones.length && <div className="tiny muted">{t('floor.zones.help')}</div>}
+              {zones.map((z) => {
+                const n = plan.items.filter((i) => i.zone === z.id);
+                return (
+                  <div key={z.id} className="fp-zone-row" style={{ '--mark': z.color }}>
+                    <div className="row" style={{ gap: 6 }}>
+                      <button type="button" className="fp-swatch" title={t('floor.zones.color')} aria-label={t('floor.zones.color')}
+                        onClick={() => patchZone(z.id, { color: ZONE_COLORS[(ZONE_COLORS.indexOf(z.color) + 1) % ZONE_COLORS.length] })} />
+                      <input className="input sm" maxLength={30} value={z.name} aria-label={t('floor.zones.name')} onChange={(e) => patchZone(z.id, { name: e.target.value }, `zone:${z.id}`)} />
+                      <button type="button" className="btn sm icon ghost" aria-label={t('common.delete')} title={t('common.delete')} onClick={() => removeZone(z.id)}><Icon name="x" size={14} /></button>
+                    </div>
+                    <button type="button" className="fp-zone-count" title={t('floor.zones.selectTables')} onClick={() => setSel(n.map((i) => i.id))}>
+                      {t('floor.zones.tables', { count: n.length, seats: n.reduce((s, i) => s + (Number(i.seats) || 0), 0) })}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </>}
+          <div className="help">{coarse ? t('floorPlan.pinchToZoomTwoFingers') : t('floor.keysHint')}</div>
           {dirty && <button type="button" className="btn sm ghost" style={{ alignSelf: 'flex-start' }} onClick={discard} disabled={busy}>{t('floorPlan.discardChanges')}</button>}
         </div>
       </div>
+      {keysOpen && (
+        <Modal title={t('floor.keys.title')} onClose={() => setKeysOpen(false)}>
+          <table className="fp-keys"><tbody>
+            {SHORTCUTS.map(([k, label]) => <tr key={k}><td><kbd>{k}</kbd></td><td>{t(label)}</td></tr>)}
+          </tbody></table>
+        </Modal>
+      )}
     </div>
   );
 }

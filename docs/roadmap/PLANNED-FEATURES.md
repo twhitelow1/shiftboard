@@ -32,7 +32,7 @@ _Working name "ShiftBoard"; a new product name is still to be chosen (see Busine
 | Feature | Notes |
 |---|---|
 | Admins can make themselves Super Admin (re-auth, audited, others alerted), with a Super-Admin-only switch to turn it off | built and tested; in PR #20 |
-| Floor plan: import from Toast / a picture or PDF (AI) / CSV, Toast-style editor (shapes, bar seats, walls, sections), export + "set this up in Toast" helper | building |
+| Floor plan: import from Toast / a picture or PDF (AI) / CSV, Toast-style editor (shapes, bar seats, walls, sections), export + "set this up in Toast" helper | built and tested; in PR #20 |
 | Employee sync from other platforms | later (after the import) |
 
 ## Next

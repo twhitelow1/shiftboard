@@ -14,6 +14,7 @@ import dayList from './es-daylist.js'; // el orden de las listas del día y la c
 import beo from './es-beo.js'; // a BEO's sections, the import's duplicate check and "Read it with AI"
 import smartImport from './es-import.js'; // importación inteligente: Equipo → Importar, Capacitación → Menú → Importar
 import superAdmin from './es-superadmin.js'; // un administrador que se hace superadministrador, y su interruptor en Roles y funciones
+import floor from './es-floor.js'; // el editor de planos: paleta, secciones, Importar (Toast, una foto, un CSV) y Exportar
 const catalog = {
   lang: {
     change: 'Cambiar idioma',
@@ -354,9 +355,7 @@ const catalog = {
     nameFloorPlan: 'Plano de {name}',
     bSelcountBSelected: '<b>{selCount}</b> seleccionados',
     seatsselSeats: ' · {seatsSel} lugares',
-    rotateLeft15: 'Girar 15° a la izquierda',
     rotateLeft: 'Girar a la izquierda',
-    rotateRight15: 'Girar 15° a la derecha',
     rotateRight: 'Girar a la derecha',
     duplicateCtrlD: 'Duplicar (Ctrl+D)',
     duplicate: 'Duplicar',
@@ -2309,6 +2308,7 @@ const catalog = {
   ...beo,
   ...smartImport,
   ...superAdmin,
+  ...floor,
 };
 Object.assign(catalog.integrations, reviewIntegrations); // Settings → Integrations: the Google and Yelp cards
 
