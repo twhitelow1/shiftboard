@@ -11,6 +11,7 @@ import print from './es-print.js'; // el PDF del horario, Publicar, Configuraci�
 import assistant from './es-assistant.js'; // Pregúntale a ShiftBoard: el chat y Configuración → Pregúntale a ShiftBoard
 import reviews, { integrations as reviewIntegrations } from './es-reviews.js'; // Google Business Profile, Yelp, answering reviews, review alerts
 import dayList from './es-daylist.js'; // el orden de las listas del día y la cuadrícula por puesto
+import floor from './es-floor.js'; // el editor de planos: paleta, secciones, Importar (Toast, una foto, un CSV) y Exportar
 const catalog = {
   lang: {
     change: 'Cambiar idioma',
@@ -351,9 +352,7 @@ const catalog = {
     nameFloorPlan: 'Plano de {name}',
     bSelcountBSelected: '<b>{selCount}</b> seleccionados',
     seatsselSeats: ' · {seatsSel} lugares',
-    rotateLeft15: 'Girar 15° a la izquierda',
     rotateLeft: 'Girar a la izquierda',
-    rotateRight15: 'Girar 15° a la derecha',
     rotateRight: 'Girar a la derecha',
     duplicateCtrlD: 'Duplicar (Ctrl+D)',
     duplicate: 'Duplicar',
@@ -2303,6 +2302,7 @@ const catalog = {
   ...assistant,
   ...reviews,
   ...dayList,
+  ...floor,
 };
 Object.assign(catalog.integrations, reviewIntegrations); // Settings → Integrations: the Google and Yelp cards
 

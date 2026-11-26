@@ -84,3 +84,24 @@ export async function pdfToGridText(file) {
     task.destroy();
   }
 }
+
+/**
+ * A PDF's first page as a picture (a canvas, at most maxSide pixels on its long side): a floor plan PDF goes to the
+ * AI as an image (Venue → Import → From a picture or PDF).
+ */
+export async function pdfFirstPageCanvas(file, maxSide = 1600) {
+  const data = new Uint8Array(await file.arrayBuffer());
+  const doc = await getDocument({ data, isEvalSupported: false }).promise;
+  try {
+    const page = await doc.getPage(1);
+    const base = page.getViewport({ scale: 1 });
+    const viewport = page.getViewport({ scale: Math.min(4, maxSide / Math.max(base.width, base.height)) });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(viewport.width);
+    canvas.height = Math.round(viewport.height);
+    await page.render({ canvas, viewport }).promise;
+    return canvas;
+  } finally {
+    doc.destroy();
+  }
+}

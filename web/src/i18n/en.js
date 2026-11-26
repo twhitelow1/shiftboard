@@ -12,6 +12,7 @@ import print from './en-print.js'; // the schedule PDF, the Publish dialog, Sett
 import assistant from './en-assistant.js'; // Ask ShiftBoard: the chat and Settings → Ask ShiftBoard
 import reviews, { integrations as reviewIntegrations } from './en-reviews.js'; // Google Business Profile, Yelp, answering reviews, review alerts
 import dayList from './en-daylist.js'; // the day lists' sort (room, position, time, name) and the week grid by position
+import floor from './en-floor.js'; // the floor plan editor's palette, sections, Import (Toast, a picture, a CSV) and Export
 const catalog = {
   lang: {
     change: 'Change language',
@@ -352,9 +353,7 @@ const catalog = {
     nameFloorPlan: '{name} floor plan',
     bSelcountBSelected: '<b>{selCount}</b> selected',
     seatsselSeats: ' · {seatsSel} seats',
-    rotateLeft15: 'Rotate left 15°',
     rotateLeft: 'Rotate left',
-    rotateRight15: 'Rotate right 15°',
     rotateRight: 'Rotate right',
     duplicateCtrlD: 'Duplicate (Ctrl+D)',
     duplicate: 'Duplicate',
@@ -2304,6 +2303,7 @@ const catalog = {
   ...assistant,
   ...reviews,
   ...dayList,
+  ...floor,
 };
 Object.assign(catalog.integrations, reviewIntegrations); // Settings → Integrations: the Google and Yelp cards
 

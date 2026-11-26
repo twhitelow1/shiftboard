@@ -6,6 +6,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useApp, Icon, Modal, Field, Empty } from '../ui.jsx';
 import { FloorPlanEditor, planStats, statsText, SEATED } from './FloorPlan.jsx';
 import { SectionsBoard } from './Sections.jsx';
+import FloorImport from './FloorImport.jsx';
+import FloorExport from './FloorExport.jsx';
 import { useT } from '../i18n/index.js';
 
 // Catalog keys (web/src/i18n).
@@ -26,6 +28,9 @@ export default function Venue({ parts = [] }) {
   const [editLoc, setEditLoc] = useState(null);       // location form in a modal
   const [renameLevel, setRenameLevel] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [importing, setImporting] = useState(false); // the Import dialog (Toast, a picture, a CSV)
+  const [exporting, setExporting] = useState(null);  // the Export dialog: the room with the editor's current plan
+  const [stamp, setStamp] = useState(0);             // bumped after an import, so the editor starts from the new plan
 
   const load = () => call('venue.get').then(setV).catch((e) => toast(e.message, 'bad'));
   useEffect(() => { load(); }, []);
@@ -92,8 +97,12 @@ export default function Venue({ parts = [] }) {
           {isMgr && <div className="row wrap">
             {starters.length > 0 && <button className="btn primary" disabled={busy} onClick={() => act(() => call('venue.setup'), t('venue.venueSetUpNowDraw'))}><Icon name="sparkle" />{t('venue.startFromMyRooms')}{starters.join(', ')})</button>}
             <button className="btn" onClick={() => setEditRoom({ name: '', level: t('venue.levelMainFloor'), kinds: ['dining'], capacity: '' })}><Icon name="plus" />{t('venue.addARoom')}</button>
+            <button className="btn" onClick={() => setImporting(true)}><Icon name="upload" />{t('floor.import.startFromImport')}</button>
           </div>}
+          {isMgr && <div className="help">{t('floor.import.startHelp')}</div>}
         </div>
+        {importing && <FloorImport room={null} rooms={[]} onClose={() => setImporting(false)}
+          onDone={(r) => { setImporting(false); setV(r); refresh(); if (r.roomIds?.[0]) setRoomId(r.roomIds[0]); }} />}
         {editRoom && <RoomDialog room={editRoom} levels={[]} locations={locations} onClose={() => setEditRoom(null)}
           onSave={(r) => act(() => call('venue.saveRoom', r), t('venue.roomAdded')).then((x) => { if (x) { setRoomId(x.id); setEditRoom(null); } })} />}
       </div>
@@ -118,7 +127,7 @@ export default function Venue({ parts = [] }) {
         {isMgr && <button className="btn sm primary" onClick={() => setEditRoom({ name: '', level: room?.level || levels[0]?.name || t('venue.levelMainFloor'), kinds: ['dining'], capacity: '', locationId: loc?.id })}><Icon name="plus" />{t('venue.addRoom')}</button>}
       </div>
 
-      <div className="venue-grid">
+      <div className={`venue-grid ${view === 'layout' ? 'editing' : ''}`}>
         <div className="card venue-rooms" style={{ paddingBottom: 6 }}>
           {!rooms.length && <Empty icon="map" title={t('venue.noRoomsHereYet')}>{t('venue.addTheFirstRoomFor', { name: loc?.name })}</Empty>}
           {levels.map((g) => (
@@ -170,7 +179,8 @@ export default function Venue({ parts = [] }) {
                 </div>
               )}
               {view === 'layout'
-                ? <FloorPlanEditor key={room.id} room={room} onDirtyChange={setPlanDirty}
+                ? <FloorPlanEditor key={`${room.id}:${stamp}`} room={room} onDirtyChange={setPlanDirty}
+                    onImport={() => setImporting(true)} onExport={(plan) => setExporting({ ...room, plan })}
                     onSaved={(r) => { setV((cur) => ({ ...cur, rooms: cur.rooms.map((x) => (x.id === r.id ? r : x)) })); refresh(); }} />
                 : <SectionsBoard key={room.id} room={room} date={date} setDate={setDate} onEditLayout={() => pickTab('layout')} />}
             </div>
@@ -178,6 +188,9 @@ export default function Venue({ parts = [] }) {
         )}
       </div>
 
+      {importing && room && <FloorImport room={room} rooms={v.rooms} onClose={() => setImporting(false)}
+        onDone={(r) => { setImporting(false); setV(r); setStamp((n) => n + 1); refresh(); if (r.roomIds?.[0] && !r.roomIds.includes(room.id)) { setLocId(null); setRoomId(r.roomIds[0]); } }} />}
+      {exporting && <FloorExport room={exporting} rooms={v.rooms} onClose={() => setExporting(null)} />}
       {editRoom && <RoomDialog room={editRoom} levels={levels.map((g) => g.name)} locations={locations} busy={busy}
         onClose={() => setEditRoom(null)}
         onDelete={editRoom.id ? () => { if (window.confirm(t('venue.deleteNameAndItsFloor', { name: editRoom.name }))) act(() => call('venue.deleteRoom', { id: editRoom.id }), t('venue.roomDeleted')).then((x) => { if (x) { setEditRoom(null); setRoomId(null); setPlanDirty(false); } }); } : null}
