@@ -363,12 +363,15 @@ export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password =
   seedAdpDemo(store, { week: WEEK });
   // SAMPLE event from Tripleseat (Events & BEOs), as a sync brings it in: seedTripleseatDemo, at the end of this file
   seedTripleseatDemo(store, { week: WEEK, userId });
+  // SAMPLE OpenTable reservations and reviews, Google and Yelp reviews and kudos (Positive impact): core/impact-seed.js
+  seedImpactDemo(store, { userId, now: clock });
 
   return { userId, jobId, eventId };
 }
 
 import { seedLaborDemo } from './labor-demo.js';
 import { seedEightySix } from './eighty-six.js';
+import { seedImpactDemo } from './impact-seed.js';
 
 // ---------- SAMPLE ADP time entries (Forecast & Labor, Settings → Integrations → ADP) ----------
 // As if last Friday's and Saturday's ADP timecard export had been imported (core/adp.js): demo people

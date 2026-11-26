@@ -23,6 +23,8 @@ import { adpConfig } from '../adp.js';
 import { integration as adpIntegration } from '../../core/adp.js';
 import { tripleseatConfig } from '../tripleseat.js';
 import { integration as tripleseatIntegration } from '../../core/tripleseat.js';
+import { opentableConfig } from '../opentable.js';
+import { integration as opentableIntegration } from '../../core/opentable.js';
 import { Registry } from './registry.js';
 import { TenantCache } from './tenant-cache.js';
 import { hostConfig, resolveHost, consoleAllowed, tenantAddress } from './hosts.js';
@@ -223,6 +225,14 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
   });
   cronRoute('/api/cron/tripleseat', tripleseatCronAll);
   app.locals.tripleseatCronAll = tripleseatCronAll;
+
+  // OpenTable: reservations (and reviews, with a Reviews API grant), once OpenTable grants API access.
+  const opentableCronAll = () => cronAll({
+    feature: 'opentable', label: 'OpenTable', configured: (e) => opentableConfig(e).configured, lastCron: (store) => opentableIntegration(store).lastCron,
+    run: (rt, budgetMs, t) => rt.app.locals.opentableCron({ budgetMs, base: tenantAddress(t, hostCfg) || '' }),
+  });
+  cronRoute('/api/cron/opentable', opentableCronAll);
+  app.locals.opentableCronAll = opentableCronAll;
   /** Open the default restaurant (its schema, first account or demo data) before the first request. */
   app.locals.warmDefault = async () => {
     await ready();
