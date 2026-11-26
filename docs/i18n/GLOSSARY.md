@@ -193,7 +193,7 @@ The words ShiftBoard uses in Spanish, so the phone app, the website and emails s
 | English | Español | Notes |
 |---|---|---|
 | 86 / 86 List | 86 / Lista 86 | "86" stays "86" |
-| 86'd (out) | agotado · se acabó | pill reads "86"; button "Se acabó (86)"; notification "Bar: se acabó Mezcal (…)" |
+| 86'd (out) | agotado · se acabó | pill reads "86"; button "Se acabó (86)"; notification "Bar: no hay Mezcal (…)" (works for plurals: "no hay servilletas") |
 | running low | queda poco | button and status; counts in banners read "2 por acabarse" |
 | 3 left | quedan 3 · queda 1 | |
 | back in stock | ya hay | button; "Ya hay Mezcal" after tapping it |
@@ -207,6 +207,35 @@ The words ShiftBoard uses in Spanish, so the phone app, the website and emails s
 | photo / photos (optional) | foto / fotos (opcional) | |
 | take photo / choose photo | tomar foto / elegir foto | phone app buttons |
 | remove photo | quitar foto | |
+| ingredients and supplies (what the 86 List is for) | ingredientes y suministros | "No platillos del menú" (not menu items) |
+| stock / order (supplies) | tener en existencia / pedir | "lo que tenemos en existencia o pedimos" |
+| out of limes (notification) | no hay limones | "Bar: no hay limones (…)"; English "Bar: out of limes" |
+| running low on CO2 (notification) | queda poco de CO2 | "Bar: queda poco de CO2 (queda 1)" |
+| all stocked | todo surtido | empty list |
+| reported here before | reportado aquí antes | the report form's suggestions |
+| category (of an item) | categoría | optional; "Sin categoría" for none |
+| Produce · Dairy · Proteins · Dry goods | Frutas y verduras · Lácteos · Proteínas · Abarrotes | default categories; "Abarrotes" *review* (or "Productos secos") |
+| Liquor, beer & wine · Paper & disposables | Licores, cerveza y vino · Papel y desechables | default categories |
+| Glassware & smallwares · Cleaning & chemicals · Other | Cristalería y utensilios · Limpieza y químicos · Otros | default categories; "utensilios" *review* |
+| rocks glasses | vasos bajos | examples in help text |
+| Also suggest menu items | Sugerir también platillos del menú | Settings → 86 List, off by default |
+
+## Reports (managers)
+
+| English | Español | Notes |
+|---|---|---|
+| Reports / report | Informes / informe | not "reportes": "reportar" is for the 86 List; *review* |
+| 86 List report | informe de la Lista 86 | |
+| Missing now / History / Trends | Lo que falta / Historial / Tendencias | the report's tabs |
+| shopping list | lista de compras | "Lista de compras: lo que necesitamos" |
+| OUT: … · LOW: … (shopping list) | AGOTADO: … · QUEDA POCO: … | |
+| hidden from staff (a list) | el personal no la ve | |
+| season (Winter 2025–26, Summer 2026) | temporada (Invierno 2025–26, Verano 2026) | names come from core/seasons.js |
+| this season / last year / same number of days in | esta temporada / el año pasado / con los mismos días transcurridos | Trends |
+| times out / times low | veces agotado / veces que quedó poco | |
+| repeat offenders | lo que se acaba seguido | "se acabó 6 veces esta temporada" |
+| who reports most | quién reporta más | |
+| average time out | tiempo agotado en promedio | |
 
 ## App words
 

@@ -232,6 +232,12 @@ export const ERRORS_ES = {
   'Keep at least one list': 'Debe quedar al menos una lista',
   'A report can have up to 3 photos': 'Un reporte puede tener hasta 3 fotos',
   'Only the person who reported it or a manager can remove a photo': 'Solo quien lo reportó o un gerente puede quitar una foto',
+  'Send the categories': 'Manda las categorías',
+  'Every category needs a name': 'Cada categoría necesita un nombre',
+  // ----- Reports (core/reports-86.js) -----
+  'Pick a season': 'Elige una temporada',
+  'Pick a start and end date': 'Elige una fecha de inicio y una de fin',
+  'Pick up to two years at a time': 'Elige hasta dos años a la vez',
   // ----- the platform (one ShiftBoard for many restaurants: server/platform/) -----
   'Not included in your plan': 'No está incluido en tu plan',
   'DubLow Digital sets this one. Ask DubLow to change it.': 'Esto lo configura DubLow Digital. Pídele a DubLow que lo cambie.',

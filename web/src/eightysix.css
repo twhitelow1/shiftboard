@@ -85,7 +85,7 @@ button.e86-item-main:hover { background: var(--surface-2); }
 .btn.e86-low { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 40%, transparent); color: var(--warn); }
 
 /* history */
-.e86-hist-bar { display: flex; margin-bottom: 12px; }
+.e86-hist-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .e86-hist-bar .seg { flex-wrap: wrap; }
 .e86-top { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
 .e86-top-row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; align-items: center; gap: 10px; }
@@ -127,3 +127,11 @@ button.e86-item-main:hover { background: var(--surface-2); }
 .e86-pick-x { position: absolute; top: 4px; right: 4px; width: 26px; height: 26px; border-radius: 999px; border: 0; background: rgba(15, 23, 42, .75); color: #fff; display: grid; place-items: center; cursor: pointer; padding: 0; }
 .e86-pick-add { width: 72px; height: 72px; border-radius: 12px; border: 1.5px dashed var(--border-strong); background: var(--surface); color: var(--text-2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 12px; font-weight: 600; cursor: pointer; }
 .e86-pick-add:hover { border-color: var(--brand); color: var(--brand); }
+
+/* Settings → 86 List: categories, and the advanced "Also suggest menu items" switch */
+.e86-cats { margin-top: 6px; padding-top: 14px; border-top: 1px solid var(--border); }
+.e86-cats h3 { font-size: 15px; margin: 0; }
+.e86-cat { align-items: flex-start; gap: 8px; padding: 8px 10px; }
+.e86-cat-names { flex: 1; min-width: 0; gap: 6px; }
+.e86-cat-btns { display: flex; gap: 2px; flex: none; }
+.e86-menu-opt { padding: 10px 12px; border-radius: 10px; background: var(--surface-2); }

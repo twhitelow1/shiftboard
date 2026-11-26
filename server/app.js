@@ -21,7 +21,7 @@ import { addDays } from '../core/time.js';
 import { langOf, isLang } from '../core/i18n.js';
 import { translateError } from '../core/errors.js';
 import { mountToast, toastCron } from './toast-routes.js';
-import { featureForMethod, ROUTE_FEATURES, NOT_IN_PLAN, PAUSED, isPaused, billingBanner } from './platform/plans.js';
+import { featuresForMethod, ROUTE_FEATURES, NOT_IN_PLAN, PAUSED, isPaused, billingBanner } from './platform/plans.js';
 import { billingPortal } from './billing.js';
 import { mountAdp } from './adp-routes.js';
 import { mountTripleseat } from './tripleseat-routes.js';
@@ -329,8 +329,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
       const sess = session(db.store, token);
       const caller = sess?.user;
       if (!caller) throw new AppError(401, 'Please sign in');
-      const feature = featureForMethod(method);
-      if (feature && !has(feature)) throw new AppError(403, NOT_IN_PLAN);
+      const feature = featuresForMethod(method).find((f) => !has(f)); // the first one the plan doesn't include
+      if (feature) throw new AppError(403, NOT_IN_PLAN);
       if (sess.claims.sup && NOT_IN_SUPPORT.has(method)) throw new AppError(403, 'Not available while DubLow Digital is signed in for support');
 
       if (isLang(caller.language)) req.sbLang = caller.language; // errors in the caller's language

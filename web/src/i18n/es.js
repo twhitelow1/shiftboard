@@ -1,6 +1,7 @@
 // Español (Latinoamérica neutro, "tú"): the same keys as en.js. Vocabulary: docs/i18n/GLOSSARY.md, and
 // the phone app (mobile/src/i18n/es.ts) for the words they share. Restaurant data stays as entered.
 import auth from './es-auth.js'; // iniciar sesión, dos pasos, la bienvenida, el consentimiento, Mi configuración
+import reports from './es-reports.js'; // Informes (gerentes)
 const catalog = {
   lang: {
     change: 'Cambiar idioma',
@@ -1457,14 +1458,14 @@ const catalog = {
   eightySix: {
     // the page
     whatsOut: 'Lo que se acabó',
-    intro: 'Reporta lo que se acabó (86) o queda poco. Toca Ya hay cuando vuelva a haber.',
+    intro: 'Los ingredientes y suministros que se acabaron (86) o de los que queda poco, como Bacardi, servilletas, vasos bajos, limones o leche de avena. No platillos del menú. Toca Ya hay cuando vuelva a haber.',
     report: 'Reportar',
     tabLists: 'Listas',
     tabHistory: 'Historial',
     all: 'Todas',
     barColumn: 'Bar',
     floorColumn: 'Cocina y salón',
-    allGood: 'Todo bien: no se ha acabado nada.',
+    allGood: 'Todo surtido: no se ha acabado nada.',
     pillOut: '86',
     pillLow: 'Poco',
     backInStock: 'Ya hay',
@@ -1477,17 +1478,20 @@ const catalog = {
     clearsAt: 'Se vacía cada noche a las {time}',
     seesOnly: 'Puedes ver esta lista. Su propio equipo reporta en ella.',
     // reporting
-    reportItem: 'Reportar algo',
+    reportItem: '¿Qué se acabó o queda poco?',
     updateItem: 'Actualizar {name}',
     list: 'Lista',
-    search: 'Busca en el menú o escribe algo',
+    search: 'Escríbelo: Bacardi, servilletas, limones…',
+    searchLabel: 'Qué se acabó o queda poco',
+    searchHelp: 'Ingredientes y suministros que tenemos en existencia o pedimos, no platillos del menú.',
+    reportedBefore: 'Reportado aquí antes',
     useTyped: 'Usar “{text}”',
     fromMenu: 'Del menú',
     change: 'Cambiar',
     howMany: '¿Cuántos quedan? (opcional)',
     countPlaceholder: 'p. ej. 3',
     note: 'Nota (opcional)',
-    notePlaceholder: 'p. ej. llega el viernes, usa … en su lugar',
+    notePlaceholder: 'p. ej. se pide el martes, por ahora usa los vasos de 12 oz',
     area: 'Área (opcional)',
     anyArea: '—',
     alreadyOut: 'Ya está en la lista como agotado. Al guardar se actualiza.',
@@ -1497,7 +1501,10 @@ const catalog = {
     reportedOut: 'Se acabó {name}',
     reportedLow: 'Queda poco de {name}',
     told: { one: 'Le avisamos a 1 persona que trabaja hoy', other: 'Les avisamos a {count} personas que trabajan hoy' },
-    pickFirst: 'Primero elige o escribe algo',
+    pickFirst: 'Primero escribe o elige qué se acabó',
+    category: 'Categoría (opcional)',
+    noCategory: 'Ninguna',
+    categoryHelp: 'Se recuerda para la próxima vez.',
     // photos
     addPhoto: 'Fotos (opcional)',
     photo: 'Foto',
@@ -1520,6 +1527,7 @@ const catalog = {
     // history (managers)
     mostTitle: 'Lo que más se acabó en los últimos {days} días',
     mostHelp: 'Para ayudarte con los pedidos.',
+    reportLink: 'Ver el informe de la Lista 86',
     times: { one: '{count} vez', other: '{count} veces' },
     logTitle: 'Registro',
     lastDays: 'Últimos {days} días',
@@ -1534,7 +1542,7 @@ const catalog = {
     durHours: '{count} h',
     durDays: { one: '{count} día', other: '{count} días' },
     // Settings → 86 List (admins)
-    settingsHelp: 'Las listas donde reporta el personal. Deja el bar en su propia lista, o agrega una por cada bar (elige su área).',
+    settingsHelp: 'Las listas donde reporta el personal: los ingredientes y suministros que cada equipo tiene en existencia o pide para trabajar (Bacardi, limones, servilletas, vasos bajos, CO2…), no platillos del menú. Deja el bar en su propia lista, o agrega una por cada bar (elige su área).',
     addList: 'Agregar lista',
     newList: 'Lista nueva',
     nameEs: 'Nombre en español (opcional)',
@@ -1544,10 +1552,11 @@ const catalog = {
     kindOther: 'Otra',
     kindHelp: 'Las listas del bar se muestran aparte del resto.',
     suggest: 'Lo que sugiere del menú (de Capacitación)',
+    suggestMenu: 'Sugerir también platillos del menú',
+    suggestMenuHelp: 'Apagado de forma predeterminada: la Lista 86 es para ingredientes y suministros. Actívalo solo si esta lista también lleva platillos; así Capacitación muestra “Agotado hoy” en los que se reporten aquí.',
     menuDrinks: 'Bebidas',
     menuFood: 'Comida',
     menuAll: 'Todo',
-    menuNone: 'Nada (solo escribir)',
     menuSections: 'Solo estas secciones (opcional)',
     whoReports: 'Quién puede reportar y quitar',
     whoReportsHelp: 'Los gerentes y administradores siempre pueden.',
@@ -1567,6 +1576,19 @@ const catalog = {
     listSaved: 'Lista guardada',
     listDeleted: 'Lista borrada',
     itemsNow: { one: 'Tiene {count} ahora', other: 'Tiene {count} ahora' },
+    // Configuración → Lista 86: categorías
+    categoriesTitle: 'Categorías',
+    categoriesHelp: 'El personal puede poner cada artículo en una (opcional), y se recuerda para la próxima vez. El informe de la Lista 86 y su lista de compras se agrupan por ellas.',
+    categoryName: 'Nombre',
+    categoryNameEs: 'Nombre en español (opcional)',
+    newCategory: 'Categoría nueva',
+    addCategory: 'Agregar categoría',
+    removeCategory: 'Quitar {name}',
+    moveUp: 'Subir {name}',
+    moveDown: 'Bajar {name}',
+    saveCategories: 'Guardar categorías',
+    categoriesSaved: 'Categorías guardadas',
+    otherStays: 'Otros siempre se queda: lo que estaba en una categoría que quitas aparece ahí.',
   },
   venue: {
     leaveThisFloorPlanWithout: '¿Salir de este plano sin guardar los cambios?',
@@ -2126,6 +2148,7 @@ const catalog = {
     textsAfter: 'Cuando esté conectado, aquí puedes mandarte un mensaje de prueba.',
   },
   ...auth,
+  ...reports,
 };
 
 export default catalog;

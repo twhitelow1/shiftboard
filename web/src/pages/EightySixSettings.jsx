@@ -1,5 +1,7 @@
-// Settings → 86 List (admins): the lists staff report on. Rename them, add one per bar area, choose who reports and
-// who sees each one, what it suggests from the Training menu, notifications, and the nightly reset.
+// Settings → 86 List (admins): the lists staff report on (ingredients and supplies, not menu items). Rename them, add
+// one per bar area, choose who reports and who sees each one, notifications and the nightly reset; behind "Also suggest
+// menu items", the Training menu items a list offers too (off for every list unless an admin turns it on). Below them,
+// the categories items can be filed under (Produce, Dairy… renamed or added to here).
 import React, { useEffect, useState } from 'react';
 import { useApp, Icon, Field, useAction } from '../ui.jsx';
 import { Chips } from './TrainingShared.jsx';
@@ -7,7 +9,7 @@ import { listName } from './EightySix.jsx';
 import { useT } from '../i18n/index.js';
 
 const KINDS = [['bar', 'eightySix.kindBar'], ['kitchen', 'eightySix.kindKitchen'], ['other', 'eightySix.kindOther']];
-const MENUS = [['drinks', 'eightySix.menuDrinks'], ['food', 'eightySix.menuFood'], ['all', 'eightySix.menuAll'], ['none', 'eightySix.menuNone']];
+const MENUS = [['drinks', 'eightySix.menuDrinks'], ['food', 'eightySix.menuFood'], ['all', 'eightySix.menuAll']];
 
 export default function EightySixSettings() {
   const t = useT();
@@ -20,7 +22,7 @@ export default function EightySixSettings() {
   const jobName = Object.fromEntries(data.options.jobCodes.map((j) => [j.id, j.name]));
   const who = (l) => [...(l.reporters.departments || []), ...(l.reporters.jobCodeIds || []).map((id) => jobName[id]).filter(Boolean)].join(', ') || '—';
   const done = () => { setOpen(null); load(); };
-  const blank = { name: '', nameEs: '', kind: 'bar', area: '', menu: 'drinks', sections: [], reporters: { departments: [], jobCodeIds: [] }, viewers: { all: true }, notify: true, notifyLow: false, resetAt: '' };
+  const blank = { name: '', nameEs: '', kind: 'bar', area: '', menu: 'none', sections: [], reporters: { departments: [], jobCodeIds: [] }, viewers: { all: true }, notify: true, notifyLow: false, resetAt: '' };
   return (
     <div className="card card-pad col" style={{ gap: 12 }}>
       <h2>{t('main.eightySix')}</h2>
@@ -42,6 +44,49 @@ export default function EightySixSettings() {
         {open === 'new' && <ListEditor list={{ ...blank, name: t('eightySix.newList') }} options={data.options} onDone={done} onCancel={() => setOpen(null)} />}
       </div>
       {open !== 'new' && <button className="btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => setOpen('new')}><Icon name="plus" />{t('eightySix.addList')}</button>}
+      <Categories saved={data.categories || []} onSaved={load} />
+    </div>
+  );
+}
+
+/** The categories staff can file items under: rename (English and Spanish), reorder, add, remove. Other always stays. */
+function Categories({ saved, onSaved }) {
+  const t = useT();
+  const { call } = useApp();
+  const [run, busy] = useAction();
+  const [rows, setRows] = useState(saved);
+  useEffect(() => { setRows(saved); }, [saved]);
+  const set = (i, patch) => setRows((r) => r.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const move = (i, d) => setRows((r) => { const n = [...r]; const [x] = n.splice(i, 1); n.splice(i + d, 0, x); return n; });
+  const dirty = JSON.stringify(rows) !== JSON.stringify(saved);
+  const label = (c) => c.name || t('eightySix.newCategory');
+  const save = () => run(() => call('eightySix.saveCategories', { categories: rows.map(({ id, name, nameEs }) => ({ id, name, nameEs })) }), t('eightySix.categoriesSaved')).then((r) => { if (r) onSaved(); });
+  return (
+    <div className="e86-cats col">
+      <h3>{t('eightySix.categoriesTitle')}</h3>
+      <div className="help">{t('eightySix.categoriesHelp')}</div>
+      <div className="list e86-set-lists">
+        {rows.map((c, i) => (
+          <div key={c.id || `new${i}`} className="list-item e86-cat">
+            <div className="grid2 e86-cat-names">
+              <input className="input" value={c.name} maxLength={40} onChange={(e) => set(i, { name: e.target.value })} aria-label={`${t('eightySix.categoryName')}: ${label(c)}`} placeholder={t('eightySix.categoryName')} />
+              <input className="input" value={c.nameEs} maxLength={40} onChange={(e) => set(i, { nameEs: e.target.value })} aria-label={`${t('eightySix.categoryNameEs')}: ${label(c)}`} placeholder={t('eightySix.categoryNameEs')} />
+            </div>
+            <div className="e86-cat-btns">
+              <button type="button" className="btn sm icon ghost" disabled={i === 0} onClick={() => move(i, -1)} aria-label={t('eightySix.moveUp', { name: label(c) })}><Icon name="up" /></button>
+              <button type="button" className="btn sm icon ghost" disabled={i === rows.length - 1} onClick={() => move(i, 1)} aria-label={t('eightySix.moveDown', { name: label(c) })}><Icon name="down" /></button>
+              <button type="button" className="btn sm icon ghost danger" disabled={c.id === 'other'} onClick={() => setRows((r) => r.filter((_, j) => j !== i))} aria-label={t('eightySix.removeCategory', { name: label(c) })}><Icon name="trash" /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="help">{t('eightySix.otherStays')}</div>
+      <div className="row wrap">
+        <button type="button" className="btn sm" disabled={rows.length >= 30} onClick={() => setRows((r) => [...r, { id: '', name: '', nameEs: '' }])}><Icon name="plus" />{t('eightySix.addCategory')}</button>
+        <span className="spacer" />
+        {dirty && <button type="button" className="btn sm" onClick={() => setRows(saved)}>{t('common.cancel')}</button>}
+        <button type="button" className="btn sm primary" disabled={busy || !dirty || rows.some((c) => !c.name.trim())} onClick={save}><Icon name="check" />{t('eightySix.saveCategories')}</button>
+      </div>
     </div>
   );
 }
@@ -52,6 +97,7 @@ function ListEditor({ list, options, canDelete, onDone, onCancel }) {
   const [run, busy] = useAction();
   const [f, setF] = useState(() => ({ ...list, reporters: { departments: [], jobCodeIds: [], ...list.reporters }, viewers: list.viewers || { all: true } }));
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
+  const menuOn = (f.menu && f.menu !== 'none') || f.sections.length > 0;
   const save = () => run(() => call('eightySix.saveList', {
     id: f.id, name: f.name, nameEs: f.nameEs, kind: f.kind, area: f.area, menu: f.menu, sections: f.sections,
     reporters: f.reporters, viewers: f.viewers, notify: f.notify, notifyLow: f.notifyLow, resetAt: f.resetAt,
@@ -74,13 +120,19 @@ function ListEditor({ list, options, canDelete, onDone, onCancel }) {
           </select>
         </Field>
       </div>
-      <Field label={t('eightySix.suggest')}>
-        <div className="seg">{MENUS.map(([k, label]) => <button key={k} type="button" className={f.menu === k && !f.sections.length ? 'on' : ''} onClick={() => setF((x) => ({ ...x, menu: k, sections: [] }))}>{t(label)}</button>)}</div>
-        {options.sections.length > 0 && <>
-          <div className="tiny faint" style={{ marginTop: 6 }}>{t('eightySix.menuSections')}</div>
-          <Chips options={options.sections} value={f.sections} onChange={(v) => set('sections', v)} />
-        </>}
-      </Field>
+      <div className="col e86-menu-opt" style={{ gap: 4 }}>
+        <label className="check"><input type="checkbox" checked={menuOn} onChange={(e) => setF((x) => ({ ...x, menu: e.target.checked ? (x.kind === 'bar' ? 'drinks' : 'food') : 'none', sections: [] }))} />{t('eightySix.suggestMenu')}</label>
+        <div className="help">{t('eightySix.suggestMenuHelp')}</div>
+        {menuOn && (
+          <Field label={t('eightySix.suggest')}>
+            <div className="seg">{MENUS.map(([k, label]) => <button key={k} type="button" className={f.menu === k && !f.sections.length ? 'on' : ''} onClick={() => setF((x) => ({ ...x, menu: k, sections: [] }))}>{t(label)}</button>)}</div>
+            {options.sections.length > 0 && <>
+              <div className="tiny faint" style={{ marginTop: 6 }}>{t('eightySix.menuSections')}</div>
+              <Chips options={options.sections} value={f.sections} onChange={(v) => setF((x) => ({ ...x, sections: v, menu: v.length ? x.menu : x.menu === 'none' ? 'drinks' : x.menu }))} />
+            </>}
+          </Field>
+        )}
+      </div>
       <Field label={t('eightySix.whoReports')} help={t('eightySix.whoReportsHelp')}>
         <div className="tiny faint">{t('eightySix.departments')}</div>
         <Chips options={options.departments} value={f.reporters.departments} onChange={(v) => set('reporters', { ...f.reporters, departments: v })} />
