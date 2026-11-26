@@ -44,6 +44,7 @@
 .tr-mod-row.past { opacity: .75; }
 .tr-mod-person { flex: 1; min-width: 0; }
 .tr-mod-row .tr-mod-name { font-size: 15px; }
+.tr-mod-phone { display: inline-block; margin-top: 2px; font-weight: 600; color: var(--brand); text-decoration: none; font-variant-numeric: tabular-nums; }
 .tr-mod-charge { margin-left: 6px; vertical-align: 2px; }
 .tr-mod-btns { display: flex; gap: 6px; flex: none; }
 .tr-mod-btns .btn { min-height: 40px; }
@@ -262,3 +263,6 @@
 @media (max-width: 640px) {
   .tr-page-move .btn.sm.icon { width: 28px; }
 }
+.tr-mod-shown { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+.tr-mod-shown-row { display: flex; align-items: center; gap: 10px; min-height: 40px; font-size: 15px; cursor: pointer; }
+.tr-mod-shown-row input { width: 20px; height: 20px; }

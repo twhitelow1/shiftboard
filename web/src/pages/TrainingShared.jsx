@@ -164,13 +164,13 @@ export function Chips({ options, value = [], onChange, render = (o) => o.label ?
 }
 
 // ---------- manager on duty ----------
-/** One manager's line: "On now · until 10 pm", "In at 4 pm today", "Earlier today · 10 am–4 pm". */
+/** One manager's line, always with the time in: "On now · 4 pm–10 pm", "In at 4 pm today", "Earlier today · 10 am–4 pm". */
 function managerLine(m, mod, t, lang) {
   const s = m.shift;
   if (!s) return m.state === 'now' ? t.todayOverride : '';
   const span = `${fmtTime(s.start)}${s.end ? `–${fmtTime(s.end)}` : ''}`;
-  if (m.state === 'now') return [t.onNow, s.end ? t.until(fmtTime(s.end)) : ''].filter(Boolean).join(' · ');
-  if (m.state === 'later') return t.inAt(fmtTime(s.start));
+  if (m.state === 'now') return `${t.onNow} · ${span}`;
+  if (m.state === 'later') return `${t.inAt(fmtTime(s.start))}${s.end ? `–${fmtTime(s.end)}` : ''}`;
   if (m.state === 'earlier') return t.earlierToday(span);
   return `${fmtDay(mod.date, lang)} · ${span}`;
 }
@@ -185,8 +185,8 @@ export function ModCard({ compact = false, mod: given = null }) {
   const lang = useLang();
   const [mod, setMod] = useState(given);
   const [editing, setEditing] = useState(false);
-  // The manager on duty is part of Training (not in every plan).
-  useEffect(() => { if (!given && (!has || has('training'))) call('mod.get').then(setMod).catch(() => setMod(false)); }, [version, given]);
+  // The managers on duty are in every plan (not only with Training).
+  useEffect(() => { if (!given) call('mod.get').then(setMod).catch(() => setMod(false)); }, [version, given]);
   if (!mod) return null;
   // Older servers answer with one person only.
   const list = mod.managers || (mod.person ? [{ ...mod.person, state: mod.status === 'now' || mod.status === 'override' ? 'now' : mod.status === 'next' ? 'later' : 'planned', inCharge: true }] : []);
@@ -208,6 +208,7 @@ export function ModCard({ compact = false, mod: given = null }) {
               <div className="tr-mod-person">
                 <div className="tr-mod-name">{m.name}{m.inCharge && list.length > 1 && <span className="badge tr-mod-charge">{t.inCharge}</span>}</div>
                 <div className="small muted">{managerLine(m, mod, t, lang)}</div>
+                {m.phone && <a className="small tr-mod-phone" href={telHref(m.phone)}>{m.phone}</a>}
               </div>
               {m.phone ? (
                 <div className="tr-mod-btns">
@@ -261,7 +262,34 @@ function ModOverrideModal({ onClose }) {
         </div>
         {day.person && <div className="alert info"><TIcon name="phone" />{t.modIs(day.person.name)}</div>}
       </>}
+      <ModShownList />
     </Modal>
+  );
+}
+
+/** Managers and up: a switch per person for whether they show in Managers on duty (mod.visibility / mod.setShown). */
+function ModShownList() {
+  const { call, refresh } = useApp();
+  const t = useT();
+  const [list, setList] = useState(null);
+  const [run, busy] = useAction();
+  useEffect(() => { call('mod.visibility').then((r) => setList(r.people)).catch(() => setList([])); }, []);
+  const toggle = async (p) => {
+    const r = await run(() => call('mod.setShown', { userId: p.id, shown: !p.shown }), t.saved);
+    if (r) { setList(r.people); refresh(); }
+  };
+  if (!list?.length) return null;
+  return (
+    <div className="tr-mod-shown">
+      <div className="tr-kicker">{t.shownTitle}</div>
+      <div className="small muted" style={{ marginBottom: 6 }}>{t.shownHelp}</div>
+      {list.map((p) => (
+        <label key={p.id} className="tr-mod-shown-row">
+          <input type="checkbox" checked={p.shown} disabled={busy} onChange={() => toggle(p)} />
+          <span>{p.name}</span>
+        </label>
+      ))}
+    </div>
   );
 }
 

@@ -470,6 +470,10 @@ const en = {
     pagesToRead: { one: '{count} manual page to read', other: '{count} manual pages to read' },
   },
   mod: {
+    shownOpen: 'Who shows here',
+    shownHide: 'Done',
+    shownHelp: 'Switch someone off and they never appear in this list, even when they’re on the schedule.',
+    shownSwitch: 'Show {name} in Managers on duty',
     title: 'Manager on duty',
     titleMany: 'Managers on duty ({count})',
     inCharge: 'In charge',

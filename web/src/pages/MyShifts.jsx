@@ -60,7 +60,7 @@ export default function MyShifts() {
       )}
 
       <MyAnnouncements />
-      {has('training') && <div className="section"><ModCard compact /></div>}
+      <div className="section"><ModCard compact /></div>
       {has('eightySix') && <EightySixBanner className="section" />}
       {has('impact') && <div className="section"><KudosCard /></div>}
 

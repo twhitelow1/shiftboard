@@ -469,6 +469,10 @@ const es: Messages = {
     pagesToRead: { one: '{count} página del manual por leer', other: '{count} páginas del manual por leer' },
   },
   mod: {
+    shownOpen: 'Quién aparece aquí',
+    shownHide: 'Listo',
+    shownHelp: 'Si desactivas a alguien, nunca aparece en esta lista, aunque esté en el horario.',
+    shownSwitch: 'Mostrar a {name} en Gerentes en turno',
     title: 'Gerente en turno',
     titleMany: 'Gerentes en turno ({count})',
     inCharge: 'A cargo',

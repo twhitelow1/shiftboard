@@ -611,7 +611,7 @@ export function trainingApi({ store, now, settings, notify, fail, random = Math.
     const out = [];
     for (const s of store.list('shifts', (x) => x.published && x.userId && (x.date === date || x.date === addDays(date, -1)))) {
       const u = store.get('users', s.userId);
-      if (!u || u.active === false) continue;
+      if (!u || u.active === false || u.onDutyHidden === true) continue; // switched off for Managers on duty (mod.setShown)
       const job = jobs[s.jobCodeId];
       if (!isModShift(u, job)) continue;
       const eff = effectiveShift(s, st);
@@ -1116,6 +1116,19 @@ export function trainingApi({ store, now, settings, notify, fail, random = Math.
         .map((x) => ({ id: x.user.id, name: x.user.name, start: x.shift.start, end: x.shift.end || null, jobName: x.job?.name || '' }));
       const candidates = activeUsers().filter(canBeMod).map((u) => ({ id: u.id, name: u.name })).sort((a, b) => a.name.localeCompare(b.name));
       return { ...out, override: store.get('modOverrides', d)?.userId || null, scheduled, candidates };
+    },
+    // Who shows in Managers on duty (managers and up): everyone who could be on duty, with a switch each. Someone
+    // switched off never appears in the list (a manager picked by hand for a day still does).
+    'mod.visibility': (actor) => {
+      needMgr(actor);
+      return { people: activeUsers().filter(canBeMod).sort((a, b) => a.name.localeCompare(b.name)).map((u) => ({ id: u.id, name: u.name, shown: u.onDutyHidden !== true })) };
+    },
+    'mod.setShown': (actor, { userId, shown } = {}) => {
+      needMgr(actor);
+      const u = store.get('users', userId);
+      if (!canBeMod(u)) fail(400, 'Pick a manager or supervisor');
+      store.update('users', u.id, { onDutyHidden: shown === false });
+      return api['mod.visibility'](actor);
     },
     'mod.setOverride': (actor, { date, userId }) => {
       needMgr(actor);
