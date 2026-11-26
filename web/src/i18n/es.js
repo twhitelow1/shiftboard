@@ -11,6 +11,7 @@ import print from './es-print.js'; // el PDF del horario, Publicar, Configuraci�
 import assistant from './es-assistant.js'; // Pregúntale a ShiftBoard: el chat y Configuración → Pregúntale a ShiftBoard
 import reviews, { integrations as reviewIntegrations } from './es-reviews.js'; // Google Business Profile, Yelp, answering reviews, review alerts
 import dayList from './es-daylist.js'; // el orden de las listas del día y la cuadrícula por puesto
+import beo from './es-beo.js'; // a BEO's sections, the import's duplicate check and "Read it with AI"
 const catalog = {
   lang: {
     change: 'Cambiar idioma',
@@ -2303,6 +2304,7 @@ const catalog = {
   ...assistant,
   ...reviews,
   ...dayList,
+  ...beo,
 };
 Object.assign(catalog.integrations, reviewIntegrations); // Settings → Integrations: the Google and Yelp cards
 

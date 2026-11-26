@@ -19,6 +19,7 @@ import { localStamp } from './toast.js';
 import { eventRoom } from './venue-links.js';
 import { addDays, todayStr, fmtTime } from './time.js';
 import { canManageEvents, canChangeSettings } from './roles.js';
+import { compareEvents } from './beo-match.js';
 
 export const SOURCE = 'tripleseat';
 export const INTEGRATION_ID = 'tripleseat';
@@ -358,12 +359,18 @@ export function tripleseatLinks({ store, api, fail, needAuth, needMgr, needEvent
     const ownsNow = [...new Set([...owns, ...(menu ? [] : (cur?.tripleseat?.owns || []).filter((f) => f === 'menu' || f === 'beverage'))])];
 
     if (!cur) {
+      // The same event may already be here from a BEO PDF or typed in by hand (core/beo-match.js): it's added
+      // anyway (the sync can't ask), flagged on both for the events team to check and delete one.
+      const twins = store.list('events', (e) => e.source !== SOURCE && e.date === next.date)
+        .map((e) => ({ e, c: compareEvents({ ...next, tripleseatId: ev.id }, e) })).filter((x) => x.c && x.c.confidence !== 'low')
+        .sort((a, b) => b.c.score - a.c.score);
+      const dupReview = twins.length ? [{ code: 'possibleDuplicate', otherId: twins[0].e.id, otherName: twins[0].e.name, confidence: twins[0].c.confidence, at: at() }] : [];
       const doc = {
         id, source: SOURCE, externalId: ev.id, ...next,
         guaranteed: next.guaranteed ?? '', type: next.type || '', serviceStyle: 'plated', client: '', captainId: null,
         menu: next.menu || [], beverage: { package: drinks || '', bar: '', notes: '' }, specialDrinks: [], staffing: [], timeline: [],
         setupNotes: '', dietaryNotes: '', avNotes: '', attire: '', notes: '', tsNotes: next.tsNotes || '',
-        createdAt: at(), createdBy: SOURCE, tripleseat: { ...meta, owns: ownsNow, review: [], syncedAt: at() },
+        createdAt: at(), createdBy: SOURCE, tripleseat: { ...meta, owns: ownsNow, review: dupReview, syncedAt: at() },
       };
       store.insert('events', doc);
       if (!ctx.initial) notify(eventsTeam(), say('newEvent', doc.name, day(doc.date), doc.guestCount), `#/events/${id}`);

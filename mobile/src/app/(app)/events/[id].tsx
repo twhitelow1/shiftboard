@@ -1,5 +1,6 @@
-// One event's BEO, read only: when and where, guests, your shift on it, details, staffing (who's on it),
-// menu and dietary notes, beverage and special drinks, the timeline, setup notes and the team thread.
+// One event's BEO, read only: when and where, guests, your shift on it, the details it has, staffing (who's on
+// it), then everything the BEO says by section (lib/beo.ts: timeline, menu, dietary, bar, setup… only the ones
+// with something in them; dietary stands out) and the team thread.
 // Only what events.get returns. The client's contact details are for the events team: the server leaves out
 // their phone and email for everyone else, and the app shows the contact only to the events team.
 // Editing, printing and posting to the thread are on the website.
@@ -12,6 +13,7 @@ import { Screen } from '@/components/Screen';
 import { Badge, Button, Card, Empty, JobDot, Loading, Notice, Row, Txt, useColors } from '@/components/ui';
 import { useI18n } from '@/i18n';
 import { isStatus, isStyle, STATUS_TONE } from '@/lib/events';
+import { eventSections, isLabelKey, isSectionKey, PRIVATE, type BeoSection, type KeyValueItem, type MenuItem, type TimelineItem } from '@/lib/beo';
 import { useErrorText, useRpc } from '@/lib/hooks';
 import { useApp } from '@/lib/session';
 import type { EventDetail } from '@/lib/types';
@@ -33,15 +35,17 @@ export default function EventScreen() {
   }
   const mine = e.shifts.find((s) => s.userId === me.id);
   const captain = e.captainId ? people[e.captainId] : null;
-  const contact = isEvents ? [e.contactName, e.contactPhone, e.contactEmail].filter(Boolean).join(' · ') : '';
   const details: [string, string][] = ([
     [t('events.type'), e.type || ''],
     [t('events.service'), isStyle(e.serviceStyle) ? t(`events.style.${e.serviceStyle}`) : e.serviceStyle || ''],
     [t('events.captain'), captain?.name || ''],
-    [t('events.client'), e.client || ''],
-    [t('events.contact'), contact],
     [t('events.attire'), e.attire || ''],
+    [t('events.areas'), e.areas && e.areas.trim().toLowerCase() !== (e.room || '').trim().toLowerCase() ? e.areas : ''],
+    [t('events.location'), e.location || ''],
+    [t('events.salesManager'), e.salesManager || ''],
   ] as [string, string][]).filter(([, v]) => v);
+  const sections = eventSections(e, isEvents);
+  const dietary = sections.some((sec) => sec.key === 'dietary');
   const kicker = { textTransform: 'uppercase' as const, letterSpacing: 0.6 };
 
   return (
@@ -55,6 +59,7 @@ export default function EventScreen() {
           {e.guestCount ? <Badge tone="brand" text={`${tn('events.guests', e.guestCount)}${e.guaranteed ? ` · ${t('events.guaranteed', { count: e.guaranteed })}` : ''}`} /> : null}
         </View>
         {mine ? <Notice tone="brand" icon="user" text={t('events.youreWorking', { job: jobs[mine.jobCodeId]?.name || '', time: shiftTime(mine) })} /> : null}
+        {dietary ? <Notice tone="warn" icon="alert" text={t('events.dietaryBanner')} /> : null}
       </Card>
 
       {details.length ? (
@@ -69,7 +74,7 @@ export default function EventScreen() {
         </Card>
       ) : null}
 
-      <Card style={{ gap: 10 }}>
+      {e.staffing.length || isEvents ? <Card style={{ gap: 10 }}>
         <Row>
           <Txt v="h3" style={{ flex: 1 }}>{t('events.staffing')}</Txt>
           {e.needed > 0 ? <Badge tone={e.filled >= e.needed ? 'ok' : 'warn'} text={t('events.staffed', { filled: e.filled, needed: e.needed })} /> : null}
@@ -92,63 +97,10 @@ export default function EventScreen() {
             </View>
           );
         })}
-      </Card>
+      </Card> : null}
 
-      {e.menu?.length || e.dietaryNotes ? (
-        <Card style={{ gap: 10 }}>
-          <Txt v="h3">{t('events.menu')}</Txt>
-          {e.menu?.length ? e.menu.map((m, i) => (
-            <View key={i} style={{ gap: 1 }}>
-              {m.course ? <Txt v="tiny" tone="muted" bold style={kicker}>{m.course}</Txt> : null}
-              <Txt bold>{m.item}</Txt>
-              {m.notes ? <Txt v="small" tone="muted">{m.notes}</Txt> : null}
-            </View>
-          )) : <Txt v="small" tone="muted">{t('events.noMenu')}</Txt>}
-          {e.dietaryNotes ? <Notice tone="warn" text={t('events.dietaryNotes', { text: e.dietaryNotes })} /> : null}
-        </Card>
-      ) : null}
-
-      {e.beverage?.package || e.beverage?.bar || e.beverage?.notes || e.specialDrinks?.length ? (
-        <Card style={{ gap: 8 }}>
-          <Txt v="h3">{t('events.beverage')}</Txt>
-          {e.beverage?.package ? <Txt><Txt bold>{t('events.package')}: </Txt>{e.beverage.package}</Txt> : null}
-          {e.beverage?.bar ? <Txt><Txt bold>{t('events.bar')}: </Txt>{e.beverage.bar}</Txt> : null}
-          {e.beverage?.notes ? <Txt><Txt bold>{t('common.notesLabel')}: </Txt>{e.beverage.notes}</Txt> : null}
-          {e.specialDrinks?.length ? (
-            <>
-              <Txt v="tiny" tone="muted" bold style={[kicker, { marginTop: 4 }]}>{t('events.specialDrinks')}</Txt>
-              {e.specialDrinks.map((d, i) => (
-                <View key={i} style={[styles.drink, { backgroundColor: c.surface2 }]}>
-                  <Txt bold>{d.name}</Txt>
-                  {d.recipe ? <Txt v="small">{d.recipe}</Txt> : null}
-                  {d.batch ? <Txt v="tiny" tone="faint">{d.batch}</Txt> : null}
-                </View>
-              ))}
-            </>
-          ) : null}
-        </Card>
-      ) : null}
-
-      {e.timeline?.length ? (
-        <Card style={{ gap: 8 }}>
-          <Txt v="h3">{t('events.timeline')}</Txt>
-          {e.timeline.map((x, i) => (
-            <Row key={i} style={{ alignItems: 'flex-start' }}>
-              <Txt bold style={{ minWidth: 64 }}>{time(x.time)}</Txt>
-              <Txt style={{ flex: 1 }}>{x.item}</Txt>
-            </Row>
-          ))}
-        </Card>
-      ) : null}
-
-      {e.setupNotes || e.avNotes || e.notes ? (
-        <Card style={{ gap: 8 }}>
-          <Txt v="h3">{t('events.setup')}</Txt>
-          {e.setupNotes ? <Txt>{t('events.setupLabel', { text: e.setupNotes })}</Txt> : null}
-          {e.avNotes ? <Txt>{t('events.av', { text: e.avNotes })}</Txt> : null}
-          {e.notes ? <Txt>{e.notes}</Txt> : null}
-        </Card>
-      ) : null}
+      {/* Everything the BEO says, by section, only where it says something (lib/beo.ts). */}
+      {sections.map((sec, i) => <SectionCard key={`${sec.key}-${i}`} s={sec} />)}
 
       <Card style={{ gap: 10 }}>
         <Txt v="h3">{t('events.thread')}</Txt>
@@ -162,6 +114,46 @@ export default function EventScreen() {
         <Button small icon="external" title={t('common.openWebsite')} onPress={() => WebBrowser.openBrowserAsync(`${server}/#/events/${e.id}`).catch(() => {})} style={{ alignSelf: 'flex-start' }} />
       </Card>
     </Screen>
+  );
+}
+
+/** One section of the BEO: the app's name for it (the BEO's own heading for "other"), then what it says, as written. */
+function SectionCard({ s }: { s: BeoSection }) {
+  const { t, time } = useI18n();
+  const c = useColors();
+  const kicker = { textTransform: 'uppercase' as const, letterSpacing: 0.6 };
+  const title = s.key === 'other' || !isSectionKey(s.key) ? s.title || t('events.section.other') : t(`events.section.${s.key}`);
+  const alert = s.key === 'dietary';
+  return (
+    <Card style={[{ gap: 8 }, alert ? { borderColor: c.warn, borderWidth: 1.5 } : null]}>
+      <Row>
+        <Txt v="h3" style={[{ flex: 1 }, alert ? { color: c.warn } : null]}>{title}</Txt>
+        {PRIVATE.includes(s.key) ? <Badge tone="neutral" text={t('events.managersOnly')} /> : null}
+      </Row>
+      {s.kind === 'timeline' ? (s.items as TimelineItem[]).map((x, i) => (
+        <Row key={i} style={{ alignItems: 'flex-start' }}>
+          <Txt bold style={{ minWidth: 76 }}>{`${time(x.time)}${x.end ? `–${time(x.end)}` : ''}`}</Txt>
+          <Txt style={{ flex: 1 }}>{x.text}</Txt>
+        </Row>
+      )) : null}
+      {s.kind === 'menu' ? (s.items as MenuItem[]).map((m, i, all) => (
+        <View key={i} style={{ gap: 1 }}>
+          {m.course && m.course !== all[i - 1]?.course ? <Txt v="tiny" tone="muted" bold style={kicker}>{m.course}</Txt> : null}
+          {m.item ? <Txt bold>{`${m.item}${m.qty ? ` ×${m.qty}` : ''}${m.dietary?.length ? `  (${m.dietary.join(', ')})` : ''}`}</Txt> : null}
+          {m.notes ? <Txt v="small" tone="muted">{m.notes}</Txt> : null}
+        </View>
+      )) : null}
+      {s.kind === 'keyvalue' ? (s.items as KeyValueItem[]).map((x, i) => (
+        <View key={i} style={x.drink ? [styles.drink, { backgroundColor: c.surface2 }] : { gap: 1 }}>
+          {x.labelKey || x.label ? <Txt v="tiny" tone="muted" bold style={kicker}>{isLabelKey(x.labelKey) ? t(`events.label.${x.labelKey}`) : x.label || ''}</Txt> : null}
+          <Txt>{x.value}</Txt>
+        </View>
+      )) : null}
+      {s.kind === 'list' ? (s.items as string[]).map((x, i) => <Txt key={i} bold={alert}>{`• ${x.replace(/^[•◦▪●○*–-]\s*/, '')}`}</Txt>) : null}
+      {s.kind === 'text' ? (s.items as string[]).map((x, i) => (/:$/.test(x) && x.length <= 48
+        ? <Txt key={i} v="tiny" tone="muted" bold style={[kicker, { marginTop: 2 }]}>{x.slice(0, -1)}</Txt>
+        : <Txt key={i}>{x}</Txt>)) : null}
+    </Card>
   );
 }
 

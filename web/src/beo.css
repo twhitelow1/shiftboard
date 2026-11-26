@@ -1,0 +1,56 @@
+/* A BEO's sections (web/src/pages/BeoSections.jsx) and the import preview's duplicate check (BeoImport.jsx). */
+.beo-sec { min-width: 0; }
+.beo-sec-h { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; flex-wrap: wrap; }
+.beo-sec-private { font-size: 11px; gap: 3px; }
+.beo-sec-alert { border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); background: var(--warn-soft); }
+.beo-sec-alert .beo-sec-h { color: var(--warn); }
+.beo-sec-timeline, .beo-sec-dietary { grid-column: 1 / -1; }
+
+.beo-tl { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.beo-tl li { display: grid; grid-template-columns: minmax(76px, auto) minmax(0, 1fr); gap: 10px; align-items: baseline; min-width: 0; overflow-wrap: anywhere; }
+.beo-tl b { white-space: nowrap; }
+
+.beo-menu { display: flex; flex-direction: column; gap: 8px; }
+.beo-menu-row { min-width: 0; overflow-wrap: anywhere; }
+.beo-menu-course { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); margin-top: 4px; }
+.beo-menu-item { font-weight: 600; }
+.beo-diet { margin-left: 6px; font-size: 11px; }
+
+.beo-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; overflow-wrap: anywhere; }
+.beo-list-diet { font-weight: 600; font-size: 14.5px; }
+.beo-kv { margin-bottom: 6px; }
+.beo-kv dd { white-space: pre-line; }
+.beo-drink { padding: 6px 8px; border-radius: 8px; background: var(--surface-2); }
+
+.beo-text { display: flex; flex-direction: column; gap: 6px; overflow-wrap: anywhere; }
+.beo-text p { margin: 0; white-space: pre-line; }
+.beo-text-h { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); margin-top: 4px; }
+.beo-text-pt { padding-left: 14px; position: relative; }
+.beo-text-pt::before { content: '•'; position: absolute; left: 2px; color: var(--text-3); }
+.beo-text-pt.sub { padding-left: 28px; }
+.beo-text-pt.sub::before { left: 16px; content: '◦'; }
+
+.beo-diet-banner { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; }
+.beo-diet-banner a { font-weight: 700; }
+
+.beo-chips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; min-width: 0; }
+.beo-chips .badge { font-size: 11.5px; }
+.beo-changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.beo-changes li { display: flex; gap: 6px; align-items: center; min-width: 0; overflow-wrap: anywhere; }
+
+/* Possible duplicate: this BEO next to the event already here */
+.beo-dup { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--warn) 50%, var(--border)); background: var(--warn-soft); min-width: 0; }
+.beo-dup-h { display: flex; gap: 6px; align-items: center; font-weight: 700; font-size: 13.5px; color: var(--warn); }
+.beo-dup-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+@media (max-width: 520px) { .beo-dup-pair { grid-template-columns: minmax(0, 1fr); } }
+.beo-dup-side { padding: 8px 10px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); font-size: 13px; min-width: 0; overflow-wrap: anywhere; display: flex; flex-direction: column; gap: 2px; }
+.beo-dup-side .k { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); }
+.beo-dup-reasons { display: flex; flex-wrap: wrap; gap: 4px; }
+.beo-dup-reasons .badge { font-size: 11px; }
+.beo-dup-choices { display: flex; flex-direction: column; gap: 6px; }
+.beo-dup-choices label { display: flex; gap: 8px; align-items: flex-start; font-size: 13.5px; cursor: pointer; min-width: 0; overflow-wrap: anywhere; }
+.beo-dup-choices input { margin-top: 3px; flex: 0 0 auto; }
+.beo-ai { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); }
+.beo-merged { font-size: 12.5px; }
+.modal-foot:has(.beo-undecided) { flex-wrap: wrap; }
+.beo-undecided { color: var(--warn); font-weight: 600; flex: 1 1 100%; text-align: right; }

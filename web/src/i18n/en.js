@@ -12,6 +12,7 @@ import print from './en-print.js'; // the schedule PDF, the Publish dialog, Sett
 import assistant from './en-assistant.js'; // Ask ShiftBoard: the chat and Settings → Ask ShiftBoard
 import reviews, { integrations as reviewIntegrations } from './en-reviews.js'; // Google Business Profile, Yelp, answering reviews, review alerts
 import dayList from './en-daylist.js'; // the day lists' sort (room, position, time, name) and the week grid by position
+import beo from './en-beo.js'; // a BEO's sections, the import's duplicate check and "Read it with AI"
 const catalog = {
   lang: {
     change: 'Change language',
@@ -2304,6 +2305,7 @@ const catalog = {
   ...assistant,
   ...reviews,
   ...dayList,
+  ...beo,
 };
 Object.assign(catalog.integrations, reviewIntegrations); // Settings → Integrations: the Google and Yelp cards
 
