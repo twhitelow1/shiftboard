@@ -51,6 +51,11 @@ export const renamePasskey = (id, name) => send('/api/auth/passkey/rename', { id
 export const removePasskey = (id) => send('/api/auth/passkey/remove', { id });
 export const removeTotp = () => send('/api/auth/mfa/totp/remove', {});
 export const newRecoveryCodes = () => send('/api/auth/mfa/recovery/regenerate', {});
+/** The second step again, for one action (making yourself Super Admin): a passkey answer to send with it. */
+export async function stepUpPasskey() {
+  const { options } = await send('/api/auth/step-up/passkey/options', {});
+  return startAuthentication({ optionsJSON: options });
+}
 /** A manager or admin resets someone's second step (they set up a new one at their next sign-in). */
 export const resetTwoStep = (userId) => send(`/api/users/${encodeURIComponent(userId)}/reset-2fa`, {});
 
