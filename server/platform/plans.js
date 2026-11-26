@@ -29,6 +29,9 @@ export const FEATURES = [
   // Claude connector (server/mcp/): Pro and Beta. Not Starter: most of what it does for a restaurant is managers'
   // work (drafts, approvals, forecast, events) that's Pro already; DubLow can switch it on for one restaurant.
   { key: 'mcp', label: 'Claude connector', hint: 'People use ShiftBoard from Claude (claude.ai, Desktop, phone, Claude Code) as themselves' },
+  // Ask ShiftBoard (server/assistant/, server/ai/): Claude built into the app, metered and capped per restaurant
+  // (aiMonthlyCapUsd below; DubLow can change one restaurant's cap in the console). Pro and Beta, like the connector.
+  { key: 'assistant', label: 'Ask ShiftBoard', hint: 'Claude built into the app: answers about the schedule, the 86 List and more; changes only after a tap on Confirm' },
 ];
 export const FEATURE_KEYS = FEATURES.map((f) => f.key);
 
@@ -44,14 +47,20 @@ export const PLANS = {
   },
   pro: {
     label: 'Pro', priceCents: 9900, interval: 'month', selfServe: true, stripePriceEnv: 'STRIPE_PRICE_PRO',
-    features: ['training', 'tips', 'eightySix', 'events', 'forecast', 'toast', 'adp', 'tripleseat', 'sms', 'venue', 'reports', 'announcements', 'mcp', 'opentable', 'impact'],
+    features: ['training', 'tips', 'eightySix', 'events', 'forecast', 'toast', 'adp', 'tripleseat', 'sms', 'venue', 'reports', 'announcements', 'mcp', 'opentable', 'impact', 'assistant'],
+    aiMonthlyCapUsd: 5, // what DubLow pays for AI per restaurant per month at most (server/ai/); a restaurant's own key isn't capped
   },
   beta: {
     label: 'Beta (everything, free)', priceCents: 0, interval: 'month', selfServe: false, stripePriceEnv: null,
     features: FEATURE_KEYS,
+    aiMonthlyCapUsd: 5,
   },
 };
 export const PLAN_KEYS = Object.keys(PLANS);
+/** What DubLow pays for AI per restaurant per month at most, unless a plan says otherwise (server/ai/). */
+export const DEFAULT_AI_CAP_USD = 5;
+/** The AI cap (USD per month on DubLow's key) a plan comes with; a restaurant's override in the console wins. */
+export const planAiCap = (plan) => (Number(PLANS[plan]?.aiMonthlyCapUsd) >= 0 && PLANS[plan]?.aiMonthlyCapUsd != null ? Number(PLANS[plan].aiMonthlyCapUsd) : DEFAULT_AI_CAP_USD);
 export const DEFAULT_PLAN = 'starter';
 export const TRIAL_DAYS = 14;
 

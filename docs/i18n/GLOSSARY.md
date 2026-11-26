@@ -139,6 +139,7 @@ The words ShiftBoard uses in Spanish, so the phone app, the website and emails s
 | From Tripleseat: edit it there | De Tripleseat: cámbialo allá | Tripleseat status names (Definite, Tentative, Prospect, Closed, Lost) stay in English, with the Spanish in parentheses in Settings |
 | sales manager | gerente de ventas | the event's owner in Tripleseat |
 | integrations / connection / not set up | integraciones / conexión / sin configurar | Settings → Integrations |
+| Ask ShiftBoard (the built-in assistant) / AI allowance | Pregúntale a ShiftBoard / asignación de IA | phone title "Pregúntale"; "AI can make mistakes" → "La IA puede equivocarse"; Confirm / Cancel on its cards → Confirmar / Cancelar |
 | webhook / signing key | webhook / clave de firma | |
 
 ## Forecast and labor

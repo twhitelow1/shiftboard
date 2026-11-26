@@ -8,6 +8,7 @@ import report from './es-report.js'; // Reportar un problema, y la pantalla cuan
 import claude from './es-claude.js'; // el conector de Claude
 import impact from './es-impact.js'; // Impacto positivo y OpenTable
 import print from './es-print.js'; // el PDF del horario, Publicar, Configuración → Notificaciones por correo
+import assistant from './es-assistant.js'; // Pregúntale a ShiftBoard: el chat y Configuración → Pregúntale a ShiftBoard
 const catalog = {
   lang: {
     change: 'Cambiar idioma',
@@ -2103,8 +2104,10 @@ const catalog = {
     title_opentable: 'OpenTable (reservaciones y reseñas)',
     title_twilio: 'Mensajes de texto (número remitente)',
     title_email: 'Remitente de correo',
+    title_anthropic: 'Anthropic (Pregúntale a ShiftBoard)',
     status_connected: 'Conectado',
     status_notSetUp: 'Sin configurar',
+    status_platformKey: 'Con la clave de DubLow',
     status_partial: 'Falta: {names}',
     status_demo: 'No disponible en la demostración',
     noAccount_twilio: 'Falta en el servidor: pregúntale a DubLow',
@@ -2115,6 +2118,7 @@ const catalog = {
     help_tripleseat: 'En Tripleseat, un administrador de la cuenta abre Settings → API y crea una aplicación OAuth 2.0. Pega su client ID y su client secret. Si tu cuenta tiene más de un local, agrega el ID de este local. La clave de firma del webhook es opcional.',
     help_opentable: 'La API de OpenTable es solo para socios aprobados: cuando OpenTable apruebe la solicitud y el restaurante le dé acceso (OpenTable → Integrations → API partners), pega el client ID, el secreto y el ID del restaurante (RID). Mientras tanto, importa los archivos que exporta OpenTable aquí abajo.',
     help_twilio: 'Los mensajes salen por la cuenta de Twilio y el programa de mensajes registrado de DubLow Digital, así que DubLow configura el número remitente. Pídele a DubLow que lo cambie.',
+    help_anthropic: 'Opcional. Pregúntale a ShiftBoard funciona con la clave de Anthropic de DubLow Digital, hasta la asignación mensual de este restaurante. Para pasar de ahí, pega la clave de API propia del restaurante de console.anthropic.com: Anthropic te cobra lo que use, sin límite.',
     help_email: 'Los correos salen por el servicio de correo de DubLow Digital. DubLow configura la dirección del remitente (tiene que estar en un dominio verificado); tú puedes cambiar el nombre del remitente y a dónde llegan las respuestas del personal.',
     emailsGoOutAs: 'Los correos salen como: {from}',
     field_TOAST_CLIENT_ID: 'Client ID',
@@ -2144,6 +2148,7 @@ const catalog = {
     field_EMAIL_FROM_NAME: 'Nombre del remitente',
     field_EMAIL_FROM_ADDRESS: 'Dirección del remitente',
     field_EMAIL_REPLY_TO: 'Responder a',
+    field_ANTHROPIC_OWN_API_KEY: 'Tu clave de API de Anthropic',
     fromEnv: 'Configurado en el servidor',
     managedByDublow: 'Lo configura DubLow Digital',
     notSet: 'Sin configurar',
@@ -2276,6 +2281,8 @@ const catalog = {
     h_reports: 'Reportes para los gerentes.',
     f_coversForStaff: 'Cubiertos proyectados',
     h_coversForStaff: 'Los cubiertos proyectados en el horario, como en la hoja del restaurante.',
+    f_assistant: 'Pregúntale a ShiftBoard',
+    h_assistant: 'Claude en la app: responde con los datos de ShiftBoard y los permisos de cada quien; los cambios solo después de tocar Confirmar.',
     f_coworkerContacts: 'Teléfono y correo de los compañeros',
     h_coworkerContacts: 'Los números de teléfono y los correos del resto del equipo.',
     f_tradeRequests: 'Puede intercambiar, ceder y recoger turnos',
@@ -2291,6 +2298,7 @@ const catalog = {
   ...claude,
   ...impact,
   ...print,
+  ...assistant,
 };
 
 export default catalog;

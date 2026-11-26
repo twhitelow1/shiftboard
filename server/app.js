@@ -40,6 +40,7 @@ import { mountMcp } from './mcp/index.js';
 import { migrateConsents, emailConsentOf, legalLinks, CONSENT_MIGRATION, CONSENT_TEXT, CONSENT_VERSION } from '../core/consent.js';
 import { roleAllows, cleanDraft, ROLE_ROUTES, ROLE_OFF } from '../core/role-features.js';
 import { createViewAs } from './view-as.js';
+import { mountAssistant } from './assistant/index.js';
 
 const COOKIE = 'sb_session';
 // Not allowed while DubLow staff are signed in as the owner for support ("Sign in as owner"): the owner's
@@ -69,8 +70,9 @@ const sameString = (a, b) => {
  *   { id, slug, name, isDefault, status, plan, features: { training: true, … }, trialEndsAt, billing,
  *     consumeSupportGrant(token) }. Without it the app serves one restaurant with every feature, as it always has.
  * @param {Function} [opts.now]     clock in ms (tests)
+ * @param {Function} [opts.aiClient] ({ apiKey }) => an Anthropic client (tests: a fake; default: the SDK, server/ai/)
  */
-export function createApp({ db, env = process.env, staticDir, mailer = createMailer(env), pusher, texter, expoPush = createExpoPush(env), tenant = null, now = () => Date.now() } = {}) {
+export function createApp({ db, env = process.env, staticDir, mailer = createMailer(env), pusher, texter, expoPush = createExpoPush(env), tenant = null, now = () => Date.now(), aiClient = null } = {}) {
   const PROD = env.NODE_ENV === 'production';
   const cookieOpts = { httpOnly: true, sameSite: 'lax', secure: PROD, maxAge: 1000 * 60 * 60 * 24 * 30 };
   let secret = null;
@@ -597,6 +599,14 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   // Its tools call the same RPCs as the app (server/tools/), and what they change notifies people the same way.
   mountMcp(app, {
     db, env, tenant, now, has, paused, secret: () => secret, session, sessionToken, ready,
+    serviceOpts: (req) => ({ hashPassword, channels: channels.info, request: { ip: req.ip, userAgent: req.get('user-agent') || null }, legal, announce: announcer.info, planFeatures: planFeatures() }),
+    onCommit: (changes, req) => { channels.afterCommit(changes, req); emailNotifications(changes, req); pushToPhones(changes); },
+  });
+
+  // Ask ShiftBoard (server/assistant/): Claude in the app, as the signed-in person, with the same tools as the
+  // connector; metered and capped per restaurant (server/ai/). What its confirmed changes do notifies people as usual.
+  mountAssistant(app, {
+    db, env, tenant, now, has, session, sessionToken, planFeatures, aiClient,
     serviceOpts: (req) => ({ hashPassword, channels: channels.info, request: { ip: req.ip, userAgent: req.get('user-agent') || null }, legal, announce: announcer.info, planFeatures: planFeatures() }),
     onCommit: (changes, req) => { channels.afterCommit(changes, req); emailNotifications(changes, req); pushToPhones(changes); },
   });

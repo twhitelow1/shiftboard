@@ -25,7 +25,7 @@ _Working name "ShiftBoard"; a new product name is still to be chosen (see Busine
 ## Building
 | Feature | Notes |
 |---|---|
-| Ask ShiftBoard (built-in Claude, Haiku; usage metered and capped per restaurant) | building |
+| **Ask ShiftBoard** (built-in Claude chat for staff and managers, EN/ES, web + phone app + /app): Claude Haiku 5.5, the connector's tools as the signed-in person, changes only on Confirm (audited); **usage metered and capped per restaurant** ($5/month default on Pro and Beta, console override, 80% warning, 50 messages/person/day, bring-your-own key); `server/ai/` for every AI feature | built and tested; in the next PR |
 | Google Business Profile + Yelp reviews: alerts, AI-drafted replies | building |
 
 ## Next

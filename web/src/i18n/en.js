@@ -9,6 +9,7 @@ import report from './en-report.js'; // Report a problem, and the screen when so
 import claude from './en-claude.js'; // the Claude connector: connecting, Connected apps, Settings → Claude connector
 import impact from './en-impact.js'; // Positive impact and OpenTable
 import print from './en-print.js'; // the schedule PDF, the Publish dialog, Settings → Email notifications
+import assistant from './en-assistant.js'; // Ask ShiftBoard: the chat and Settings → Ask ShiftBoard
 const catalog = {
   lang: {
     change: 'Change language',
@@ -2104,8 +2105,10 @@ const catalog = {
     title_opentable: 'OpenTable (reservations and reviews)',
     title_twilio: 'Texts (sender number)',
     title_email: 'Email sender',
+    title_anthropic: 'Anthropic (Ask ShiftBoard)',
     status_connected: 'Connected',
     status_notSetUp: 'Not set up',
+    status_platformKey: 'On DubLow’s key',
     status_partial: 'Missing: {names}',
     status_demo: 'Not in the demo',
     noAccount_twilio: 'Not on the server yet: ask DubLow',
@@ -2116,6 +2119,7 @@ const catalog = {
     help_tripleseat: 'In Tripleseat, an account admin opens Settings → API and creates an OAuth 2.0 application. Paste its client ID and client secret. If your account has more than one venue, add this venue’s location ID. The webhook’s signing key is optional.',
     help_opentable: 'OpenTable’s API is for approved partners: once OpenTable approves the application and the restaurant grants it access (OpenTable → Integrations → API partners), paste the client ID, secret and the restaurant ID (RID). Until then, import OpenTable’s exports below.',
     help_twilio: 'Texts go out through DubLow Digital’s Twilio account and registered texting program, so DubLow sets the sending number. Ask DubLow to change it.',
+    help_anthropic: 'Optional. Ask ShiftBoard works on DubLow Digital’s Anthropic key, up to this restaurant’s monthly allowance. To go past it, paste your restaurant’s own API key from console.anthropic.com: Anthropic bills you for what it uses, and it isn’t capped.',
     help_email: 'Emails go out through DubLow Digital’s email service. DubLow sets the From address (it has to be on a verified domain); you can change the From name and where staff replies go.',
     emailsGoOutAs: 'Emails go out as: {from}',
     field_TOAST_CLIENT_ID: 'Client ID',
@@ -2145,6 +2149,7 @@ const catalog = {
     field_EMAIL_FROM_NAME: 'From name',
     field_EMAIL_FROM_ADDRESS: 'From address',
     field_EMAIL_REPLY_TO: 'Reply-to',
+    field_ANTHROPIC_OWN_API_KEY: 'Your Anthropic API key',
     fromEnv: 'Set on the server',
     managedByDublow: 'Set by DubLow Digital',
     notSet: 'Not set',
@@ -2277,6 +2282,8 @@ const catalog = {
     h_reports: 'Reports for managers.',
     f_coversForStaff: 'Projected covers',
     h_coversForStaff: 'Projected covers on the schedule, like the house sheet.',
+    f_assistant: 'Ask ShiftBoard',
+    h_assistant: 'Claude in the app: answers from ShiftBoard with their own permissions; changes only after they tap Confirm.',
     f_coworkerContacts: 'Coworkers’ phone & email',
     h_coworkerContacts: 'The rest of the team’s phone numbers and email addresses.',
     f_tradeRequests: 'Can trade, give away and pick up shifts',
@@ -2292,6 +2299,7 @@ const catalog = {
   ...claude,
   ...impact,
   ...print,
+  ...assistant,
 };
 
 export default catalog;

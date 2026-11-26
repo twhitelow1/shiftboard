@@ -146,6 +146,10 @@ Events booked in Tripleseat come into **Events & BEOs** by themselves: date, tim
 
 People add ShiftBoard to Claude (claude.ai, the desktop and phone apps, Claude Code) with the restaurant's address plus `/mcp`, sign in with ShiftBoard's own sign-in, and Claude acts as them with exactly their permissions: reading schedules, requesting time off, reporting 86'd items, and for managers building drafts, approving and (after asking) publishing. OAuth 2.1 with PKCE, per-restaurant keys, rotating refresh tokens; admins turn it on or off and can make staff read-only in **Settings → Claude connector**; everyone sees and disconnects their connections in **My settings → Connected apps**. Pro and Beta plans. Setup, tools and security: [docs/integrations/CLAUDE-MCP.md](docs/integrations/CLAUDE-MCP.md). Code: `server/mcp/`, `server/tools/`.
 
+### Ask ShiftBoard (built-in Claude)
+
+Claude inside the app (web, phone app, `/app`): **Ask ShiftBoard** in the menu answers "Who's working tonight?", "When do I work next?", "What's 86'd?" or, for managers, "Who's over 40 hours this week?" from ShiftBoard's own tools, as the signed-in person with exactly their permissions. Anything that changes data comes back as a card with **Confirm**; only the tap runs it (audited). Claude Haiku 5.5 on DubLow's `ANTHROPIC_API_KEY` (Vercel, Sensitive); every call is metered per restaurant and capped (default $5/month on Pro and Beta, overridable in the DubLow console); a restaurant can bring its own key in Settings → Integrations. Admins see this month's use in **Settings → Ask ShiftBoard**. Setup, caps and costs: [docs/integrations/ASK-SHIFTBOARD.md](docs/integrations/ASK-SHIFTBOARD.md). Code: `server/ai/` (metering, caps; other AI features use it too), `server/assistant/`.
+
 ### OpenTable (optional): reservations and reviews
 
 1. **Today**: export Reservations (Reporting → Reservations, with special requests / notes) and Reviews from OpenTable as CSV and import them in **Settings → Integrations → OpenTable**. Repeat whenever: nothing is counted twice.
