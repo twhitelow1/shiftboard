@@ -31,6 +31,11 @@ function ShiftEditor({ shift, onClose, warnings, events }) {
     // Where it starts: the shift's own room and position, else (a new shift with neither) the first room's first position.
     let jobCodeId = shift.jobCodeId && jobs[shift.jobCodeId] ? shift.jobCodeId : '';
     let room = jobCodeId ? roomOfShift(shift, jobs[jobCodeId]) : '';
+    // A new shift for someone, with no room picked yet (not added from a room's section): their primary room for it.
+    if (!shift.id && !shift.area && shift.userId && jobCodeId) {
+      const primary = employees.find((e) => e.id === shift.userId)?.jobCodes?.find((j) => j.jobCodeId === jobCodeId)?.primaryRoom;
+      if (primary) room = primary;
+    }
     room = findRoom(layout, room)?.room || room;
     const first = shiftChoices({ layout, jobs, employees }).rooms;
     if (!room) room = (jobCodeId && first.find((r) => r.positions.some((j) => j.id === jobCodeId))?.room) || first[0]?.room || '';

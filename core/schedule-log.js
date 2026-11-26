@@ -16,7 +16,7 @@ export const VIAS = ['web', 'phone', 'import', 'connector', 'assistant', 'sync',
 export const GROUPS = { shift: ['shift.create', 'shift.edit', 'shift.delete', 'shifts.bulk'], week: ['week.clear', 'week.copy', 'drafts.clear', 'week.publish', 'week.unpublish', 'schedule.import'],
   request: ['request.create', 'request.accept', 'request.decline', 'request.approve', 'request.deny', 'request.cancel'],
   timeOff: ['timeOff.create', 'timeOff.add', 'timeOff.approve', 'timeOff.deny', 'timeOff.cancel', 'timeOff.standing'],
-  availability: ['availability.change'], note: ['note.save'], mod: ['mod.set'], event: ['event.shifts'], layout: ['layout.move'] };
+  availability: ['availability.change'], note: ['note.save'], mod: ['mod.set'], event: ['event.shifts'], layout: ['layout.move', 'rooms.change'] };
 const SHIFT_FIELDS = ['date', 'start', 'end', 'jobCodeId', 'area', 'userId', 'tag', 'notes'];
 
 /** The fields of a shift that changed: [{ field, before, after }]. */
@@ -66,8 +66,8 @@ const T = {
     'timeOff.approve': (a, p, d) => `${a} approved ${p} time off ${d}`, 'timeOff.deny': (a, p, d) => `${a} denied ${p} time off ${d}`, 'timeOff.cancel': (a, p, d) => `${a} cancelled ${p} time off ${d}`,
     'timeOff.standing': (a, p, d) => `${a} added a standing request off for ${p}: ${d}`,
     'availability.change': (a, p, n) => `${a} changed ${p} availability (${n} days)`, 'note.save': (a, d) => `${a} changed the note for ${d}`, 'mod.set': (a, d) => `${a} changed the manager on duty for ${d}`,
-    'event.shifts': (a, n, e) => `${a} made ${n} shifts for the event ${e}`, 'layout.move': (a, n) => `${a} moved ${n} shifts to another section`,
-    types: { swap: 'trade', drop: 'give away', pickup: 'pick up' }, statuses: { approved: 'approved', pending: 'pending' }, their2: 'their', someone: 'Someone', fields: { date: 'date', start: 'time', end: 'end', jobCodeId: 'position', area: 'room', userId: 'person', tag: 'tag', notes: 'note' }, none: 'none',
+    'event.shifts': (a, n, e) => `${a} made ${n} shifts for the event ${e}`, 'layout.move': (a, n) => `${a} moved ${n} shifts to another section`, 'rooms.change': (a, p) => `${a} changed where ${p} works`,
+    types: { swap: 'trade', drop: 'give away', pickup: 'pick up' }, statuses: { approved: 'approved', pending: 'pending' }, their2: 'their', someone: 'Someone', fields: { date: 'date', start: 'time', end: 'end', jobCodeId: 'position', area: 'room', userId: 'person', tag: 'tag', notes: 'note', rooms: 'rooms', status: 'status' }, none: 'none',
   },
   es: {
     open: 'un', their: (n) => `de ${n}`, shiftOf: (who, what) => (who === 'un' ? `un turno disponible ${what}` : `el turno ${what} ${who}`),
@@ -81,8 +81,8 @@ const T = {
     'timeOff.approve': (a, p, d) => `${a} aprobó los días libres ${p} ${d}`, 'timeOff.deny': (a, p, d) => `${a} rechazó los días libres ${p} ${d}`, 'timeOff.cancel': (a, p, d) => `${a} canceló los días libres ${p} ${d}`,
     'timeOff.standing': (a, p, d) => `${a} agregó un descanso fijo ${p}: ${d}`,
     'availability.change': (a, p, n) => `${a} cambió la disponibilidad ${p} (${n} días)`, 'note.save': (a, d) => `${a} cambió la nota del ${d}`, 'mod.set': (a, d) => `${a} cambió al gerente en turno del ${d}`,
-    'event.shifts': (a, n, e) => `${a} creó ${n} turnos para el evento ${e}`, 'layout.move': (a, n) => `${a} pasó ${n} turnos a otra sección`,
-    types: { swap: 'intercambiar', drop: 'ceder', pickup: 'recoger' }, statuses: { approved: 'aprobados', pending: 'pendientes' }, their2: 'sus', someone: 'Alguien', fields: { date: 'fecha', start: 'hora', end: 'fin', jobCodeId: 'puesto', area: 'salón', userId: 'persona', tag: 'etiqueta', notes: 'nota' }, none: 'nada',
+    'event.shifts': (a, n, e) => `${a} creó ${n} turnos para el evento ${e}`, 'layout.move': (a, n) => `${a} pasó ${n} turnos a otra sección`, 'rooms.change': (a, p) => `${a} cambió dónde trabaja ${p}`,
+    types: { swap: 'intercambiar', drop: 'ceder', pickup: 'recoger' }, statuses: { approved: 'aprobados', pending: 'pendientes' }, their2: 'sus', someone: 'Alguien', fields: { date: 'fecha', start: 'hora', end: 'fin', jobCodeId: 'puesto', area: 'salón', userId: 'persona', tag: 'etiqueta', notes: 'nota', rooms: 'salones', status: 'estado' }, none: 'nada',
   },
 };
 
@@ -105,7 +105,7 @@ export function sentence(e, lang = 'en', names = {}) {
     return t.shiftOf(who, whatText) + (s.area ? ` (${s.area})` : '');
   };
   const val = (f, v) => (v === '' || v == null ? t.none : f === 'userId' ? person(v) : f === 'jobCodeId' ? names.job?.(v) || v : f === 'date' ? day(v) : f === 'start' || f === 'end' ? fmtTime(v, lang) : String(v));
-  const changes = (d.changes || []).map((c) => `${t.fields[c.field] || c.field} ${val(c.field, c.before)} → ${val(c.field, c.after)}`).join(', ');
+  const changes = (d.changes || []).map((c) => `${c.position ? `${names.job?.(c.position) || ''} ` : ''}${t.fields[c.field] || c.field} ${val(c.field, c.before)} → ${val(c.field, c.after)}`).join(', ');
   const fn = t[what];
   if (!fn) return `${actor}: ${what}`;
   const week = day(d.weekStart || d.date || d.start);
@@ -125,6 +125,7 @@ export function sentence(e, lang = 'en', names = {}) {
     case 'availability.change': return fn(actor, pName, d.days || 0);
     case 'note.save': case 'mod.set': return fn(actor, day(d.date));
     case 'event.shifts': return fn(actor, d.count || 0, names.event?.(d.eventId) || '');
+    case 'rooms.change': return fn(actor, person(d.affected?.[0]));
     default: return fn(actor);
   }
 }

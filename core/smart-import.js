@@ -64,6 +64,7 @@ export const FIELDS = {
     F('birthday', ['birthday', 'birth date', 'birthdate', 'date of birth', 'dob', 'cumpleanos', 'fecha de nacimiento']),
     F('employeeId', ['employee id', 'emp id', 'employee number', 'employee no', 'payroll id', 'file number', 'badge', 'badge number', 'employee code', 'clock number', 'id', 'numero de empleado', 'id de empleado', 'numero de nomina']),
     F('payRate', ['pay rate', 'rate', 'hourly rate', 'wage', 'hourly', 'pay', 'tarifa', 'sueldo por hora', 'pago por hora', 'salario por hora']),
+    F('rooms', ['rooms', 'rooms worked', 'works in', 'areas', 'spaces', 'locations', 'salones', 'areas de trabajo']),
     F('primaryRoom', ['primary room', 'main room', 'home room', 'primary space', 'primary location', 'main space', 'room', 'space', 'location', 'salon principal', 'salon', 'area principal', 'ubicacion principal']),
     F('notes', ['notes', 'note', 'comments', 'comment', 'notas', 'nota', 'comentarios', 'observaciones']),
     F('active', ['active', 'status', 'employment status', 'activo', 'estado', 'estatus']),
@@ -722,6 +723,7 @@ export function normalizeEmployee(values = {}) {
   if ('payRate' in values) { data.payRate = parseMoney(values.payRate); if (v('payRate') && data.payRate == null) issues.push({ code: 'badRate', params: { value: v('payRate') } }); }
   if ('notes' in values) data.notes = para(values.notes).slice(0, 1000);
   if ('primaryRoom' in values) data.primaryRoom = v('primaryRoom').slice(0, 60);
+  if ('rooms' in values) data.rooms = [...new Set(splitList(values.rooms).map((r) => r.slice(0, 60)))].slice(0, 12);
   if ('active' in values) data.active = yesNo(values.active);
   return { data, issues };
 }

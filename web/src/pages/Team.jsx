@@ -1,5 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { useApp, Icon, Avatar, Modal, Field, useAction, JobDot, Empty } from '../ui.jsx';
+import { AvailabilitySummary } from './AvailabilityEditor.jsx'; // their week, editable with its history (logged)
+import { ApprovesFor } from './ApprovalScope.jsx'; // which positions they approve trades and time off for
+import { AddTimeOffButton } from './TimeOff.jsx'; // a manager adds time off for them (emailed in, a call…)
 import { ROLES, roleLabel, roleOf, assignableRoles, canManageUser, canManageEvents, roleInfo } from '../../../core/roles.js';
 import { deliverable } from '../../../core/email-address.js';
 import { sameArea } from '../../../core/areas.js';
@@ -256,10 +259,19 @@ function EmployeeDialog({ emp, onClose }) {
         <Field label={t('team.role')} help={self ? t('team.youCantChangeYourOwn') : undefined}>
           <div className="col" style={{ gap: 6 }}>
             {ROLES.filter((r) => roleChoices.includes(r.id)).map((role) => roleInfo(role, t.lang)).map((r) => (
-              <label key={r.id} className="check" style={{ alignItems: 'flex-start', padding: '6px 8px', borderRadius: 8, background: f.role === r.id ? 'var(--brand-soft)' : undefined }}>
-                <input type="radio" name="role" checked={f.role === r.id} onChange={() => setF({ ...f, role: r.id })} style={{ marginTop: 3 }} />
-                <span><b>{r.label}</b><span className="small muted"> — {r.summary}</span></span>
-              </label>
+              <React.Fragment key={r.id}>
+                <label className="check" style={{ alignItems: 'flex-start', padding: '6px 8px', borderRadius: 8, background: f.role === r.id && !f.customRole ? 'var(--brand-soft)' : undefined }}>
+                  <input type="radio" name="role" checked={f.role === r.id && !f.customRole} onChange={() => setF({ ...f, role: r.id, customRole: '' })} style={{ marginTop: 3 }} />
+                  <span><b>{r.label}</b><span className="small muted"> — {r.summary}</span></span>
+                </label>
+                {/* Custom roles on this level (Settings → Roles & features → Custom roles): Bar Manager, Shift Lead… */}
+                {(settings.customRoles || []).filter((c) => c.base === r.id).map((c) => (
+                  <label key={c.id} className="check" style={{ alignItems: 'flex-start', padding: '6px 8px 6px 28px', borderRadius: 8, background: f.customRole === c.id ? 'var(--brand-soft)' : undefined }}>
+                    <input type="radio" name="role" checked={f.customRole === c.id} onChange={() => setF({ ...f, role: c.base, customRole: c.id })} style={{ marginTop: 3 }} />
+                    <span><b>{t.lang === 'es' && c.nameEs ? c.nameEs : c.name}</b><span className="small muted"> — {t('roles.customOn', { base: r.label })}</span></span>
+                  </label>
+                ))}
+              </React.Fragment>
             ))}
           </div>
         </Field>
@@ -289,6 +301,10 @@ function EmployeeDialog({ emp, onClose }) {
           </Field>
         )}
       </fieldset>
+      {/* Outside the fieldset: a manager can edit an admin's availability; what someone approves has its own rules. */}
+      {emp.id && <AvailabilitySummary person={emp} />}
+      {emp.id && <ApprovesFor person={emp} />}
+      {emp.id && <AddTimeOffButton person={emp} />}
 
       {emp.id && editable && !self && roleOf(emp) !== 'super_admin' && <MergePerson emp={emp} onDone={() => onClose(true)} />}
 
@@ -343,7 +359,8 @@ function PersonPositions({ value, onChange }) {
     const cur = entryRooms(e, jobs[e.jobCodeId]);
     const on = cur.some((a) => sameArea(a, room));
     if (on && cur.length === 1) return; // a position needs a room: take the position off instead
-    update(i, { areas: on ? cur.filter((a) => !sameArea(a, room)) : [...cur, room] });
+    // Taking off the primary room clears it (the primary room is always one of theirs).
+    update(i, { areas: on ? cur.filter((a) => !sameArea(a, room)) : [...cur, room], ...(on && sameArea(e.primaryRoom, room) ? { primaryRoom: '' } : {}) });
   };
   const choices = jobCodes.filter((j) => !j.archived && !value.some((e) => e.jobCodeId === j.id));
   return (
@@ -379,6 +396,16 @@ function PersonPositions({ value, onChange }) {
               })}
               {extra.map((a) => <button type="button" key={a} className="chip on dashed" aria-pressed="true" onClick={() => toggleRoom(i, a)} title={t('team.roomNotListed', { room: a })}>{t('team.roomNotListed', { room: a })}</button>)}
             </div>
+            {mine.length > 1 && (
+              <label className="row pp-primary">
+                <span className="tiny muted">{t('availability.primaryRoom')}</span>
+                <select className="input sm" value={mine.find((a) => sameArea(a, e.primaryRoom)) || ''} onChange={(ev) => update(i, { primaryRoom: ev.target.value })}
+                  aria-label={t('availability.primaryRoomFor', { position: job.name })}>
+                  <option value="">{t('availability.noPrimaryRoom')}</option>
+                  {mine.map((a) => <option key={a} value={a}>{a}</option>)}
+                </select>
+              </label>
+            )}
             {!listed.length && <div className="help">{t('team.noRoomsForPosition')}</div>}
             {listed.length > 0 && !shows && <div className="help">{t('team.notShown')}</div>}
           </div>

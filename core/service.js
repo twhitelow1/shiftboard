@@ -29,7 +29,7 @@ import { trainingApi } from './training.js';
 import { eightySixApi } from './eighty-six.js';
 import { stockApi } from './stock.js';
 import { rosterApi } from './roster.js';
-import { layoutService, addRoom, roomOfShift } from './layout.js';
+import { layoutService, addRoom, roomOfShift, entryRooms } from './layout.js';
 import { profileApi } from './profile.js';
 import { consentState, smsConsentOf, emailConsentOf, smsStatusOf, recordConsent, consentText } from './consent.js';
 import { SECRET_FIELDS, twoStepOf, twoStepMap, passwordProblem } from './auth-factors.js';
@@ -661,7 +661,17 @@ export function createService(store, opts = {}) {
         ...employeeExtrasPatch(a), // hire date, birthday, employee ID, notes (core/import-api.js); left as they are when not sent
         ...(customRole || cur?.customRole ? { customRole: customRole || null } : {}),
       };
+      // A primary room is one of the rooms they work that position in (its areas, else the position's department).
+      for (const j of doc.jobCodes) {
+        if (j.primaryRoom && !entryRooms(j, jobById(j.jobCodeId)).some((r) => sameArea(r, j.primaryRoom))) fail(400, 'The primary room has to be one of the rooms they work');
+      }
       if (cur) {
+        // Where they work, logged (the schedule log): rooms and primary room per position.
+        const roomsText = (list) => Object.fromEntries((list || []).map((j) => [j.jobCodeId, `${(j.areas || []).join(', ')}${j.primaryRoom ? ` (${j.primaryRoom})` : ''}`]));
+        const was = roomsText(cur.jobCodes), now_ = roomsText(doc.jobCodes);
+        const changes = [...new Set([...Object.keys(was), ...Object.keys(now_)])].filter((k) => (was[k] ?? null) !== (now_[k] ?? null))
+          .map((k) => ({ field: 'rooms', position: k, before: was[k] ?? '', after: now_[k] ?? '' }));
+        if (changes.length) slog(actor, 'rooms.change', { kind: 'person', id: cur.id, affected: [cur.id], changes });
         const patch = { ...doc };
         if (a.password) {
           patch.passwordHash = hashPassword(a.password);

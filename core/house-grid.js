@@ -91,7 +91,8 @@ export function parseHouseTab(sheet) {
     let p = byKey.get(key);
     if (!p) { p = { key, name: a.replace(/\s+$/, ''), rows: [], sections: [], days: {} }; byKey.set(key, p); out.people.push(p); }
     p.rows.push(r + 1);
-    if (!p.sections.some((s) => s.room === room && s.position === position)) p.sections.push({ room, position });
+    const sec = p.sections.find((s) => s.room === room && s.position === position);
+    if (sec) sec.count++; else p.sections.push({ room, position, count: 1 }); // how often they're listed there (rows)
     for (const [col, d] of Object.entries(cols)) {
       const c = row[col];
       if (!c || c.merged) continue;
@@ -131,7 +132,11 @@ export function houseRecords(tabs, colorMap = DEFAULT_HOUSE_COLORS) {
         h = { row: ++row, name: p.name, sections: [], standing: new Set(), weekGreens: [], dated: [], otherRoom: [], flags: [], mismatch: [], standingTab: !!standingTab };
         people.set(p.key, h);
       }
-      for (const s of p.sections) if (!h.sections.some((x) => x.room === s.room && x.position === s.position)) h.sections.push(s);
+      // Every room block they're listed in, how often, and whether the standing tab lists them there (their primary room).
+      for (const s of p.sections) {
+        const x = h.sections.find((y) => y.room === s.room && y.position === s.position);
+        if (x) { x.count += s.count; if (t.kind === 'standing') x.standing = true; } else h.sections.push({ ...s, ...(t.kind === 'standing' ? { standing: true } : {}) });
+      }
       for (const [dk, day] of Object.entries(p.days)) {
         const d = Number(dk);
         const action = day.color === 'none' ? 'ignore' : map[day.color] || 'ignore';

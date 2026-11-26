@@ -102,7 +102,7 @@ export function importApi({ store, api, fail, needMgr, now, settings = () => ({}
     const str = (v, n = 80) => String(v ?? '').slice(0, n);
     const arr = (v, max = 60) => (Array.isArray(v) ? v.slice(0, max) : []);
     return {
-      sections: arr(h.sections, 12).map((s) => ({ room: s?.room ? str(s.room, 60) : null, position: s?.position ? str(s.position, 60) : null })),
+      sections: arr(h.sections, 24).map((s) => ({ room: s?.room ? str(s.room, 60) : null, position: s?.position ? str(s.position, 60) : null, count: Math.min(999, Number(s?.count) || 1), ...(s?.standing === true ? { standing: true } : {}) })),
       standing: [...new Set(arr(h.standing, 7).filter(dow))], standingTab: h.standingTab === true,
       dated: arr(h.dated).filter((x) => date(x?.date) && dow(x?.dow)).map((x) => ({ date: x.date, dow: x.dow, tab: str(x.tab), text: str(x.text) })),
       otherRoom: arr(h.otherRoom).filter((x) => dow(x?.dow)).map((x) => ({ dow: x.dow, tab: str(x.tab) })),
@@ -126,6 +126,8 @@ export function importApi({ store, api, fail, needMgr, now, settings = () => ({}
       keep: Array.isArray(d.keep) ? d.keep.filter((k) => typeof k === 'string') : [],
       values: d.values && typeof d.values === 'object' ? d.values : {},
       cells: d.cells && typeof d.cells === 'object' && !Array.isArray(d.cells) ? d.cells : {}, // availability: the manager's fix for a cell
+      ...(d.primaryRoom === 'accept' ? { primaryRoom: 'accept' } : {}), // availability: take the room suggestions
+      ...(typeof d.requestedAt === 'string' && d.requestedAt.length < 40 ? { requestedAt: d.requestedAt } : {}), // availability: when they asked
     };
   };
   function pickConflicts(group, dec, existing, getExisting) {
@@ -403,7 +405,7 @@ export function importApi({ store, api, fail, needMgr, now, settings = () => ({}
         const jobName = (id) => (id.startsWith('new:') ? newPositions.get(id.slice(4)) : store.get('jobCodes', id)?.name || '');
         if (!u) {
           if (data.primaryRoom && !roomFor(data.primaryRoom)) row.notes.push({ code: 'unknownRoom', params: { name: data.primaryRoom } });
-          row.plan.doc = { ...data, primaryRoom: data.primaryRoom ? roomFor(data.primaryRoom) : null };
+          row.plan.doc = { ...data, primaryRoom: data.primaryRoom ? roomFor(data.primaryRoom) : null, rooms: (data.rooms || []).map(roomFor).filter(Boolean) };
           return;
         }
         // Changes, field by field.
@@ -443,14 +445,29 @@ export function importApi({ store, api, fail, needMgr, now, settings = () => ({}
           on = on.filter((j) => Number(j.rate) !== data.payRate);
           for (const j of on) { change('payRate', `${jobName(j.jobCodeId)}: ${j.rate ?? ''}`, `${jobName(j.jobCodeId)}: ${data.payRate}`); j.rate = data.payRate; jobsChanged = true; }
         }
-        // Primary room: on the row's positions (else all of theirs); the schedule shows shifts elsewhere light green.
+        // Rooms they work and their primary room: on the row's positions (else all of theirs). A primary room always
+        // joins their rooms (a position without rooms keeps its department's room too); the schedule shows shifts
+        // outside it light green.
+        const onRow = () => (jobIds.length ? curJobs.filter((x) => jobIds.includes(x.jobCodeId)) : curJobs);
+        const roomsOf = (j) => (j.areas?.length ? j.areas : [store.get('jobCodes', j.jobCodeId)?.department].filter(Boolean));
+        if (data.rooms?.length && !skipField('rooms')) {
+          const known = data.rooms.map((r) => roomFor(r) || (row.notes.push({ code: 'unknownRoom', params: { name: r } }), null)).filter(Boolean);
+          for (const j of known.length ? onRow() : []) {
+            const next = [...new Set([...roomsOf(j), ...known])];
+            if (next.join('|') === (j.areas || []).join('|')) continue;
+            change('rooms', `${jobName(j.jobCodeId)}: ${(j.areas || []).join(', ')}`, `${jobName(j.jobCodeId)}: ${next.join(', ')}`);
+            j.areas = next;
+            jobsChanged = true;
+          }
+        }
         if (data.primaryRoom && !skipField('primaryRoom')) {
           const room = roomFor(data.primaryRoom);
           if (!room) row.notes.push({ code: 'unknownRoom', params: { name: data.primaryRoom } });
           else {
-            for (const j of jobIds.length ? curJobs.filter((x) => jobIds.includes(x.jobCodeId)) : curJobs) {
+            for (const j of onRow()) {
               if (sameArea(j.primaryRoom, room)) continue;
               change('primaryRoom', `${jobName(j.jobCodeId)}: ${j.primaryRoom || ''}`, `${jobName(j.jobCodeId)}: ${room}`);
+              if (!roomsOf(j).some((r) => sameArea(r, room))) j.areas = [...new Set([...roomsOf(j), room])];
               j.primaryRoom = room;
               jobsChanged = true;
             }
@@ -483,7 +500,8 @@ export function importApi({ store, api, fail, needMgr, now, settings = () => ({}
       const rate = row.plan.doc?.payRate ?? null;
       if (row.status === 'new') {
         const d = row.plan.doc;
-        const jobCodes = row.plan.jobIds.map((id, i) => ({ jobCodeId: jobId(id), rate, primary: i === 0, ...(d.primaryRoom ? { primaryRoom: d.primaryRoom } : {}) }));
+        const roomsFor = (id) => { const dept = store.get('jobCodes', id)?.department; const list = [...new Set([...(d.rooms || []), ...(d.primaryRoom ? [d.primaryRoom] : [])])]; return list.length ? [...new Set([...(d.rooms?.length ? [] : [dept].filter(Boolean)), ...list])] : []; };
+        const jobCodes = row.plan.jobIds.map((id, i) => ({ jobCodeId: jobId(id), rate, primary: i === 0, ...(roomsFor(jobId(id)).length ? { areas: roomsFor(jobId(id)) } : {}), ...(d.primaryRoom ? { primaryRoom: d.primaryRoom } : {}) }));
         const out = api['employees.save'](actor, {
           name: d.name, email: d.email || '', phone: d.phone || '', role: d.role || 'employee', jobCodes, active: d.active !== false,
           passwordless: true, // they sign in through an invitation (Team → Invite, or options.invite)
@@ -737,17 +755,27 @@ export function importApi({ store, api, fail, needMgr, now, settings = () => ({}
     }
     row.mismatch = h.mismatch;
     row.otherRoomDays = h.otherRoom.length;
-    // Primary rooms from the sheet's sections: a room of Rooms & positions, for a position they hold.
+    // Where they work, from the sheet's room blocks: per position they hold, every room block they're listed in (the
+    // rooms they work) and a primary room (the standing tab's block, else the one they're listed in most). Offered only.
     row.roomSuggestions = [];
     if (u) {
+      const byJob = new Map();
       for (const s of h.sections) {
         const room = s.room ? roomFor(s.room) : null;
         const job = s.position ? jobFor(positionWord(s.position)) : null;
-        if (!room || !job) continue;
-        const entry = (u.jobCodes || []).find((j) => j.jobCodeId === job.id);
-        if (!entry || sameArea(entry.primaryRoom, room)) continue;
-        if (row.roomSuggestions.some((x) => x.jobCodeId === job.id)) continue;
-        row.roomSuggestions.push({ jobCodeId: job.id, position: job.name, room, current: entry.primaryRoom || '' });
+        if (!room || !job || !(u.jobCodes || []).some((j) => j.jobCodeId === job.id)) continue;
+        const x = byJob.get(job.id) || { job, rooms: new Map() };
+        const cur = x.rooms.get(room) || { count: 0, standing: false };
+        x.rooms.set(room, { count: cur.count + (s.count || 1), standing: cur.standing || !!s.standing });
+        byJob.set(job.id, x);
+      }
+      for (const { job, rooms } of byJob.values()) {
+        const list = [...rooms.keys()];
+        const primary = [...rooms.entries()].sort((a, b) => Number(b[1].standing) - Number(a[1].standing) || b[1].count - a[1].count)[0][0];
+        const entry = u.jobCodes.find((j) => j.jobCodeId === job.id);
+        const have = entry.areas?.length ? entry.areas : [];
+        if (list.every((r) => have.some((x) => sameArea(x, r))) && sameArea(entry.primaryRoom, primary)) continue;
+        row.roomSuggestions.push({ jobCodeId: job.id, position: job.name, rooms: list, room: primary, current: entry.primaryRoom || '', currentRooms: have });
       }
     }
     const accepted = decision?.primaryRoom === 'accept' ? row.roomSuggestions : [];
@@ -782,7 +810,11 @@ export function importApi({ store, api, fail, needMgr, now, settings = () => ({}
       }
       if (primaryRoom || rooms?.length) {
         const fresh = store.get('users', u.id);
-        const jobCodes = (fresh.jobCodes || []).map((j) => ({ ...j, ...(primaryRoom ? { primaryRoom } : {}), ...(rooms?.find((x) => x.jobCodeId === j.jobCodeId) ? { primaryRoom: rooms.find((x) => x.jobCodeId === j.jobCodeId).room } : {}) }));
+        const jobCodes = (fresh.jobCodes || []).map((j) => {
+          const sug = rooms?.find((x) => x.jobCodeId === j.jobCodeId);
+          if (sug) return { ...j, areas: [...new Set([...(j.areas || []), ...sug.rooms])], primaryRoom: sug.room }; // the sheet's rooms join theirs
+          return primaryRoom ? { ...j, primaryRoom, ...(j.areas?.length && !j.areas.some((a) => sameArea(a, primaryRoom)) ? { areas: [...j.areas, primaryRoom] } : {}) } : j;
+        });
         store.update('users', u.id, { jobCodes });
         primaryRooms++;
       }

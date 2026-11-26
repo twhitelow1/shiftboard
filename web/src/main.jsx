@@ -4,7 +4,9 @@ import './styles.css';
 import { applyBranding, logoUrl } from './theme.js';
 import { call, logout, IS_DEMO, demoPersonas, demoSwitch, demoCurrent, getConfig, billingPortal } from './api.js';
 import { Ctx, Icon, Avatar, useToasts, Modal, setStartTimesOnly } from './ui.jsx';
-import { canManageSchedule, canChangeSettings, canManageEvents, canApprove, roleLabel } from '../../core/roles.js';
+import { canManageSchedule, canChangeSettings, canManageEvents, canApprove, roleLabel, useCustomRoles } from '../../core/roles.js';
+import ScheduleLog, { MyChanges } from './pages/ScheduleLog.jsx';
+import WhoWorksWhere from './pages/WhoWorksWhere.jsx';
 import Schedule from './pages/Schedule.jsx';
 import CalendarPage from './pages/Calendar.jsx';
 import MyShifts from './pages/MyShifts.jsx';
@@ -70,6 +72,9 @@ const NAV = [
   { key: 'announcements', label: 'announcements.title', icon: 'megaphone', feature: 'announcements' },
   { key: 'ask', label: 'assistant.nav', icon: 'sparkle', feature: 'assistant' }, // Ask ShiftBoard (plan ∩ role)
   { key: 'trade-stats', label: 'tradeStats.title', icon: 'chart', mgr: true, hide: true }, // linked from Team and Swaps
+  { key: 'schedule-log', label: 'scheduleLog.title', icon: 'clock', mgr: true, feature: 'schedule' }, // every schedule change (core/schedule-log.js)
+  { key: 'my-changes', label: 'scheduleLog.mineTitle', icon: 'clock', hide: true }, // what changed for me (linked from My Shifts)
+  { key: 'who-works-where', label: 'whoWorks.title', icon: 'users', mgr: true, hide: true }, // positions × rooms (from Rooms & positions)
   { key: 'events', label: 'main.eventsBeos', short: 'common.events', icon: 'glass', feature: 'events' },
   { key: 'timeoff', label: 'main.timeOff', icon: 'sun', badge: 'timeoff', feature: 'timeOff' },
   { key: 'tips', label: 'main.tips', icon: 'dollar', feature: 'tips' },
@@ -241,6 +246,7 @@ function App() {
     const jobs = Object.fromEntries(boot.jobCodes.map((j) => [j.id, j]));
     const people = Object.fromEntries(boot.employees.map((e) => [e.id, e]));
     const isMgr = canManageSchedule(boot.me);
+    useCustomRoles(boot.settings?.customRoles); // role labels: Bar Manager, Shift Lead… (core/roles.js)
     setStartTimesOnly(boot.settings?.startTimesOnly);
     // The features this person gets: the restaurant's plan (on the platform) ∩ their role's (Roles & features).
     const features = boot.features || boot.tenant?.features || null;
@@ -293,6 +299,7 @@ function App() {
     account: Account, announcements: Announcements, 'trade-stats': TradeStats,
     forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue, training: Training, 86: EightySix,
     account: Account, impact: ImpactReport, kudos: Kudos, ask: Assistant, feedback: Feedback, 'feedback-inbox': FeedbackInbox, stock: Stock, products: Library,
+    'schedule-log': ScheduleLog, 'my-changes': MyChanges, 'who-works-where': WhoWorksWhere,
   }[route] || Schedule;
 
   const signOut = async () => { await logout(); setBoot(null); setAuthed(false); };

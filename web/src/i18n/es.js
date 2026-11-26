@@ -16,7 +16,8 @@ import smartImport from './es-import.js'; // importación inteligente: Equipo �
 import superAdmin from './es-superadmin.js'; // un administrador que se hace superadministrador, y su interruptor en Roles y funciones
 import floor from './es-floor.js'; // el editor de planos: paleta, secciones, Importar (Toast, una foto, un CSV) y Exportar
 import feedback, { roles as feedbackRoles } from './es-feedback.js'; // el buzón de sugerencias: escribir, Mis comentarios, la bandeja, Configuración → Buzón de sugerencias
-import stock, { roles as stockRoles, claude as stockClaude, smartImport as stockImport } from './es-stock.js'; // Stock lists and the product catalog
+import stock, { roles as stockRoles, claude as stockClaude, smartImport as stockImport } from './es-stock.js';
+import availability, { roles as availabilityRoles, schedule as availabilitySchedule, smartImport as availabilityImport } from './es-availability.js'; // availability, Approves for, time off requests, the schedule log, Who works where, custom roles // Stock lists and the product catalog
 const catalog = {
   lang: {
     change: 'Cambiar idioma',
@@ -2313,11 +2314,15 @@ const catalog = {
   ...floor,
   ...feedback,
   ...stock,
+  ...availability,
 };
 Object.assign(catalog.integrations, reviewIntegrations); // Settings → Integrations: the Google and Yelp cards
 Object.assign(catalog.roles, feedbackRoles); // Settings → Roles & features: the Feedback box's two rows
 Object.assign(catalog.roles, stockRoles); // … and Stock lists' three rows
 Object.assign(catalog.claude, stockClaude); // the connector's consent lines for the Stock lists tools
 Object.assign(catalog.smartImport, stockImport); // Stock → Products → Import
+Object.assign(catalog.roles, availabilityRoles); // Roles & features: Edit staff availability, custom roles
+Object.assign(catalog.schedule, availabilitySchedule); // the light-green legend line
+Object.assign(catalog.smartImport, availabilityImport); // Time off → Availability → Import
 
 export default catalog;

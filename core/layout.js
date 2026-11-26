@@ -640,6 +640,41 @@ export function layoutService({ store, settings, putSettings, fail, needMgr, now
      * Move the shifts of one hidden or unlisted section, between two dates, to a section that shows
      * (the schedule's "shifts in hidden or unlisted sections" notice). The people on them get that position.
      */
+    // "Who works where" (Settings → Rooms & positions, and the schedule): one position, everyone who holds it × the
+    // rooms that list it, with each person's rooms and primary room. Saving sets them all at once (logged per person).
+    'layout.whoWorksWhere': (actor, { jobCodeId } = {}) => {
+      needMgr(actor);
+      const job = jobOf(jobCodeId);
+      const rooms = roomsForPosition(current(), job.id).map((r) => r.room);
+      const people = store.list('users', (u) => u.active !== false && (u.jobCodes || []).some((e) => e.jobCodeId === job.id))
+        .map((u) => { const e = u.jobCodes.find((x) => x.jobCodeId === job.id); return { id: u.id, name: u.name, rooms: entryRooms(e, job), explicit: !!e.areas?.length, primaryRoom: e.primaryRoom || '' }; })
+        .sort((a, b) => a.name.localeCompare(b.name));
+      return { jobCodeId: job.id, name: job.name, department: job.department || '', rooms, people };
+    },
+    'layout.saveWhoWorksWhere': (actor, { jobCodeId, people = [] } = {}) => {
+      needMgr(actor);
+      const job = jobOf(jobCodeId);
+      const known = [...roomsForPosition(current(), job.id).map((r) => r.room), cleanArea(job.department)].filter(Boolean);
+      let saved = 0;
+      for (const p of Array.isArray(people) ? people.slice(0, 500) : []) {
+        const u = store.get('users', p?.id);
+        const entry = u?.jobCodes?.find((e) => e.jobCodeId === job.id);
+        if (!entry) continue;
+        const rooms = uniqueAreas((Array.isArray(p.rooms) ? p.rooms : []).map((r) => known.find((k) => sameArea(k, r))).filter(Boolean));
+        if (!rooms.length) fail(400, `Pick at least one room for ${u.name}`);
+        const primary = p.primaryRoom ? rooms.find((r) => sameArea(r, p.primaryRoom)) : '';
+        if (p.primaryRoom && !primary) fail(400, 'The primary room has to be one of the rooms they work');
+        const before = `${entryRooms(entry, job).join(', ')}${entry.primaryRoom ? ` (${entry.primaryRoom})` : ''}`;
+        const after = `${rooms.join(', ')}${primary ? ` (${primary})` : ''}`;
+        if (before === after && entry.areas?.length) continue;
+        const jobCodes = u.jobCodes.map((e) => (e.jobCodeId === job.id ? { ...e, areas: rooms, ...(primary ? { primaryRoom: primary } : { primaryRoom: undefined }) } : e))
+          .map((e) => JSON.parse(JSON.stringify(e)));
+        store.update('users', u.id, { jobCodes });
+        if (before !== after) slog(actor, 'rooms.change', { kind: 'person', id: u.id, affected: [u.id], changes: [{ field: 'rooms', position: job.id, before, after }] });
+        saved++;
+      }
+      return { saved, ...api['layout.whoWorksWhere'](actor, { jobCodeId: job.id }) };
+    },
     'layout.moveShifts': (actor, { room = '', jobCodeId, start, end, to = {} } = {}) => {
       needMgr(actor);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(start || '') || !/^\d{4}-\d{2}-\d{2}$/.test(end || '')) fail(400, 'Pick a week');

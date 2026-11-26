@@ -124,6 +124,7 @@ export const ERRORS_ES = {
   'There’s already a role with that name': 'Ya hay un rol con ese nombre',
   'Up to 30 custom roles': 'Hasta 30 roles personalizados',
   'Role not found': 'No se encontró el rol',
+  'The primary room has to be one of the rooms they work': 'El salón principal tiene que ser uno de los salones donde trabaja',
   'Max hours is a number from 0 to 80': 'Las horas máximas son un número del 0 al 80',
   'Max days is a number from 0 to 7': 'Los días máximos son un número del 0 al 7',
   'Admins and Super Admins always approve everything': 'Los administradores y superadministradores siempre aprueban todo',
@@ -538,6 +539,7 @@ export const ERRORS_ES = {
 export const ERROR_PATTERNS_ES = [
   [/^Request failed \((\d+)\)$/, (m) => `La solicitud falló (${m[1]})`],
   [/^Unknown method (.+)$/, (m) => `Método desconocido: ${m[1]}`],
+  [/^Pick at least one room for (.+)$/, (m) => `Elige al menos un salón para ${m[1]}`],
   [/^You can’t give someone the (.+) role$/, (m) => `No puedes darle a nadie el rol de ${roleEs(m[1])}`],
   [/^Only a higher role can edit an? (.+)$/, (m) => `Solo alguien con un rol más alto puede editar a un ${roleEs(m[1])}`],
   [/^Only a higher role can reset an? (.+)'s password$/, (m) => `Solo alguien con un rol más alto puede restablecer la contraseña de un ${roleEs(m[1])}`],
