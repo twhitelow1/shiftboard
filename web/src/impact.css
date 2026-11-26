@@ -19,6 +19,7 @@
 .imp-rank { width: 20px; text-align: right; font-weight: 700; color: var(--text-3); flex: none; }
 .imp-who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .imp-who b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.imp-who .imp-trend { white-space: normal; line-height: 1.25; }
 .imp-nums { display: grid; grid-template-columns: repeat(4, 44px); gap: 4px; flex: none; text-align: center; }
 .imp-nums > span { display: flex; flex-direction: column; line-height: 1.15; }
 .imp-nums .tiny { color: var(--text-3); }

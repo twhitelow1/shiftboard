@@ -59,7 +59,7 @@ test('two people with a name: the last initial, the review’s server, then who 
   assert.equal(resolveHit(alex, { worked: (id) => id === 'alexm' }).reason, 'workedThatDay');
   assert.equal(resolveHit(alex, { worked: () => true }).status, 'needsReview', 'both worked: still a manager’s call');
   assert.equal(resolveHit(alex, { serverId: 'alexd' }).userId, 'alexd');
-  assert.deepEqual(who('Alex D. was great'), ['Alex:alexd']);
+  assert.deepEqual(who('Alex D. was great'), ['Alex D:alexd'], 'the whole name is marked');
   // One person with the name, but not on shift that day (when the day has shifts): waits for a look.
   const [rose] = findMentions('Rose took care of us', roster);
   assert.equal(resolveHit(rose, { worked: () => false, dayHasData: true }).reason, 'notOnShift');

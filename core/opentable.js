@@ -185,7 +185,7 @@ export function bookingBlend(store, settings, today, ws) {
     return {
       ...f, covers: projected, sales: Math.round(projected * check), booked, history: f.covers,
       basis: `${d.covers} booked on OpenTable + ${w} usual walk-ins`, basisKey: 'bookings',
-      basisParams: { booked: d.covers, walkIns: w, noShow: Math.round(noShowRate * 100), history: f.covers },
+      basisParams: { booked: d.covers, walkIns: w, noShow: Math.round(noShowRate * 100), history: f.covers, dow: dow(f.date) }, // dow: the page words every basis with a weekday
     };
   };
 }

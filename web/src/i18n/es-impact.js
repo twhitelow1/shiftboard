@@ -137,7 +137,7 @@ export default {
     myNothingYet: 'Todavía no hay nada en este periodo',
     myNothingYetHelp: 'Cuando un cliente te nombre en una reseña o te pida al reservar, aparecerá aquí.',
     teamReport: 'Reporte del equipo',
-    cardLine: '{season}: {five} menciones de 5 estrellas · {requests} solicitudes · {kudos} reconocimientos',
+    cardLine: '{season} · Menciones de 5 estrellas: {five} · Solicitudes: {requests} · Reconocimientos: {kudos}',
     cardEmpty: '{season}: todavía nada. Aquí aparecen las reseñas que te nombran.',
   },
   opentable: {

@@ -109,7 +109,7 @@ export function seedImpactDemo(store, { userId, now = new Date() }) {
   }
   const upcoming = new Set([...range(WEEK, 14), ...range(clockDay, 14)].filter((d) => d >= clockDay || d >= WEEK));
   const busy = { 5: 1.3, 6: 1.6, 4: 0.85, 0: 0.7, 3: 0.55, 2: 0.45 }; // Saturdays book up early; closed Mondays
-  const notesFor = (date) => () => { const r = rand(); return r < 0.04 ? 'Request Alex D' : r < 0.07 ? 'Sit us in Manny’s section' : r < 0.1 ? 'Birthday, candle on dessert' : ''; };
+  const notesFor = (date) => () => { const r = rand(); return r < 0.02 ? 'Request Alex D' : r < 0.035 ? 'Sit us in Manny’s section' : r < 0.07 ? 'Birthday, candle on dessert' : ''; };
   for (const date of [...upcoming].sort()) {
     const f = busy[dow(date)];
     if (!f) continue;

@@ -138,7 +138,7 @@ export default {
     myNothingYet: 'Nothing yet this period',
     myNothingYetHelp: 'When a guest names you in a review or asks for you, it shows up here.',
     teamReport: 'Team report',
-    cardLine: '{season}: {five} five-star mentions · {requests} requests · {kudos} kudos',
+    cardLine: '{season} · 5-star mentions: {five} · Requests: {requests} · Kudos: {kudos}',
     cardEmpty: '{season}: nothing yet. Reviews that name you show up here.',
   },
   opentable: {

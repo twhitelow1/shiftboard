@@ -278,7 +278,7 @@ export function findMentions(text, roster, ctx = {}) {
     const next = toks[i + found.length];
     const last = byLastName(roster, candidates, next);
     if (last) candidates = [last];
-    const end = toks[i + found.length - 1].end;
+    const end = (last && next ? next : toks[i + found.length - 1]).end; // "Alex D" marked whole
     const key = `${found.length > 1 ? toks.slice(i, i + found.length).map((x) => x.norm).join(' ') : t.norm}${last ? `:${last}` : ''}`;
     const hit = out.get(key) || { key, norm: t.norm, token: text.slice(t.start, end), spans: [], candidates, kind: last ? 'lastName' : found.kind, cue, exact: found.exact || [] };
     hit.spans.push([t.start, end]);
@@ -321,7 +321,7 @@ function nameAt(text, start, capture, roster) {
   let candidates = found.candidates;
   const last = byLastName(roster, candidates, toks[found.length]);
   if (last) candidates = [last];
-  const end = toks[found.length - 1].end;
+  const end = (last && toks[found.length] ? toks[found.length] : toks[found.length - 1]).end;
   return { key: `${toks.slice(0, found.length).map((x) => x.norm).join(' ')}${last ? `:${last}` : ''}`, norm: toks[0].norm, token: text.slice(toks[0].start, end),
     spans: [[toks[0].start, end]], candidates, kind: last ? 'lastName' : found.kind, cue: 'request', exact: found.exact || [] };
 }
@@ -429,6 +429,13 @@ const reviewDocId = (source, key) => `rev_${source}_${String(key).replace(/[^A-Z
 const mentionId = (kind, sourceId, field, key) => `imn_${hashKey(`${kind}|${sourceId}|${field}|${key}`)}`;
 /** The date a mention counts on: the dining date when the review has one, else when it was posted. */
 const reviewDay = (r) => r.diningDate || r.date;
+/** The words around a span, and the span's place in them: { text, span }. */
+const around = (body, [s, e], pad = 40) => {
+  const a = Math.max(0, s - pad);
+  const b = Math.min(body.length, e + pad);
+  const lead = a > 0 ? '…' : '';
+  return { text: `${lead}${body.slice(a, b)}${b < body.length ? '…' : ''}`, span: [s - a + lead.length, e - a + lead.length] };
+};
 const snippet = (body, [s, e], pad = 60) => {
   const a = Math.max(0, s - pad);
   const b = Math.min(body.length, e + pad);
@@ -694,7 +701,7 @@ export function impactLinks({ store, api, fail, needAuth, needMgr, needAdmin, no
         const field = ms.some((m) => m.field === 'requestedServer');
         // Staff see the words around their name only: the rest of a booking's notes is the guest's business.
         items.push({ kind: 'request', id: sourceId, date: r.date, time: r.time, partySize: r.partySize, status: r.status, requestedServer: field,
-          ...(self ? { text: noteSpans[0] ? snippet(r.notes, noteSpans[0], 40) : '' } : { text: r.notes, spans: noteSpans, requestedServerText: r.requestedServer, guest: r.guest, mentions }) });
+          ...(self ? (noteSpans[0] ? (({ text: tx, span }) => ({ text: tx, spans: [span] }))(around(r.notes, noteSpans[0])) : { text: '' }) : { text: r.notes, spans: noteSpans, requestedServerText: r.requestedServer, guest: r.guest, mentions }) });
       }
     }
     for (const k of store.list('kudos', (x) => x.userId === userId && x.date >= range.from && x.date <= range.to)) {

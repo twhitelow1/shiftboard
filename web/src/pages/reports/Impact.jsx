@@ -13,6 +13,7 @@ import { useApp, Icon, Avatar, Modal, Field, Empty, useAction } from '../../ui.j
 import { useT, prettyDate } from '../../i18n/index.js';
 import { PeriodPicker, periodArgs, ImpactItem, Stat, Trend, Stars, SourceBadge, Highlighted, ImpactSettingsCard } from '../ImpactShared.jsx';
 import { GuestImportDialog } from '../OpenTableSettings.jsx';
+import MyKudos from '../Kudos.jsx';
 import '../../impact.css';
 
 const TABS = ['board', 'queue', 'reviews', 'kudos', 'names'];
@@ -27,7 +28,13 @@ export async function headline({ call, t }) {
 
 export default function ImpactReport({ parts = [] }) {
   const t = useT();
-  const { call, version, today, has } = useApp();
+  const { call, version, today, has, isMgr } = useApp();
+  if (!isMgr) return <MyKudos />; // the team's report is for managers; everyone else gets their own
+  return <Report parts={parts} call={call} version={version} today={today} has={has} />;
+}
+
+function Report({ parts, call, version, today, has }) {
+  const t = useT();
   const tab = TABS.includes(parts[1]) ? parts[1] : parts[1] === 'review' ? 'queue' : 'board';
   const [period, setPeriod] = useState({ period: 'season' });
   const [data, setData] = useState(null);

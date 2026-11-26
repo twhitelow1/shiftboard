@@ -149,7 +149,7 @@ test('the forecast takes booked covers for upcoming days: bookings less no-shows
   // walk-ins = 200 − 60 = 140; no-shows = 4 / 64 ≈ 6.25% → 180 × 0.9375 + 140 = 309
   assert.equal(sat.basisKey, 'bookings');
   assert.equal(sat.covers, 309);
-  assert.deepEqual(sat.basisParams, { booked: 180, walkIns: 140, noShow: 6, history: before.covers });
+  assert.deepEqual(sat.basisParams, { booked: 180, walkIns: 140, noShow: 6, history: before.covers, dow: 6 });
   assert.deepEqual(sat.booked, { covers: 180, parties: 45 });
   assert.equal(sat.sales, Math.round(309 * (before.sales / before.covers)));
   // Staff "projected covers" follow.
