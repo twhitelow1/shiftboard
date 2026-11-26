@@ -1,7 +1,7 @@
 // SAMPLE Google and Yelp data for the in-browser demo only (web/src/api.js): the demo's Google reviews look
-// synced from Google (so "Post to Google" shows, saved in the demo only), two of them already answered, and
-// three invented Yelp excerpts from "today". Not part of core/seed.js, so the hosted app's demo data and the
-// role-parity fingerprint stay as they were. Every guest and word here is invented; the staff are the demo's own.
+// synced from Google (so "Post to Google" shows, saved in the demo only), two of them already answered, three
+// invented Yelp excerpts from "today", and one possible duplicate to check. Not part of core/seed.js, so the hosted
+// app's demo data and the role-parity fingerprint stay as they were. Every guest and word here is invented; the staff are the demo's own.
 import { refOf } from './yelp-reviews.js';
 import { addDays, todayStr } from './time.js';
 
@@ -26,6 +26,13 @@ export function seedReviewsDemo(store, { now = new Date() } = {}) {
       ...(answered ? { replied: true, reply: `${REPLIES[i]}${sign}`, repliedAt: `${r.date}T18:00:00.000Z`, replySource: 'google' } : {}),
     });
   });
+  // One possible duplicate to check: the newest Google review, as if it came in again with its words edited.
+  const last = google.at(-1);
+  if (last && !store.get('guestReviews', `${last.id}_dup`)) {
+    store.insert('guestReviews', { id: `${last.id}_dup`, key: `${last.key}_dup`, source: 'google', origin: 'api', date: last.date, diningDate: '', rating: last.rating,
+      text: `${last.text.replace(/\.$/, '')} — and the cocktails were great too.`, reviewer: last.reviewer, server: '', externalId: 'demo-dup', replied: false, reply: '',
+      possibleDuplicateOf: last.id, google: { name: 'accounts/demo/locations/demo/reviews/demo-dup', reviewId: 'demo-dup', replyState: null }, createdAt: now.toISOString() });
+  }
   for (const [days, rating, reviewer, text] of EXCERPTS) {
     const ref = refOf(`demo-${days}`);
     if (!store.get('yelpExcerpts', `yx_${ref}`)) store.insert('yelpExcerpts', { id: `yx_${ref}`, ref, rating, text, url: 'https://www.yelp.com/', date: addDays(today, -days), reviewer, fetchedAt: now.toISOString() });

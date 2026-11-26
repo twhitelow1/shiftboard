@@ -335,6 +335,8 @@ export const ERRORS_ES = {
   'That email address doesn’t look right': 'Ese correo no parece correcto',
   'Pick where the review is from': 'Elige de dónde es la reseña',
   'Paste the review’s text': 'Pega el texto de la reseña',
+  'Pick merge or keep both': 'Elige unir o dejar las dos',
+  'That review isn’t waiting for a check': 'Esa reseña no está esperando revisión',
   'That Yelp review is gone. Sync again.': 'Esa reseña de Yelp ya no está. Sincroniza otra vez.',
   'Connect Google first': 'Primero conecta Google',
   'Connect Google again: ShiftBoard can’t read its saved access (the encryption key changed).': 'Vuelve a conectar Google: ShiftBoard no puede leer el acceso que guardó (cambió la clave de cifrado).',

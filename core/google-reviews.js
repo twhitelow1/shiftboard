@@ -71,7 +71,7 @@ export function applyGoogleReviews({ store, impact, fail }, rows, { timeZone, im
   if (!read.length) return { counts: { new: 0, updated: 0, same: 0, duplicate: 0, fiveStar: 0 }, replies: 0 };
   const byKey = new Map(read.map((x) => [x.item.key, x.google]));
   const items = cleanReviewItems(read.map((x) => x.item), { source: SOURCE, fail });
-  const plan = impact.planReviews(items);
+  const plan = impact.planReviews(items, { origin: 'api' });
   const r = impact.applyReviews(items, { origin: 'api', importId, backfill });
   let replies = 0;
   for (const row of plan.rows) {

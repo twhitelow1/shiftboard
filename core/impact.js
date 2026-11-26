@@ -28,6 +28,7 @@ import { addDays, todayStr } from './time.js';
 import { canManageSchedule, canChangeSettings } from './roles.js';
 import { seasonOf, seasonById, seasonsBetween } from './seasons.js';
 import { scrub, shortName, reviewPrint, cleanId, hashKey } from './guest-csv.js';
+import { findDuplicate, mergeInto, claimExcerpt } from './review-dedupe.js';
 
 export const INTEGRATION_ID = 'impact';
 // Reviews are one model whatever the source (guestReviews: source, externalId, rating, text, date, diningDate,
@@ -427,6 +428,8 @@ export function saveIntegration(store, patch) {
 export const impactSettings = (store) => { const i = integration(store); return { notify: i.notify !== false, alertLow: i.alertLow !== false, ignoreWords: Array.isArray(i.ignoreWords) ? i.ignoreWords : [] }; };
 
 const text = (v, max) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+/** Reviews that count (a possible duplicate waits for a manager first). */
+const countable = (r) => !r.possibleDuplicateOf;
 const reviewDocId = (source, key) => `rev_${source}_${String(key).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 48)}`;
 const mentionId = (kind, sourceId, field, key) => `imn_${hashKey(`${kind}|${sourceId}|${field}|${key}`)}`;
 /** The date a mention counts on: the dining date when the review has one, else when it was posted. */
@@ -557,27 +560,55 @@ export function impactLinks({ store, api, fail, needAuth, needMgr, needAdmin, no
   }
 
   // ---------- reviews: plan (preview) and apply, for any source ----------
-  function planReviews(items) {
+  // The same review twice (a file, then the API; an excerpt, then the full text): its own key, a key it was merged
+  // under before (aliases), the exact print, then core/review-dedupe.js. A confident match is merged into the review
+  // that's there (its staff matches, managers' decisions and reply stay); a possible one is saved apart, flagged
+  // possibleDuplicateOf, and counts nowhere (no names matched, no alert) until a manager merges or keeps both.
+  const MERGE_FIELDS = ['date', 'diningDate', 'rating', 'food', 'service', 'ambience', 'value', 'text', 'reviewer', 'server', 'externalId'];
+  function planReviews(items, { origin = 'csv' } = {}) {
     const bySource = new Map();
-    const printOf = (source) => {
-      if (!bySource.has(source)) { const m = new Map(); store.list('guestReviews', (r) => { if (r.source === source && r.print) m.set(r.print, r.id); return false; }); bySource.set(source, m); }
+    const indexOf = (source) => {
+      if (!bySource.has(source)) {
+        const ix = { prints: new Map(), aliases: new Map(), docs: [] };
+        store.list('guestReviews', (r) => {
+          if (r.source !== source) return false;
+          if (r.print) ix.prints.set(r.print, r.id);
+          for (const a of Array.isArray(r.aliases) ? r.aliases : []) ix.aliases.set(a, r.id);
+          ix.docs.push(r);
+          return false;
+        });
+        bySource.set(source, ix);
+      }
       return bySource.get(source);
     };
-    const counts = { new: 0, updated: 0, same: 0, duplicate: 0, fiveStar: 0 };
+    const counts = { new: 0, updated: 0, same: 0, duplicate: 0, fiveStar: 0, possibleDuplicate: 0 };
     const rows = [];
     const keys = new Set();
     for (const it of items) {
-      let id = reviewDocId(it.source, it.key);
-      const print = reviewPrint(it);
-      if (!store.get('guestReviews', id)) { const other = printOf(it.source).get(print); if (other) id = other; } // the same review under another key (a file, then the API)
+      const ownId = reviewDocId(it.source, it.key);
+      let id = ownId;
+      let how = 'id';
+      let possibleOf = null;
+      if (!store.get('guestReviews', id)) {
+        const ix = indexOf(it.source);
+        const known = ix.aliases.get(id) || ix.prints.get(reviewPrint(it)); // merged before, or the very same words
+        if (known) { id = known; how = 'print'; } else {
+          const d = findDuplicate(it, ix.docs, { skip: (doc) => keys.has(doc.id) || !!doc.possibleDuplicateOf || (doc.notDuplicateOf || []).includes(ownId) });
+          if (d.level === 'confident') { id = d.doc.id; how = 'match'; } else if (d.level === 'possible') possibleOf = d.doc.id;
+        }
+      }
       if (keys.has(id)) { counts.duplicate++; rows.push({ ...it, id, status: 'duplicate' }); continue; }
       keys.add(id);
       const cur = store.get('guestReviews', id);
-      const fields = ['date', 'diningDate', 'rating', 'food', 'service', 'ambience', 'value', 'text', 'reviewer', 'server'];
-      const status = !cur ? 'new' : fields.every((k) => (cur[k] ?? null) === (it[k] ?? null)) ? 'same' : 'updated';
-      counts[status]++;
-      if (it.rating >= 5) counts.fiveStar++;
-      rows.push({ ...it, id, print, status });
+      const fileOverApi = cur && cur.origin === 'api' && origin !== 'api'; // a file never takes over a synced review
+      const merged = cur && (how !== 'id' || fileOverApi) ? mergeInto(cur, it, { incomingOrigin: origin }) : null;
+      const next = merged ? { ...it, ...Object.fromEntries(MERGE_FIELDS.map((k) => [k, merged[k]])) } : it;
+      const aliasId = how !== 'id' && !(cur.aliases || []).includes(ownId) ? ownId : null;
+      const fields = MERGE_FIELDS.slice(0, -1);
+      const status = possibleOf ? 'possible' : !cur ? 'new' : !aliasId && fields.every((k) => (cur[k] ?? null) === (next[k] ?? null)) ? 'same' : 'updated';
+      counts[status === 'possible' ? 'possibleDuplicate' : status]++;
+      if (it.rating >= 5 && !possibleOf) counts.fiveStar++;
+      rows.push({ ...next, id, print: reviewPrint(next), status, how, possibleOf, aliasId, saveOrigin: fileOverApi ? cur.origin : origin });
     }
     return { rows, counts, dates: [...new Set(items.map((r) => r.date))].sort() };
   }
@@ -590,21 +621,58 @@ export function impactLinks({ store, api, fail, needAuth, needMgr, needAdmin, no
     roster = null;
     // Cleaned here too, whoever calls (a connector, a sync, the import): scrubbed text, shortened names.
     const items = list.length ? cleanReviewItems(list, { source: REVIEW_SOURCES.includes(list[0]?.source) ? list[0].source : 'other', fail }) : [];
-    const plan = planReviews(items);
+    const plan = planReviews(items, { origin });
     const touched = [];
     const fresh = [];
     for (const r of plan.rows) {
       if (r.status === 'same' || r.status === 'duplicate') continue;
-      const { status, row, key, ...doc } = r;
+      const { status, row, key, how, possibleOf, aliasId, saveOrigin, ...doc } = r;
       const cur = store.get('guestReviews', r.id);
-      const saved = cur ? store.update('guestReviews', r.id, { ...doc, origin, importId: cur.importId || importId, updatedAt: at() })
-        : store.insert('guestReviews', { ...doc, key, origin, importId, replied: false, reply: '', createdAt: at() });
+      if (cur) {
+        touched.push(store.update('guestReviews', r.id, { ...doc, origin: saveOrigin, importId: cur.importId || importId, updatedAt: at(),
+          ...(aliasId ? { aliases: [...(cur.aliases || []), aliasId].slice(-20) } : {}) }));
+        continue;
+      }
+      const saved = store.insert('guestReviews', { ...doc, key, origin, importId, replied: false, reply: '', createdAt: at(), ...(possibleOf ? { possibleDuplicateOf: possibleOf } : {}) });
+      if (possibleOf) continue; // waits for a manager: no names, no alert
       touched.push(saved);
-      if (!cur) fresh.push(saved);
+      fresh.push(saved);
     }
     const mentions = scanMany({ reviews: touched });
     for (const r of fresh) reviewArrived(r, { backfill });
     return { counts: plan.counts, mentions, from: plan.dates[0] || null, to: plan.dates.at(-1) || null };
+  }
+
+  /**
+   * A possible duplicate, decided by a manager: 'merge' (into the review it looks like: the fuller text, the API's
+   * id and fields, Google's reply if the other has none; it answers to both keys from now on) or 'keepBoth' (two
+   * reviews: its names are matched now; no alert, it isn't news any more).
+   */
+  function resolveDuplicate(id, action) {
+    if (!['merge', 'keepBoth'].includes(action)) fail(400, 'Pick merge or keep both');
+    const dup = store.get('guestReviews', String(id || ''));
+    if (!dup?.possibleDuplicateOf) fail(404, 'That review isn’t waiting for a check');
+    const orig = store.get('guestReviews', dup.possibleDuplicateOf);
+    roster = null;
+    if (action === 'keepBoth' || !orig) {
+      const kept = store.update('guestReviews', dup.id, { possibleDuplicateOf: null, notDuplicateOf: [...(dup.notDuplicateOf || []), ...(orig ? [reviewDocId(orig.source, orig.key)] : [])] });
+      if (orig) store.update('guestReviews', orig.id, { notDuplicateOf: [...(orig.notDuplicateOf || []), reviewDocId(dup.source, dup.key)] });
+      scanMany({ reviews: [kept] });
+      return { kept: kept.id };
+    }
+    const merged = mergeInto(orig, dup, { incomingOrigin: dup.origin });
+    const patch = Object.fromEntries(MERGE_FIELDS.map((k) => [k, merged[k]]));
+    patch.print = reviewPrint({ ...orig, ...patch });
+    patch.aliases = [...new Set([...(orig.aliases || []), reviewDocId(dup.source, dup.key), ...(dup.aliases || [])])].slice(-20);
+    if (dup.origin === 'api') patch.origin = 'api';
+    if (dup.google && !orig.google) patch.google = dup.google;
+    if (dup.url && !orig.url) patch.url = dup.url;
+    if (dup.replied && !orig.replied) Object.assign(patch, { replied: true, reply: dup.reply, repliedAt: dup.repliedAt || null, repliedBy: dup.repliedBy || null, replySource: dup.replySource || null });
+    if (dup.alertedAt && !orig.alertedAt) patch.alertedAt = dup.alertedAt;
+    const out = store.update('guestReviews', orig.id, patch);
+    store.remove('guestReviews', dup.id);
+    scanMany({ reviews: [out] });
+    return { merged: out.id };
   }
 
   /**
@@ -615,7 +683,8 @@ export function impactLinks({ store, api, fail, needAuth, needMgr, needAdmin, no
   function reviewArrived(review, { backfill = false } = {}) {
     const mentions = store.list('impactMentions', (m) => m.sourceId === review.id && m.kind === 'review');
     const recent = review.date >= addDays(today(), -NOTIFY_WITHIN_DAYS);
-    if (review.origin !== 'api' && recent && review.rating <= LOW_RATING && impactSettings(store).alertLow) {
+    const excerpt = review.source === 'yelp' && review.origin !== 'api' ? claimExcerpt(store, review) : null; // Yelp's excerpt of it came first
+    if (!excerpt && review.origin !== 'api' && recent && review.rating <= LOW_RATING && impactSettings(store).alertLow) {
       const ids = store.list('users').filter((u) => u.active !== false && canManageSchedule(u)).map((u) => u.id);
       const src = review.source === 'opentable' ? 'OpenTable' : review.source[0].toUpperCase() + review.source.slice(1);
       const quote = review.text ? ` “${review.text.slice(0, 90)}${review.text.length > 90 ? '…' : ''}”` : '';
@@ -632,7 +701,7 @@ export function impactLinks({ store, api, fail, needAuth, needMgr, needAdmin, no
     const found = new Map();
     let needsReview = 0;
     for (const r of plan.rows) {
-      if (r.status === 'duplicate') continue;
+      if (r.status === 'duplicate' || r.status === 'possible') continue;
       const day = reviewDay(r);
       const ctx = { worked: (id) => work.worked(id, day), dayHasData: work.has(day), serverId: r.server ? lookupServer(r.server) : null };
       for (const h of findMentions(r.text, team(), ctx)) {
@@ -741,7 +810,7 @@ export function impactLinks({ store, api, fail, needAuth, needMgr, needAdmin, no
       const rows = [...cur.values()].map((x) => ({ ...x, person: userSummary(x.userId), prev: prev.get(x.userId) ? { fiveStar: prev.get(x.userId).fiveStar, requests: prev.get(x.userId).requests, kudos: prev.get(x.userId).kudos, score: prev.get(x.userId).score, mentions: prev.get(x.userId).mentions } : null }))
         .sort((a, b) => b.score - a.score || b.mentions - a.mentions || a.person.name.localeCompare(b.person.name));
       const sum = (m, k) => [...m.values()].reduce((t, x) => t + x[k], 0);
-      const reviews = store.list('guestReviews', (r) => reviewDay(r) >= range.from && reviewDay(r) <= range.to);
+      const reviews = store.list('guestReviews', (r) => countable(r) && reviewDay(r) >= range.from && reviewDay(r) <= range.to);
       const pending = store.list('impactMentions', (m) => m.status === 'needsReview').length;
       return {
         range, seasons: seasonsList(lang), rows, pending,
@@ -781,7 +850,7 @@ export function impactLinks({ store, api, fail, needAuth, needMgr, needAdmin, no
         const range = periodRange(args, { settings: settings(), today: today(), lang: langOf(actor), fail });
         const named = new Map();
         store.list('impactMentions', (m) => { if (m.kind === 'review' && m.status !== 'dismissed') { const l = named.get(m.sourceId) || []; l.push(m); named.set(m.sourceId, l); } return false; });
-        const list = store.list('guestReviews', (r) => reviewDay(r) >= range.from && reviewDay(r) <= range.to && (!args.source || r.source === args.source) && (args.stars == null || Math.round(r.rating) === Number(args.stars)))
+        const list = store.list('guestReviews', (r) => countable(r) && reviewDay(r) >= range.from && reviewDay(r) <= range.to && (!args.source || r.source === args.source) && (args.stars == null || Math.round(r.rating) === Number(args.stars)))
           .sort((a, b) => b.date.localeCompare(a.date));
         return {
           range, total: list.length,
@@ -824,7 +893,7 @@ export function impactLinks({ store, api, fail, needAuth, needMgr, needAdmin, no
     'impact.rescan': (actor) => {
       needMgr(actor);
       roster = null;
-      const reviews = store.list('guestReviews');
+      const reviews = store.list('guestReviews', countable);
       const reservations = store.list('otReservations', (r) => r.notes || r.requestedServer);
       return { reviews: reviews.length, reservations: reservations.length, changed: scanMany({ reviews, reservations }) };
     },
@@ -896,7 +965,7 @@ export function impactLinks({ store, api, fail, needAuth, needMgr, needAdmin, no
         patch.ignoreWords = [...new Set(ignoreWords.map((w) => text(w, 40)).filter(Boolean))].slice(0, 100);
       }
       saveIntegration(store, patch);
-      if (patch.ignoreWords) { roster = null; scanMany({ reviews: store.list('guestReviews'), reservations: store.list('otReservations', (r) => r.notes || r.requestedServer) }); }
+      if (patch.ignoreWords) { roster = null; scanMany({ reviews: store.list('guestReviews', countable), reservations: store.list('otReservations', (r) => r.notes || r.requestedServer) }); }
       return impactSettings(store);
     },
     'impact.setAka': (actor, { userId, aka } = {}) => {
@@ -907,12 +976,12 @@ export function impactLinks({ store, api, fail, needAuth, needMgr, needAdmin, no
       const clean = [...new Set(aka.map((a) => text(a, 40)).filter((a) => a && fold(a).replace(/[^a-z]/g, '').length >= 2))].slice(0, 10);
       store.update('users', u.id, { aka: clean });
       roster = null;
-      const changed = scanMany({ reviews: store.list('guestReviews'), reservations: store.list('otReservations', (r) => r.notes || r.requestedServer) });
+      const changed = scanMany({ reviews: store.list('guestReviews', countable), reservations: store.list('otReservations', (r) => r.notes || r.requestedServer) });
       return { aka: clean, changed };
     },
   });
 
-  return { applyReviews, previewReviews, scanMany, planReviews, team: () => team() };
+  return { applyReviews, previewReviews, scanMany, planReviews, resolveDuplicate, team: () => team() };
 }
 
 /** The columns to remember for a source: { field: 'Header name' }. */

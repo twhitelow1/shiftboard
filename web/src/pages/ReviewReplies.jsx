@@ -72,6 +72,14 @@ export function ReviewsTab({ args }) {
         </div>
       )}
 
+      {data?.possibleDuplicates?.length > 0 && (
+        <div className="card card-pad col rv-dupes" style={{ gap: 10 }}>
+          <b>{t('reviews.possibleDuplicates', { count: data.possibleDuplicates.length })}</b>
+          <div className="help">{t('reviews.possibleDuplicatesHelp')}</div>
+          {data.possibleDuplicates.map((p) => <DuplicatePair key={p.review.id} p={p} onDone={changed} />)}
+        </div>
+      )}
+
       {data && !data.items.length && !data.yelp?.length && <Empty icon="star" title={filter.needsReply ? t('reviews.allAnswered') : t('impact.noReviews')} />}
       {data?.items.map((r) => (
         <div key={r.id} className="card card-pad imp-item">
@@ -163,6 +171,31 @@ export function ReplyPanel({ review: r, ai, googleOk, onDone }) {
       </div>
       {!canPost && r.source === 'google' && !IS_DEMO && <div className="help">{t('reviews.googleNotSynced')}</div>}
       {!canPost && r.source !== 'google' && <div className="help">{t('reviews.noReplyApi', { site: t(`impact.source_${r.source}`) })}</div>}
+    </div>
+  );
+}
+
+/** "Possible duplicate — check": the review already here and the one that just arrived, side by side. */
+function DuplicatePair({ p, onDone }) {
+  const t = useT();
+  const { call } = useApp();
+  const [run, busy] = useAction();
+  const side = (r, label) => (
+    <div className="imp-item rv-dupe-side">
+      <div className="tiny faint">{label}</div>
+      <div className="imp-item-head"><SourceBadge source={r.source} /><Stars n={r.rating} small /><span className="spacer" /><span className="tiny faint">{prettyDate(r.date)}</span></div>
+      <div className="imp-quote">{r.text}</div>
+      {r.reviewer && <span className="tiny faint">{r.reviewer}</span>}
+    </div>
+  );
+  const decide = (action) => run(() => call('reviews.resolveDuplicate', { id: p.review.id, action }), t(action === 'merge' ? 'reviews.merged' : 'reviews.keptBoth')).then((x) => x && onDone());
+  return (
+    <div className="col" style={{ gap: 8 }}>
+      <div className="rv-dupe-pair">{side(p.of, t('reviews.dupExisting'))}{side(p.review, t('reviews.dupNew'))}</div>
+      <div className="row wrap rv-actions" style={{ gap: 8 }}>
+        <button className="btn primary sm" disabled={busy} onClick={() => decide('merge')}><Icon name="check" />{t('reviews.merge')}</button>
+        <button className="btn sm" disabled={busy} onClick={() => decide('keepBoth')}><Icon name="copy" />{t('reviews.keepBoth')}</button>
+      </div>
     </div>
   );
 }

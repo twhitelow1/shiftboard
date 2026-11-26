@@ -89,11 +89,11 @@ export function namesIn(textValue, team) {
   return { spans, people };
 }
 
-/** The excerpts to show (the last 24 hours), newest first, with the names in them and whether they were answered. */
+/** The excerpts to show (the last 24 hours, not yet kept as a full review), newest first, with the names in them and whether they were answered. */
 export function excerptsFor(store, { now = new Date(), team = null } = {}) {
   pruneExcerpts(store, now);
-  const replied = integration(store).replied || {};
-  return store.list('yelpExcerpts').sort((a, b) => (b.date || '').localeCompare(a.date || '')).map((x) => ({
+  const { replied = {}, kept = {} } = integration(store);
+  return store.list('yelpExcerpts', (x) => !kept[x.ref]).sort((a, b) => (b.date || '').localeCompare(a.date || '')).map((x) => ({
     ref: x.ref, source: 'yelp', rating: x.rating, text: x.text, url: x.url, date: x.date, reviewer: x.reviewer, fetchedAt: x.fetchedAt,
     replied: !!replied[x.ref], ...namesIn(x.text, team),
   }));

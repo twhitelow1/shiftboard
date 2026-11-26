@@ -293,13 +293,17 @@ export function reviewsLinks({ store, api, fail, needMgr, needAdmin, notify, now
       const named = new Map();
       store.list('impactMentions', (m) => { if (m.kind === 'review' && m.status !== 'dismissed') { const l = named.get(m.sourceId) || []; l.push(m); named.set(m.sourceId, l); } return false; });
       const day = (r) => r.diningDate || r.date;
-      const inPeriod = store.list('guestReviews', (r) => day(r) >= range.from && day(r) <= range.to && (!args.source || r.source === args.source));
+      const all = store.list('guestReviews', (r) => day(r) >= range.from && day(r) <= range.to && (!args.source || r.source === args.source));
+      const inPeriod = all.filter((r) => !r.possibleDuplicateOf);
+      // "Possible duplicate — check": side by side with the review it looks like.
+      const possibleDuplicates = store.list('guestReviews', (r) => !!r.possibleDuplicateOf && (!args.source || r.source === args.source))
+        .map((r) => ({ review: view(r, named), of: store.get('guestReviews', r.possibleDuplicateOf) })).filter((x) => x.of).map((x) => ({ ...x, of: view(x.of, named) }));
       const list = inPeriod.filter((r) => (args.stars == null || args.stars === '' || Math.round(r.rating) === Number(args.stars)) && (!args.needsReply || needsReply(r)))
         .sort((a, b) => b.date.localeCompare(a.date));
       const yelp = !args.source || args.source === 'yelp' ? excerptsFor(store, { now: now(), team: impact.team() })
         .filter((x) => (args.stars == null || args.stars === '' || Math.round(x.rating) === Number(args.stars)) && (!args.needsReply || !x.replied)) : [];
       return {
-        range, total: list.length, needsReply: inPeriod.filter(needsReply).length,
+        range, total: list.length, needsReply: inPeriod.filter(needsReply).length, possibleDuplicates,
         items: list.slice(0, 200).map((r) => view(r, named)), yelp,
       };
     },
@@ -316,7 +320,7 @@ export function reviewsLinks({ store, api, fail, needMgr, needAdmin, notify, now
       if (!(rating >= 1 && rating <= 5)) fail(400, 'Stars go from 1 to 5');
       const url = /^https:\/\/[^\s"<>]{4,400}$/.test(String(a.url || '').trim()) ? String(a.url).trim() : '';
       const items = cleanReviewItems([{ key: `h_${hashKey(`${date}|${fold(body).slice(0, 300)}|${rating}`)}`, source: a.source, date, rating, text: body, reviewer: a.reviewer }], { source: a.source, fail });
-      const [row] = impact.planReviews(items).rows;
+      const [row] = impact.planReviews(items, { origin: 'manual' }).rows;
       impact.applyReviews(items, { origin: 'manual' });
       if (url || row.status === 'new') store.update('guestReviews', row.id, { ...(url ? { url } : {}), addedBy: actor.id });
       return { id: row.id, status: row.status };
@@ -335,6 +339,11 @@ export function reviewsLinks({ store, api, fail, needMgr, needAdmin, notify, now
       return store.update('guestReviews', r.id, replied
         ? { replied: true, reply: words || r.reply || '', repliedAt: at(), repliedBy: actor.id, replySource: r.replySource === 'google' ? 'google' : 'manual' }
         : { replied: false, repliedAt: null, repliedBy: null, ...(r.replySource === 'google' ? {} : { replySource: null }) });
+    },
+    /** A possible duplicate (Positive impact → Reviews): 'merge' into the review it looks like, or 'keepBoth'. Managers. */
+    'reviews.resolveDuplicate': (actor, { id, action } = {}) => {
+      needMgr(actor);
+      return impact.resolveDuplicate(id, action);
     },
     /** A Yelp excerpt answered (on Yelp, by hand): marked, or not. Managers. */
     'reviews.markYelp': (actor, { ref, replied = true } = {}) => {

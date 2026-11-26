@@ -54,6 +54,15 @@ export default {
     copyFailed: 'No se pudo copiar. Selecciona el texto y cópialo.',
     openSite: 'Abrir {site}',
     noReplyApi: '{site} no tiene forma de que ShiftBoard publique respuestas: copia la respuesta, publícala allá y marca la reseña como respondida.',
+    // ----- posibles duplicados -----
+    possibleDuplicates: { one: 'Posible duplicado: revísalo ({count})', other: 'Posibles duplicados: revísalos ({count})' },
+    possibleDuplicatesHelp: 'Se parecen a una reseña que ya está aquí (de un archivo, pegada, o la copia de Google o de Yelp). Hasta que decidas, no cuentan ni le avisan a nadie.',
+    dupExisting: 'Ya estaba',
+    dupNew: 'Acaba de llegar',
+    merge: 'Es la misma: unir',
+    keepBoth: 'Son distintas: dejar las dos',
+    merged: 'Se unieron en una sola reseña',
+    keptBoth: 'Se quedaron como dos reseñas',
     // ----- fragmentos de Yelp -----
     yelpExcerpts: 'De la API de Yelp',
     yelpExcerptsHelp: 'Yelp comparte hasta 3 fragmentos cortos. Sus términos dejan que ShiftBoard los guarde 24 horas y no permiten enviarlos a una IA. Para quedarte con una reseña de Yelp, pega la reseña completa.',

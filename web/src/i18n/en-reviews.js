@@ -56,6 +56,15 @@ export default {
     copyFailed: 'Couldn’t copy. Select the text and copy it.',
     openSite: 'Open {site}',
     noReplyApi: '{site} has no way for ShiftBoard to post replies: copy the reply, post it there, then mark the review replied.',
+    // ----- possible duplicates -----
+    possibleDuplicates: { one: 'Possible duplicate — check ({count})', other: 'Possible duplicates — check ({count})' },
+    possibleDuplicatesHelp: 'These look like a review that’s already here (from a file, pasted, or Google’s and Yelp’s own copies). Until you decide, they don’t count and don’t alert anyone.',
+    dupExisting: 'Already here',
+    dupNew: 'Just came in',
+    merge: 'Same review: merge',
+    keepBoth: 'Different: keep both',
+    merged: 'Merged into one review',
+    keptBoth: 'Kept as two reviews',
     // ----- Yelp's excerpts -----
     yelpExcerpts: 'From Yelp’s API',
     yelpExcerptsHelp: 'Yelp shares up to 3 short excerpts. Its terms let ShiftBoard keep them for 24 hours and don’t allow sending them to AI. To keep a Yelp review, paste the full review.',
