@@ -27,6 +27,7 @@ import { impactLinks } from './impact.js';
 import { reviewsLinks } from './review-reply.js';
 import { trainingApi } from './training.js';
 import { eightySixApi } from './eighty-six.js';
+import { stockApi } from './stock.js';
 import { rosterApi } from './roster.js';
 import { layoutService, addRoom, roomOfShift } from './layout.js';
 import { profileApi } from './profile.js';
@@ -1751,8 +1752,10 @@ export function createService(store, opts = {}) {
   const tripleseat = tripleseatLinks({ store, api, fail, needAuth, needMgr, needEvents, needAdmin, notify, say, day, now, cancelRequestsForShift });
   // Unpublish (back to draft) and the "what changed" notification when it's posted again. See core/unpublish.js.
   const unpublish = unpublishApi({ store, api, fail, needMgr, notify, say, day, describe, settings, nameOf, jobName, isFuture, cancelRequestsForShift, now });
-  // Smart import: employees.import* and menu.import* (core/import-api.js, core/smart-import.js).
+  // Smart import: employees.import*, menu.import* and products.import* (core/import-api.js, core/smart-import.js).
   Object.assign(api, importApi({ store, api, fail, needMgr, now }));
+  // Stock lists and the product catalog the 86 List shares (core/stock.js, core/products.js). Out → 86 goes through eightySix.report.
+  Object.assign(api, stockApi({ store, now, settings, notify, fail, api, langOf: L, planHas: (k) => !opts.planFeatures || opts.planFeatures[k] !== false }));
   // Positive impact (impact.*: review mentions, reservation requests, kudos) and OpenTable (opentable.*): core/impact.js, core/opentable.js.
   const onReview = []; // new reviews from any source: the managers' review alerts (core/review-reply.js)
   const impact = impactLinks({ store, api, fail, needAuth, needMgr, needAdmin, notify, now, settings, langOf: L, onReview });

@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { E86Image } from '@/components/EightySixPhoto';
+import { StockPhoto } from '@/components/StockPhoto';
 import { Screen } from '@/components/Screen';
 import { Icon } from '@/components/Icon';
 import { Button, Card, Empty, Field, Loading, Notice, Tabs, Txt, useColors, useToast } from '@/components/ui';
@@ -17,6 +18,7 @@ import { useAction, useErrorText, useRpc } from '@/lib/hooks';
 import { pickPhotos, type ShrunkPhoto } from '@/lib/photos';
 import { useApp } from '@/lib/session';
 import type { EightySixBoard } from '@/lib/types';
+import type { Catalog } from '@/lib/stock';
 
 const norm = (s: string) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 
@@ -39,14 +41,16 @@ function Form({ board, startList, itemId }: { board: EightySixBoard; startList?:
   const { t, tn, lang } = useI18n();
   const c = useColors();
   const toast = useToast();
-  const { client } = useApp();
+  const { client, has } = useApp();
   const [run, busy] = useAction();
+  // The product catalog Stock lists share (core/products.js): typing finds products too, with their photos.
+  const catalog = useRpc<Catalog>('products.list', {}, [], has('stock')).data?.products || [];
   const editing = board.lists.flatMap((l) => l.items).find((i) => i.id === itemId) || null;
   const reportable = board.lists.filter((l) => l.canReport).sort(barFirst);
   const [listId, setListId] = useState(editing?.listId || (reportable.some((l) => l.id === startList) ? startList! : reportable[0]?.id || ''));
   const list = board.lists.find((l) => l.id === listId);
   const [q, setQ] = useState('');
-  const [picked, setPicked] = useState<{ name: string; nameEs: string; menuItemId: string | null } | null>(editing ? { name: editing.name, nameEs: editing.nameEs, menuItemId: editing.menuItemId } : null);
+  const [picked, setPicked] = useState<{ name: string; nameEs: string; menuItemId: string | null; productId?: string } | null>(editing ? { name: editing.name, nameEs: editing.nameEs, menuItemId: editing.menuItemId } : null);
   const [count, setCount] = useState(editing?.count != null ? String(editing.count) : '');
   const [note, setNote] = useState(editing?.note || '');
   const [area, setArea] = useState(editing?.area || '');
@@ -69,6 +73,7 @@ function Form({ board, startList, itemId }: { board: EightySixBoard; startList?:
   const words = norm(q).split(' ').filter(Boolean);
   const options = (list?.suggest || []).map((id) => ({ id, ...board.menu[id] }))
     .filter((m) => m.name && words.every((w) => norm(`${m.name} ${m.nameEs} ${m.category}`).includes(w)));
+  const products = words.length ? catalog.filter((p) => words.every((w) => norm(`${p.name} ${p.size}`).includes(w))).slice(0, 6) : [];
   const exact = q.trim() ? options.find((m) => norm(m.name) === norm(q) || (!!m.nameEs && norm(m.nameEs) === norm(q))) : undefined;
   const current = picked || (q.trim() ? { name: q.trim(), nameEs: '', menuItemId: exact?.id || null } : null);
   const existing = !editing && current ? list?.items.find((i) => (current.menuItemId ? i.menuItemId === current.menuItemId : norm(i.name) === norm(current.name))) : undefined;
@@ -79,7 +84,7 @@ function Form({ board, startList, itemId }: { board: EightySixBoard; startList?:
     let photoFailed = false;
     const r = await run(async () => {
       const x = await client.call<{ item: { id: string; name: string; nameEs: string }; notified: number }>('eightySix.report', {
-        listId, name: current.name, menuItemId: current.menuItemId, status, count: status === 'low' ? count : '', note, area,
+        listId, name: current.name, menuItemId: current.menuItemId, ...(picked?.productId ? { productId: picked.productId } : {}), status, count: status === 'low' ? count : '', note, area,
       });
       // One photo per request, after the report is saved: a photo that fails never loses the report.
       if (added.length) {
@@ -120,7 +125,7 @@ function Form({ board, startList, itemId }: { board: EightySixBoard; startList?:
         <>
           <Field label={t('eightySix.item')} value={q} onChangeText={setQ} placeholder={t('eightySix.search')} autoFocus autoCorrect={false}
             returnKeyType="done" onSubmitEditing={() => (exact ? setPicked({ name: exact.name, nameEs: exact.nameEs, menuItemId: exact.id }) : pickTyped())} />
-          {options.length || q.trim() ? (
+          {options.length || products.length || q.trim() ? (
             <Card pad={false} style={{ overflow: 'hidden' }}>
               {!q.trim() ? <Txt v="tiny" tone="faint" style={{ paddingHorizontal: 14, paddingTop: 8 }}>{t('eightySix.fromMenu')}</Txt> : null}
               {q.trim() && !exact ? (
@@ -129,6 +134,14 @@ function Form({ board, startList, itemId }: { board: EightySixBoard; startList?:
                   <Text style={[styles.resultName, { color: c.brand }]}>{t('eightySix.useTyped', { text: q.trim() })}</Text>
                 </Pressable>
               ) : null}
+              {products.map((p) => (
+                <Pressable key={`p:${p.id}`} onPress={() => { setPicked({ name: p.name, nameEs: '', menuItemId: null, productId: p.id }); setQ(''); }} accessibilityRole="button"
+                  style={({ pressed }) => [styles.result, { borderColor: c.border }, pressed && { backgroundColor: c.surface2 }]}>
+                  <StockPhoto product={p} size={36} />
+                  <Text style={[styles.resultName, { color: c.text }]}>{p.name}{p.size ? ` · ${p.size}` : ''}</Text>
+                  <Txt v="tiny" tone="faint">{t('stock.fromCatalog')}</Txt>
+                </Pressable>
+              ))}
               {options.slice(0, q.trim() ? 8 : 6).map((m) => (
                 <Pressable key={m.id} onPress={() => { setPicked({ name: m.name, nameEs: m.nameEs, menuItemId: m.id }); setQ(''); }} accessibilityRole="button"
                   style={({ pressed }) => [styles.result, { borderColor: c.border }, pressed && { backgroundColor: c.surface2 }]}>

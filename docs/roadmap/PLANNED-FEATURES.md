@@ -30,7 +30,8 @@ _Working name "ShiftBoard"; a new product name is still to be chosen (see Busine
 | Admins can make themselves Super Admin (re-auth, audited, others alerted), with a Super-Admin-only switch to turn it off | #20 | live Nov 26 |
 | Floor plan: import from Toast / a picture or PDF (AI) / CSV, Toast-style editor (shapes, bar seats, walls, sections), export + "set this up in Toast" helper | #20 | live Nov 26 |
 | Managers on duty: every manager on the day with time in–out and phone number written out, on Today on the floor, My shifts and Training; in every plan (not only with Training); a switch per person for who shows | #21 | |
-| Feedback box: anonymous (or signed) suggestions, feedback, concerns and shout-outs; follow-up code; readers' inbox, replies, internal notes; "You said, we did" board | #22 | |
+| Feedback box: anonymous (or signed) suggestions, feedback, concerns and shout-outs; follow-up code; readers' inbox, replies, internal notes; "You said, we did" board | #22 | live Nov 26 |
+| Stock lists + product library: photos and aliases, anyone adds products (manager review/merge), quick lists sent to barbacks on duty, Got it / Short / Out → 86 List → buyer → purchase list (Ordered, Received) | #23 | |
 
 ## Building
 | Feature | Notes |

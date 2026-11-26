@@ -8,6 +8,7 @@ import { seedReviewsDemo } from '../../core/review-seed.js';
 import { seedBeoDemo } from '../../core/beo-demo.js';
 import { seedFloorDemo } from '../../core/floor-seed.js';
 import { seedFeedbackDemo } from '../../core/feedback-seed.js';
+import { seedStockDemo } from '../../core/stock-seed.js';
 import { startServiceWorker, forgetThisDevice } from './push.js';
 import { getLang, translateError } from './i18n/index.js';
 import { viewCall, viewedPerson } from '../../core/view-as.js';
@@ -31,6 +32,7 @@ function getDemo() {
     seedReviewsDemo(store, { now: DEMO_NOW }); // Google reviews as if synced, two answered, and Yelp excerpts
     seedBeoDemo(store); // the wedding's BEO, imported: every kind of section (core/beo-demo.js)
     seedFeedbackDemo(store, { now: DEMO_NOW }); // Feedback box: one entry of each kind, a reply, two on the board (stays in the page)
+    seedStockDemo(store, { now: DEMO_NOW }); // Stock lists: an invented catalog with drawn photos, templates, a barback's list in progress, products to review
     seedFloorDemo(store); // the Patio and Library drawn, the Restaurant's tables in sections (never Toast or the AI)
     // A Super Admin persona for the demo (the seed has none), to show View as and the whole Roles & features editor.
     ids.userId.Owner = store.insert('users', { id: 'usr_demo_owner', name: 'Owner', role: 'super_admin', order: 0, email: 'owner@demo.shiftboard', phone: '',

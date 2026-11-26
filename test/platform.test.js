@@ -16,7 +16,7 @@ import { hostConfig, resolveHost, domainProblem, normalizeHost } from '../server
 import { slugProblem, slugify, schemaForSlug, RESERVED_SLUGS } from '../server/platform/slugs.js';
 import { encrypt, decrypt } from '../server/platform/secrets.js';
 import { TenantCache } from '../server/platform/tenant-cache.js';
-import { resolveFeatures, featureForMethod, billingBanner, PLANS, planForPrice } from '../server/platform/plans.js';
+import { resolveFeatures, featureForMethod, billingBanner, PLANS, PLAN_KEYS, planForPrice } from '../server/platform/plans.js';
 import { tenantEnv } from '../server/platform/tenant-env.js';
 import { _tokenCache } from '../server/toast.js';
 import { addDays, todayStr } from '../core/time.js';
@@ -182,7 +182,8 @@ test('LRU: keeps the most recently used restaurants, never evicts one with a req
 });
 
 test('plans: features per plan with overrides, RPCs mapped to features, prices for Stripe, billing banners', () => {
-  assert.deepEqual(Object.entries(resolveFeatures('starter')).filter(([, v]) => v).map(([k]) => k), ['training', 'tips', 'eightySix', 'announcements', 'feedback', 'reports']);
+  assert.deepEqual(Object.entries(resolveFeatures('starter')).filter(([, v]) => v).map(([k]) => k), ['training', 'tips', 'eightySix', 'announcements', 'feedback', 'stock', 'reports']);
+  for (const plan of PLAN_KEYS) assert.equal(resolveFeatures(plan).stock, true, `Stock lists are in ${plan}`);
   assert.equal(resolveFeatures('starter', { events: true }).events, true);
   assert.equal(resolveFeatures('pro', { toast: false }).toast, false);
   assert.ok(Object.values(resolveFeatures('beta')).every(Boolean));
@@ -192,7 +193,7 @@ test('plans: features per plan with overrides, RPCs mapped to features, prices f
   assert.equal(planForPrice('price_unknown', {}), null);
   for (const [m, f] of [['menu.list', 'training'], ['myTips.week', 'tips'], ['eightySix.board.get', 'eightySix'], ['events.list', 'events'],
     ['labor.week', 'forecast'], ['settings.laborRules', 'forecast'], ['toast.get', 'toast'], ['sms.preferences', 'sms'], ['sections.list', 'venue'],
-    ['reports.eightySix.missing.get', 'reports'], ['shifts.list', null], ['mod.get', null], ['app.bootstrap', null], ['settings.update', null], ['push.subscribe', null]]) {
+    ['reports.eightySix.missing.get', 'reports'], ['stock.lists.list', 'stock'], ['products.add', 'stock'], ['shifts.list', null], ['mod.get', null], ['app.bootstrap', null], ['settings.update', null], ['push.subscribe', null]]) {
     assert.equal(featureForMethod(m), f, m);
   }
   const now = Date.parse('2026-11-01T12:00:00Z');

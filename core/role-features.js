@@ -60,6 +60,11 @@ export const ROLE_FEATURES = [
   // turns that on in Settings → Feedback box, so their cell isn't here; Concern / report goes to Admins by default.
   { key: 'feedback', group: 'feature', plan: 'feedback', cells: ALL(true) },
   { key: 'feedbackInbox', group: 'feature', plan: 'feedback', cells: MGR(true) },
+  // Stock lists (core/stock.js): everyone looks products up, sends quick lists to the people on duty, works the lists
+  // sent to them and adds products; supervisors and up schedule lists and make templates (with manager and up: the
+  // product catalog). stockManage is checked inside core/stock.js, not per RPC, so turning it off never refuses a method.
+  { key: 'stock', group: 'feature', plan: 'stock', cells: ALL(true) },
+  { key: 'stockManage', group: 'feature', plan: 'stock', cells: { employee: false, supervisor: true, manager: true, admin: 'on' } },
   { key: 'coworkerContacts', group: 'feature', plan: null, cells: { employee: false, supervisor: true, manager: 'on', admin: 'on' } },
   { key: 'tradeRequests', group: 'capability', plan: null, cells: ALL(true) },
   { key: 'approve', group: 'capability', plan: null, cells: { employee: null, supervisor: true, manager: 'on', admin: 'on' }, setting: 'supervisorsCanApprove' },
@@ -80,6 +85,7 @@ const NAMESPACE_FEATURE = {
   announcements: 'announcements',
   reports: 'reports', tradeStats: 'reports',
   feedback: 'feedback',
+  stock: 'stock', products: 'stock', // the catalog is Stock lists' (the 86 List's report form reads it too)
 };
 const METHOD_FEATURES = {
   'swaps.create': ['trades', 'tradeRequests'],
@@ -111,6 +117,7 @@ export function featuresForMethod(method) {
 export const ROLE_ROUTES = [
   ['/api/training', 'training'],
   ['/api/eighty-six', 'eightySix'],
+  ['/api/stock', 'stock'], // product photos
   ['/api/venue', 'venue'], // floor plan imports (managers)
   ['/api/users', 'team'], // send a sign-in link, invite everyone, reset someone's two-step sign-in
 ];
