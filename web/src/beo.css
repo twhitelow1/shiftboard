@@ -52,4 +52,5 @@
 .beo-dup-choices input { margin-top: 3px; flex: 0 0 auto; }
 .beo-ai { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); }
 .beo-merged { font-size: 12.5px; }
-.beo-undecided { color: var(--warn); margin-right: auto; font-weight: 600; }
+.modal-foot:has(.beo-undecided) { flex-wrap: wrap; }
+.beo-undecided { color: var(--warn); font-weight: 600; flex: 1 1 100%; text-align: right; }

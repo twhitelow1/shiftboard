@@ -28,8 +28,8 @@ export const SECTIONS = [
 ];
 export const SECTION_KEYS = SECTIONS.map(([k]) => k);
 const KIND_OF = Object.fromEntries(SECTIONS);
-/** Client contact details: managers and the events team only (like the event's contact fields). */
-export const PRIVATE_SECTIONS = ['contacts'];
+/** The client's contact details and who signed the BEO for them: managers and the events team only (like the event's contact fields). */
+export const PRIVATE_SECTIONS = ['contacts', 'signatures'];
 /** Fields a BEO section can mirror (see `from`). */
 export const MIRRORED_FIELDS = ['setupNotes', 'contactNotes'];
 /** Labels the app translates (keyvalue items' labelKey). */

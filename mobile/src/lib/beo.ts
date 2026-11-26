@@ -11,6 +11,8 @@ export interface KeyValueItem { label?: string; labelKey?: string; value: string
 export type SectionItem = TimelineItem | MenuItem | KeyValueItem | string;
 export interface BeoSection { key: string; title?: string; kind: SectionKind; items: SectionItem[]; from?: string[] }
 
+/** The client's contact and who signed for them: the server sends these only to the events team. */
+export const PRIVATE = ['contacts', 'signatures'];
 export const SECTION_KEYS = ['timeline', 'menu', 'dietary', 'bar', 'kitchen', 'setup', 'rentals', 'av', 'decor', 'vendors', 'staffing',
   'arrival', 'parking', 'instructions', 'notes', 'signatures', 'contacts', 'other'] as const;
 export type SectionKey = (typeof SECTION_KEYS)[number];
@@ -63,7 +65,7 @@ function fieldSections(e: EventDetail, client: boolean): (BeoSection & { fields:
 /** The sections this person sees, in order. client: the events team (the only ones who see the client's contact). */
 export function eventSections(e: EventDetail, client: boolean): BeoSection[] {
   const edited = new Set(e.beoEdited || []);
-  const kept = (e.beoSections || []).filter((s) => s && !(s.from || []).some((f) => edited.has(f)) && (client || s.key !== 'contacts'));
+  const kept = (e.beoSections || []).filter((s) => s && !(s.from || []).some((f) => edited.has(f)) && (client || !PRIVATE.includes(s.key)));
   const covered = new Set(kept.flatMap((s) => s.from || []));
   const fromFields = fieldSections(e, client).map((s) => {
     if (s.key === 'contacts') return covered.has('contactNotes') ? { ...s, items: s.items.filter((x) => (x as KeyValueItem).labelKey) } : s;

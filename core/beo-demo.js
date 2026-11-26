@@ -34,7 +34,7 @@ const WEDDING_CONTACT = [
 function weddingBeo(date) {
   const fields = {
     source: 'beo-pdf', invoiceNumber: 'DEMO-1042', beoUpdatedAt: `${addDays(date, -6)}T15:20`, importedAt: `${addDays(date, -6)}T16:02:00.000Z`,
-    location: 'Our Restaurant', areas: 'Full Buyout: Restaurant, Library, Rabbit Hole, Patio', guaranteed: 108,
+    location: 'Our Restaurant', areas: 'Full Buyout', guaranteed: 108,
     salesManager: 'Kelly', client: 'Radunzel & Jones Wedding', contactName: 'Rose Radunzel', contactPhone: '555-010-7700', contactEmail: 'rose@wedding.example',
     contactNotes: WEDDING_CONTACT.join('\n'),
     setupNotes: WEDDING_SETUP.join('\n'),

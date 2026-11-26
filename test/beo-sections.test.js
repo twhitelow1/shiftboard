@@ -87,6 +87,9 @@ test('staff see the operational sections; the client’s contact and every phone
   assert.deepEqual(team.find((s) => s.key === 'contacts').items.slice(0, 4).map((x) => x.labelKey), ['client', 'contact', 'phone', 'email']);
   assert.equal(redactContacts('Call (555) 010-3000 or x@y.example, set at 5:30 - 7:00 for 120'), 'Call or , set at 5:30 - 7:00 for 120');
   assert.equal(redactContacts('Rounds of 8'), 'Rounds of 8');
+  // Who signed the BEO for the client is a client detail too.
+  const signed = { beoSections: [{ key: 'signatures', title: 'Client Signature', kind: 'keyvalue', items: [{ labelKey: 'signed', value: 'Robin Sample' }] }] };
+  assert.deepEqual([visibleSections(signed, { client: false }).length, visibleSections(signed, { client: true }).length], [0, 1]);
 });
 
 function restaurant() {

@@ -34,7 +34,7 @@ export default {
     field_guaranteed: 'guaranteed count',
     location: 'Location',
     private: 'Managers only',
-    privateHelp: 'Only managers and the events team see the client’s contact details.',
+    privateHelp: 'Only managers and the events team see the client’s contact details and who signed the BEO.',
     dietaryBanner: 'Dietary & allergy notes for this event: read them before service.',
     sectionsFound: 'Found:',
     noSections: 'Only the basics: no menu, timeline or notes in this BEO.',

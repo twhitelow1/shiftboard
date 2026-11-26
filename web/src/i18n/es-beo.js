@@ -34,7 +34,7 @@ export default {
     field_guaranteed: 'invitados garantizados',
     location: 'Lugar',
     private: 'Solo gerentes',
-    privateHelp: 'Solo los gerentes y el equipo de eventos ven los datos de contacto del cliente.',
+    privateHelp: 'Solo los gerentes y el equipo de eventos ven los datos de contacto del cliente y quién firmó el BEO.',
     dietaryBanner: 'Este evento tiene notas de dietas y alergias: léelas antes del servicio.',
     sectionsFound: 'Encontrado:',
     noSections: 'Solo lo básico: este BEO no trae menú, cronograma ni notas.',

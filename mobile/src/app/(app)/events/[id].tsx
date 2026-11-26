@@ -13,7 +13,7 @@ import { Screen } from '@/components/Screen';
 import { Badge, Button, Card, Empty, JobDot, Loading, Notice, Row, Txt, useColors } from '@/components/ui';
 import { useI18n } from '@/i18n';
 import { isStatus, isStyle, STATUS_TONE } from '@/lib/events';
-import { eventSections, isLabelKey, isSectionKey, type BeoSection, type KeyValueItem, type MenuItem, type TimelineItem } from '@/lib/beo';
+import { eventSections, isLabelKey, isSectionKey, PRIVATE, type BeoSection, type KeyValueItem, type MenuItem, type TimelineItem } from '@/lib/beo';
 import { useErrorText, useRpc } from '@/lib/hooks';
 import { useApp } from '@/lib/session';
 import type { EventDetail } from '@/lib/types';
@@ -128,7 +128,7 @@ function SectionCard({ s }: { s: BeoSection }) {
     <Card style={[{ gap: 8 }, alert ? { borderColor: c.warn, borderWidth: 1.5 } : null]}>
       <Row>
         <Txt v="h3" style={[{ flex: 1 }, alert ? { color: c.warn } : null]}>{title}</Txt>
-        {s.key === 'contacts' ? <Badge tone="neutral" text={t('events.managersOnly')} /> : null}
+        {PRIVATE.includes(s.key) ? <Badge tone="neutral" text={t('events.managersOnly')} /> : null}
       </Row>
       {s.kind === 'timeline' ? (s.items as TimelineItem[]).map((x, i) => (
         <Row key={i} style={{ alignItems: 'flex-start' }}>

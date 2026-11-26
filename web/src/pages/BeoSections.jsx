@@ -3,7 +3,7 @@
 // The BEO's own words are shown as written; the app's labels are translated. Dietary and allergy notes stand out.
 import React from 'react';
 import { Icon } from '../ui.jsx';
-import { visibleSections } from '../../../core/beo-sections.js';
+import { visibleSections, PRIVATE_SECTIONS } from '../../../core/beo-sections.js';
 import { useT, fmtTime } from '../i18n/index.js';
 import '../beo.css';
 
@@ -25,7 +25,7 @@ export default function BeoSections({ e, client }) {
       <h2 className="beo-sec-h">
         {s.key === 'dietary' && <Icon name="alert" size={16} />}
         <span>{sectionTitle(t, s)}</span>
-        {s.key === 'contacts' && <span className="badge beo-sec-private" title={t('beo.privateHelp')}><Icon name="lock" size={11} />{t('beo.private')}</span>}
+        {PRIVATE_SECTIONS.includes(s.key) && <span className="badge beo-sec-private" title={t('beo.privateHelp')}><Icon name="lock" size={11} />{t('beo.private')}</span>}
       </h2>
       <SectionBody s={s} />
     </section>
