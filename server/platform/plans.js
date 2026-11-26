@@ -14,6 +14,7 @@ export const FEATURES = [
   { key: 'training', label: 'Training', hint: 'Menu study guide, quizzes, leaderboard, employee manual, manager on duty' },
   { key: 'tips', label: 'Tip pool', hint: 'Pools, daily tips, weekly split' },
   { key: 'eightySix', label: '86 List', hint: 'What’s out or running low, with photos' },
+  { key: 'announcements', label: 'Announcements', hint: 'Managers message the team: in the app, phone notifications, email; texts with Text messages' },
   { key: 'events', label: 'Events & BEOs', hint: 'Banquet event orders and event staffing' },
   { key: 'forecast', label: 'Forecast & labor', hint: 'Sales history, forecast, labor rules and labor review' },
   { key: 'toast', label: 'Toast POS', hint: 'Daily sales, covers and clock-ins from Toast' },
@@ -34,11 +35,11 @@ export const FEATURE_KEYS = FEATURES.map((f) => f.key);
 export const PLANS = {
   starter: {
     label: 'Starter', priceCents: 4900, interval: 'month', selfServe: true, stripePriceEnv: 'STRIPE_PRICE_STARTER',
-    features: ['training', 'tips', 'eightySix', 'reports'],
+    features: ['training', 'tips', 'eightySix', 'reports', 'announcements'],
   },
   pro: {
     label: 'Pro', priceCents: 9900, interval: 'month', selfServe: true, stripePriceEnv: 'STRIPE_PRICE_PRO',
-    features: ['training', 'tips', 'eightySix', 'events', 'forecast', 'toast', 'adp', 'tripleseat', 'sms', 'venue', 'reports'],
+    features: ['training', 'tips', 'eightySix', 'events', 'forecast', 'toast', 'adp', 'tripleseat', 'sms', 'venue', 'reports', 'announcements'],
   },
   beta: {
     label: 'Beta (everything, free)', priceCents: 0, interval: 'month', selfServe: false, stripePriceEnv: null,
@@ -110,6 +111,7 @@ const NAMESPACE_FEATURE = {
   sms: 'sms',
   venue: 'venue', sections: 'venue',
   reports: 'reports',
+  announcements: 'announcements',
 };
 const METHOD_FEATURE = { 'settings.laborRules': 'forecast' };
 // Methods that need more than one feature: each report needs Reports and its own feature.

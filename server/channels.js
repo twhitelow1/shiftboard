@@ -198,6 +198,8 @@ export function createChannels({ db, env = process.env, pusher = createPusher(en
   return {
     /** For createService: what's set up (the demo passes nothing). */
     info: { push: { enabled: pusher.enabled, publicKey: pusher.publicKey }, sms: { enabled: texter.enabled } },
+    /** The senders themselves, for announcements (server/announcements.js). */
+    senders: { pusher, texter },
     /** For /api/config. */
     config: () => ({ push: pusher.enabled, sms: texter.enabled, smsFrom: texter.from ? formatPhone(texter.from) : null }),
     afterCommit,

@@ -313,6 +313,24 @@ The words ShiftBoard uses in Spanish, so the phone app, the website and emails s
 | opening / close (availability with no time) | la apertura / el cierre | |
 | waiting on coworkers / recently decided | esperando a los compañeros / decididos hace poco | approvers in Trades |
 
+## Reports and announcements
+
+| English | Español | Notes |
+|---|---|---|
+| Trades & pickups (report) | Cambios y turnos recogidos | phone title: Conteo de cambios |
+| put up (shifts offered: give-aways + trades offered) | ofrecidos | column; "ofreciste 3" |
+| picked up | recogidos | |
+| not taken / taken / waiting | sin tomar / tomados / en espera | *review* |
+| net hours / hours given / hours taken | horas netas / horas cedidas / horas tomadas | |
+| season / Winter / Summer / Spring / Fall | temporada / Invierno / Verano / Primavera / Otoño | "Invierno 2025–26" |
+| compare seasons / a year ago / season before | comparar temporadas / hace un año / temporada anterior | |
+| announcement / announcements | aviso / avisos | not "anuncio" (sounds like an ad) |
+| audience ("who gets it") | quién lo recibe | |
+| quiet hours | horario de silencio | *review* |
+| urgent | urgente | |
+| read receipts / read by 12 | lo leyeron 12 | |
+| Reply STOP to opt out | Responde STOP para cancelar | STOP stays in English (carriers) |
+
 ## Notifications, emails and errors
 
 - Notifications start with what happened, then the shift: "Turno nuevo: Server (Restaurant) mar, 6 de oct · 4 pm–cierre", "Ana quiere intercambiar su turno … por tu turno …".

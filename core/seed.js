@@ -7,6 +7,7 @@ import { DEFAULT_SETTINGS } from './service.js';
 import { findArea } from './areas.js';
 import { seedDemoTips } from './tips.js';
 import { seedTraining } from './training-seed.js';
+import { seedTradeHistory } from './trade-seed.js';
 
 const WEEK = '2026-09-28'; // Monday
 const D = { MON: 0, TUE: 1, WED: 2, THU: 3, FRI: 4, SAT: 5, SUN: 6 };
@@ -365,6 +366,8 @@ export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password =
   seedAdpDemo(store, { week: WEEK });
   // SAMPLE event from Tripleseat (Events & BEOs), as a sync brings it in: seedTripleseatDemo, at the end of this file
   seedTripleseatDemo(store, { week: WEEK, userId });
+  // SAMPLE trade history over three seasons, for Trades & pickups (core/trade-seed.js)
+  seedTradeHistory(store, { userId });
 
   return { userId, jobId, eventId };
 }

@@ -341,6 +341,12 @@ const en = {
     pushTurnOn: 'Turn on',
     unread: 'Unread',
   },
+  announcement: {
+    title: 'Announcement',
+    from: 'From {name}',
+    urgent: 'Urgent',
+    open: 'Open',
+  },
   more: {
     title: 'More',
     profile: 'My profile',

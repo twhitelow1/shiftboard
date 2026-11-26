@@ -4,6 +4,7 @@
 import auth from './en-auth.js'; // signing in, two-step, the welcome wizard, consent, My settings
 import legal from './en-legal.js'; // legal name vs. the name people go by
 import reports from './en-reports.js'; // Reports (managers)
+import trades from './en-trades.js'; // Trades & pickups by season, Settings → Seasons, Announcements
 const catalog = {
   lang: {
     change: 'Change language',
@@ -2181,6 +2182,7 @@ const catalog = {
   },
   ...auth,
   ...legal,
+  ...trades,
   ...reports,
 };
 

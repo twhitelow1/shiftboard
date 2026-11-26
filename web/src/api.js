@@ -3,6 +3,7 @@
 import { MemoryStore } from '../../core/store.js';
 import { createService } from '../../core/service.js';
 import { seedDemo } from '../../core/seed.js';
+import { seedAnnouncementDemo, DEMO_CHANNELS } from '../../core/announce-seed.js';
 import { startServiceWorker, forgetThisDevice } from './push.js';
 import { getLang, translateError } from './i18n/index.js';
 
@@ -20,7 +21,8 @@ function getDemo() {
   if (!demo) {
     const store = new MemoryStore();
     const ids = seedDemo(store, { now: DEMO_NOW }); // the demo clock, so the 86 List's sample items are from "today"
-    const service = createService(store, { now: () => DEMO_NOW });
+    seedAnnouncementDemo(store, { userId: ids.userId, now: DEMO_NOW }); // consents, phones and two sample announcements
+    const service = createService(store, { now: () => DEMO_NOW, announce: DEMO_CHANNELS }); // announcements "go out" at once
     demo = { store, ids, service, userId: ids.userId['Moe'] };
   }
   return demo;

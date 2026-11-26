@@ -182,7 +182,7 @@ test('LRU: keeps the most recently used restaurants, never evicts one with a req
 });
 
 test('plans: features per plan with overrides, RPCs mapped to features, prices for Stripe, billing banners', () => {
-  assert.deepEqual(Object.entries(resolveFeatures('starter')).filter(([, v]) => v).map(([k]) => k), ['training', 'tips', 'eightySix', 'reports']);
+  assert.deepEqual(Object.entries(resolveFeatures('starter')).filter(([, v]) => v).map(([k]) => k), ['training', 'tips', 'eightySix', 'announcements', 'reports']);
   assert.equal(resolveFeatures('starter', { events: true }).events, true);
   assert.equal(resolveFeatures('pro', { toast: false }).toast, false);
   assert.ok(Object.values(resolveFeatures('beta')).every(Boolean));

@@ -28,6 +28,7 @@ import { mountTripleseat } from './tripleseat-routes.js';
 import { mountIntegrations } from './integrations-routes.js';
 import { createAuth } from './auth.js';
 import { mountOnboarding } from './onboarding.js';
+import { mountAnnouncements } from './announcements.js';
 import { publicRoutes } from './public-routes.js';
 import { migrateConsents, emailConsentOf, legalLinks, CONSENT_MIGRATION, CONSENT_TEXT, CONSENT_VERSION } from '../core/consent.js';
 
@@ -318,6 +319,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   });
   auth.routes(app);
   mountOnboarding(app, { db, env, tenant, now, auth, channels, langFor, hashPassword, cookieOpts, secret: () => secret });
+  // Announcements: the batches that send them after the commit, and their cron (server/announcements.js).
+  const announcer = mountAnnouncements(app, { db, env, mailer, channels, expoPush, background, appUrl, has, brandOf, now });
 
   app.post('/api/rpc/:method', async (req, res) => {
     const method = req.params.method;
@@ -342,7 +345,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
       const out = await db.run((store) => {
         const actor = userFromToken(store, token);
         if (!actor) throw new AppError(401, 'Please sign in');
-        const result = createService(store, { hashPassword, channels: channels.info, request, legal }).call(actor, method, structuredClone(args));
+        const result = createService(store, { hashPassword, channels: channels.info, request, legal, announce: announcer.info }).call(actor, method, structuredClone(args));
         // Changing your password signs out other devices; this one gets a fresh cookie.
         const rotated = method === 'employees.changePassword'
           ? store.update('users', actor.id, { sessionVersion: (actor.sessionVersion || 0) + 1 })

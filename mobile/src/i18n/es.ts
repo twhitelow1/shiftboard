@@ -341,6 +341,12 @@ const es: Messages = {
     pushTurnOn: 'Activar',
     unread: 'Sin leer',
   },
+  announcement: {
+    title: 'Aviso',
+    from: 'De {name}',
+    urgent: 'Urgente',
+    open: 'Abrir',
+  },
   more: {
     title: 'Más',
     profile: 'Mi perfil',

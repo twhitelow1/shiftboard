@@ -3,6 +3,7 @@
 import auth from './es-auth.js'; // iniciar sesión, dos pasos, la bienvenida, el consentimiento, Mi configuración
 import legal from './es-legal.js'; // nombre legal y nombre con el que se conoce a cada persona
 import reports from './es-reports.js'; // Informes (gerentes)
+import trades from './es-trades.js'; // Trades & pickups by season, Settings → Seasons, Announcements
 const catalog = {
   lang: {
     change: 'Cambiar idioma',
@@ -2180,6 +2181,7 @@ const catalog = {
   },
   ...auth,
   ...legal,
+  ...trades,
   ...reports,
 };
 

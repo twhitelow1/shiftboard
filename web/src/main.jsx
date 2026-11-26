@@ -20,6 +20,8 @@ import Training from './pages/Training.jsx';
 import EightySix from './pages/EightySix.jsx';
 import Reports from './pages/Reports.jsx';
 import Account from './pages/Security.jsx';
+import Announcements from './pages/Announcements.jsx';
+import TradeStats from './pages/reports/TradeStats.jsx';
 import { SignIn, ResetPassword, LinkSignIn } from './pages/SignIn.jsx';
 import { Welcome, ConsentGate } from './pages/Onboarding.jsx';
 import { AuthCard, SignInBrand, BrandMark, DEFAULT_NAME } from './pages/AuthCard.jsx';
@@ -46,6 +48,8 @@ const NAV = [
   { key: 'my', label: 'main.myShifts', icon: 'user' },
   { key: '86', label: 'main.eightySix', icon: 'ban', feature: 'eightySix' },
   { key: 'swaps', label: 'main.swapsTrades', short: 'main.swaps', icon: 'swap', badge: 'swaps' },
+  { key: 'announcements', label: 'announcements.title', icon: 'megaphone', feature: 'announcements' },
+  { key: 'trade-stats', label: 'tradeStats.title', icon: 'chart', mgr: true, hide: true }, // linked from Team and Swaps
   { key: 'events', label: 'main.eventsBeos', short: 'common.events', icon: 'glass', feature: 'events' },
   { key: 'timeoff', label: 'main.timeOff', icon: 'sun', badge: 'timeoff' },
   { key: 'tips', label: 'main.tips', icon: 'dollar', feature: 'tips' },
@@ -60,7 +64,7 @@ const NAV = [
 ];
 
 // Shorter page titles for the phone's top bar, where the language switch and the bell sit too.
-const PHONE_TITLE = { swaps: 'main.phoneTitleSwaps', events: 'main.phoneTitleEvents', forecast: 'main.phoneTitleForecast', venue: 'main.phoneTitleVenue', team: 'main.phoneTitleTeam' };
+const PHONE_TITLE = { swaps: 'main.phoneTitleSwaps', events: 'main.phoneTitleEvents', forecast: 'main.phoneTitleForecast', venue: 'main.phoneTitleVenue', team: 'main.phoneTitleTeam', 'trade-stats': 'tradeStats.phoneTitle' };
 
 // The address has no restaurant, or the restaurant's account is paused (server/platform/). Signed out or in.
 function NoticeCard({ title, help, icon = 'alert' }) {
@@ -244,14 +248,14 @@ function App() {
   // The phone app sends people who still need a second step to #/security-setup: My settings → Sign-in & security.
   const asked = parts[0] === 'security-setup' ? 'account' : parts[0];
   const route = asked && !offPlan(asked) ? asked : home;
-  const nav = NAV.filter((n) => (!n.mgr || ctx.isMgr) && (!n.admin || ctx.isAdmin) && (!n.feature || ctx.has(n.feature)));
+  const nav = NAV.filter((n) => (!n.mgr || ctx.isMgr) && (!n.admin || ctx.isAdmin) && (!n.feature || ctx.has(n.feature)) && !n.hide);
   const badges = { swaps: (ctx.canApprove ? ctx.pendingApprovals : 0) + ctx.openOffers, timeoff: 0 };
   const current = NAV.find((n) => n.key === route) || NAV[0];
 
   const Page = {
     schedule: Schedule, calendar: CalendarPage, my: MyShifts, swaps: Swaps, events: Events, tips: Tips,
     forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue, training: Training, 86: EightySix, reports: Reports,
-    account: Account,
+    account: Account, announcements: Announcements, 'trade-stats': TradeStats,
   }[route] || Schedule;
 
   const signOut = async () => { await logout(); setBoot(null); setAuthed(false); };

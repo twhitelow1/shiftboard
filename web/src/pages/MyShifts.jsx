@@ -12,6 +12,8 @@ import { EightySixBanner } from './EightySix.jsx';
 import { useT, tx, dowShort, fmtTime, prettyDate, LANGUAGE_NAMES } from '../i18n/index.js';
 import { STATUS } from './TimeOff.jsx';
 import { CONSENT_TEXT } from '../../../core/consent.js';
+import { MyAnnouncements } from './Announcements.jsx';
+import { MyTradeCounts } from './reports/TradeStats.jsx';
 
 export default function MyShifts() {
   const t = useT();
@@ -55,6 +57,7 @@ export default function MyShifts() {
         </div>
       )}
 
+      <MyAnnouncements />
       {has('training') && <div className="section"><ModCard compact /></div>}
       {has('eightySix') && <EightySixBanner className="section" />}
 
@@ -67,6 +70,7 @@ export default function MyShifts() {
         </div>
       )}
 
+      <MyTradeCounts />
       <div className="quick-actions section no-print">
         <a className="btn" href="#/timeoff/new"><Icon name="sun" />{t('myShifts.requestTimeOff')}</a>
         <a className="btn" href="#/swaps"><Icon name="swap" />{t('myShifts.tradeAShift')}</a>
