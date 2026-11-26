@@ -1,0 +1,46 @@
+/* Feedback box (pages/Feedback.jsx, FeedbackInbox.jsx, FeedbackSettings.jsx). */
+.fb-page { gap: 14px; min-width: 0; }
+.fb-page .tabs { margin-bottom: 0; }
+.fb-chips, .fb-status-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.fb-chips .chip, .fb-status-chips .chip { font-size: 14px; padding: 7px 12px; }
+.fb-count { opacity: .75; font-weight: 700; margin-left: 2px; }
+.fb-safety a { color: inherit; font-weight: 700; }
+.fb-see { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+.fb-how { font-size: 13.5px; }
+.fb-how summary { cursor: pointer; font-weight: 600; color: var(--brand); }
+.fb-how p { margin: 8px 0 0; color: var(--text-2); }
+
+/* the "Sign it with my name" switch */
+.fb-switch { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
+.fb-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.fb-switch-track { flex: none; width: 44px; height: 26px; border-radius: 999px; background: var(--border-strong); position: relative; transition: background .15s; margin-top: 1px; }
+.fb-switch-track span { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .15s; }
+.fb-switch input:checked + .fb-switch-track { background: var(--brand); }
+.fb-switch input:checked + .fb-switch-track span { transform: translateX(18px); }
+.fb-switch input:focus-visible + .fb-switch-track { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 30%, transparent); }
+
+.fb-code-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.fb-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 18px; font-weight: 700; letter-spacing: .04em; background: var(--surface-2); border: 1px dashed var(--border-strong); border-radius: 8px; padding: 8px 12px; overflow-wrap: anywhere; }
+.fb-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+
+.fb-list .fb-item { width: 100%; border-left: 0; border-right: 0; border-top: 0; background: none; font: inherit; color: inherit; text-align: left; }
+.fb-list .fb-item:last-child { border-bottom: 0; }
+.fb-preview { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; color: var(--text-2); margin: 2px 0; }
+.fb-message { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-2); border-radius: 10px; padding: 10px 12px; }
+.fb-did { font-size: 14px; overflow-wrap: anywhere; }
+.fb-bubble { border-radius: 10px; padding: 8px 10px; max-width: 92%; }
+.fb-bubble.reader { background: var(--brand-soft); align-self: flex-start; }
+.fb-bubble.writer { background: var(--surface-3); align-self: flex-end; }
+.fb-bubble.note { background: var(--warn-soft); max-width: none; }
+.fb-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.fb-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.fb-filters > select { flex: 1 1 160px; width: auto; min-width: 0; }
+.fb-date { display: flex; flex-direction: column; gap: 3px; flex: 1 1 140px; min-width: 0; font-size: 12px; font-weight: 600; color: var(--text-2); }
+
+.fb-set-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.fb-set-checks { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; min-height: 38px; }
+@media (max-width: 640px) {
+  .fb-set-row { grid-template-columns: 1fr; }
+  .fb-filters > select, .fb-date { flex-basis: 100%; }
+}

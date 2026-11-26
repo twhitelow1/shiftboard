@@ -17,6 +17,7 @@ import RolesEditor, { RolesCard } from './RolesEditor.jsx'; // Settings → Role
 import { ImpactSettingsCard } from './ImpactShared.jsx'; // Positive impact: notifications, alerts, words that are never names
 import { ReplySettingsCard } from './ReviewReplies.jsx'; // Google & Yelp reviews: review alerts, the reply's tone, sign-off and contact
 import EmailTemplates from './EmailTemplates.jsx'; // Settings → Email notifications
+import FeedbackSettings, { FeedbackSettingsCard } from './FeedbackSettings.jsx'; // Settings → Feedback box
 import { tx, useT, dowLong, dowShort , LANGUAGE_NAMES } from '../i18n/index.js';
 
 export default function Settings({ parts = [] }) {
@@ -51,6 +52,7 @@ export default function Settings({ parts = [] }) {
   if (!isAdmin) return <div style={{ maxWidth: 820 }} className="col">{isMgr && rooms}{passwordCard}</div>;
   if (parts[1] === 'roles') return <RolesEditor />; // #/settings/roles (it saves on its own, like Rooms & positions)
   if (parts[1] === 'emails') return <EmailTemplates />; // #/settings/emails
+  if (parts[1] === 'feedback') return <FeedbackSettings />; // #/settings/feedback
 
   return (
     <div style={{ maxWidth: 820 }} className="col">
@@ -123,6 +125,7 @@ export default function Settings({ parts = [] }) {
 
       <TextSettingsCard />
       <AnnouncementSettingsCard />
+      <FeedbackSettingsCard />
       <SeasonsCard />
       <IntegrationsCard />
       <AssistantSettingsCard />

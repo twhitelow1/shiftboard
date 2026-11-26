@@ -17,7 +17,7 @@ import { Platform } from 'react-native';
 type Source = 'global' | 'promise' | 'boundary' | 'window';
 interface Target { server: string; token: () => string | null }
 interface RecentError { name: string; message: string; source: Source; at: string }
-interface Call { method: string; status: number; ms: number; at: string }
+interface Call { method: string; status: number; ms: number; at: string | null }
 
 let target: Target | null = null;
 let installed = false;
@@ -58,7 +58,7 @@ export function notePage(path: string) {
 export const pageBefore = (skip: string[] = []) => [page, before].find((p) => p && !skip.some((s) => p.endsWith(s))) || '';
 
 export function noteRpc(method: string, status: number, ms: number) {
-  calls.push({ method: String(method).slice(0, 60), status, ms: Math.round(ms), at: new Date().toISOString() });
+  calls.push({ method: String(method).slice(0, 60), status, ms: Math.round(ms), at: /^feedback\./.test(String(method)) ? null : new Date().toISOString() }); // the Feedback box: no time (core/feedback.js)
   if (calls.length > 20) calls.shift();
 }
 

@@ -1,4 +1,5 @@
-// More: Ask ShiftBoard (the built-in assistant), the floor tools (leads and managers), the 86 List, my tips, events, availability and time off (when
+// More: Ask ShiftBoard (the built-in assistant), the floor tools (leads and managers), the 86 List, the Feedback box (and its
+// inbox for readers), my tips, events, availability and time off (when
 // Training has the tab), profile, language, notifications, calendar, the full website, the restaurants this phone
 // uses (switch, add another), privacy and help, delete my account, sign out. Rows for features the restaurant's
 // plan doesn't include are hidden (lib/features.ts).
@@ -18,11 +19,12 @@ import { useAction, useErrorText, useRpc } from '@/lib/hooks';
 import { pushStatus, registerForPush, type PushStatus } from '@/lib/push';
 import { useApp, type Account } from '@/lib/session';
 import type { EightySixSummary } from '@/lib/types';
+import { savedCodes, type CodeSummary, type Inbox } from '@/lib/feedback';
 import { showTimeOffTab, timeOffRoute } from '@/navigation';
 
 export default function More() {
   const { t, tn, chosen, setLang, date } = useI18n();
-  const { me, boot, settings, server, client, signOut, accounts, openRestaurant, startAdding, colors, has, isLead, canApprove } = useApp();
+  const { me, boot, settings, server, client, signOut, accounts, openRestaurant, startAdding, colors, has, isLead, canApprove, version } = useApp();
   const toast = useToast();
   const errorText = useErrorText();
   const [run, busy] = useAction();
@@ -65,6 +67,19 @@ export default function More() {
   };
   const langValue: Lang | 'phone' = chosen ?? 'phone';
   const out86 = useRpc<EightySixSummary>('eightySix.summary', {}, [], has('eightySix')).data?.out || 0;
+  // Feedback box: a reply waiting on an entry whose code is on this phone (checked when More opens), and new entries for readers.
+  const [feedbackNew, setFeedbackNew] = useState(false);
+  useEffect(() => {
+    if (!has('feedback') || !server) return;
+    let live = true;
+    savedCodes(server).then(async (codes) => {
+      if (!codes.length) return;
+      const s = await client.call<CodeSummary[]>('feedback.codes.summary', { codes: codes.map((c) => c.code) });
+      if (live) setFeedbackNew(codes.some((c, i) => !!s[i]?.found && (s[i].replies || 0) > c.seen));
+    }).catch(() => {});
+    return () => { live = false; };
+  }, [server, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  const feedbackUnread = useRpc<Inbox>('feedback.inbox.list', { status: 'new' }, [], has('feedbackInbox')).data?.items.length || 0;
   const billing = boot.tenant?.billing;
   const approvals = canApprove ? boot.pendingApprovals : 0;
 
@@ -91,6 +106,15 @@ export default function More() {
             <ListRow icon="ban" title={t('more.eightySix')} sub={t('more.eightySixHelp')} onPress={() => router.push('/eighty-six')}
               right={out86 ? <Badge tone="bad" text={String(out86)} /> : null} />
           ) : null}
+        </Card>
+      ) : null}
+
+      {has('feedback') || has('feedbackInbox') ? (
+        <Card pad={false} style={{ overflow: 'hidden' }}>
+          {has('feedback') ? <ListRow icon="message" title={t('feedback.title')} sub={t('feedback.menuHelp')} onPress={() => router.push('/feedback')}
+            right={feedbackNew ? <Badge tone="brand" text={t('feedback.newReply')} /> : null} /> : null}
+          {has('feedbackInbox') ? <ListRow icon="message" title={t('feedback.inboxTitle')} sub={t('feedback.inboxHelp')} onPress={() => router.push('/feedback-inbox')}
+            right={feedbackUnread ? <Badge tone="warn" text={String(feedbackUnread)} /> : null} /> : null}
         </Card>
       ) : null}
 

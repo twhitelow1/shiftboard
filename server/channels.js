@@ -118,8 +118,11 @@ export function createChannels({ db, env = process.env, pusher = createPusher(en
           const message = pushMessage(name, more ? `${first.text}${msg(lang).more(more)}` : first.text, first.link);
           for (const sub of db.store.list('pushSubscriptions', (s) => s.userId === userId)) pushes.push({ sub, message });
         }
-        if (texter.enabled && smsAllowed(u, st)) {
-          texts.push({ userId, to: u.smsPhone, body: textMessage({ restaurant: name, text: first.text, url: linkFor(url, first.link), more, lang }) });
+        // Some notifications are never texted (noText: the Feedback box, core/feedback.js).
+        const textable = list.filter((n) => !n.noText);
+        if (textable.length && texter.enabled && smsAllowed(u, st)) {
+          const [t1] = textable;
+          texts.push({ userId, to: u.smsPhone, body: textMessage({ restaurant: name, text: t1.text, url: linkFor(url, t1.link), more: textable.length - 1, lang }) });
         }
       }
       if (texter.enabled) {

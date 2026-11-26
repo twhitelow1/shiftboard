@@ -29,7 +29,7 @@ export function currentPage() {
 
 /** After every RPC: its name and how it ended (status 0: no answer). */
 export function noteRpc(method, status, ms) {
-  calls.push({ method: String(method).slice(0, 60), status: Number(status) || 0, ms: Math.round(Number(ms) || 0), at: new Date().toISOString() });
+  calls.push({ method: String(method).slice(0, 60), status: Number(status) || 0, ms: Math.round(Number(ms) || 0), at: /^feedback\./.test(String(method)) ? null : new Date().toISOString() }); // the Feedback box: no time (core/feedback.js)
   if (calls.length > 20) calls.shift();
 }
 
