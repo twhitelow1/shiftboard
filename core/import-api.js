@@ -31,7 +31,7 @@ import { roleOf, canManageUser, assignableRoles } from './roles.js';
 import { nameKey, legalNameOf } from './names.js';
 import { canonicalAllergen, DEFAULT_CATEGORIES } from './training.js';
 import {
-  FIELDS, MAX_ROWS, normalizeEmployee, normalizeMenuItem, normalizeProduct, productLikeness, groupRows, personLikeness, menuLikeness, POSSIBLE_AT,
+  FIELDS, MAX_ROWS, normalizeEmployee, normalizeMenuItem, normalizeProduct, productLikeness, productLooseKey, groupRows, personLikeness, menuLikeness, POSSIBLE_AT,
   normEmail, phoneKey, idKey, itemKey, looseItemKey, isEmptyValue, sameValue, confidenceOf, headerKey, isSensitiveHeader, isMajorAllergen,
 } from './smart-import.js';
 
@@ -604,7 +604,7 @@ export function importApi({ store, api, fail, needMgr, now }) {
             if (blank && present.has(f) && !isEmptyValue(cur) && f !== 'name' && f !== 'category') { patch[f] = f === 'par' ? null : ''; row.changes.push({ field: f, before: show(cur), after: '' }); }
             continue;
           }
-          const same = f === 'name' ? itemKey(cur) === itemKey(val) || looseItemKey(cur) === looseItemKey(val) : f === 'par' ? Number(cur) === Number(val) && cur != null : clean(cur) === clean(val);
+          const same = f === 'name' ? itemKey(cur) === itemKey(val) || productLooseKey(cur) === productLooseKey(val) : f === 'par' ? Number(cur) === Number(val) && cur != null : clean(cur) === clean(val);
           if (!same) { patch[f] = val; row.changes.push({ field: f, before: show(cur), after: show(val) }); }
         }
         row.plan = { patch };

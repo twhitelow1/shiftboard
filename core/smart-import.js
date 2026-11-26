@@ -743,15 +743,23 @@ export function menuLikeness(d, it) {
  * ("Bacardi Gold" isn't "Bacardi Superior", "Diet Coke" isn't "Coke"). A size on both that differs isn't the same.
  * @returns { score, confidence, reasons }
  */
+// A product's size on the end ("1L", "750 ml", "(black)"): unlike a menu item's, "glass" or "bottle" is the product itself.
+const PRODUCT_SIZE_TAIL = /\s*(\((?:[^)]*)\)|\[[^\]]*\]|[-–—,]?\s*\$?\d+(?:[.,]\d+)?\s*(?:oz|fl oz|ml|cl|l|lt|ltr|lb|lbs|g|kg|gal|qt|in|inch|"|pc|pcs|piece|pieces|ct|count|pk|pack|onzas)?\.?)\s*$/i;
+/** A product's name with what doesn't make it another product taken off: a size on the end, plurals, "&". */
+export function productLooseKey(s) {
+  let t = fold(s).replace(/&/g, ' and ').replace(/\+/g, ' and ');
+  for (let i = 0; i < 3 && PRODUCT_SIZE_TAIL.test(t); i++) t = t.replace(PRODUCT_SIZE_TAIL, '');
+  return t.replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter((w) => w && !['the', 'el', 'la', 'los', 'las'].includes(w)).map(singular).join('');
+}
 export function productLikeness(name, other) {
   const sizeOf = (s) => (fold(s).match(/(\d+(?:[.,]\d+)?)\s*(oz|ml|cl|l|lb|g|kg|ct|pc|pcs)\.?\s*$/) || []).slice(1).join('');
   if (!itemKey(name) || !itemKey(other)) return { score: 0, reasons: [] };
   if (itemKey(name) === itemKey(other)) return { score: 100, confidence: 'high', reasons: ['sameName'] };
   const sa = sizeOf(name), sb = sizeOf(other);
   if (sa && sb && sa !== sb) return { score: 0, reasons: [] }; // a liter and a 750 ml are two products
-  const la = looseItemKey(name), lb = looseItemKey(other);
+  const la = productLooseKey(name), lb = productLooseKey(other);
   if (la && la === lb) {
-    const sized = (s) => SIZE_TAIL.test(fold(s));
+    const sized = (s) => PRODUCT_SIZE_TAIL.test(fold(s));
     const amp = (s) => /&|\+/.test(s), and = (s) => /\b(and|y)\b/.test(fold(s));
     const reason = sized(name) || sized(other) ? 'sizeOrPrice' : amp(name) !== amp(other) || and(name) !== and(other) ? 'andSign' : 'plural';
     return { score: 85, confidence: 'high', reasons: [reason] };

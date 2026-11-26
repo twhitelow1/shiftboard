@@ -64,7 +64,7 @@ export const canManageLists = (u, settings) => !!u && (roleOf(u) === 'super_admi
 /** May this person edit, merge and archive products? Managers and up whose role has stockManage. */
 export const canManageCatalog = (u, settings) => !!u && atLeast(u, 'manager') && canManageLists(u, settings);
 /** May an employee make a list for themselves? */
-export const canOwnLists = (u, settings) => canManageLists(u, settings) || (!!u && roleAllows(u, settings).stockOwnLists === true);
+export const canOwnLists = (u, settings) => canManageLists(u, settings) || (!!u && roleOf(u) === 'employee' && roleAllows(u, settings).stockOwnLists === true);
 
 /** A product photo document, if the caller may see it (anyone signed in: the catalog is the whole team's). */
 export function productPhotoFor(store, actor, id) {

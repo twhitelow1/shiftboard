@@ -17,14 +17,15 @@
 //
 // The migration (MIGRATION in `migrations`, once per restaurant, the first time the catalog is used): a product for each
 // distinct name reported on the 86 List before, where that's clean, and every past report linked to its product.
-//   - names are grouped by the smart import's duplicate rules (core/smart-import.js looseItemKey: case, accents,
+//   - names are grouped by the smart import's duplicate rules (core/smart-import.js productLooseKey: case, accents,
 //     plurals, "&"/"and", a size on the end): "Lime", "limes" and "LIMES" are one product, spelled the way it was
 //     reported most often (the latest when tied).
 //   - not clean, so left out (listed on the marker for a manager to look at): a name only a typo away from another
-//     name ("Proseco" and "Prosecco"), and reports linked to a Training menu item (a dish, not a supply).
+//     name ("Proseco" next to "Prosecco": the one reported less often; both when it's a tie), and reports linked to a
+//     Training menu item (a dish, not a supply). Their reports keep working as before, just without a product.
 //   - an 86 report's history is never changed otherwise: names, times, categories and photos stay as they were.
 import { uid } from './store.js';
-import { productLikeness, looseItemKey, itemKey as foldKey, editDistance, typoBudget } from './smart-import.js';
+import { productLikeness, productLooseKey, itemKey as foldKey, editDistance, typoBudget } from './smart-import.js';
 
 export const MIGRATION = 'products-from-86';
 export const PHOTOS_PER_PRODUCT = 3;
@@ -69,7 +70,7 @@ export function productCategories(store) {
 }
 
 const text = (v, max) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
-export const productKey = (name) => looseItemKey(name) || foldKey(name);
+export const productKey = (name) => productLooseKey(name) || foldKey(name);
 export const cleanUnit = (v) => { const s = text(v, 20).toLowerCase(); return UNIT_IDS.has(s) ? s : text(v, 20); };
 
 /** Likely matches for a name among the catalog's active products, best first: [{ product, score, confidence, reasons }]. */
@@ -158,7 +159,8 @@ export function ensureCatalog(store, at = new Date().toISOString()) {
     const k = productKey(n.name);
     if (groups.has(k) && n.category && !groups.get(k).cat86) groups.get(k).cat86 = n.category;
   }
-  // A name a typo away from another (and not the same product by the rules above) isn't clean: left for a manager.
+  // A name a typo away from another (and not the same product by the rules above) isn't clean: the one reported less
+  // often is left for a manager (both, when they were reported as often), never guessed into the other.
   const keys = [...groups.keys()];
   const typo = new Set();
   for (let i = 0; i < keys.length; i++) {
@@ -166,7 +168,10 @@ export function ensureCatalog(store, at = new Date().toISOString()) {
       const a = keys[i], b = keys[j];
       if (a[0] !== b[0]) continue;
       const budget = Math.min(typoBudget(a), typoBudget(b));
-      if (budget && editDistance(a, b, budget) <= budget) { typo.add(a); typo.add(b); }
+      if (!budget || editDistance(a, b, budget) > budget) continue;
+      const na = groups.get(a).ids.length, nb = groups.get(b).ids.length;
+      if (na <= nb) typo.add(a);
+      if (nb <= na) typo.add(b);
     }
   }
   let created = 0, linked = 0;
