@@ -211,11 +211,11 @@ export function tradeStatsApi({ store, settings, fail, needAuth, needMgr, needAd
     const fits = (s) => !!s && (!jobCodeId || s.jobCodeId === jobCodeId) && (!room || sameArea(roomOfShift(s, jobs.get(s.jobCodeId)), room));
     return (r, shiftOf) => fits(shiftOf(r.shiftId)) || (r.type === 'swap' && fits(shiftOf(r.targetShiftId)));
   }
-  /** People listed even with no activity: active people on the schedule (in the position or room, when filtered). */
+  /** People listed even with no activity: active people with a position (in the position or room, when filtered). */
   function listed({ jobCodeId, area }) {
     const room = cleanArea(area);
     const jobs = new Map(store.list('jobCodes').map((j) => [j.id, j]));
-    return store.list('users', (u) => u.active !== false && u.onSchedule !== false && u.role !== 'events'
+    return store.list('users', (u) => u.active !== false && u.onSchedule !== false && u.role !== 'events' && (u.jobCodes || []).length > 0
       && (!jobCodeId || (u.jobCodes || []).some((e) => e.jobCodeId === jobCodeId))
       && (!room || (u.jobCodes || []).some((e) => (!jobCodeId || e.jobCodeId === jobCodeId) && entryRooms(e, jobs.get(e.jobCodeId)).some((a) => sameArea(a, room)))));
   }
