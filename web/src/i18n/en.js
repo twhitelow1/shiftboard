@@ -10,6 +10,7 @@ import claude from './en-claude.js'; // the Claude connector: connecting, Connec
 import impact from './en-impact.js'; // Positive impact and OpenTable
 import print from './en-print.js'; // the schedule PDF, the Publish dialog, Settings → Email notifications
 import assistant from './en-assistant.js'; // Ask ShiftBoard: the chat and Settings → Ask ShiftBoard
+import reviews, { integrations as reviewIntegrations } from './en-reviews.js'; // Google Business Profile, Yelp, answering reviews, review alerts
 const catalog = {
   lang: {
     change: 'Change language',
@@ -2300,6 +2301,8 @@ const catalog = {
   ...impact,
   ...print,
   ...assistant,
+  ...reviews,
 };
+Object.assign(catalog.integrations, reviewIntegrations); // Settings → Integrations: the Google and Yelp cards
 
 export default catalog;

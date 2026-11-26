@@ -4,6 +4,7 @@ import { MemoryStore } from '../../core/store.js';
 import { createService } from '../../core/service.js';
 import { seedDemo } from '../../core/seed.js';
 import { seedAnnouncementDemo, DEMO_CHANNELS } from '../../core/announce-seed.js';
+import { seedReviewsDemo } from '../../core/review-seed.js';
 import { startServiceWorker, forgetThisDevice } from './push.js';
 import { getLang, translateError } from './i18n/index.js';
 import { viewCall, viewedPerson } from '../../core/view-as.js';
@@ -24,6 +25,7 @@ function getDemo() {
     const store = new MemoryStore();
     const ids = seedDemo(store, { now: DEMO_NOW }); // the demo clock, so the 86 List's sample items are from "today"
     seedAnnouncementDemo(store, { userId: ids.userId, now: DEMO_NOW }); // consents, phones and two sample announcements
+    seedReviewsDemo(store, { now: DEMO_NOW }); // Google reviews as if synced, two answered, and Yelp excerpts
     // A Super Admin persona for the demo (the seed has none), to show View as and the whole Roles & features editor.
     ids.userId.Owner = store.insert('users', { id: 'usr_demo_owner', name: 'Owner', role: 'super_admin', order: 0, email: 'owner@demo.shiftboard', phone: '',
       jobCodes: [], active: true, availability: {}, onSchedule: false, passwordHash: null, createdAt: DEMO_NOW.toISOString() }).id;
