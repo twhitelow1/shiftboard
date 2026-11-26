@@ -141,7 +141,7 @@ function TenantList({ meta }) {
       {list && (
         <div className="card table-card">
           <table className="table responsive">
-            <thead><tr><th>Restaurant</th><th>Address</th><th>Status</th><th>Plan</th><th className="num">Staff</th><th>Last activity</th><th>Created</th></tr></thead>
+            <thead><tr><th>Restaurant</th><th>Address</th><th>Status</th><th>Plan</th><th className="num">Staff</th><th className="num">AI this month</th><th>Last activity</th><th>Created</th></tr></thead>
             <tbody>
               {shown.map((t) => (
                 <tr key={t.id} className="click" onClick={() => go(`t/${t.id}`)}>
@@ -150,11 +150,12 @@ function TenantList({ meta }) {
                   <td data-label="Status"><Status status={t.status} />{t.status === 'trialing' && t.trialEndsAt && <div className="muted tiny">ends {day(t.trialEndsAt)}</div>}</td>
                   <td data-label="Plan">{meta?.plans[t.plan]?.label || t.plan}</td>
                   <td data-label="Staff" className="num">{t.staff}</td>
+                  <td data-label="AI this month" className="num">{t.ai?.inPlan || t.ai?.calls ? <span title={t.ai.ownUsd ? `+ ${usd(t.ai.ownUsd)} on their own key` : ''}>{usd(t.ai.usedUsd)} <span className="muted tiny">/ {usd(t.ai.capUsd)}</span></span> : <span className="muted">—</span>}</td>
                   <td data-label="Last activity" title={stamp(t.lastActivity)}>{ago(t.lastActivity)}</td>
                   <td data-label="Created">{day(t.createdAt)}</td>
                 </tr>
               ))}
-              {!shown.length && <tr><td colSpan={7} className="muted center">No restaurants match.</td></tr>}
+              {!shown.length && <tr><td colSpan={8} className="muted center">No restaurants match.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -286,6 +287,7 @@ function TenantDetail({ id, meta }) {
         </div>
         <div className="col">
           <SupportCard t={t} />
+          <AiCard t={t} onSaved={setT} />
           <IntegrationsCard t={t} meta={meta} onSaved={setT} />
           <NotesCard t={t} onSaved={setT} />
           <BillingCard t={t} />
@@ -436,6 +438,7 @@ function IntegrationsCard({ t, meta, onSaved }) {
     ['tripleseat', 'Tripleseat (events)', eff.tripleseat ? 'Connected' : 'Not set up', t.resolved.tripleseat ? 'An OAuth 2.0 application from Tripleseat (Settings → API, made by a Tripleseat account admin): its client ID and secret. Location ID limits it to one venue. The webhook link is in the restaurant’s Settings → Integrations → Tripleseat (admins); paste the webhook’s signing key here.' : 'Tripleseat isn’t in this restaurant’s plan.'],
     ['twilio', 'Texts (Twilio sender)', eff.sms ? 'Ready' : eff.smsAccount ? 'Needs a sender' : 'No Twilio account on the platform', t.resolved.sms ? 'The account SID and auth token are the platform’s; each restaurant has its own sender (its A2P 10DLC brand and campaign).' : 'Texts aren’t in this restaurant’s plan.'],
     ['email', 'Email', eff.email ? `From ${eff.emailFrom}` : 'Not set up', 'Uses the platform’s Resend key. The From address’s domain must be verified in Resend.'],
+    ['anthropic', 'Anthropic (Ask ShiftBoard)', fields.find((f) => f.key === 'ANTHROPIC_OWN_API_KEY')?.set ? 'Their own key' : 'DubLow’s key', t.resolved.assistant ? 'Optional: the restaurant’s own Anthropic API key. Its usage is still metered but not capped; without it, Ask ShiftBoard uses DubLow’s key (ANTHROPIC_API_KEY) up to the cap.' : 'Ask ShiftBoard isn’t in this restaurant’s plan.'],
   ];
   return (
     <div className="card pad">
@@ -444,7 +447,7 @@ function IntegrationsCard({ t, meta, onSaved }) {
       {!meta.encryption && <div className="note warn small">PLATFORM_ENCRYPTION_KEY isn’t set, so secrets (like the Toast client secret) can’t be saved.</div>}
       {groups.map(([g, title, state, note]) => (
         <div key={g} className="int-group">
-          <div className="int-head"><h3>{title}</h3><span className={`pill ${/Connected|Ready|From/.test(state) ? 'st-active' : 'subtle'}`}>{state}</span></div>
+          <div className="int-head"><h3>{title}</h3><span className={`pill ${/Connected|Ready|From|Their own/.test(state) ? 'st-active' : 'subtle'}`}>{state}</span></div>
           {note && <div className="muted tiny">{note}</div>}
           <div className="form-grid">
             {fields.filter((f) => f.group === g).map((f) => (f.secret ? (
@@ -471,6 +474,37 @@ function IntegrationsCard({ t, meta, onSaved }) {
       ))}
       <div className="row end"><button className="btn primary" disabled={busy || !Object.keys(changed).length} onClick={save}>Save integrations</button></div>
     </div>
+  );
+}
+
+// Ask ShiftBoard (server/ai/): this month's AI spend on DubLow's key against the restaurant's cap, and the cap.
+const usd = (v) => `$${Number(v || 0).toFixed(Number(v || 0) < 10 ? 2 : 0)}`;
+function AiCard({ t, onSaved }) {
+  const ai = t.ai || {};
+  const [cap, setCap] = useState(ai.override ?? '');
+  const [run, busy] = useAction();
+  const pct = ai.capUsd > 0 ? Math.min(100, Math.round((ai.usedUsd / ai.capUsd) * 100)) : ai.usedUsd > 0 ? 100 : 0;
+  const save = (e) => {
+    e.preventDefault();
+    run(() => api(`/tenants/${t.id}`, { method: 'PATCH', body: { aiCapUsd: cap === '' ? null : Number(cap) } }), 'AI cap saved').then((r) => r && onSaved(r));
+  };
+  return (
+    <form className="card pad" onSubmit={save}>
+      <h2>Ask ShiftBoard (AI)</h2>
+      <div className="muted small">{ai.inPlan ? 'Claude Haiku in the app, on DubLow’s Anthropic key. Every call is metered; when this month’s spend reaches the cap, the assistant says so until the 1st. A restaurant’s own key (Integrations) isn’t capped.' : 'Not in this restaurant’s plan (Features: Ask ShiftBoard).'}</div>
+      <div className="ai-meter" role="img" aria-label={`${pct}% of the cap`}><span style={{ width: `${pct}%` }} className={pct >= 100 ? 'full' : pct >= 80 ? 'warn' : ''} /></div>
+      <div className="kv">
+        <div><span>{ai.month} on DubLow’s key</span><b>{usd(ai.usedUsd)} of {usd(ai.capUsd)}</b></div>
+        <div><span>On their own key</span><b>{usd(ai.ownUsd)}</b></div>
+        <div><span>Calls · errors</span><b>{ai.calls || 0} · {ai.errors || 0}</b></div>
+      </div>
+      <div className="form-grid">
+        <Field label="Monthly cap (USD)" help={`Blank: the plan’s (${usd(ai.planCapUsd)}). 0 stops it on DubLow’s key.`}>
+          <input className="input" type="number" min="0" max="10000" step="0.5" inputMode="decimal" value={cap} placeholder={String(ai.planCapUsd ?? '')} onChange={(e) => setCap(e.target.value)} />
+        </Field>
+      </div>
+      <div className="row end"><button className="btn primary" disabled={busy || String(cap) === String(ai.override ?? '')}>Save cap</button></div>
+    </form>
   );
 }
 

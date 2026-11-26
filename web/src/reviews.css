@@ -1,0 +1,24 @@
+/* Google & Yelp reviews: the reply panel, Yelp's excerpts, the Google and Yelp cards in Settings → Integrations. */
+.rv-reply { border-top: 1px dashed var(--border); padding-top: 10px; min-width: 0; }
+.rv-reply textarea.input { height: auto; min-height: 120px; padding: 9px 11px; line-height: 1.45; font-size: 16px; resize: vertical; }
+.rv-actions .btn { flex: 0 1 auto; }
+.rv-filters select.input { width: auto; max-width: 100%; font-size: 16px; }
+.rv-yelp { border-color: #f5c2c2; }
+.rv-excerpt { background: var(--surface-2, var(--surface)); }
+.rv-loc { display: flex; flex-direction: column; gap: 6px; }
+.rv-loc label { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 9px; cursor: pointer; min-width: 0; overflow-wrap: anywhere; }
+.rv-biz { display: flex; flex-direction: column; gap: 6px; }
+.rv-biz button { text-align: left; justify-content: flex-start; white-space: normal; height: auto; min-height: 38px; padding: 6px 10px; overflow-wrap: anywhere; }
+.rv-search { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; }
+.rv-search .input { font-size: 16px; }
+.warn-text { color: var(--warn, #b45309); }
+.rv-dupes { border-color: var(--warn, #f59e0b); }
+.rv-dupe-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-width: 0; }
+@media (max-width: 520px) {
+  .rv-dupe-pair { grid-template-columns: 1fr; }
+  .rv-search { grid-template-columns: 1fr; }
+  .rv-actions .btn { flex: 1 1 auto; }
+  .rv-filters select.input { flex: 1 1 40%; }
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .rv-yelp { border-color: var(--border); } }
+:root[data-theme="dark"] .rv-yelp { border-color: var(--border); }

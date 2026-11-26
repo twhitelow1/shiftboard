@@ -15,6 +15,7 @@
   },
   "license": "UNLICENSED",
   "dependencies": {
+    "@anthropic-ai/sdk": "1.8.0",
     "@modelcontextprotocol/sdk": "1.32.2",
     "@simplewebauthn/server": "14.1.0",
     "@vercel/functions": "^3.11.3",

@@ -20,6 +20,7 @@ import { tripleseatLinks } from './tripleseat.js';
 import { unpublishApi } from './unpublish.js';
 import { openTableLinks, bookingBlend } from './opentable.js';
 import { impactLinks } from './impact.js';
+import { reviewsLinks } from './review-reply.js';
 import { trainingApi } from './training.js';
 import { eightySixApi } from './eighty-six.js';
 import { rosterApi } from './roster.js';
@@ -1661,8 +1662,12 @@ export function createService(store, opts = {}) {
   // Unpublish (back to draft) and the "what changed" notification when it's posted again. See core/unpublish.js.
   const unpublish = unpublishApi({ store, api, fail, needMgr, notify, say, day, describe, settings, nameOf, jobName, isFuture, cancelRequestsForShift, now });
   // Positive impact (impact.*: review mentions, reservation requests, kudos) and OpenTable (opentable.*): core/impact.js, core/opentable.js.
-  const impact = impactLinks({ store, api, fail, needAuth, needMgr, needAdmin, notify, now, settings, langOf: L });
+  const onReview = []; // new reviews from any source: the managers' review alerts (core/review-reply.js)
+  const impact = impactLinks({ store, api, fail, needAuth, needMgr, needAdmin, notify, now, settings, langOf: L, onReview });
   const opentable = openTableLinks({ store, api, fail, needMgr, now, settings, impact });
+  // Google and Yelp reviews, replies and review alerts (reviews.*): core/review-reply.js, core/google-reviews.js, core/yelp-reviews.js.
+  const reviews = reviewsLinks({ store, api, fail, needMgr, needAdmin, notify, now, settings, langOf: L, impact });
+  onReview.push(reviews.onReview);
 
   return {
     api,
@@ -1682,5 +1687,7 @@ export function createService(store, opts = {}) {
     opentable,
     /** Positive impact: applyReviews() for any review source (a Google or Yelp connector only fetches). */
     impact,
+    /** Review alerts and Yelp's excerpts, for server/google-sync.js and server/yelp-sync.js. */
+    reviews,
   };
 }

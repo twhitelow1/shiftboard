@@ -9,10 +9,16 @@
 //   * Tripleseat: TRIPLESEAT_CLIENT_ID, TRIPLESEAT_CLIENT_SECRET, TRIPLESEAT_PUBLIC_KEY, TRIPLESEAT_SECRET_KEY,
 //     TRIPLESEAT_WEBHOOK_SECRET (secrets), TRIPLESEAT_SITE_ID, TRIPLESEAT_LOCATION_ID, TRIPLESEAT_API_HOST.
 //   * OpenTable: OPENTABLE_CLIENT_ID, OPENTABLE_CLIENT_SECRET (secrets), OPENTABLE_RID, OPENTABLE_API_HOST, OPENTABLE_TOKEN_URL.
+//   * Yelp: YELP_BUSINESS_ID, and YELP_API_KEY (secret) when the restaurant has its own key; otherwise the platform's
+//     YELP_API_KEY (DubLow's one Yelp app) is inherited like the Resend key. Google Business Profile has no
+//     settings here: the OAuth client (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET) is the platform's, and each
+//     restaurant's access is a refresh token sealed in its own store (server/google-routes.js).
 //   * Texts: the sender, TWILIO_MESSAGING_SERVICE_SID or TWILIO_FROM_NUMBER. The account SID and auth
 //     token stay platform-wide (DubLow owns one Twilio account and registers each restaurant as a brand).
 //   * Email: the From name and address and the reply-to. The Resend API key stays platform-wide.
 //   * VAPID (web push) and Expo push stay platform-wide.
+//   * AI (server/ai/): ANTHROPIC_API_KEY stays platform-wide (DubLow pays); a restaurant's own key, if it brings
+//     one, comes as ANTHROPIC_OWN_API_KEY (secret).
 //
 // The default restaurant (Chasing Rabbits) keeps the platform env as it is, with any console setting
 // taking its place, so production keeps working unchanged. Any other restaurant never sees the default
@@ -43,11 +49,15 @@ export const INTEGRATION_FIELDS = [
   { key: 'OPENTABLE_RID', group: 'opentable', label: 'Restaurant ID (RID)', placeholder: '123456' },
   { key: 'OPENTABLE_API_HOST', group: 'opentable', label: 'API host (only if OpenTable gave you another)', placeholder: 'https://platform.opentable.com' },
   { key: 'OPENTABLE_TOKEN_URL', group: 'opentable', label: 'Token URL (only if OpenTable gave you another)', placeholder: 'https://oauth.opentable.com/api/v2/oauth/token' },
+  { key: 'YELP_BUSINESS_ID', group: 'yelp', label: 'Yelp business ID or alias', placeholder: 'your-restaurant-denver' },
+  { key: 'YELP_API_KEY', group: 'yelp', label: 'Yelp API key (only if the restaurant has its own; DubLow’s is used otherwise)', secret: true },
   { key: 'TWILIO_MESSAGING_SERVICE_SID', group: 'twilio', label: 'Messaging Service SID (recommended)', placeholder: 'MG…' },
   { key: 'TWILIO_FROM_NUMBER', group: 'twilio', label: 'or From number', placeholder: '+17205550100' },
   { key: 'EMAIL_FROM_NAME', group: 'email', label: 'From name', placeholder: 'Bistro Schedule' },
   { key: 'EMAIL_FROM_ADDRESS', group: 'email', label: 'From address (domain verified in Resend)', placeholder: 'schedule@mail.bistro.com' },
   { key: 'EMAIL_REPLY_TO', group: 'email', label: 'Reply-to (optional)', placeholder: 'manager@bistro.com' },
+  // Ask ShiftBoard (server/ai/): a restaurant that brings its own Anthropic key. Its calls are metered but not capped.
+  { key: 'ANTHROPIC_OWN_API_KEY', group: 'anthropic', label: 'Anthropic API key (the restaurant’s own; optional)', secret: true },
 ];
 export const SECRET_KEYS = INTEGRATION_FIELDS.filter((f) => f.secret).map((f) => f.key);
 export const PLAIN_KEYS = INTEGRATION_FIELDS.filter((f) => !f.secret).map((f) => f.key);
@@ -75,12 +85,15 @@ const CHECKS = {
   OPENTABLE_CLIENT_SECRET: (v) => /^\S{8,400}$/.test(v) || 'The OpenTable client secret has no spaces',
   OPENTABLE_RID: (v) => /^\d{1,12}$/.test(v) || 'The OpenTable restaurant ID (RID) is a number',
   OPENTABLE_API_HOST: (v) => /^https:\/\/[a-z0-9.-]+(?::\d+)?\/?$/i.test(v) || 'The API host is an https:// address',
+  YELP_BUSINESS_ID: (v) => /^[A-Za-z0-9_-]{2,120}$/.test(v) || 'A Yelp business ID or alias is letters, numbers and dashes',
+  YELP_API_KEY: (v) => /^\S{20,400}$/.test(v) || 'The Yelp API key has no spaces',
   OPENTABLE_TOKEN_URL: (v) => /^https:\/\/[a-z0-9.-]+(?::\d+)?\/[\w./-]*$/i.test(v) || 'The token URL is an https:// address',
   TWILIO_MESSAGING_SERVICE_SID: (v) => /^MG[0-9a-f]{32}$/i.test(v) || 'A Messaging Service SID starts with MG and has 34 characters',
   TWILIO_FROM_NUMBER: (v) => /^\+[1-9]\d{7,14}$/.test(v) || 'The From number is in +1… format, like +17205550100',
   EMAIL_FROM_NAME: (v) => (v.length <= 80 && !/[<>"\r\n]/.test(v)) || 'The From name can’t have < > or quotes',
   EMAIL_FROM_ADDRESS: (v) => EMAIL.test(v) || 'The From address isn’t an email address',
   EMAIL_REPLY_TO: (v) => EMAIL.test(v) || 'The reply-to isn’t an email address',
+  ANTHROPIC_OWN_API_KEY: (v) => /^sk-ant-[A-Za-z0-9_-]{20,300}$/.test(v) || 'An Anthropic API key starts with sk-ant- and has no spaces',
 };
 
 /** Trim and validate console input. Returns { plain, secrets } with '' meaning "clear"; throws a 400 on bad input. */
@@ -114,8 +127,8 @@ const OPENTABLE_KEYS = INTEGRATION_FIELDS.filter((f) => f.group === 'opentable')
 /** Variables that belong to one restaurant: another restaurant never inherits them from the platform env. */
 const DEFAULT_RESTAURANT_ONLY = ['ADMIN_EMAIL', 'ADMIN_PASSWORD', 'ADMIN_NAME', 'SEED_DEMO', 'DEMO_PASSWORD', 'EMAIL_FROM', 'EMAIL_REPLY_TO',
   'APP_URL', 'VERCEL_PROJECT_PRODUCTION_URL', 'TOAST_CLIENT_ID', 'TOAST_CLIENT_SECRET', 'TOAST_RESTAURANT_GUID', 'TOAST_API_HOST',
-  'ADP_CLIENT_ID', 'ADP_CLIENT_SECRET', 'ADP_CERT_PEM', 'ADP_KEY_PEM', 'ADP_MANAGER_AOID', ...TRIPLESEAT_KEYS, 'TRIPLESEAT_TOKEN_URL', ...OPENTABLE_KEYS,
-  'TWILIO_MESSAGING_SERVICE_SID', 'TWILIO_FROM_NUMBER', 'TWILIO_WEBHOOK_URL'];
+  'ADP_CLIENT_ID', 'ADP_CLIENT_SECRET', 'ADP_CERT_PEM', 'ADP_KEY_PEM', 'ADP_MANAGER_AOID', ...TRIPLESEAT_KEYS, 'TRIPLESEAT_TOKEN_URL', ...OPENTABLE_KEYS, 'YELP_BUSINESS_ID',
+  'TWILIO_MESSAGING_SERVICE_SID', 'TWILIO_FROM_NUMBER', 'TWILIO_WEBHOOK_URL', 'ANTHROPIC_OWN_API_KEY'];
 
 /** The signing secret for a restaurant other than the default: derived from JWT_SECRET, so it differs per restaurant. */
 export const tenantJwtSecret = (jwtSecret, tenantId) => crypto.createHmac('sha256', jwtSecret).update(`shiftboard-tenant:${tenantId}`).digest('hex');
@@ -141,6 +154,10 @@ export function tenantEnv(env, tenant, secrets = {}) {
   for (const k of ['ADP_CLIENT_ID', 'ADP_CLIENT_SECRET', 'ADP_CERT_PEM', 'ADP_KEY_PEM', 'ADP_MANAGER_AOID']) if (val(k)) out[k] = val(k);
   for (const k of TRIPLESEAT_KEYS) if (val(k)) out[k] = val(k);
   for (const k of OPENTABLE_KEYS) if (val(k)) out[k] = val(k);
+  // AI: the restaurant's own Anthropic key, next to the platform's ANTHROPIC_API_KEY (DubLow's), never instead of
+  // it, so server/ai/ knows who pays.
+  if (val('ANTHROPIC_OWN_API_KEY')) out.ANTHROPIC_OWN_API_KEY = val('ANTHROPIC_OWN_API_KEY');
+  for (const k of ['YELP_BUSINESS_ID', 'YELP_API_KEY']) if (val(k)) out[k] = val(k);
 
   // The sender: a console setting replaces both env values, so the env's Messaging Service can't win over it.
   if (val('TWILIO_MESSAGING_SERVICE_SID') || val('TWILIO_FROM_NUMBER')) {
@@ -161,6 +178,7 @@ export function tenantEnv(env, tenant, secrets = {}) {
   if (tenant.resolved && !tenant.resolved.adp) for (const k of Object.keys(out)) if (k.startsWith('ADP_')) delete out[k];
   if (tenant.resolved && !tenant.resolved.tripleseat) for (const k of Object.keys(out)) if (k.startsWith('TRIPLESEAT_')) delete out[k];
   if (tenant.resolved && !tenant.resolved.opentable) for (const k of Object.keys(out)) if (k.startsWith('OPENTABLE_')) delete out[k];
+  if (tenant.resolved && !tenant.resolved.reviews) for (const k of Object.keys(out)) if (k.startsWith('YELP_') || k.startsWith('GOOGLE_')) delete out[k];
   if (tenant.resolved && !tenant.resolved.sms) for (const k of Object.keys(out)) if (k.startsWith('TWILIO_')) delete out[k];
   return out;
 }
@@ -171,7 +189,7 @@ export function integrationsView(tenant, secretView, env = process.env) {
     ? { ...f, set: !!secretView[f.key]?.set, last4: secretView[f.key]?.last4 || '' }
     : { ...f, value: String(tenant.integrations?.[f.key] || '') }));
   // What the restaurant actually uses (names of env fallbacks only, never values).
-  const e = tenantEnv(env, { ...tenant, resolved: { toast: true, adp: true, tripleseat: true, opentable: true, sms: true } },
+  const e = tenantEnv(env, { ...tenant, resolved: { toast: true, adp: true, tripleseat: true, opentable: true, reviews: true, sms: true } },
     Object.fromEntries(SECRET_KEYS.filter((k) => secretView[k]?.set).map((k) => [k, 'set'])));
   return {
     fields,
@@ -180,6 +198,8 @@ export function integrationsView(tenant, secretView, env = process.env) {
       adp: ['ADP_CLIENT_ID', 'ADP_CLIENT_SECRET', 'ADP_CERT_PEM', 'ADP_KEY_PEM'].every((k) => e[k]),
       tripleseat: ['TRIPLESEAT_CLIENT_ID', 'TRIPLESEAT_CLIENT_SECRET'].every((k) => e[k]) || ['TRIPLESEAT_PUBLIC_KEY', 'TRIPLESEAT_SECRET_KEY'].every((k) => e[k]),
       opentable: ['OPENTABLE_CLIENT_ID', 'OPENTABLE_CLIENT_SECRET', 'OPENTABLE_RID'].every((k) => e[k]),
+      yelp: ['YELP_API_KEY', 'YELP_BUSINESS_ID'].every((k) => e[k]),
+      googleClient: !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
       sms: !!(e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN && (e.TWILIO_MESSAGING_SERVICE_SID || e.TWILIO_FROM_NUMBER)),
       smsAccount: !!(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN),
       email: !!(env.RESEND_API_KEY && e.EMAIL_FROM),

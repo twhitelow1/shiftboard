@@ -113,17 +113,18 @@ export default function SignIn() {
     router.replace('/shifts');
   };
 
+  // On the sign-in backdrop (dark, with a glow of the restaurant's color, like the website's sign-in page).
   const header = (
     <View style={{ alignItems: 'center', gap: 8, marginTop: 8 }}>
       {logoUrl ? (
-        <Image source={{ uri: logoUrl }} style={{ width: 88, height: 88, borderRadius: 18 }} contentFit="contain" />
+        <Image source={{ uri: logoUrl }} style={{ width: 88, height: 88, borderRadius: 18, backgroundColor: '#ffffff', padding: 6 }} contentFit="contain" />
       ) : (
-        <View style={{ width: 64, height: 64, borderRadius: 18, backgroundColor: c.brand, alignItems: 'center', justifyContent: 'center' }}>
-          <Icon name="calendar" size={32} color={c.onBrand} />
+        <View style={{ width: 64, height: 64, borderRadius: 18, backgroundColor: c.mark, alignItems: 'center', justifyContent: 'center' }}>
+          <Icon name="calendar" size={32} color={c.onMark} />
         </View>
       )}
-      <Txt v="title" style={{ textAlign: 'center' }}>{name}</Txt>
-      <Txt v="small" tone="faint">{displayServer(server)}</Txt>
+      <Txt v="title" style={{ textAlign: 'center', color: '#ffffff' }}>{name}</Txt>
+      <Txt v="small" style={{ color: 'rgba(255,255,255,0.7)' }}>{displayServer(server)}</Txt>
     </View>
   );
   const errorBox = error ? <Notice tone="bad" text={error} /> : null;
@@ -140,7 +141,7 @@ export default function SignIn() {
     const recovery = step.mode === 'recovery';
     const webOnly = !step.methods.includes('totp') && !step.methods.includes('recovery');
     return (
-      <Screen title={t('signIn.codeTitle')} bell={false} bottomInset>
+      <Screen title={t('signIn.codeTitle')} bell={false} bottomInset backdrop>
         {header}
         <Card style={{ gap: 14 }}>
           {webOnly ? (
@@ -168,7 +169,7 @@ export default function SignIn() {
 
   if (step.kind === 'enroll') {
     return (
-      <Screen title={t('signIn.enrollTitle')} bell={false} bottomInset>
+      <Screen title={t('signIn.enrollTitle')} bell={false} bottomInset backdrop>
         {header}
         <Card style={{ gap: 14 }}>
           <Txt v="h3">{t('signIn.enrollTitle')}</Txt>
@@ -185,7 +186,7 @@ export default function SignIn() {
   if (step.kind === 'setup') {
     const key = step.secret.replace(/\s+/g, '').replace(/(.{4})/g, '$1 ').trim();
     return (
-      <Screen title={t('signIn.enrollTitle')} bell={false} bottomInset>
+      <Screen title={t('signIn.enrollTitle')} bell={false} bottomInset backdrop>
         <Card style={{ gap: 14 }}>
           <Txt>{t('signIn.setupLead')}</Txt>
           {step.otpauthUrl ? <Button icon="external" title={t('signIn.setupOpen')} onPress={() => Linking.openURL(step.otpauthUrl).catch(() => setError(t('signIn.setupNoApp')))} /> : null}
@@ -206,7 +207,7 @@ export default function SignIn() {
 
   if (step.kind === 'codes') {
     return (
-      <Screen title={t('signIn.recoveryTitle')} bell={false} bottomInset>
+      <Screen title={t('signIn.recoveryTitle')} bell={false} bottomInset backdrop>
         <Card style={{ gap: 14 }}>
           <Notice tone="warn" icon="lock" text={t('signIn.recoveryCodesLead')} />
           <View style={[styles.codes, { backgroundColor: c.surface2, borderColor: c.border }]}>
@@ -221,7 +222,7 @@ export default function SignIn() {
   }
 
   return (
-    <Screen title={t('signIn.title')} bell={false} bottomInset>
+    <Screen title={t('signIn.title')} bell={false} bottomInset backdrop>
       {header}
       {expired ? <Notice tone="warn" icon="clock" text={t('signIn.expired')} /> : null}
       {note ? <Notice tone="warn" icon="clock" text={note} /> : null}
@@ -234,11 +235,11 @@ export default function SignIn() {
         {errorBox}
         <Button kind="primary" title={busy ? t('signIn.busy') : t('signIn.submit')} busy={busy} onPress={submitPassword} />
         <Button kind="ghost" title={t('signIn.forgot')} onPress={() => router.push({ pathname: '/forgot', params: { email } })} />
+        <Row style={{ justifyContent: 'center', flexWrap: 'wrap', gap: 4 }}>
+          <Txt v="small" tone="muted">{t('signIn.notYou')}</Txt>
+          <Button kind="ghost" small title={t('signIn.change')} onPress={() => { startAdding(); router.replace('/welcome'); }} />
+        </Row>
       </Card>
-      <Row style={{ justifyContent: 'center', flexWrap: 'wrap', gap: 4 }}>
-        <Txt v="small" tone="muted">{t('signIn.notYou')}</Txt>
-        <Button kind="ghost" small title={t('signIn.change')} onPress={() => { startAdding(); router.replace('/welcome'); }} />
-      </Row>
     </Screen>
   );
 }

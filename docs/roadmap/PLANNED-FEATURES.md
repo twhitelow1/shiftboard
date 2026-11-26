@@ -25,8 +25,13 @@ _Working name "ShiftBoard"; a new product name is still to be chosen (see Busine
 ## Building
 | Feature | Notes |
 |---|---|
-| Ask ShiftBoard (built-in Claude, Haiku; usage metered and capped per restaurant) | building |
-| Google Business Profile + Yelp reviews: alerts, AI-drafted replies | building |
+| **Ask ShiftBoard** (built-in Claude chat for staff and managers, EN/ES, web + phone app + /app): Claude Haiku 5.5, the connector's tools as the signed-in person, changes only on Confirm (audited); **usage metered and capped per restaurant** ($5/month default on Pro and Beta, console override, 80% warning, 50 messages/person/day, bring-your-own key); `server/ai/` for every AI feature | built and tested; in the next PR |
+| Google Business Profile + Yelp reviews: daily sync, staff mentions, review alerts (all / ≤3★ / off), replies posted to Google, **AI-drafted replies** (via `server/ai/`; Yelp: copy and open Yelp, its API can't reply) | built and tested; in the next PR |
+| Full BEO import: every non-money detail (timeline, menus, dietary, bar, setup, rentals/AV, vendors, notes), shown only where the BEO has it; re-import shows what changed; AI reading for non-Tripleseat BEOs | building |
+| Smart import for employees and menu items: CSV / PDF / DOCX, field matching, preview with changes, AI reading for unstructured files; connector tools to import menus and employees from Claude | building |
+| Day list sorting: who's on by room, position, start time or name (web day view, new desktop Day view, phone app schedule and Today on the floor); desktop grid By position | built and tested; in the next PR |
+| Phone app matches the website's Branding: brand, nav and background colors, light/dark, logo, room-colored banners (website day view and grid too), sign-in backdrop, live refresh | built and tested; in the next PR |
+| Employee sync from other platforms | later (after the import) |
 
 ## Next
 | Feature | Notes |
@@ -53,7 +58,8 @@ _Working name "ShiftBoard"; a new product name is still to be chosen (see Busine
 - Terms page at dublowdigital.com/terms; privacy policy SMS clause; Anthropic listed as a service provider
 - Twilio inbound webhook + 10DLC campaign text
 - Anthropic API key in Vercel (`ANTHROPIC_API_KEY`) with a spend limit
-- OpenTable partner application (Sync API + Reviews API) / Google Business Profile / Yelp access
+- OpenTable partner application (Sync API + Reviews API)
+- Google: Cloud project, Business Profile API access form, OAuth consent screen + verification, `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, a redirect URI per restaurant host; Yelp: Places API Enhanced plan + `YELP_API_KEY` ([GOOGLE-YELP.md](../integrations/GOOGLE-YELP.md))
 - Decide which plans get Positive impact and the Claude connector (now Pro and Beta)
 - Resend rate vs. the 30-second function limit before turning on "attach PDF" for restaurants with more than ~50 staff
 - GM questions doc: https://claude.ai/artifact/KAcj1WFSkXzktm78FX5zoC

@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useApp, Icon, Avatar, Modal, Field, shiftTime, money, useAction, JobDot, Empty } from '../ui.jsx';
 import { addDays, weekStart, range, dow, parseDate } from '../../../core/time.js';
 import { hoursOf } from '../../../core/forecast.js';
-import { sameArea } from '../../../core/areas.js';
+import { sameArea, bannerColor, textOn } from '../../../core/areas.js';
 import { buildSections, shiftChoices } from '../../../core/layout.js';
+import { dayList, daySort, positionSections } from '../../../core/day-list.js';
 import ShiftDialog from './ShiftDialog.jsx';
 import ImportDialog from './ImportDialog.jsx';
 import ScheduleSheet from './ScheduleSheet.jsx';
@@ -27,14 +28,18 @@ export function useWeek() {
   return [ws, setWs];
 }
 function sessionStorageGet(k) { try { return sessionStorage.getItem(k); } catch { return null; } }
-// The schedule's layout, remembered per device: 'sheet' (like the house PDF), 'job' (grid; the day
-// view on phones) or 'emp'. Desktops open on the sheet, phones on the day view.
+// The schedule's layout, remembered per device: 'sheet' (like the house PDF), 'job' (the week grid by
+// room; the day view on phones), 'pos' (the week grid by position across rooms), 'emp' (by employee) or
+// 'day' (desktops: the day list). Desktops open on the sheet, phones on the day view.
 const VIEW_KEY = () => { try { return window.matchMedia('(max-width: 900px)').matches ? 'sb_view_phone' : 'sb_view'; } catch { return 'sb_view'; } };
 function initialView() {
-  try { const v = localStorage.getItem(VIEW_KEY()); if (['sheet', 'job', 'emp'].includes(v)) return v; } catch { /* ignore */ }
+  try { const v = localStorage.getItem(VIEW_KEY()); if (['sheet', 'job', 'pos', 'emp', 'day'].includes(v)) return v; } catch { /* ignore */ }
   return VIEW_KEY() === 'sb_view_phone' ? 'job' : 'sheet';
 }
 function sessionStorageSet(k, v) { try { sessionStorage.setItem(k, v); } catch { /* ignore */ } }
+// How the day list is sorted (core/day-list.js: room, position, time, name), remembered per device.
+const SORT_KEY = 'sb_day_sort';
+function initialSort() { try { return daySort(localStorage.getItem(SORT_KEY)); } catch { return 'room'; } }
 
 /** 'Sep 28 – Oct 4', 'Dec 1 – 7' · '28 sep – 4 oct', '1–7 dic'. */
 export function weekLabel(ws) {
@@ -66,7 +71,7 @@ export default function Schedule() {
   const [fc, setFc] = useState(null);
   const [view, setViewState] = useState(initialView);
   const setView = (v) => { setViewState(v); try { localStorage.setItem(VIEW_KEY(), v); } catch { /* ignore */ } };
-  const groupBy = view === 'emp' ? 'emp' : 'job';
+  const groupBy = view === 'emp' ? 'emp' : view === 'pos' ? 'pos' : 'job';
   const [dept, setDept] = useState('');
   const [hideEmpty, setHideEmpty] = useState(!isMgr);
   const [mine, setMine] = useState(false);
@@ -129,12 +134,15 @@ export default function Schedule() {
       const open = shifts.filter((x) => !x.userId && !strayIds.has(x.id) && inBanner(roomOf.get(x.id)));
       return [{ key: 'all', label: t('schedule.everyone'), rows, open }];
     }
-    return allSections.filter((x) => inBanner(x.banner)).map((x) => {
+    const pick = (list) => list.map((x) => {
       let rows = x.rows;
       if (mine) rows = rows.filter((r) => r.user.id === me.id);
       if (hideEmpty) rows = rows.filter((r) => r.shifts.length);
       return { ...x, rows, open: mine ? [] : x.open };
     }).filter((x) => x.rows.length || x.open.length || (isMgr && !hideEmpty && !mine));
+    const inRoom = allSections.filter((x) => inBanner(x.banner));
+    // By position: each position once, across the rooms (core/day-list.js positionSections).
+    return pick(groupBy === 'pos' ? positionSections(inRoom, getLang()) : inRoom);
   }, [allSections, strayIds, data, employees, groupBy, dept, hideEmpty, mine]);
 
   // The sheet lists everyone on the roster (like the PDF), whatever the grid's filters are.
@@ -156,7 +164,7 @@ export default function Schedule() {
   const isClosed = (d) => settings.closedDays.includes(dow(d));
   const fcDay = (d) => fc?.days?.find((x) => x.date === d);
 
-  const ShiftChip = ({ s, showJob }) => {
+  const ShiftChip = ({ s, showJob, room }) => {
     const j = jobs[s.jobCodeId];
     const w = data?.warnings?.[s.id];
     return (
@@ -166,12 +174,12 @@ export default function Schedule() {
         {s.tag && <span className="tag">{s.tag}</span>}
         {w && <span className="warn-ico">!</span>}
         {s.pending && <span className="pend" title={t('schedule.swapPending')}>⇄</span>}
-        {(showJob || !s.userId) && <div className="sub">{!s.userId ? t('common.open') : ''}{!s.userId && showJob ? ' · ' : ''}{showJob ? `${j?.name || ''}${s.area ? ` · ${s.area}` : ''}` : ''}</div>}
+        {(showJob || room || !s.userId) && <div className="sub">{[!s.userId && t('common.open'), showJob && `${j?.name || ''}${s.area ? ` · ${s.area}` : ''}`, room].filter(Boolean).join(' · ')}</div>}
       </button>
     );
   };
 
-  const Cell = ({ date, userId, list, jobCodeId, area }) => {
+  const Cell = ({ date, userId, list, jobCodeId, area, roomOf }) => {
     const to = userId && timeOffOn(userId, date);
     const closed = isClosed(date);
     const canAdd = isMgr && !closed;
@@ -181,7 +189,7 @@ export default function Schedule() {
         const entry = jobCodeId ? null : people[userId]?.jobCodes?.find((x) => x.primary) || people[userId]?.jobCodes?.[0];
         addAt(date, jobCodeId || entry?.jobCodeId, userId, area ?? entry?.areas?.[0] ?? '');
       }}>
-        {list.sort((a, b) => a.start.localeCompare(b.start)).map((s) => <ShiftChip key={s.id} s={s} showJob={groupBy === 'emp'} />)}
+        {list.sort((a, b) => a.start.localeCompare(b.start)).map((s) => <ShiftChip key={s.id} s={s} showJob={groupBy === 'emp'} room={roomOf?.[s.id]} />)}
         {!list.length && to && <span className="reqoff" title={to.reason || ''}>{to.status === 'approved' ? t('schedule.requestOff') : t('schedule.reqPending')}</span>}
         {!list.length && !to && !closed && userId && <span className="off">{isMgr ? '' : t('schedule.off')}</span>}
       </td>
@@ -195,7 +203,9 @@ export default function Schedule() {
         <span className="spacer" />
         <div className="seg desktop-only">
           <button className={view === 'sheet' ? 'on' : ''} onClick={() => setView('sheet')} title={t('schedule.laidOutLikeTheSchedule')}>{t('schedule.sheet')}</button>
-          <button className={view === 'job' ? 'on' : ''} onClick={() => setView('job')}>{t('schedule.grid')}</button>
+          <button className={view === 'day' ? 'on' : ''} onClick={() => setView('day')} title={t('dayList.dayTitle')}>{t('common.day')}</button>
+          <button className={view === 'job' ? 'on' : ''} onClick={() => setView('job')} title={t('dayList.gridRoomTitle')}>{t('dayList.byRoom')}</button>
+          <button className={view === 'pos' ? 'on' : ''} onClick={() => setView('pos')} title={t('dayList.gridPositionTitle')}>{t('dayList.byPosition')}</button>
           <button className={view === 'emp' ? 'on' : ''} onClick={() => setView('emp')}>{t('schedule.byEmployee')}</button>
         </div>
         <div className="seg mobile-only">
@@ -214,7 +224,7 @@ export default function Schedule() {
           {banners.map((d) => <button key={d} className={`chip ${dept === d ? 'on' : ''}`} onClick={() => setDept(dept === d ? '' : d)}>{d}</button>)}
         </div>
         <span className="spacer" />
-        {view !== 'sheet' && <>
+        {view !== 'sheet' && view !== 'day' && <>
           <label className="check small desktop-only"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />{t('schedule.onlyMe')}</label>
           <label className="check small desktop-only"><input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} />{t('schedule.hidePeopleNotScheduled')}</label>
         </>}
@@ -252,7 +262,7 @@ export default function Schedule() {
             onArrange={isMgr ? setArrange : undefined} />
 
           {/* Desktop grid */}
-          {view !== 'sheet' && <div className="sched-wrap desktop-only no-print">
+          {view !== 'sheet' && view !== 'day' && <div className="sched-wrap desktop-only no-print">
             <table className="sched">
               <thead>
                 <tr>
@@ -278,15 +288,16 @@ export default function Schedule() {
                   <React.Fragment key={sec.key}>
                     {/* Area banner when the area changes, like the house sheet (RESTAURANT, RABBIT HOLE…). */}
                     {groupBy === 'job' && sec.banner && sec.banner !== sections[i - 1]?.banner && (
-                      <tr className="section area"><td colSpan={8}><div className="row">{sec.banner}
+                      <tr className="section area"><td colSpan={8} style={(() => { const c = bannerColor(settings, sec.banner, sec.roomIndex ?? 0); return { background: c, color: textOn(c) }; })()}><div className="row">{sec.banner}
                         {isMgr && <button className="btn ghost sm no-print" style={{ marginLeft: 'auto', color: 'inherit' }} onClick={() => setArrange(sec.banner)}><Icon name="layers" />{t('arrange.button')}</button>}</div></td></tr>
                     )}
-                    {groupBy === 'job' && (
+                    {groupBy !== 'emp' && (
                       <tr className="section"><td colSpan={8}><div className="row"><JobDot job={sec.job} />{sec.label}
-                        {isMgr && sec.job && <button className="btn ghost sm no-print" style={{ marginLeft: 'auto' }} title={t('sectionPeople.editTitle')}
+                        {groupBy === 'pos' && sec.rooms?.length > 0 && <span className="faint" style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>· {sec.rooms.join(' · ')}</span>}
+                        {isMgr && sec.job && groupBy === 'job' && <button className="btn ghost sm no-print" style={{ marginLeft: 'auto' }} title={t('sectionPeople.editTitle')}
                           onClick={() => setEditSection(allSections.find((x) => x.key === sec.key) || sec)}><Icon name="users" />{t('sectionPeople.people')}</button>}</div></td></tr>
                     )}
-                    {sec.rows.map(({ user, shifts: us }) => {
+                    {sec.rows.map(({ user, shifts: us, area: rowArea }) => {
                       const hrs = hoursByUser[user.id] || 0;
                       return (
                         <tr key={user.id} className={user.id === me.id ? 'me' : ''}>
@@ -299,14 +310,15 @@ export default function Schedule() {
                               </div>
                             </div>
                           </td>
-                          {days.map((d) => <Cell key={d} date={d} userId={user.id} jobCodeId={sec.job?.id} area={sec.job ? sec.area : undefined} list={us.filter((s) => s.date === d)} />)}
+                          {days.map((d) => <Cell key={d} date={d} userId={user.id} jobCodeId={sec.job?.id} area={sec.job ? rowArea ?? sec.area : undefined} list={us.filter((s) => s.date === d)}
+                            roomOf={sec.rooms?.length > 1 ? sec.roomOf : undefined} />)}
                         </tr>
                       );
                     })}
                     {sec.open.length > 0 && (
                       <tr>
                         <td className="namecol"><div className="emp"><span className="avatar sm" style={{ background: 'var(--surface-3)', color: 'var(--text-3)' }}>+</span><div className="emp-name faint">{t('schedule.openShifts')}</div></div></td>
-                        {days.map((d) => <Cell key={d} date={d} jobCodeId={sec.job?.id} area={sec.area} list={sec.open.filter((s) => s.date === d)} />)}
+                        {days.map((d) => <Cell key={d} date={d} jobCodeId={sec.job?.id} area={sec.area} list={sec.open.filter((s) => s.date === d)} roomOf={sec.rooms?.length > 1 ? sec.roomOf : undefined} />)}
                       </tr>
                     )}
                   </React.Fragment>
@@ -328,9 +340,9 @@ export default function Schedule() {
             </table>
           </div>}
 
-          {/* Mobile day view */}
-          {view !== 'sheet' && <div className="mobile-only no-print">
-            <MobileDay days={days} selDay={selDay} setSelDay={setSelDay} data={data} sections={sections} mine={mine} setMine={setMine} openDialog={openDialog} isClosed={isClosed} fcDay={fcDay} addAt={addAt} />
+          {/* The day list: phones (any view but the sheet), and desktops' Day view. */}
+          {view !== 'sheet' && <div className={`${view === 'day' ? 'day-desk' : 'mobile-only'} no-print`}>
+            <MobileDay days={days} selDay={selDay} setSelDay={setSelDay} data={data} room={dept} mine={mine} setMine={setMine} openDialog={openDialog} isClosed={isClosed} fcDay={fcDay} addAt={addAt} />
           </div>}
         </>
       )}
@@ -408,16 +420,29 @@ function StrayDialog({ stray, ws, onClose }) {
   );
 }
 
-function MobileDay({ days, selDay, setSelDay, data, sections, mine, setMine, openDialog, isClosed, fcDay, addAt }) {
+/**
+ * One day's list: who's on the schedule, sorted by room (banners, then positions), by position across
+ * rooms, by start time or by name (core/day-list.js). The order is remembered on this device. Shifts in
+ * hidden or unlisted sections never show; "Just me" and the room chips filter every order.
+ */
+function MobileDay({ days, selDay, setSelDay, data, room, mine, setMine, openDialog, isClosed, fcDay, addAt }) {
   const t = useT();
-  const { jobs, people, me, isMgr, today, has } = useApp();
+  const { jobs, people, me, isMgr, today, has, layout, settings } = useApp();
+  // Room banners in the room's color (Settings → Rooms & positions), like the sheet, the PDF and the phone app.
+  const roomStyle = (room) => { const c = bannerColor(settings, room, Math.max(0, (layout?.rooms || []).findIndex((r) => sameArea(r.room, room)))); return { background: c, color: textOn(c) }; };
+  const [sort, setSortState] = useState(initialSort);
+  const setSort = (v) => { setSortState(v); try { localStorage.setItem(SORT_KEY, v); } catch { /* ignore */ } };
   const evs = data.events.filter((e) => e.date === selDay);
   const f = fcDay(selDay);
-  const daySecs = sections.map((sec) => ({
-    ...sec,
-    items: [...sec.rows.flatMap((r) => r.shifts.filter((s) => s.date === selDay)), ...sec.open.filter((s) => s.date === selDay)].sort((a, b) => a.start.localeCompare(b.start)),
-  })).filter((s) => s.items.length);
+  const list = useMemo(() => dayList({ shifts: data.shifts.filter((s) => s.date === selDay), jobs, people, layout, mode: sort, lang: getLang(), meId: me.id, mine, room }),
+    [data, selDay, jobs, people, layout, sort, mine, room, me.id]);
+  const groups = list.groups;
   const offToday = (data.timeOff || []).filter((t) => t.startDate <= selDay && t.endDate >= selDay && t.status === 'approved');
+  // What each line says besides the name and time: what the order doesn't already show.
+  const detail = (x) => {
+    const where = list.mode === 'room' ? [x.job?.short] : list.mode === 'position' ? [x.room] : [x.job?.name, x.room];
+    return [...where, x.shift.tag].filter(Boolean).join(' · ');
+  };
   return (
     <div>
       <div className="daystrip">
@@ -429,11 +454,17 @@ function MobileDay({ days, selDay, setSelDay, data, sections, mine, setMine, ope
           </button>
         ))}
       </div>
-      <div className="row" style={{ marginBottom: 12 }}>
+      <div className="row wrap day-ctl">
         <div className="seg">
           <button className={!mine ? 'on' : ''} onClick={() => setMine(false)}>{t('schedule.everyone')}</button>
           <button className={mine ? 'on' : ''} onClick={() => setMine(true)}>{t('schedule.justMe')}</button>
         </div>
+        <select className="input sm day-sort" value={sort} onChange={(e) => setSort(e.target.value)} aria-label={t('dayList.sortLabel')} title={t('dayList.sortLabel')}>
+          <option value="room">{t('dayList.byRoom')}</option>
+          <option value="position">{t('dayList.byPosition')}</option>
+          <option value="time">{t('dayList.byTime')}</option>
+          <option value="name">{t('dayList.byName')}</option>
+        </select>
         <span className="spacer" />
         {f && !f.closed && <span className="small muted num">{t('schedule.totalcoversCvrs', { totalCovers: f.totalCovers })}{isMgr ? ` · ${f.laborPct ?? '—'}%` : ''}</span>}
         {isMgr && !isClosed(selDay) && <button className="btn sm primary" onClick={() => addAt(selDay)}><Icon name="plus" />{t('schedule.add')}</button>}
@@ -447,22 +478,25 @@ function MobileDay({ days, selDay, setSelDay, data, sections, mine, setMine, ope
       ))}
       {(data.notes || []).filter((n) => n.kind === 'day' && n.date === selDay).map((n) => <div key={n.id} className="alert info" style={{ marginBottom: 8 }}><Icon name="alert" size={16} /><b>{n.text}</b></div>)}
       {isClosed(selDay) && <Empty title={t('common.closed')} />}
-      {!isClosed(selDay) && !daySecs.length && <Empty title={mine ? t('schedule.youreOff') : t('schedule.noShifts')} />}
-      {daySecs.map((sec, i) => (
-        <div key={sec.key} className="dgroup">
-          {sec.banner && sec.banner !== daySecs[i - 1]?.banner && <div className="dbanner">{sec.banner}</div>}
-          <div className="dgroup-h">{sec.job && <JobDot job={sec.job} />}{sec.label}<span className="faint">{sec.items.length}</span></div>
-          {sec.items.map((s) => (
-            <div key={s.id} className={`mshift ${s.userId === me.id ? 'mine' : ''} ${!s.userId ? 'open' : ''}`} style={{ '--jc': jobs[s.jobCodeId]?.color }} onClick={() => openDialog(s)}>
-              <Avatar user={people[s.userId]} size="sm" />
-              <div className="who">
-                {s.userId ? people[s.userId]?.name : t('common.openShift')}
-                <div className="small muted" style={{ fontWeight: 500 }}>{jobs[s.jobCodeId]?.short}{s.area && !sec.area ? ` · ${s.area}` : ''}{s.tag ? ` · ${s.tag}` : ''}{!s.published ? t('schedule.draft') : ''}{s.pending ? t('schedule.swapPending2') : ''}</div>
+      {!isClosed(selDay) && !groups.length && <Empty title={mine ? t('schedule.youreOff') : t('schedule.noShifts')} />}
+      {groups.map((g, i) => (
+        <div key={g.key} className="dgroup">
+          {g.room && g.room !== groups[i - 1]?.room && <div className="dbanner" style={roomStyle(g.room)}>{g.room}<span className="dbanner-n">{g.roomCount}</span></div>}
+          <div className="dgroup-h">{g.job ? <><JobDot job={g.job} />{g.job.name}<span className="faint">{g.count}</span></> : t('dayList.shifts', { count: g.count })}</div>
+          {g.items.map((x) => {
+            const s = x.shift;
+            return (
+              <div key={s.id} className={`mshift ${s.userId === me.id ? 'mine' : ''} ${x.open ? 'open' : ''}`} style={{ '--jc': x.job?.color }} onClick={() => openDialog(s)}>
+                <Avatar user={x.person} size="sm" />
+                <div className="who">
+                  {x.open ? t('common.openShift') : x.person?.name}
+                  <div className="small muted" style={{ fontWeight: 500 }}>{detail(x)}{!s.published ? t('schedule.draft') : ''}{s.pending ? t('schedule.swapPending2') : ''}</div>
+                </div>
+                <div className="when">{shiftTime(s)}</div>
+                {canTrade(s, me, today) && <button className="btn sm" onClick={(e) => { e.stopPropagation(); openDialog(s); }}><Icon name="swap" />{t('common.trade')}</button>}
               </div>
-              <div className="when">{shiftTime(s)}</div>
-              {canTrade(s, me, today) && <button className="btn sm" onClick={(e) => { e.stopPropagation(); openDialog(s); }}><Icon name="swap" />{t('common.trade')}</button>}
-            </div>
-          ))}
+            );
+          })}
         </div>
       ))}
       {!mine && offToday.length > 0 && (

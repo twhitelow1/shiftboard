@@ -14,6 +14,7 @@ import { useI18n } from '@/i18n';
 import { ApiError, displayServer, fetchConfig, parseServerInput } from '@/lib/api';
 import { confirm } from '@/lib/confirm';
 import { useSession, type Account } from '@/lib/session';
+import { textOn } from '@/lib/theme';
 
 export default function Welcome() {
   const { t } = useI18n();
@@ -66,7 +67,7 @@ export default function Welcome() {
                 <View key={a.server} style={[styles.row, { borderColor: c.border }]}>
                   <Pressable onPress={() => open(a)} accessibilityRole="button" accessibilityLabel={`${name}, ${a.signedIn ? t('welcome.signedInAs', { name: a.userName || '' }) : t('welcome.signedOut')}`}
                     style={({ pressed }) => [styles.main, pressed && { backgroundColor: c.surface2 }]}>
-                    <View style={[styles.dot, { backgroundColor: a.color || c.brand }]}><Icon name="store" size={18} color="#fff" /></View>
+                    <View style={[styles.dot, { backgroundColor: a.color || c.mark }]}><Icon name="store" size={18} color={textOn(a.color || c.mark)} /></View>
                     <View style={{ flex: 1, gap: 2 }}>
                       <Txt bold>{name}</Txt>
                       <Txt v="small" tone="muted">{a.signedIn ? (a.userName ? t('welcome.signedInAs', { name: a.userName }) : displayServer(a.server)) : t('welcome.signedOut')}</Txt>

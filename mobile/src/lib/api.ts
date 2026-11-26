@@ -153,7 +153,9 @@ export async function forgotPassword(server: string, email: string): Promise<voi
 
 export interface Client {
   call<T = any>(method: string, args?: object): Promise<T>;
-  post<T = any>(path: string, args?: object): Promise<T>;
+  post<T = any>(path: string, args?: object, opts?: { timeoutMs?: number }): Promise<T>;
+  /** A GET route (Ask ShiftBoard's status and history). */
+  get<T = any>(path: string): Promise<T>;
 }
 
 /**
@@ -162,15 +164,16 @@ export interface Client {
  * fresh token (after changing the password from the app).
  */
 export function createClient(server: string, getToken: () => string | null, hooks: { onUnauthorized: () => void; onToken: (t: string) => void }): Client {
-  async function post<T>(path: string, args: object = {}): Promise<T> {
+  async function post<T>(path: string, args: object = {}, opts: { timeoutMs?: number; method?: 'GET' | 'POST' } = {}): Promise<T> {
     const token = getToken();
     const started = Date.now();
     const rpc = path.startsWith('/api/rpc/') ? path.slice(9) : '';
+    const get = opts.method === 'GET';
     const res = await request(`${server}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify(args),
-    }).catch((e) => { if (rpc) noteRpc(rpc, 0, Date.now() - started); throw e; });
+      method: get ? 'GET' : 'POST',
+      headers: { ...(get ? {} : { 'Content-Type': 'application/json' }), Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      ...(get ? {} : { body: JSON.stringify(args) }),
+    }, opts.timeoutMs).catch((e) => { if (rpc) noteRpc(rpc, 0, Date.now() - started); throw e; });
     if (rpc) noteRpc(rpc, res.status, Date.now() - started); // for Report a problem: the method and status only
     const fresh = res.headers.get('x-session-token');
     if (fresh) hooks.onToken(fresh);
@@ -183,7 +186,8 @@ export function createClient(server: string, getToken: () => string | null, hook
     return (body?.result ?? null) as T;
   }
   return {
-    post,
+    post: (path, args, opts) => post(path, args, opts),
+    get: (path) => post(path, {}, { method: 'GET' }),
     call: (method, args) => post(`/api/rpc/${method}`, args),
   };
 }

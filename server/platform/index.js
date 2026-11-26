@@ -26,6 +26,10 @@ import { tripleseatConfig } from '../tripleseat.js';
 import { integration as tripleseatIntegration } from '../../core/tripleseat.js';
 import { opentableConfig } from '../opentable.js';
 import { integration as opentableIntegration } from '../../core/opentable.js';
+import { googleConfig } from '../google.js';
+import { integration as googleIntegration } from '../../core/google-reviews.js';
+import { yelpConfig } from '../yelp.js';
+import { integration as yelpIntegration } from '../../core/yelp-reviews.js';
 import { Registry } from './registry.js';
 import { TenantCache } from './tenant-cache.js';
 import { hostConfig, resolveHost, consoleAllowed, tenantAddress } from './hosts.js';
@@ -37,6 +41,7 @@ import { isPaused } from './plans.js';
 import { announcementsCronAll } from '../announcements.js';
 import { capture } from '../errors-routes.js';
 import { createPlatformErrors, recordCronFailure, mountErrorCron } from './errors-console.js';
+import { UsageLog } from '../ai/usage.js';
 
 const NOT_FOUND_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Restaurant not found · ShiftBoard</title><style>body{font:16px/1.5 system-ui,sans-serif;margin:0;display:grid;place-items:center;min-height:100vh;background:#f8fafc;color:#0f172a}
@@ -53,8 +58,9 @@ main{max-width:420px;padding:32px;text-align:center}h1{font-size:22px;margin:0 0
  * @param {Function} [o.texterFor] (env, tenant) => texter, for tests
  * @param {object} [o.pusher] [o.expoPush]  shared phone notification senders (tests)
  * @param {Function} [o.now]      clock in ms (tests)
+ * @param {Function} [o.aiClient] ({ apiKey }) => an Anthropic client, for tests (server/ai/)
  */
-export function createPlatformApp({ conn, env = process.env, staticDir, mailerFor, texterFor, pusher, expoPush, now } = {}) {
+export function createPlatformApp({ conn, env = process.env, staticDir, mailerFor, texterFor, pusher, expoPush, now, aiClient } = {}) {
   const registry = new Registry({ conn, env });
   const hostCfg = hostConfig(env);
   const cache = new TenantCache({ max: Number(env.TENANT_CACHE_MAX) || 25 });
@@ -65,8 +71,10 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
   let secretPromise = null;
   // Errors & reports from every restaurant (server/errors.js), read in the console (errors-console.js).
   const errors = createPlatformErrors({ conn, env, registry, hostCfg, mailerFor, texterFor, now, background: env.VERCEL ? waitUntil : null });
+  // AI usage from every restaurant (server/ai/usage.js): one ledger in the platform schema, tagged by restaurant.
+  const aiUsage = new UsageLog({ conn, schema: 'platform' });
   const platform = {
-    registry, conn, env, hostCfg, cache, errors,
+    registry, conn, env, hostCfg, cache, errors, aiUsage,
     /** Signs console sessions: derived from JWT_SECRET, else generated once and kept in platform.meta. */
     consoleSecret: () => (secretPromise ??= env.JWT_SECRET
       ? Promise.resolve(crypto.createHmac('sha256', env.JWT_SECRET).update('shiftboard-platform-console').digest('hex'))
@@ -92,6 +100,7 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
     return {
       id: t.id, slug: t.slug, name: t.name, isDefault: t.is_default, status: t.status, plan: t.plan,
       features: t.resolved, trialEndsAt: t.trial_ends_at, errors: errors.forTenant(t),
+      ai: t.ai || {}, aiUsage: aiUsage.forTenant(t), // AI: DubLow's cap override and the platform's usage ledger (server/ai/)
       consumeSupportGrant: (token) => registry.consumeSupportGrant(token, t.id),
       // Settings → Integrations for the restaurant's own admins (server/integrations-routes.js): the same
       // settings and encrypted secrets as the console, for the integrations in its plan only, audited.
@@ -132,6 +141,7 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
         ...(pusher ? { pusher } : {}),
         ...(expoPush ? { expoPush } : {}),
         ...(now ? { now } : {}),
+        ...(aiClient ? { aiClient } : {}),
       });
       // Requests still running on a replaced entry finish on it; the new entry starts with none.
       const entry = { id: t.id, version: t.version, tenant: t, db, app, env: tEnv, inflight: 0 };
@@ -170,8 +180,8 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
    * share of the time. Starts at a different restaurant each hour, so the ones at the end aren't always the
    * ones left out, and skips a restaurant whose last cron run worked in the last 20 hours.
    */
-  async function cronAll({ feature, label, configured, lastCron, run }) {
-    const budget = Number(env.CRON_BUDGET_MS) || BUDGET_MS;
+  async function cronAll({ feature, label, configured, lastCron, run, share = 1 }) {
+    const budget = Math.floor((Number(env.CRON_BUDGET_MS) || BUDGET_MS) * share); // share: two syncs in one cron run split the time
     const started = Date.now();
     const snap = await registry.snapshot({ fresh: true });
     const list = snap.list.filter((t) => !isPaused(t.status) && t.resolved[feature]);
@@ -248,6 +258,22 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
   });
   cronRoute('/api/cron/opentable', opentableCronAll);
   app.locals.opentableCronAll = opentableCronAll;
+  // Google Business Profile and Yelp reviews (the plan's `reviews`), in one daily run: Google first, then Yelp.
+  const googleCronAll = () => cronAll({
+    feature: 'reviews', label: 'Google reviews', configured: (e) => googleConfig(e).configured, lastCron: (store) => googleIntegration(store).lastCron, share: 0.6,
+    run: (rt, budgetMs, t) => rt.app.locals.googleCron({ budgetMs, base: tenantAddress(t, hostCfg) || '' }),
+  });
+  const yelpCronAll = () => cronAll({
+    feature: 'reviews', label: 'Yelp reviews', configured: (e) => yelpConfig(e).configured, lastCron: (store) => yelpIntegration(store).lastCron, share: 0.35,
+    run: (rt, budgetMs, t) => rt.app.locals.yelpCron({ budgetMs, base: tenantAddress(t, hostCfg) || '' }),
+  });
+  const reviewsCronAll = async () => {
+    const google = await googleCronAll();
+    const yelp = await yelpCronAll();
+    return { tenants: [...google.tenants.map((x) => ({ ...x, sync: 'google' })), ...yelp.tenants.map((x) => ({ ...x, sync: 'yelp' }))], ms: google.ms + yelp.ms };
+  };
+  cronRoute('/api/cron/reviews', reviewsCronAll);
+  app.locals.reviewsCronAll = reviewsCronAll;
   /** Open the default restaurant (its schema, first account or demo data) before the first request. */
   app.locals.warmDefault = async () => {
     await ready();

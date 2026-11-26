@@ -146,10 +146,18 @@ Events booked in Tripleseat come into **Events & BEOs** by themselves: date, tim
 
 People add ShiftBoard to Claude (claude.ai, the desktop and phone apps, Claude Code) with the restaurant's address plus `/mcp`, sign in with ShiftBoard's own sign-in, and Claude acts as them with exactly their permissions: reading schedules, requesting time off, reporting 86'd items, and for managers building drafts, approving and (after asking) publishing. OAuth 2.1 with PKCE, per-restaurant keys, rotating refresh tokens; admins turn it on or off and can make staff read-only in **Settings → Claude connector**; everyone sees and disconnects their connections in **My settings → Connected apps**. Pro and Beta plans. Setup, tools and security: [docs/integrations/CLAUDE-MCP.md](docs/integrations/CLAUDE-MCP.md). Code: `server/mcp/`, `server/tools/`.
 
+### Ask ShiftBoard (built-in Claude)
+
+Claude inside the app (web, phone app, `/app`): **Ask ShiftBoard** in the menu answers "Who's working tonight?", "When do I work next?", "What's 86'd?" or, for managers, "Who's over 40 hours this week?" from ShiftBoard's own tools, as the signed-in person with exactly their permissions. Anything that changes data comes back as a card with **Confirm**; only the tap runs it (audited). Claude Haiku 5.5 on DubLow's `ANTHROPIC_API_KEY` (Vercel, Sensitive); every call is metered per restaurant and capped (default $5/month on Pro and Beta, overridable in the DubLow console); a restaurant can bring its own key in Settings → Integrations. Admins see this month's use in **Settings → Ask ShiftBoard**. Setup, caps and costs: [docs/integrations/ASK-SHIFTBOARD.md](docs/integrations/ASK-SHIFTBOARD.md). Code: `server/ai/` (metering, caps; other AI features use it too), `server/assistant/`.
+
 ### OpenTable (optional): reservations and reviews
 
 1. **Today**: export Reservations (Reporting → Reservations, with special requests / notes) and Reviews from OpenTable as CSV and import them in **Settings → Integrations → OpenTable**. Repeat whenever: nothing is counted twice.
 2. **API** (needs OpenTable's partner approval): paste the client ID, secret and restaurant ID (RID) in Settings → Integrations → OpenTable (single install: `OPENTABLE_CLIENT_ID`, `OPENTABLE_CLIENT_SECRET` (Sensitive), `OPENTABLE_RID`, optionally `OPENTABLE_API_HOST`, `OPENTABLE_TOKEN_URL`), plus `CRON_SECRET`. `/api/cron/opentable` syncs every morning. The API's paths aren't public yet and are marked unverified. Code: `server/opentable*.js`, `core/opentable.js`, `core/guest-csv.js`.
+
+### Google Business Profile and Yelp (optional): reviews, alerts, replies
+
+An admin connects Google in **Settings → Integrations → Google Business Profile** (Google's own sign-in, then the location) and picks the restaurant's Yelp business; reviews come in every morning (`/api/cron/reviews`) and on Sync now, staff mentions count in Positive impact, managers get review alerts (all / 3 stars or fewer / off), and in **Positive impact → Reviews** they draft a reply with AI, edit it and post it to Google (or copy it for Yelp and OpenTable, which have no reply API). The same review arriving twice (a file, then Google's API; Yelp's excerpt, then the pasted review) is merged, or shown as **Possible duplicate — check** when it isn't certain, and is never counted or alerted twice. Platform env: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `YELP_API_KEY` (Sensitive). Google's API access, OAuth verification, Yelp's plan and terms: [docs/integrations/GOOGLE-YELP.md](docs/integrations/GOOGLE-YELP.md).
 
 ### Settings → Integrations
 
@@ -219,6 +227,7 @@ core/       Business logic shared by server + demo (pure JS, no I/O)
   venue-links.js  rooms ↔ schedule: an event's room by id, and server sections (each shift's room and tables, per day)
   tripleseat.js  Tripleseat events → BEOs: status rules, who owns which field, rooms, staff notifications, cancellations
   opentable.js   OpenTable reservations and reviews (files or API), booked covers in the forecast
+  review-reply.js  review alerts, AI reply prompts and drafts, reviews.* (google-reviews.js, yelp-reviews.js: the two sources)
   guest-csv.js   reading reservation and review exports; privacy (no phone or email, "Dana K."), stable keys
   impact.js      Positive impact: name matching, reservation requests, kudos, season reports, notifications, review hooks
   pdfgrid.js   rebuilds the schedule grid from a PDF's positioned text (read in the browser with pdf.js)

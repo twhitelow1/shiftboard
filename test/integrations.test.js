@@ -130,7 +130,7 @@ test('on the platform: each restaurant’s admins save their own settings (encry
 
     // Bistro (Pro): every integration; Toast not set up; then the owner pastes Toast's keys.
     const before = (await pat.get('/api/integrations')).body.result;
-    assert.deepEqual(before.groups.map((g) => g.key), ['adp', 'toast', 'tripleseat', 'opentable', 'twilio', 'email']);
+    assert.deepEqual(before.groups.map((g) => g.key), ['adp', 'toast', 'tripleseat', 'opentable', 'google', 'yelp', 'twilio', 'email', 'anthropic']);
     assert.equal(before.groups.find((g) => g.key === 'toast').status, 'notSetUp');
     assert.equal(before.envFallback, false);
     assert.equal((await pat.get('/api/toast/status')).body.result.configured, false);

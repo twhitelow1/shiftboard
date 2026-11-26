@@ -7,6 +7,7 @@ import TipPoolSettings from './TipPoolSettings.jsx';
 import { TextSettingsCard } from './PhoneCards.jsx';
 import { IntegrationsCard } from './IntegrationsSettings.jsx'; // ADP, Toast, Tripleseat, the text sender, the email From
 import ClaudeConnectorCard from './ClaudeConnector.jsx'; // the Claude connector (MCP)
+import { AssistantSettingsCard } from './Assistant.jsx'; // Ask ShiftBoard: on/off, staff, this month's AI use
 import { TrainingSettingsCard } from './TrainingShared.jsx';
 import EightySixSettings from './EightySixSettings.jsx';
 import RoomsPositions from './RoomsPositions.jsx';
@@ -14,6 +15,7 @@ import SeasonsCard from './SeasonsSettings.jsx'; // the seasons reports count by
 import { AnnouncementSettingsCard } from './Announcements.jsx'; // texts per person per day, quiet hours
 import RolesEditor, { RolesCard } from './RolesEditor.jsx'; // Settings → Roles & features
 import { ImpactSettingsCard } from './ImpactShared.jsx'; // Positive impact: notifications, alerts, words that are never names
+import { ReplySettingsCard } from './ReviewReplies.jsx'; // Google & Yelp reviews: review alerts, the reply's tone, sign-off and contact
 import EmailTemplates from './EmailTemplates.jsx'; // Settings → Email notifications
 import { tx, useT, dowLong, dowShort , LANGUAGE_NAMES } from '../i18n/index.js';
 
@@ -123,8 +125,10 @@ export default function Settings({ parts = [] }) {
       <AnnouncementSettingsCard />
       <SeasonsCard />
       <IntegrationsCard />
+      <AssistantSettingsCard />
       <ClaudeConnectorCard />
       <ImpactSettingsCard />
+      <ReplySettingsCard />
 
       <div className="card card-pad col" style={{ gap: 12 }}>
         <h2>{t('settings.forecasting')}</h2>

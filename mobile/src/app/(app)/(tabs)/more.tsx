@@ -1,4 +1,4 @@
-// More: the floor tools (leads and managers), the 86 List, my tips, events, availability and time off (when
+// More: Ask ShiftBoard (the built-in assistant), the floor tools (leads and managers), the 86 List, my tips, events, availability and time off (when
 // Training has the tab), profile, language, notifications, calendar, the full website, the restaurants this phone
 // uses (switch, add another), privacy and help, delete my account, sign out. Rows for features the restaurant's
 // plan doesn't include are hidden (lib/features.ts).
@@ -73,6 +73,12 @@ export default function More() {
       {billing ? (
         <Notice tone={billing.kind === 'pastDue' ? 'bad' : 'warn'} icon="alert"
           text={billing.kind === 'pastDue' ? t('more.pastDue') : billing.daysLeft ? tn('more.trialEnds', billing.daysLeft) : t('more.trialEndsToday')} />
+      ) : null}
+
+      {has('assistant') ? (
+        <Card pad={false} style={{ overflow: 'hidden' }}>
+          <ListRow icon="message" title={t('ask.title')} sub={t('ask.menuHelp')} onPress={() => router.push('/ask')} />
+        </Card>
       ) : null}
 
       {isLead || has('eightySix') ? (

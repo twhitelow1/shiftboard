@@ -4,6 +4,7 @@ import { DarkTheme, DefaultTheme, router, Stack, ThemeProvider, usePathname } fr
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef } from 'react';
+import { Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { CrashScreen } from '@/components/CrashScreen';
@@ -44,10 +45,13 @@ function Shell() {
     const base = colors.dark ? DarkTheme : DefaultTheme;
     return { ...base, colors: { ...base.colors, primary: colors.brand, background: colors.bg, card: colors.surface, text: colors.text, border: colors.border } };
   }, [colors]);
+  // The browser version (/app): the browser's bar in the restaurant's nav color, like the website.
+  useEffect(() => { if (Platform.OS === 'web') setThemeColor(colors.themeColor); }, [colors.themeColor]);
   if (!ready) return null;
   return (
     <ThemeProvider value={theme}>
-      <StatusBar style={colors.dark ? 'light' : 'dark'} />
+      {/* The status bar sits on the header, which is the restaurant's nav color (components/Screen.tsx). */}
+      <StatusBar style={colors.statusBar} />
       <OpenTappedNotification />
       <ErrorReporting />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
@@ -58,6 +62,18 @@ function Shell() {
       </Stack>
     </ThemeProvider>
   );
+}
+
+/** <meta name="theme-color"> (web only), added if the page has none. */
+function setThemeColor(color: string) {
+  if (typeof document === 'undefined') return;
+  let meta = document.querySelector('meta[name="theme-color"]');
+  if (!meta) {
+    meta = document.createElement('meta');
+    meta.setAttribute('name', 'theme-color');
+    document.head.appendChild(meta);
+  }
+  meta.setAttribute('content', color);
 }
 
 /** Crash reports and Report a problem go to the restaurant open now, with its session; the screen goes along. */

@@ -1,4 +1,5 @@
-// Today on the floor, for shift leads and managers: who's working now (and who's coming in later), requests to
+// Today on the floor, for shift leads and managers: who's working now (and who's coming in later), sorted by
+// position (as it always was), room, start time or name (lib/dayList.ts, remembered on the phone), requests to
 // approve, the 86 List, and (managers) publishing a drafted week or unpublishing a posted one, with a confirmation. Building and editing the
 // schedule stays on the website; a button opens it. "Now" is the phone's clock on the restaurant's date.
 import { router } from 'expo-router';
@@ -6,13 +7,16 @@ import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { DaySortPicker } from '@/components/DaySortPicker';
 import { ModCard } from '@/components/ModCard';
 import { Screen } from '@/components/Screen';
 import { useShiftTime } from '@/components/ShiftRow';
 import { Badge, Button, Card, Empty, JobDot, ListRow, Loading, Row, SectionTitle, Txt, useColors, useToast } from '@/components/ui';
 import { useI18n } from '@/i18n';
 import { confirm } from '@/lib/confirm';
+import { dayList, type DayGroup } from '@/lib/dayList';
 import { useAction, useRpc } from '@/lib/hooks';
+import { dayLayout, useDaySort } from '@/lib/schedule';
 import { useApp } from '@/lib/session';
 import { absNow, addDays, effectiveShift, shiftSpan, weekStart } from '@/lib/time';
 import type { EightySixSummary, Shift, ShiftsList, SwapsList, TimeOff } from '@/lib/types';
@@ -26,9 +30,10 @@ function useMinute() {
 }
 
 export default function Floor() {
-  const { t, tn, date, time } = useI18n();
+  const { t, tn, date, time, lang } = useI18n();
   const c = useColors();
-  const { me, today, settings, jobs, people, has, isMgr, canApprove, client, server } = useApp();
+  const { me, today, settings, jobs, people, has, isMgr, canApprove, client, server, boot } = useApp();
+  const [sort, setSort] = useDaySort('floor', 'position');
   const shiftTime = useShiftTime();
   const now = useMinute();
   const [run, busy] = useAction();
@@ -49,11 +54,10 @@ export default function Floor() {
   const span = (s: Shift) => shiftSpan(effectiveShift(s, settings));
   const onNow = posted.filter((s) => { const [a, b] = span(s); return a <= t0 && t0 < b; }).sort((a, b) => span(b)[1] - span(a)[1] || (people[a.userId!]?.name || '').localeCompare(people[b.userId!]?.name || ''));
   const later = posted.filter((s) => s.date === today && span(s)[0] > t0).sort((a, b) => a.start.localeCompare(b.start));
-  const byJob = (list: Shift[]) => {
-    const m = new Map<string, Shift[]>();
-    for (const s of list) m.set(s.jobCodeId, [...(m.get(s.jobCodeId) || []), s]);
-    return [...m.entries()].sort((a, b) => (jobs[a[0]]?.order ?? 0) - (jobs[b[0]]?.order ?? 0));
-  };
+  // Both lists in the order picked. Unlike the schedule, everyone actually on shift shows, even in a hidden or unlisted section.
+  const layout = dayLayout(posted, jobs, settings, boot.layout);
+  const nowList = dayList({ shifts: onNow, jobs, people, layout, mode: sort, lang, keepUnplaced: true });
+  const laterList = dayList({ shifts: later, jobs, people, layout, mode: sort, lang, keepUnplaced: true });
 
   const trades = swaps.data?.approvals.length || 0;
   const offs = (timeOff.data || []).filter((x) => x.status === 'pending' && x.userId !== me.id).length;
@@ -79,43 +83,55 @@ export default function Floor() {
     if (!ok) return;
     await run(() => client.call<Counts>('shifts.unpublish', args), (r) => tn('floor.unpublished', r.unpublished));
   };
-  const person = (s: Shift) => {
+  const person = (s: Shift, room: string) => {
     const eff = effectiveShift(s, settings);
+    // Besides the name and time, what the order doesn't already show.
+    const sub = sort === 'room' ? '' : sort === 'position' ? room : [jobs[s.jobCodeId]?.name, room].filter(Boolean).join(' · ');
     return (
       <View key={s.id} style={[styles.person, { borderColor: c.border }]} accessible
-        accessibilityLabel={`${people[s.userId!]?.name || ''}, ${jobs[s.jobCodeId]?.name || ''}, ${shiftTime(s)}`}>
-        <Txt bold style={{ flex: 1 }} lines={1}>{people[s.userId!]?.name || '—'}</Txt>
+        accessibilityLabel={`${people[s.userId!]?.name || ''}, ${jobs[s.jobCodeId]?.name || ''}, ${room}, ${shiftTime(s)}`}>
+        <View style={{ flex: 1, gap: 1 }}>
+          <Txt bold lines={1}>{people[s.userId!]?.name || '—'}</Txt>
+          {sub ? <Txt v="small" tone="muted" lines={1}>{sub}</Txt> : null}
+        </View>
         <Txt v="small" tone="muted">{s.date !== today ? `${date(s.date, 'weekday')} ` : ''}{shiftTime(s)}{!s.end && eff.end ? ` (~${time(eff.end)})` : ''}</Txt>
       </View>
     );
   };
+  const groupList = (groups: DayGroup[]) => groups.map((g, i) => (
+    <View key={g.key}>
+      {g.room && g.room !== groups[i - 1]?.room ? (
+        <Row style={[styles.roomHead, { backgroundColor: c.surface2, borderColor: c.border }]}>
+          <Txt v="small" bold style={{ flex: 1, textTransform: 'uppercase', letterSpacing: 0.6 }}>{g.room}</Txt>
+          <Txt v="small" tone="faint">{g.roomCount}</Txt>
+        </Row>
+      ) : null}
+      {g.job ? (
+        <Row style={styles.jobHead}>
+          <JobDot color={g.job.color} /><Txt v="small" tone="muted" bold style={{ flex: 1 }}>{g.job.name}</Txt><Txt v="small" tone="faint">{g.count}</Txt>
+        </Row>
+      ) : null}
+      {g.items.map((x) => person(x.shift, x.room))}
+    </View>
+  ));
 
   return (
     <Screen title={t('floor.title')} back bottomInset onRefresh={() => Promise.all([day.reload(), swaps.reload(), timeOff.reload(), e86.reload(), weeks.reload()])}>
       {has('training') ? <ModCard /> : null}
 
-      <SectionTitle title={t('floor.workingNow')} right={onNow.length ? <Badge tone="ok" text={String(onNow.length)} /> : undefined} />
-      {!day.data ? <Loading /> : !onNow.length ? <Card><Empty icon="users" title={t('floor.nobodyNow')} /></Card> : (
+      {nowList.count || laterList.count ? <DaySortPicker value={sort} onChange={setSort} /> : null}
+      <SectionTitle title={t('floor.workingNow')} right={nowList.count ? <Badge tone="ok" text={String(nowList.count)} /> : undefined} />
+      {!day.data ? <Loading /> : !nowList.count ? <Card><Empty icon="users" title={t('floor.nobodyNow')} /></Card> : (
         <Card pad={false} style={{ overflow: 'hidden' }}>
-          <View style={{ paddingHorizontal: 14, paddingTop: 12 }}><Txt v="small" tone="muted">{tn('floor.workingCount', onNow.length)}</Txt></View>
-          {byJob(onNow).map(([jobId, list]) => (
-            <View key={jobId}>
-              <Row style={styles.jobHead}><JobDot color={jobs[jobId]?.color} /><Txt v="small" tone="muted" bold>{jobs[jobId]?.name}</Txt></Row>
-              {list.map(person)}
-            </View>
-          ))}
+          <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: sort === 'room' ? 6 : 0 }}><Txt v="small" tone="muted">{tn('floor.workingCount', nowList.count)}</Txt></View>
+          {groupList(nowList.groups)}
         </Card>
       )}
-      {later.length ? (
+      {laterList.count ? (
         <>
-          <SectionTitle title={t('floor.later')} right={<Badge text={String(later.length)} />} />
+          <SectionTitle title={t('floor.later')} right={<Badge text={String(laterList.count)} />} />
           <Card pad={false} style={{ overflow: 'hidden' }}>
-            {byJob(later).map(([jobId, list]) => (
-              <View key={jobId}>
-                <Row style={styles.jobHead}><JobDot color={jobs[jobId]?.color} /><Txt v="small" tone="muted" bold>{jobs[jobId]?.name}</Txt></Row>
-                {list.map(person)}
-              </View>
-            ))}
+            {groupList(laterList.groups)}
           </Card>
         </>
       ) : null}
@@ -172,5 +188,6 @@ export default function Floor() {
 
 const styles = StyleSheet.create({
   jobHead: { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 4 },
+  roomHead: { marginHorizontal: 10, marginTop: 8, borderRadius: 8, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 10, paddingVertical: 6 },
   person: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, minHeight: 48, borderBottomWidth: StyleSheet.hairlineWidth },
 });
