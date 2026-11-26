@@ -137,7 +137,7 @@ function Sent({ done, onAgain, onMine }) {
   };
   return (
     <div className="card card-pad col" style={{ gap: 12 }}>
-      <h2 style={{ margin: 0 }}><Icon name="check" /> {t('feedback.sentTitle')}</h2>
+      <h2 className="row" style={{ margin: 0, gap: 8 }}><Icon name="check" size={20} />{t('feedback.sentTitle')}</h2>
       {done.signed ? <p style={{ margin: 0 }}>{t('feedback.sentSigned')}</p> : (
         <>
           <div style={{ fontWeight: 700 }}>{t('feedback.codeTitle')}</div>
