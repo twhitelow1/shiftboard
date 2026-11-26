@@ -496,14 +496,22 @@ test('manager on duty: who’s on now (front of house first, newest in charge), 
   assert.equal(mod(12).person.id, 'mgrA');
 });
 
-test('manager on duty: staff get only the on-duty manager’s phone (and the call-out line), nobody else’s', () => {
+test('manager on duty: staff get the phones of today’s managers on duty (and the call-out line), nobody else’s', () => {
   const f = modFixture();
   f.clock.now = new Date(2026, 10, 20, 12);
   const r = f.as('srv')('mod.get', { date: '2026-11-21' });
   assert.equal(r.date, '2026-11-20', 'staff only see today');
   assert.equal(r.person.phone, '(555) 010-1111');
+  // Every manager on today's schedule: the two on now and the one coming in later.
+  assert.deepEqual(r.managers.map((m) => [m.id, m.state, m.phone]),
+    [['mgrA', 'now', '(555) 010-1111'], ['chef', 'now', '(555) 010-3333'], ['mgrB', 'later', '(555) 010-2222']]);
   const json = JSON.stringify(r);
-  for (const other of ['(555) 010-2222', '(555) 010-3333', '(555) 010-4444', '(555) 010-5555', '(555) 010-6666', '(555) 010-7777']) assert.ok(!json.includes(other), other);
+  for (const other of ['(555) 010-4444', '(555) 010-5555', '(555) 010-6666', '(555) 010-7777']) assert.ok(!json.includes(other), other);
+  // Someone who already went home keeps their number from staff (a shift lead still sees it).
+  f.clock.now = new Date(2026, 10, 20, 17);
+  const later = f.as('srv')('mod.get');
+  assert.deepEqual(later.managers.find((m) => m.id === 'mgrA'), { ...later.managers.find((m) => m.id === 'mgrA'), state: 'earlier', phone: '' });
+  assert.equal(f.as('sup')('mod.get').managers.find((m) => m.id === 'mgrA').phone, '(555) 010-1111');
   assert.equal(r.candidates, undefined);
   assert.equal(r.scheduled, undefined);
   // The usual rule still holds everywhere else: employees don't see coworkers' phones.

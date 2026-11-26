@@ -24,6 +24,8 @@ import { layoutService, addRoom, roomOfShift } from './layout.js';
 import { profileApi } from './profile.js';
 import { consentState, smsConsentOf, emailConsentOf, smsStatusOf, recordConsent, consentText } from './consent.js';
 import { SECRET_FIELDS, twoStepOf, twoStepMap, passwordProblem } from './auth-factors.js';
+import { publishOptions, scheduleNotice } from './publish-notify.js';
+import { emailTemplateApi } from './email-templates.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -135,11 +137,11 @@ export function createService(store, opts = {}) {
    * A notification text in each recipient's language: say('newShift', desc(s)) → (lang) => MSG[lang].newShift(…).
    * Arguments that are functions get the language too (desc(s), a date, a name that can be "Open shift").
    */
-  const say = (key, ...args) => (lang) => {
+  const say = (key, ...args) => Object.assign((lang) => {
     const m = msg(lang)[key];
     const vals = args.map((a) => (typeof a === 'function' ? a(lang) : a));
     return typeof m === 'function' ? m(...vals) : m;
-  };
+  }, { key, args }); // the key and arguments: an email template's placeholders (core/email-templates.js)
   const day = (date, opts = {}) => (lang) => prettyDate(date, { ...opts, lang });
   const isFuture = (s) => {
     const [start] = shiftSpan(s);
@@ -154,15 +156,21 @@ export function createService(store, opts = {}) {
    * list follows the person's language if they change it; `text` is theirs at the time, which email,
    * web push, phone app push and texts send (server/channels.js, server/expo-push.js).
    */
-  function notify(userIds, text, link = '') {
+  function notify(userIds, text, link = '', extra = null) {
     const at = now().toISOString();
     const all = renderAll(text);
     const st = settings();
+    // A say() message keeps its key and arguments (in each language) and who made the change, for the email's
+    // placeholders (core/email-templates.js); extra adds fields (the publish email's PDF: core/publish-notify.js).
+    const kind = typeof text === 'function' && text.key ? text.key : null;
+    const args = kind ? Object.fromEntries(['en', 'es'].map((l) => [l, text.args.map((a) => (typeof a === 'function' ? a(l) : a))])) : null;
+    const meta = { ...(kind ? { kind, args } : {}), ...(currentActor?.id ? { by: currentActor.id } : {}), ...(extra || {}) };
     for (const id of new Set(userIds.filter(Boolean))) {
       const body = all ? all[langOf(userById(id), st)] : render(text);
-      store.insert('notifications', { id: uid('ntf'), userId: id, text: body, ...(all ? { i18n: all } : {}), link, read: false, at });
+      store.insert('notifications', { id: uid('ntf'), userId: id, text: body, ...(all ? { i18n: all } : {}), link, read: false, at, ...meta });
     }
   }
+  let currentActor = null; // who is calling (set by call()), for notifications' `by`
 
   /** A consent record for a change to someone's notification emails, made in their settings. */
   function recordEmailChoice(actor, granted, lang) {
@@ -1004,19 +1012,15 @@ export function createService(store, opts = {}) {
       store.transaction(() => drafts.forEach((s) => store.remove('shifts', s.id)));
       return { removed: drafts.length };
     },
-    'shifts.publish': (actor, { start, end, eventId }) => {
+    // notify: false publishes silently; attachPdf (+ pdf: paper options) emails the week's PDF (core/publish-notify.js).
+    'shifts.publish': (actor, { start, end, eventId, ...opts }) => {
       needMgr(actor);
       const drafts = store.list('shifts', (s) => !s.published && (eventId ? s.eventId === eventId : s.date >= start && s.date <= end));
       store.transaction(() => drafts.forEach((s) => store.update('shifts', s.id, { published: true, publishedAt: now().toISOString() })));
-      const byUser = new Set(drafts.map((s) => s.userId).filter(Boolean));
-      notify([...byUser], eventId ? say('eventShiftsPosted', store.get('events', eventId)?.name) : say('schedulePosted', day(start, { dow: false }), day(end, { dow: false })), '#/my');
-      const open = drafts.filter((s) => !s.userId);
-      if (open.length) {
-        const jobs = new Set(open.map((s) => s.jobCodeId));
-        const eligible = users().filter((u) => u.active !== false && u.jobCodes?.some((j) => jobs.has(j.jobCodeId)) && !byUser.has(u.id)).map((u) => u.id);
-        notify(eligible, say('openShiftsPosted', open.length), '#/my');
-      }
-      return { published: drafts.length, notified: byUser.size };
+      const { notify: tell, attach, remember } = publishOptions(opts, settings());
+      if (remember && !eventId) putSettings({ publishPdf: remember });
+      const { notified } = scheduleNotice({ notify, users, say, day, store }, { shifts: drafts, start, end, eventId, notify: tell, attach });
+      return { published: drafts.length, notified, silent: !tell };
     },
     'shifts.eligible': (actor, { shiftId }) => {
       needAuth(actor);
@@ -1562,6 +1566,8 @@ export function createService(store, opts = {}) {
     ...profileApi({ store, now, fail, needAuth, settings, langOf: L, request: opts.request, channels: opts.channels, legal: opts.legal }),
     // ----- training: menu study guide, quizzes, leaderboard, employee manual, manager on duty (core/training.js) -----
     ...trainingApi({ store, now, settings, notify, fail, random: opts.random, langOf: L }),
+    // ----- Settings → Email notifications: the automatic emails' words, per type (core/email-templates.js) -----
+    ...emailTemplateApi({ store, settings, putSettings, needAdmin, fail }),
     // ----- 86 List: what's out or running low, per list; the bar separate (core/eighty-six.js) -----
     ...eightySixApi({ store, now, settings, notify, fail }),
     // ----- who is listed in each schedule section, and in what order (core/roster.js) -----
@@ -1574,7 +1580,7 @@ export function createService(store, opts = {}) {
       needAuth(actor);
       const lang = L(actor);
       return store.list('notifications', (n) => n.userId === actor.id).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 60)
-        .map(({ i18n, ...n }) => (i18n?.[lang] ? { ...n, text: i18n[lang] } : n)); // in the reader's language now
+        .map(({ i18n, args, attach, ...n }) => (i18n?.[lang] ? { ...n, text: i18n[lang] } : n)); // in the reader's language now
     },
     'notifications.readAll': (actor) => {
       needAuth(actor);
@@ -1627,6 +1633,7 @@ export function createService(store, opts = {}) {
     call(actor, method, args = {}) {
       const fn = api[method];
       if (!fn) fail(404, `Unknown method ${method}`);
+      currentActor = actor;
       return fn(actor, args || {});
     },
     settings,

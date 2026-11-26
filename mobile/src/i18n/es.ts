@@ -458,6 +458,10 @@ const es: Messages = {
   },
   mod: {
     title: 'Gerente en turno',
+    titleMany: 'Gerentes en turno ({count})',
+    inCharge: 'A cargo',
+    earlierToday: 'Más temprano hoy · {time}',
+    noPhoneShort: 'Sin teléfono registrado',
     none: 'Ahora no hay ningún gerente en el horario.',
     onNow: 'En turno',
     until: 'hasta las {time}',

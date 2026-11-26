@@ -9,6 +9,7 @@ import { IntegrationsCard } from './IntegrationsSettings.jsx'; // ADP, Toast, Tr
 import { TrainingSettingsCard } from './TrainingShared.jsx';
 import EightySixSettings from './EightySixSettings.jsx';
 import RoomsPositions from './RoomsPositions.jsx';
+import EmailTemplates from './EmailTemplates.jsx'; // Settings → Email notifications
 import { tx, useT, dowLong, dowShort , LANGUAGE_NAMES } from '../i18n/index.js';
 
 export default function Settings({ parts = [] }) {
@@ -41,6 +42,7 @@ export default function Settings({ parts = [] }) {
   );
   // Managers run the schedule's rooms and positions; the rest of Settings is for admins.
   if (!isAdmin) return <div style={{ maxWidth: 820 }} className="col">{isMgr && rooms}{passwordCard}</div>;
+  if (parts[1] === 'emails') return <EmailTemplates />; // #/settings/emails
 
   return (
     <div style={{ maxWidth: 820 }} className="col">
@@ -104,6 +106,8 @@ export default function Settings({ parts = [] }) {
           : <div className="alert warn"><Icon name="alert" size={16} />{managed ? t('platform.askDublowEmail') : t('settings.notSetUpYetAdd')}</div>}
         <label className="check"><input type="checkbox" checked={s.emailNotifications !== false} onChange={set('emailNotifications')} disabled={!emailEnabled} />{t('settings.emailStaffACopyOf')}</label>
         <div className="help">{t('settings.peopleYouAddWithAn')}</div>
+        <div className="row wrap" style={{ gap: 8 }}><a className="btn sm" href="#/settings/emails"><Icon name="mail" />{t('emailTemplates.open')}</a>
+          <span className="help" style={{ margin: 0 }}>{t('emailTemplates.openHelp')}</span></div>
         {emailEnabled && <div><button className="btn sm" disabled={busy} onClick={() => run(() => sendTestEmail(), (r) => t('settings.testEmailSentToTo', { to: r.to }))}><Icon name="send" />{t('settings.sendMeATestEmail')}</button></div>}
       </div>
 

@@ -10,6 +10,8 @@ import { waitUntil } from '@vercel/functions';
 import { canChangeSettings, canManageUser, canManageSchedule } from '../core/roles.js';
 import { createMailer, deliverable, notificationEmail, inviteEmail, resetEmail, testEmail } from './email.js';
 import { createChannels } from './channels.js';
+import { sendNotificationEmails } from './notify-email.js';
+import { mountSchedulePdf } from './schedule-pdf-routes.js';
 import { trainingRoutes } from './training-routes.js';
 import { eightySixRoutes } from './eighty-six-routes.js';
 import { createExpoPush, pushNotifications } from './expo-push.js';
@@ -157,23 +159,15 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     if (env.VERCEL) waitUntil(p);
   }
 
-  // Email a copy of each new in-app notification (after the commit), unless the restaurant
-  // or the person turned email off.
+  // Email a copy of each new in-app notification (after the commit), unless the restaurant or the person turned
+  // email off, in the words the restaurant chose for that type of email (server/notify-email.js).
   function emailNotifications(changes, req) {
     if (!mailer.enabled) return;
     const notes = changes.filter((c) => c.col === 'notifications' && c.isNew).map((c) => c.doc);
     if (!notes.length) return;
     const st = createService(db.store).settings();
     if (st.emailNotifications === false) return;
-    const url = appUrl(req);
-    const messages = [];
-    for (const n of notes) {
-      const u = db.store.get('users', n.userId);
-      // Notification emails need the person's email consent; account emails (invites, resets, links) don't.
-      if (!u || u.active === false || !emailConsentOf(u) || !deliverable(u.email)) continue;
-      messages.push(notificationEmail({ user: u, note: n, appUrl: url, restaurant: st.restaurantName, brand: brandOf(req), lang: langOf(u, st) }));
-    }
-    if (messages.length) background(mailer.sendMany(messages, { idempotencyKey: `ntf-${notes[0].id}` }));
+    background(sendNotificationEmails({ notes, store: db.store, settings: st, appUrl: appUrl(req), brand: brandOf(req), mailer, idempotencyKey: `ntf-${notes[0].id}` }));
   }
 
   // Phone notifications and text messages (server/channels.js): sent after the commit too, never failing the request.
@@ -532,6 +526,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   });
 
   channels.routes(app); // /api/push/test, /api/sms/test, /api/twilio/inbound
+  // The printable schedule PDF and Settings → Email notifications → Send me a test (server/schedule-pdf-routes.js).
+  mountSchedulePdf(app, { db, mailer, signedIn: (req) => userFromToken(db.store, sessionToken(req)), appUrl, brandOf });
   // Profile photos, the consent log CSV (admins) and the public text opt-in page (server/public-routes.js).
   publicRoutes(app, { db, env, legal, signedIn: (req) => userFromToken(db.store, sessionToken(req)), restaurantName });
   // Toast POS: status, Sync now, and the daily Vercel Cron (server/toast-routes.js).
