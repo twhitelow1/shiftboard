@@ -21,6 +21,14 @@ export const MSG = {
     schedulePosted: (from, to) => `The schedule for ${from} – ${to} is posted. Check your shifts.`,
     eventShiftsPosted: (event) => `Event shifts posted for ${event}. Check your shifts.`,
     openShiftsPosted: (n) => `${n} open shift${s(n, '', 's')} available to pick up.`,
+    // ----- unpublish (core/unpublish.js) -----
+    schedulePulledBack: (from, to, scope, note, by) => `The schedule for ${from} – ${to}${scope ? ` (${scope})` : ''} was pulled back for changes. You'll be notified when it's posted again.${note ? ` Note from ${by}: “${note}”` : ''}`,
+    reasonPulledBack: 'the schedule was pulled back for changes',
+    republishedChanges: (from, to, changes) => `The schedule for ${from} – ${to} is posted again. What changed for you: ${changes}`,
+    republishedSame: (from, to) => `The schedule for ${from} – ${to} is posted again. Your shifts didn't change.`,
+    changeAdded: (shift) => `added ${shift}`,
+    changeRemoved: (shift) => `removed ${shift}`,
+    changeMoved: (shift, to) => `moved ${shift} → ${to}`,
     // ----- trades -----
     requestCancelled: (reason) => `Request cancelled: ${reason}`,
     reasonChanged: 'the shift was changed by a manager',
@@ -128,6 +136,14 @@ export const MSG = {
     schedulePosted: (from, to) => `Ya se publicó el horario del ${from} al ${to}. Revisa tus turnos.`,
     eventShiftsPosted: (event) => `Ya se publicaron los turnos del evento ${event}. Revisa tus turnos.`,
     openShiftsPosted: (n) => (n === 1 ? 'Hay 1 turno disponible para recoger.' : `Hay ${n} turnos disponibles para recoger.`),
+    // ----- volver a borrador (core/unpublish.js) -----
+    schedulePulledBack: (from, to, scope, note, by) => `El horario del ${from} al ${to}${scope ? ` (${scope})` : ''} volvió a borrador para hacer cambios. Te avisaremos cuando se publique de nuevo.${note ? ` Nota de ${by}: “${note}”` : ''}`,
+    reasonPulledBack: 'el horario volvió a borrador para hacer cambios',
+    republishedChanges: (from, to, changes) => `Se volvió a publicar el horario del ${from} al ${to}. Lo que cambió para ti: ${changes}`,
+    republishedSame: (from, to) => `Se volvió a publicar el horario del ${from} al ${to}. Tus turnos no cambiaron.`,
+    changeAdded: (shift) => `se agregó ${shift}`,
+    changeRemoved: (shift) => `se quitó ${shift}`,
+    changeMoved: (shift, to) => `se movió ${shift} → ${to}`,
     // ----- cambios -----
     requestCancelled: (reason) => `Se canceló la solicitud: ${reason}`,
     reasonChanged: 'un gerente cambió el turno',
