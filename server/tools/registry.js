@@ -8,6 +8,9 @@
 //   write                      false: only reads (shiftboard.read); true: changes something (shiftboard.write)
 //   destructive, idempotent    hints for the client (MCP annotations)
 //   confirm                    the call must carry confirm: true (the description tells the model to ask first)
+//   preview                    a write tool that only reads unless called with confirm: true (an import: the first call
+//                              shows what would change, the second does it). Without confirm it runs on a read-only
+//                              connection too, and Ask ShiftBoard runs it like a read; with confirm it's a change.
 //   role                       the lowest role that sees it ('employee' … 'admin'); can(user, info) for anything finer
 //   feature                    the plan feature it needs (server/platform/plans.js), like the app's pages
 //   consent                    the line on the consent screen it belongs to (web/src/i18n claude.can_<key>)
@@ -36,7 +39,7 @@ export function defineTool(t) {
   const write = !!t.write;
   return Object.freeze({
     title: t.name, input: {}, role: 'employee', feature: null, can: null, consent: write ? 'changes' : 'read',
-    destructive: false, idempotent: !write, confirm: false, ...t, write, scope: write ? WRITE : READ,
+    destructive: false, idempotent: !write, confirm: false, preview: false, ...t, write, scope: write ? WRITE : READ,
   });
 }
 
@@ -92,8 +95,9 @@ function auditArgs(args) {
  * @param o.serviceOpts  createService options (hashPassword, channels, request, legal), as server/app.js uses
  * @param o.onCommit     (changes) => void: notifications by email, web push, the phone app and texts
  * @param o.via, o.client  for the audit log: 'claude' and the client's name
+ * @param o.invite       (userIds, invitedBy) => Promise<{ sent, noEmail, failed }>: invitation emails for people an import made
  */
-export function createToolContext({ db, userId, v = 0, has = () => true, scopes = [READ], serviceOpts = {}, onCommit, via = 'claude', client = '', now = () => Date.now() }) {
+export function createToolContext({ db, userId, v = 0, has = () => true, scopes = [READ], serviceOpts = {}, onCommit, via = 'claude', client = '', now = () => Date.now(), invite = null }) {
   const fresh = (store) => {
     const u = store.get('users', userId);
     if (!u || u.active === false || (u.sessionVersion || 0) !== v) throw new AppError(401, 'Please sign in');
@@ -103,6 +107,8 @@ export function createToolContext({ db, userId, v = 0, has = () => true, scopes 
   const plan = (method) => { const f = featureForMethod(method); if (f && !has(f)) throw new AppError(403, NOT_IN_PLAN); };
   const ctx = {
     has, scopes, via, client, now,
+    /** Send invitation emails to people an import made (after the save). Null where email can't go out (tests, no server). */
+    invite: invite ? (ids) => invite(ids, fresh(db.store).name) : null,
     get store() { return db.store; },
     /** The person as of now (after a sync). */
     user: () => fresh(db.store),
@@ -144,6 +150,9 @@ export function createToolContext({ db, userId, v = 0, has = () => true, scopes 
   return ctx;
 }
 
+/** Whether this call of a tool only looks (a preview tool called without confirm: true). */
+export const isPreviewCall = (tool, args) => !!tool?.preview && args?.confirm !== true;
+
 /**
  * Run a tool for a person: checks it's allowed (role, plan, scope), validates the input, asks for confirm: true
  * where the tool needs it, and turns errors into a sentence in the person's language.
@@ -156,13 +165,14 @@ export async function runTool(tool, rawArgs, ctx) {
     const user = ctx.user();
     const info = { has: ctx.has, scopes: ctx.scopes, settings: ctx.settings() };
     if (!toolAllowed(tool, user, { ...info, scopes: [READ, WRITE] })) return { ok: false, status: 403, error: toolError('unavailable', lang) };
-    if (!ctx.scopes.includes(tool.scope)) return { ok: false, status: 403, error: toolError('read-only', lang) };
     const parsed = toolInputSchema(tool).safeParse(rawArgs ?? {});
     if (!parsed.success) {
       const details = parsed.error.issues.map((i) => `${i.path.join('.') || 'input'}: ${i.message}`).join('; ');
       return { ok: false, status: 400, error: toolError('badInput', lang, { details }) };
     }
     const args = parsed.data;
+    // A preview tool without confirm only reads (it never calls ctx.write, which refuses on a read-only connection anyway).
+    if (!ctx.scopes.includes(tool.scope) && !(isPreviewCall(tool, args) && ctx.scopes.includes(READ))) return { ok: false, status: 403, error: toolError('read-only', lang) };
     if (tool.confirm && args.confirm !== true) {
       return { ok: false, status: 409, error: `Not done: ${tool.name} needs confirm: true. Tell the user exactly what will happen, ask them, and call again with confirm: true only if they say yes.` };
     }

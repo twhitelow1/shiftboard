@@ -84,6 +84,9 @@ const METHOD_FEATURES = {
   'employees.save': ['team'],
   'employees.merge': ['team'],
   'employees.resetPassword': ['team'],
+  'employees.importMapping': ['team'], // smart import (core/import-api.js)
+  'employees.importPreview': ['team'],
+  'employees.importApply': ['team'],
 };
 
 /** The role features an RPC method needs ([] when every role that may call it has it). */

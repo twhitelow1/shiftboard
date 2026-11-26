@@ -13,8 +13,9 @@ import eightySix from './eighty-six.js';
 import training from './training.js';
 import events from './events.js';
 import team from './team.js';
+import importTools from './import.js';
 
-const FEATURE_TOOLS = [me, schedule, requests, eightySix, training, events, team];
+const FEATURE_TOOLS = [me, schedule, requests, eightySix, training, events, team, importTools];
 
 export const TOOLS = Object.freeze(FEATURE_TOOLS.flat());
 
@@ -25,4 +26,4 @@ for (const t of TOOLS) {
 }
 
 export const toolByName = (name) => TOOLS.find((t) => t.name === name) || null;
-export { visibleTools, toolAllowed, runTool, createToolContext, toolJsonSchema, toClaudeTool, setRoleFeatureCheck, READ, WRITE } from './registry.js';
+export { visibleTools, toolAllowed, runTool, createToolContext, toolJsonSchema, toClaudeTool, setRoleFeatureCheck, isPreviewCall, READ, WRITE } from './registry.js';

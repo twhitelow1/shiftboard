@@ -10,6 +10,7 @@ import claude from './en-claude.js'; // the Claude connector: connecting, Connec
 import impact from './en-impact.js'; // Positive impact and OpenTable
 import print from './en-print.js'; // the schedule PDF, the Publish dialog, Settings → Email notifications
 import assistant from './en-assistant.js'; // Ask ShiftBoard: the chat and Settings → Ask ShiftBoard
+import smartImport from './en-import.js'; // smart import: Team → Import, Training → Menu → Import
 const catalog = {
   lang: {
     change: 'Change language',
@@ -2300,6 +2301,7 @@ const catalog = {
   ...impact,
   ...print,
   ...assistant,
+  ...smartImport,
 };
 
 export default catalog;

@@ -23,6 +23,8 @@ export default {
     can_publish: 'Publicar el horario de una semana (solo después de preguntarte)',
     can_approve: 'Aprobar o rechazar intercambios, turnos tomados y días libres',
     can_events: 'Crear y actualizar eventos (BEO)',
+    can_menuEdit: 'Agregar y actualizar platillos del menú, e importar un menú (solo después de mostrarte una vista previa)',
+    can_teamEdit: 'Agregar y actualizar personas del equipo desde una lista (solo después de mostrarte una vista previa; nunca su consentimiento para mensajes de texto o correo)',
     readOnly: 'Solo lectura: Claude puede consultar, pero no cambiar nada',
     readOnlyForced: 'Tu restaurante permite que el personal conecte Claude solo en modo lectura: Claude puede consultar, pero no cambiar nada.',
     readOnlyRequested: 'La aplicación pidió acceso de solo lectura.',
