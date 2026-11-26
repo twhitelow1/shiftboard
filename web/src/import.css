@@ -27,8 +27,8 @@
 
 .si-rows { display: flex; flex-direction: column; gap: 8px; }
 .si-row { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; box-shadow: none; min-width: 0; }
-.si-row.check { border-color: var(--warn); }
-.si-row.problem { border-color: var(--bad); }
+.si-row.si-st-check { border-color: var(--warn); }
+.si-row.si-st-problem { border-color: var(--bad); }
 .si-row.off { opacity: 0.55; }
 .si-row-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
 .si-row-head input { width: 17px; height: 17px; accent-color: var(--brand); }

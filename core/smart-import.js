@@ -322,6 +322,11 @@ export function autoMap(header, target, { samples = [], remembered = null } = {}
     const guess = share(EMAIL) >= 0.8 ? 'email' : target === 'employees' && share(PHONE) >= 0.8 ? 'phone' : target === 'menu' && share(PRICE) >= 0.8 ? 'price' : null;
     if (guess && fields.some((f) => f.key === guess) && !used.has(guess)) { c.field = guess; used.add(guess); c.confidence = 'guess'; }
   }
+  // "Nombre" (or "First") with no last-name column and no name column: it's the whole name.
+  if (target === 'employees' && used.has('firstName') && !used.has('lastName') && !used.has('name')) {
+    const c = out.find((x) => x.field === 'firstName' && x.confidence !== 'remembered');
+    if (c) { c.field = 'name'; c.confidence = 'likely'; }
+  }
   return out;
 }
 

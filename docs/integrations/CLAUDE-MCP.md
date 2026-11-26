@@ -93,6 +93,8 @@ words). `whoami` tells Claude today's date there.
 | `get_forecast` / `get_labor_summary` | managers | Forecast & labor | | |
 | `get_86_history` | managers | 86 List | | |
 | `save_event` / `suggest_event_staffing` | managers and the events team | Events | save | create or update a BEO; staff on it are notified |
+| `save_menu_item` | managers | Training | yes | a new item at once; changing one needs `confirm: true`; a likely duplicate comes back to ask about |
+| `import_menu_items` / `import_employees` | managers | Training (menu) | yes | preview first (no `confirm`: nothing saved); then `confirm: true` with a decision for every possible duplicate (see [SMART-IMPORT.md](SMART-IMPORT.md)); never sets consent; invitations only with `sendInvitations: true` |
 
 What Claude changes notifies people exactly as when it's done in the app (in-app, email, phone, texts), and every
 change is written to the restaurant's audit log as `claude.<tool>` with `via: 'claude'` and the client's name.

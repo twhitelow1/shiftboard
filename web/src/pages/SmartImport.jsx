@@ -14,6 +14,8 @@ import {
   menuFromText, rosterFromText, templateCsv, FIELDS, MAX_FILE_BYTES, MAX_AI_CHARS, isSensitiveHeader,
 } from '../../../core/smart-import.js';
 import { readWithAi } from '../import-api.js';
+import { ROLE_IDS, roleLabel } from '../../../core/roles.js';
+import { allergenLabel, dietaryLabel } from '../../../core/training.js';
 import '../labor.css'; // .adp-drop, .adp-paste, .tp-help
 import '../import.css';
 
@@ -335,7 +337,10 @@ function PreviewStep({ target, preview, options, setOption, busy, filter, setFil
   );
 }
 
-const shownValue = (t, v) => (v === true || v === 'true' ? t('smartImport.yes') : v === false || v === 'false' ? t('smartImport.no') : v == null || v === '' ? '—' : String(v));
+const shownValue = (t, v, field) => (v === true || v === 'true' ? t('smartImport.yes') : v === false || v === 'false' ? t('smartImport.no') : v == null || v === '' ? '—'
+  : field === 'role' && ROLE_IDS.includes(v) ? roleLabel(v, t.lang)
+  : field === 'allergens' ? String(v).split(', ').map((a) => allergenLabel(a, t.lang)).join(', ')
+  : field === 'dietary' ? String(v).split(', ').map((d) => dietaryLabel(d, t.lang)).join(', ') : String(v));
 
 function RowCard({ target, row: r, busy, excluded, onToggle, decision, decide }) {
   const t = useT();
@@ -343,7 +348,7 @@ function RowCard({ target, row: r, busy, excluded, onToggle, decision, decide })
   const deciding = !!(r.candidates || r.conflicts);
   const label = (f) => fieldLabel(t, target, f);
   return (
-    <div className={`si-row card ${r.status} ${excluded ? 'off' : ''}`}>
+    <div className={`si-row card si-st-${r.status} ${excluded ? 'off' : ''}`}>
       <div className="si-row-head">
         {canToggle && <input type="checkbox" checked={!excluded} onChange={onToggle} aria-label={t('smartImport.include')} disabled={busy} />}
         <span className={`badge ${BADGE[r.status]}`}>{t(`smartImport.st_${r.status}`)}</span>
@@ -356,7 +361,7 @@ function RowCard({ target, row: r, busy, excluded, onToggle, decision, decide })
           {r.changes.map((ch, i) => (
             <li key={i}>
               <span className="si-field">{label(ch.field)}</span>
-              <span className="si-before">{shownValue(t, ch.before)}</span><span aria-hidden="true"> → </span><span className="si-after">{shownValue(t, ch.after)}</span>
+              <span className="si-before">{shownValue(t, ch.before, ch.field)}</span><span aria-hidden="true"> → </span><span className="si-after">{shownValue(t, ch.after, ch.field)}</span>
               {r.decision === 'update' && <button type="button" className="btn ghost sm" disabled={busy} onClick={() => decide({ action: 'update', id: r.match.id, keep: [...(decision?.keep || []), ch.field] })}>{t('smartImport.keepCurrent')}</button>}
             </li>
           ))}
@@ -365,7 +370,16 @@ function RowCard({ target, row: r, busy, excluded, onToggle, decision, decide })
       {r.decision === 'update' && decision?.keep?.length > 0 && (
         <div className="row wrap si-kept">{decision.keep.map((f) => <button key={f} type="button" className="chip" disabled={busy} onClick={() => decide({ action: 'update', id: r.match.id, keep: decision.keep.filter((x) => x !== f) })}>{label(f)}: {t('smartImport.useFile')}</button>)}</div>
       )}
-      {r.status === 'new' && !deciding && <div className="small muted">{t('smartImport.newRecord')}</div>}
+      {r.status === 'new' && !deciding && (
+        <>
+          <div className="small muted">{t('smartImport.newRecord')}</div>
+          <ul className="si-changes si-new">
+            {Object.entries(r.incoming || {}).filter(([f, v]) => f !== 'name' && v !== '' && v != null).slice(0, 8).map(([f, v]) => (
+              <li key={f}><span className="si-field">{label(f)}</span><span className="si-after">{shownValue(t, v, f)}</span></li>
+            ))}
+          </ul>
+        </>
+      )}
       {r.status === 'unchanged' && <div className="small muted">{t('smartImport.noChanges')}</div>}
       {r.problems.map((p, i) => <div key={`p${i}`} className="small si-problem"><Icon name="alert" size={14} />{t(`smartImport.p_${p.code}`, p.params)}</div>)}
       {r.notes.map((n, i) => <div key={`n${i}`} className="tiny faint">{t(`smartImport.n_${n.code}`, n.params)}</div>)}
@@ -386,7 +400,7 @@ function Decide({ target, row: r, busy, decision, decide }) {
   const inc = r.incoming || {};
   const fields = SUMMARY_FIELDS[target].filter((f) => (r.candidates || []).some((c) => c[f] != null && c[f] !== '' && !(Array.isArray(c[f]) && !c[f].length)) || inc[f]);
   const incoming = (f) => (f === 'legalName' ? [inc.legalFirstName, inc.legalLastName].filter(Boolean).join(' ') : inc[f]);
-  const val = (v) => shownValue(t, Array.isArray(v) ? v.join(', ') : v);
+  const val = (v, f) => shownValue(t, Array.isArray(v) ? v.join(', ') : v, f);
   const why = r.why || (r.openConflicts ? 'inFile' : null);
   return (
     <div className="si-decide">
@@ -397,14 +411,14 @@ function Decide({ target, row: r, busy, decision, decide }) {
           <div className="si-compare">
             <div className="si-side">
               <div className="si-side-title">{t('smartImport.inFile')}</div>
-              {fields.map((f) => <div key={f} className="si-kv"><span>{label(f)}</span><b>{val(incoming(f))}</b></div>)}
+              {fields.map((f) => <div key={f} className="si-kv"><span>{label(f)}</span><b>{val(incoming(f), f)}</b></div>)}
             </div>
             {r.candidates.map((c) => {
               const chosen = r.decision === 'update' && r.match?.id === c.id;
               return (
                 <div key={c.id} className={`si-side ${chosen ? 'chosen' : ''}`}>
                   <div className="si-side-title">{t('smartImport.inShiftBoard')} · <span className={`badge ${c.confidence === 'high' ? 'warn' : ''}`}>{t(`smartImport.confidence_${c.confidence}`)}</span></div>
-                  {fields.map((f) => <div key={f} className="si-kv"><span>{label(f)}</span><b>{val(c[f])}</b></div>)}
+                  {fields.map((f) => <div key={f} className="si-kv"><span>{label(f)}</span><b>{val(c[f], f)}</b></div>)}
                   <div className="tiny faint">{t('smartImport.becauseOf', { reasons: c.reasons.map((x) => t(`smartImport.reason_${x}`)).join(', ') })}</div>
                   <button type="button" className={`btn sm ${chosen ? 'primary' : ''}`} disabled={busy} onClick={() => decide({ action: 'update', id: c.id, keep: [] })}><Icon name="check" size={14} />{t('smartImport.updateThis')}</button>
                 </div>
@@ -442,7 +456,7 @@ function DoneStep({ target, result: r, options }) {
   const inv = r.invited;
   return (
     <div className="col" style={{ gap: 10 }}>
-      <h3><Icon name="check" /> {t('smartImport.doneTitle')}</h3>
+      <h3 className="row" style={{ gap: 6 }}><Icon name="check" size={18} />{t('smartImport.doneTitle')}</h3>
       <div className="si-chips">
         <span className="badge ok">{t('smartImport.done_created', { count: r.created })}</span>
         <span className="badge brand">{t('smartImport.done_updated', { count: r.updated })}</span>

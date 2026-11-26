@@ -100,6 +100,7 @@ test('header auto-mapping in English and Spanish, with confidence; private colum
   assert.deepEqual(emp.map((c) => c.field), ['firstName', 'lastName', 'phone', 'positions', 'email', 'hireDate', null, null]);
   assert.equal(emp[0].confidence, 'exact');
   assert.equal(emp[6].sensitive, true, 'SSN: never imported');
+  assert.deepEqual(autoMap(['Nombre', 'Correo'], 'employees').map((c) => c.field), ['name', 'email'], '"Nombre" alone is the whole name');
   const en = autoMap(['First', 'Last', 'Mobile', 'Job', 'E-mail', 'Employee #', 'Hourly Rate', 'Status'], 'employees');
   assert.deepEqual(en.map((c) => c.field), ['firstName', 'lastName', 'phone', 'positions', 'email', 'employeeId', 'payRate', 'active']);
   // "Role": a position, unless its values are ShiftBoard roles.
