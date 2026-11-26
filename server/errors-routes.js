@@ -57,6 +57,7 @@ export class RateLimiter {
   }
 }
 
+const FEEDBACK_RPC = /^\/api\/rpc\/feedback\./;
 const SYNC = /^\/api\/(?:(toast|adp|tripleseat)\/sync|cron\/(toast|adp|tripleseat))\/?$/;
 const NAMES = { toast: 'Toast', adp: 'ADP', tripleseat: 'Tripleseat' };
 
@@ -116,10 +117,13 @@ function finish(req, res, ctx) {
     const which = NAMES[m[1] || m[2]];
     ev = { source: m[2] ? 'cron' : 'sync', name: `${which} sync`, message: `${which}: ${ctx.bodyError || 'the sync failed'}`, stack: '' };
   } else return;
+  // The Feedback box (core/feedback.js): a failed call is recorded by its method name only, never with who made it
+  // or their device, so an error can't tie a person to an anonymous entry.
+  const anonymous = FEEDBACK_RPC.test(path);
   let userId = null;
-  try { userId = ctx.userOf?.(req)?.id || null; } catch { /* signed out */ }
+  try { userId = anonymous ? null : ctx.userOf?.(req)?.id || null; } catch { /* signed out */ }
   ctx.recorder.record({
-    kind: 'server', ...ev, route: routeOf(req), method: req.method, httpStatus: status, userId, device: deviceOf(req.get?.('user-agent') || ''),
+    kind: 'server', ...ev, route: routeOf(req), method: req.method, httpStatus: status, userId, device: anonymous ? '' : deviceOf(req.get?.('user-agent') || ''),
   });
 }
 

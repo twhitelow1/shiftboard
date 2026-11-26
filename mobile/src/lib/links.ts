@@ -51,6 +51,13 @@ export function routeForLink(link: string | undefined, has: (f: Feature) => bool
       // '#/announcements/<id>': an announcement from management (its push and its notification).
       if (!has('announcements') || !a) break;
       return { pathname: '/announcement/[id]', params: { id: a } };
+    case 'feedback':
+      // '#/feedback/mine': a reply or a status change on my signed entry (core/feedback.js).
+      if (!has('feedback')) break;
+      return { pathname: '/feedback', params: { tab: a === 'mine' ? 'mine' : a === 'board' ? 'board' : 'write' } };
+    case 'feedback-inbox':
+      if (!has('feedbackInbox')) break;
+      return '/feedback-inbox';
     default:
       break;
   }

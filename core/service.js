@@ -40,6 +40,7 @@ import { publishOptions, scheduleNotice } from './publish-notify.js';
 import { emailTemplateApi } from './email-templates.js';
 import { importApi, employeeExtrasPatch } from './import-api.js';
 import { superAdminApi } from './super-admin.js';
+import { feedbackApi, configOf as feedbackConfig, canRead as canReadFeedback } from './feedback.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -411,6 +412,9 @@ export function createService(store, opts = {}) {
     return { ...e, status, ...(status !== e.status ? { autoConfirmed: true } : {}), staffing, shifts, needed, filled };
   }
 
+  /** The Feedback inbox for this person: the role feature ∩ who reads (supervisors only when an admin allows it). */
+  const withFeedbackInbox = (features, actor, st) => ({ ...features, feedbackInbox: !!features.feedbackInbox && canReadFeedback(actor, feedbackConfig(store), st) });
+
   // ---------- API ----------
   const api = {
     'app.bootstrap': (actor) => {
@@ -440,7 +444,7 @@ export function createService(store, opts = {}) {
         (r.type === 'swap' && r.targetUserId === actor.id) ||
         (r.type === 'drop' && r.requesterId !== actor.id && qualified(me, store.get('shifts', r.shiftId)?.jobCodeId)))).length;
       return { settings: st, jobCodes, employees, me, unread, pendingApprovals, openOffers, today: today(), layout,
-        features: effectiveFeatures(actor, { settings: st, plan: opts.planFeatures || null }) }; // plan ∩ role: the apps hide what's off
+        features: withFeedbackInbox(effectiveFeatures(actor, { settings: st, plan: opts.planFeatures || null }), actor, st) }; // plan ∩ role: the apps hide what's off
     },
 
     // ----- settings -----
@@ -1682,6 +1686,10 @@ export function createService(store, opts = {}) {
     ...tradeStatsApi({ store, settings, fail, needAuth, needMgr, needAdmin, isMgr, today, langOf: L, putSettings }),
     // ----- announcements: in-app, push, email and texts from management (core/announcements.js) -----
     ...announcementApi({ store, now, settings, fail, needAuth, needAdmin, langOf: L, channels: opts.announce }),
+    // ----- Feedback box: anonymous (or signed) suggestions, the readers' inbox, "You said, we did" (core/feedback.js) -----
+    // feedbackKey: the server's secret for the rate limit's HMAC (server/app.js). mod.get: the safety note's call-out line.
+    ...feedbackApi({ store, now, today, settings, fail, needAuth, needAdmin, langOf: L, notify, key: opts.feedbackKey || null,
+      modToday: (a) => api['mod.get'](a, {}) }),
     // ----- Settings → Roles & features: which parts of the app each role gets (core/role-features.js) -----
     ...roleFeatureApi({ settings, putSettings, fail, needAdmin, plan: opts.planFeatures || null }),
     // ----- an Admin making themselves Super Admin, and the switch that allows it (core/super-admin.js) -----
