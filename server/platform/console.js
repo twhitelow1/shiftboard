@@ -21,6 +21,7 @@ import { errorConsoleRoutes } from './errors-console.js';
 import { cleanAi } from './registry.js';
 import { capFor } from '../ai/index.js';
 import { monthOf } from '../ai/usage.js';
+import { setSelfPromotion, selfPromotionOn } from '../../core/super-admin.js';
 
 const COOKIE = 'sb_platform';
 const MAX_ATTEMPTS = 10;
@@ -237,7 +238,25 @@ export function consoleRouter({ platform }) {
       if (v !== null && v !== '' && !(Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= 10_000)) throw new HttpError(400, 'The AI cap is a number of dollars, 0 to 10,000');
       patch.ai = cleanAi({ ...t.ai, capUsd: v === '' ? null : v });
     }
-    if (!Object.keys(patch).length) throw new HttpError(400, 'Nothing to change');
+    // "Admins can make themselves Super Admin": a setting inside the restaurant (core/super-admin.js). DubLow can turn
+    // it back on after a Super Admin turned it off; it's in the restaurant's audit log and the platform's.
+    let selfPromotion = null;
+    if ('adminsCanBecomeSuperAdmin' in b) {
+      if (typeof b.adminsCanBecomeSuperAdmin !== 'boolean') throw new HttpError(400, 'adminsCanBecomeSuperAdmin is true or false');
+      selfPromotion = b.adminsCanBecomeSuperAdmin;
+    }
+    if (!Object.keys(patch).length && selfPromotion === null) throw new HttpError(400, 'Nothing to change');
+    if (selfPromotion !== null) {
+      const rt = await platform.runtime(t);
+      await rt.app.locals.ready();
+      const was = await rt.db.run((s) => {
+        const before = selfPromotionOn(s.get('settings', 'settings'));
+        setSelfPromotion(s, selfPromotion, { at: new Date().toISOString(), console: admin.email });
+        return before;
+      }, { write: true });
+      if (was !== selfPromotion) await registry.audit({ admin, action: 'tenant.settings', tenantId: t.id, details: { adminsCanBecomeSuperAdmin: { from: was, to: selfPromotion } } });
+      if (!Object.keys(patch).length) return detail(req, t);
+    }
 
     const before = { name: t.name, status: t.status, plan: t.plan, features: t.features, domains: t.domains, trial_ends_at: t.trial_ends_at, owner_email: t.owner_email, owner_name: t.owner_name, ai: t.ai };
     const updated = await registry.updateTenant(t.id, patch);

@@ -25,6 +25,7 @@ import { uid } from '../../core/store.js';
 import { featureForMethod, NOT_IN_PLAN } from '../platform/plans.js';
 import { todayOf } from './dates.js';
 import { toolError } from './errors.js';
+import { HUMAN_ONLY, SA_NOT_HERE } from '../../core/super-admin.js';
 
 export const READ = 'shiftboard.read';
 export const WRITE = 'shiftboard.write';
@@ -99,8 +100,12 @@ export function createToolContext({ db, userId, v = 0, has = () => true, scopes 
     if (!u || u.active === false || (u.sessionVersion || 0) !== v) throw new AppError(401, 'Please sign in');
     return u;
   };
-  const svcOf = (store) => createService(store, serviceOpts);
-  const plan = (method) => { const f = featureForMethod(method); if (f && !has(f)) throw new AppError(403, NOT_IN_PLAN); };
+  const svcOf = (store) => createService(store, { ...serviceOpts, via }); // via: the service refuses HUMAN_ONLY methods too
+  const plan = (method) => {
+    // Never as a tool: making yourself Super Admin and its switch are for the person, in the app (core/super-admin.js).
+    if (HUMAN_ONLY.has(method)) throw new AppError(403, SA_NOT_HERE);
+    const f = featureForMethod(method); if (f && !has(f)) throw new AppError(403, NOT_IN_PLAN);
+  };
   const ctx = {
     has, scopes, via, client, now,
     get store() { return db.store; },

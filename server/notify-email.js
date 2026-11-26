@@ -38,6 +38,7 @@ export function notificationMessages({ notes, store, settings: st, appUrl, brand
     // Notification emails need the person's email consent; account emails (invites, resets, links) don't.
     if (!u || u.active === false || !emailConsentOf(u) || !deliverable(u.email)) continue;
     if (!typeOn(st, typeOfNote(n))) continue; // that kind of email is off for the restaurant
+    if (n.security) continue; // a security notice has its own email (someone made themselves Super Admin: server/app.js)
     const lang = langOf(u, st);
     const by = n.by ? store.get('users', n.by)?.name || '' : '';
     const { type, ...message } = notificationTemplateEmail({ note: n, user: u, settings: st, appUrl, brand, lang, by });

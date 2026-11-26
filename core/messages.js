@@ -65,6 +65,7 @@ export const MSG = {
     // ----- people -----
     roleNow: (role) => `Your role is now ${role}.`,
     deletionRequested: (name) => `${name} asked to delete their ShiftBoard account. Remove their sign-in and personal details in Team.`,
+    madeSuperAdmin: (name) => `${name} made themselves Super Admin.`,
     // ----- tips -----
     tipsFinal: (period, amount) => `Your tips for ${period} are final: ${amount}. Tap to see how it was worked out.`,
     tipsReopened: (period) => `Your tips for ${period} were reopened and may change. You’ll be told again when they’re final.`,
@@ -122,6 +123,10 @@ export const MSG = {
       securityHeading: 'Your two-step sign-in was reset',
       securityBody: (by) => `${by || 'A manager'} reset the second step of your ShiftBoard sign-in (authenticator app, passkeys and recovery codes). You were signed out everywhere. The next time you sign in with your password, you'll set up a new authenticator app or passkey.`,
       securityFooter: "If you didn't ask for this, tell your manager right away.",
+      superAdminSubject: (name, restaurant) => `${name} made themselves Super Admin in ${restaurant} ShiftBoard`,
+      superAdminHeading: (name) => `${name} is now a Super Admin`,
+      superAdminBody: (name) => `${name} made themselves Super Admin in ShiftBoard, after confirming it was them with their second sign-in step. A Super Admin has full control, including over Admins and other Super Admins.`,
+      superAdminFooter: 'If you didn’t expect this, check Team in ShiftBoard right away. A Super Admin can change their role back and turn off “Admins can make themselves Super Admin” in Settings → Roles & features.',
     },
   },
 
@@ -180,6 +185,7 @@ export const MSG = {
     // ----- personas -----
     roleNow: (role) => `Ahora tu rol es ${role}.`,
     deletionRequested: (name) => `${name} pidió borrar su cuenta de ShiftBoard. Quita su acceso y sus datos personales en Equipo.`,
+    madeSuperAdmin: (name) => `${name} se dio el rol de superadministrador.`,
     // ----- propinas -----
     tipsFinal: (period, amount) => `Tus propinas de ${period} ya son definitivas: ${amount}. Toca para ver cómo se calcularon.`,
     tipsReopened: (period) => `Se reabrieron tus propinas de ${period} y pueden cambiar. Te avisaremos cuando sean definitivas.`,
@@ -237,6 +243,10 @@ export const MSG = {
       securityHeading: 'Se restableció tu verificación en dos pasos',
       securityBody: (by) => `${by || 'Un gerente'} restableció el segundo paso de tu inicio de sesión en ShiftBoard (app de autenticación, llaves de acceso y códigos de recuperación). Se cerró tu sesión en todos lados. La próxima vez que inicies sesión con tu contraseña, vas a configurar una app de autenticación o una llave de acceso nueva.`,
       securityFooter: 'Si no lo pediste, avísale a tu gerente de inmediato.',
+      superAdminSubject: (name, restaurant) => `${name} se dio el rol de superadministrador en ShiftBoard de ${restaurant}`,
+      superAdminHeading: (name) => `${name} ahora es superadministrador`,
+      superAdminBody: (name) => `${name} se dio el rol de superadministrador en ShiftBoard, después de confirmar su identidad con el segundo paso de su inicio de sesión. Un superadministrador tiene control total, incluso sobre los administradores y otros superadministradores.`,
+      superAdminFooter: 'Si no lo esperabas, revisa Equipo en ShiftBoard de inmediato. Un superadministrador puede devolverle su rol anterior y desactivar “Los administradores pueden hacerse superadministradores” en Configuración → Roles y funciones.',
     },
   },
 };

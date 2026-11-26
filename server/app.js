@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { waitUntil } from '@vercel/functions';
 import { canChangeSettings, canManageUser, canManageSchedule } from '../core/roles.js';
-import { createMailer, deliverable, notificationEmail, inviteEmail, resetEmail, testEmail } from './email.js';
+import { createMailer, deliverable, notificationEmail, inviteEmail, resetEmail, testEmail, superAdminEmail } from './email.js';
 import { createChannels } from './channels.js';
 import { sendNotificationEmails } from './notify-email.js';
 import { mountSchedulePdf } from './schedule-pdf-routes.js';
@@ -44,11 +44,16 @@ import { migrateConsents, emailConsentOf, legalLinks, CONSENT_MIGRATION, CONSENT
 import { roleAllows, cleanDraft, ROLE_ROUTES, ROLE_OFF } from '../core/role-features.js';
 import { createViewAs } from './view-as.js';
 import { mountAssistant } from './assistant/index.js';
+import { selfPromotionRefusal, SA_WEB_ONLY } from '../core/super-admin.js';
 
 const COOKIE = 'sb_session';
 // Not allowed while DubLow staff are signed in as the owner for support ("Sign in as owner"): the owner's
 // password, account, consent (only the person can agree to texts or terms) and photo.
-const NOT_IN_SUPPORT = new Set(['employees.changePassword', 'account.requestDeletion', 'consent.accept', 'sms.preferences', 'profile.setPhoto', 'profile.removePhoto']);
+// Nor making an Admin a Super Admin, or the switch that allows it (core/super-admin.js): only the person themselves.
+const NOT_IN_SUPPORT = new Set(['employees.changePassword', 'account.requestDeletion', 'consent.accept', 'sms.preferences', 'profile.setPhoto', 'profile.removePhoto',
+  'account.becomeSuperAdmin', 'settings.adminsCanBecomeSuperAdmin']);
+// Methods that need the second step again, entered with the request (server/auth.js stepUp). On the web only.
+const STEP_UP = new Set(['account.becomeSuperAdmin']);
 // Methods that only read. Purely a speed hint: if one of these ever writes, DocDb
 // notices and redoes it under the write lock.
 const READ_ONLY = /\.(bootstrap|list|get|eligible|week|summary|suggestStaffing|covers|publicKey)$/;
@@ -193,6 +198,17 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   function pushToPhones(changes) {
     if (!expoPush.enabled || !changes.some((c) => c.col === 'notifications' && c.isNew)) return;
     background(pushNotifications({ changes, db, push: expoPush, title: restaurantName() }).catch((e) => console.error('Push failed:', e.message)));
+  }
+
+  /** The security email about someone making themselves Super Admin (the in-app notifications are already saved). */
+  function securityNotice(who, req) {
+    if (!mailer.enabled) return;
+    const to = db.store.list('users', (u) => u.id !== who.id && u.active !== false && ['admin', 'super_admin'].includes(u.role)
+      && emailConsentOf(u) && deliverable(u.email));
+    if (!to.length) return;
+    const restaurant = restaurantName();
+    background(mailer.sendMany(to.map((u) => superAdminEmail({ user: u, name: who.name, restaurant, brand: brandOf(req), appUrl: appUrl(req), lang: langFor(u) })),
+      { idempotencyKey: `superadmin-${who.id}-${now()}` }));
   }
 
   const stamp = (userIds, field) => userIds.length && db.run((s) => { for (const id of userIds) s.update('users', id, { [field]: new Date().toISOString() }); }, { write: true });
@@ -372,15 +388,25 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
         if (method === 'app.bootstrap' && tenant && result) result = { ...result, tenant: tenantInfo(req.sbView.actor) };
         return res.json({ result: result ?? null });
       }
+      // The second step again (making yourself Super Admin): checked before the write, and only once the rest
+      // allows it, so a refused request never uses up a code. The code or passkey never reaches the service.
+      let freshStep = null;
+      if (STEP_UP.has(method)) {
+        if (bearer(req)) throw new AppError(403, SA_WEB_ONLY);
+        const problem = selfPromotionRefusal(caller, createService(db.store).settings());
+        if (problem) throw new AppError(403, problem);
+        freshStep = await auth.stepUp(req, caller);
+      }
       // Support sessions can't change the owner's email consent either (language and appearance are fine).
       const args = structuredClone(body);
+      if (freshStep) { delete args.code; delete args.passkey; }
       if (sess.claims.sup && method === 'account.preferences') { delete args.emailConsent; delete args.emailNotifications; }
       // Consent records keep where the choice came from.
       const request = { ip: req.ip, userAgent: req.get('user-agent') || null };
       const out = await db.run((store) => {
         const actor = userFromToken(store, token);
         if (!actor) throw new AppError(401, 'Please sign in');
-        const result = createService(store, { hashPassword, channels: channels.info, request, legal, announce: announcer.info, planFeatures: planFeatures() }).call(actor, method, structuredClone(args));
+        const result = createService(store, { hashPassword, channels: channels.info, request, legal, announce: announcer.info, planFeatures: planFeatures(), freshStep }).call(actor, method, structuredClone(args));
         // Changing your password signs out other devices; this one gets a fresh cookie.
         const rotated = method === 'employees.changePassword'
           ? store.update('users', actor.id, { sessionVersion: (actor.sessionVersion || 0) + 1 })
@@ -407,6 +433,9 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
             : 'The invitation email could not be sent. Try Resend invite in a minute.';
         }
       }
+
+      // Made themselves Super Admin: every other Admin and Super Admin who agreed to emails gets a security notice.
+      if (method === 'account.becomeSuperAdmin' && out.result?.ok) securityNotice(caller, req);
 
       // On the platform, the app learns the restaurant's features, the support banner and (admins only) the billing banner.
       if (method === 'app.bootstrap' && tenant && out.result) out.result = { ...out.result, tenant: tenantInfo(caller, sess.claims) };
