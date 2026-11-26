@@ -52,6 +52,7 @@ export default function Team() {
         <button className={tab === 'people' ? 'on' : ''} onClick={() => setTab('people')}>{t('common.people')}{' '}<span className="badge">{employees.filter((e) => e.active !== false).length}</span></button>
         <button className={tab === 'roles' ? 'on' : ''} onClick={() => setTab('roles')}>{t('team.roles')}</button>
         <button className={tab === 'jobs' ? 'on' : ''} onClick={() => setTab('jobs')}>{t('team.jobCodes')}{' '}<span className="badge">{jobCodes.filter((j) => !j.archived).length}</span></button>
+        <button onClick={() => { location.hash = '#/trade-stats'; }}><Icon name="chart" size={14} />{t('tradeStats.title')}</button>
       </div>
 
       {tab === 'people' && <>

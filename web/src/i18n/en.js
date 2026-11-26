@@ -2,6 +2,7 @@
 // Values: a string with {placeholders} and <b>…</b> for bold words, or { one, other } for plurals (by {count}).
 // Restaurant data (names, positions, areas, notes) is passed in as a placeholder and never translated here.
 import auth from './en-auth.js'; // signing in, two-step, the welcome wizard, consent, My settings
+import reports from './en-reports.js'; // Trades & pickups by season, Settings → Seasons, Announcements
 const catalog = {
   lang: {
     change: 'Change language',
@@ -2127,6 +2128,7 @@ const catalog = {
     textsAfter: 'Once it’s connected, you can send yourself a test text here.',
   },
   ...auth,
+  ...reports,
 };
 
 export default catalog;

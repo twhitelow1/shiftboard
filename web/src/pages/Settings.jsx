@@ -9,6 +9,8 @@ import { IntegrationsCard } from './IntegrationsSettings.jsx'; // ADP, Toast, Tr
 import { TrainingSettingsCard } from './TrainingShared.jsx';
 import EightySixSettings from './EightySixSettings.jsx';
 import RoomsPositions from './RoomsPositions.jsx';
+import SeasonsCard from './SeasonsSettings.jsx'; // the seasons reports count by
+import { AnnouncementSettingsCard } from './Announcements.jsx'; // texts per person per day, quiet hours
 import { tx, useT, dowLong, dowShort , LANGUAGE_NAMES } from '../i18n/index.js';
 
 export default function Settings({ parts = [] }) {
@@ -108,6 +110,8 @@ export default function Settings({ parts = [] }) {
       </div>
 
       <TextSettingsCard />
+      <AnnouncementSettingsCard />
+      <SeasonsCard />
       <IntegrationsCard />
 
       <div className="card card-pad col" style={{ gap: 12 }}>

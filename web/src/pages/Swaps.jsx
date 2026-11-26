@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useApp, Icon, Avatar, shiftTime, Empty, useAction, Warnings, JobDot } from '../ui.jsx';
 import { addDays } from '../../../core/time.js';
 import ShiftDialog from './ShiftDialog.jsx';
+import { TradeStatsLink } from './reports/TradeStats.jsx'; // managers: Trades & pickups by season
 import { useT, prettyDate, stamp } from '../i18n/index.js';
 
 // Catalog keys (web/src/i18n).
@@ -37,6 +38,7 @@ export default function Swaps() {
       <StartTrade onDone={load} />
       <div className="tabs">
         {tabs.map((t) => <button key={t.key} className={cur === t.key ? 'on' : ''} onClick={() => setTab(t.key)}>{t.label}{t.n > 0 && <span className="count" style={{ background: cur === t.key ? 'var(--brand)' : 'var(--text-3)' }}>{t.n}</span>}</button>)}
+        <TradeStatsLink style={{ marginLeft: 'auto', alignSelf: 'center', flex: 'none' }} />
       </div>
       {cur === 'offers' && <p className="small muted" style={{ marginTop: -4 }}>{t('swaps.shiftsCoworkersAreGivingAway')}{settings.requireSwapApproval ? t('swaps.aManagerApprovesBeforeIts') : ''}</p>}
       <div className="card">

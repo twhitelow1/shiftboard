@@ -1,0 +1,79 @@
+/* Trades & pickups (pages/reports/TradeStats.jsx), Settings → Seasons and Announcements (pages/Announcements.jsx).
+   Uses the app's color tokens, so light and dark mode follow automatically. */
+
+/* ---------- Trades & pickups ---------- */
+.ts-head { display: flex; align-items: flex-start; gap: 8px; }
+.ts-head h2 { flex: 1; min-width: 0; }
+.ts-defs { margin: 10px 0 0; padding: 12px 14px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); font-size: 13px; }
+.ts-defs dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; }
+.ts-defs dt { font-weight: 700; }
+.ts-defs dd { margin: 0; color: var(--text-2); }
+@media (max-width: 640px) { .ts-defs dl { grid-template-columns: 1fr; gap: 2px; } .ts-defs dd { margin-bottom: 6px; } }
+
+.ts-controls { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin-bottom: 10px; }
+.ts-controls .field { min-width: 0; }
+.ts-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.ts-bar .seg { flex: none; }
+.ts-totals { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.ts-total { display: inline-flex; gap: 6px; align-items: baseline; padding: 6px 10px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); font-size: 12.5px; color: var(--text-2); }
+.ts-total b { font-size: 16px; color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* The table scrolls sideways inside its own box on phones; the name column stays put. */
+.ts-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius); }
+.ts-table { min-width: 640px; }
+.ts-table th, .ts-table td { white-space: nowrap; }
+.ts-table td.n, .ts-table th.n { text-align: right; font-variant-numeric: tabular-nums; }
+.ts-table th button { all: unset; cursor: pointer; display: inline-flex; gap: 3px; align-items: center; }
+.ts-table th button:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 4px; }
+.ts-table th[aria-sort] { color: var(--brand); }
+.ts-table .ts-stick { position: sticky; left: 0; z-index: 1; background: var(--surface); max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.ts-table th.ts-stick { z-index: 2; background: var(--surface-2); }
+.ts-table tbody tr.click { cursor: pointer; }
+.ts-table tbody tr.click:hover td { background: var(--surface-2); }
+.ts-table tr.ts-sum td { font-weight: 800; background: var(--surface-2); }
+.ts-table td.zero { color: var(--text-3); }
+.ts-table .neg { color: var(--warn); }
+.ts-table .pos { color: var(--ok); }
+.ts-table th.ts-group { text-align: center; border-left: 1px solid var(--border); }
+.ts-table td.ts-edge, .ts-table th.ts-edge { border-left: 1px solid var(--border); }
+
+.ts-req { padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; }
+.ts-req:last-child { border-bottom: 0; }
+.ts-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+
+/* ---------- Settings → Seasons ---------- */
+.season-row { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(120px, 1.2fr) minmax(110px, 1fr) minmax(110px, 1fr) auto; gap: 8px; align-items: end; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.season-row:last-of-type { border-bottom: 0; }
+@media (max-width: 640px) {
+  .season-row { grid-template-columns: 1fr 1fr; }
+  .season-row .season-label { grid-column: 1 / -1; }
+  .season-row .season-x { grid-column: 1 / -1; justify-self: start; }
+}
+
+/* ---------- Announcements ---------- */
+.ann-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+@media (max-width: 900px) { .ann-grid { grid-template-columns: minmax(0, 1fr); } }
+.ann-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ann-people { max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; padding: 4px 10px; }
+.ann-people .check { padding: 6px 0; }
+.ann-sms { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); }
+.ann-reach { display: flex; flex-direction: column; gap: 8px; }
+.ann-reach-row { display: grid; grid-template-columns: 22px 1fr auto; gap: 4px 8px; align-items: baseline; }
+.ann-reach-row svg { width: 16px; height: 16px; color: var(--text-3); align-self: center; }
+.ann-reach-row .why { grid-column: 2 / -1; font-size: 12px; color: var(--text-3); }
+.ann-reach-row b { font-variant-numeric: tabular-nums; }
+.ann-names { max-height: 160px; overflow-y: auto; font-size: 12.5px; color: var(--text-2); }
+.ann-card { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; cursor: pointer; }
+.ann-card:last-child { border-bottom: 0; }
+.ann-card:hover { background: var(--surface-2); }
+.ann-card h3 { overflow-wrap: anywhere; }
+.ann-body { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
+.ann-unread { width: 8px; height: 8px; border-radius: 50%; background: var(--brand); flex: none; }
+.ann-st { font-size: 11.5px; font-weight: 600; }
+.ann-st.sent { color: var(--ok); }
+.ann-st.failed { color: var(--bad); }
+.ann-st.skipped { color: var(--text-3); }
+.ann-st.waiting { color: var(--warn); }
+.ann-why { display: block; font-size: 11px; font-weight: 400; color: var(--text-3); white-space: normal; max-width: 180px; }
+.ann-times { display: flex; flex-wrap: wrap; gap: 8px; }
+.ann-times .input { flex: 1 1 140px; width: auto; min-width: 0; }
