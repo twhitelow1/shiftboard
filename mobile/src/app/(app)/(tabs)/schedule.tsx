@@ -1,11 +1,13 @@
-// The team's posted schedule. Day view: one day at a time, grouped like the website's day view (area banner,
-// then each position, by start time). Week view: the whole week, a row per person, scrolling sideways.
+// The team's posted schedule. Day view: one day at a time, sorted the way the reader picks (lib/dayList.ts):
+// by room like the website's day view (room banner, then each position), by position across rooms, by start
+// time or by name; the choice is kept on the phone. Week view: the whole week, a row per person, scrolling sideways.
 // Both show projected covers (forecast.covers) when the restaurant has forecasting. The last week seen is kept
 // on the phone for when there's no signal.
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { DaySortPicker } from '@/components/DaySortPicker';
 import { Icon } from '@/components/Icon';
 import { Screen } from '@/components/Screen';
 import { useShiftTime } from '@/components/ShiftRow';
@@ -13,13 +15,14 @@ import { WeekGrid } from '@/components/WeekGrid';
 import { Badge, Button, Card, Empty, JobDot, Loading, Notice, OfflineNote, Row, Segmented, Txt, useColors } from '@/components/ui';
 import { useI18n } from '@/i18n';
 import { useRpc } from '@/lib/hooks';
-import { canTrade, daySections } from '@/lib/schedule';
+import { dayList } from '@/lib/dayList';
+import { canTrade, dayLayout, useDaySort } from '@/lib/schedule';
 import { useApp } from '@/lib/session';
 import { addDays, dow, range, weekStart } from '@/lib/time';
 import type { CoversWeek, Shift, ShiftsList } from '@/lib/types';
 
 export default function Schedule() {
-  const { t, date, time, num, stamp } = useI18n();
+  const { t, tn, date, time, num, stamp, lang } = useI18n();
   const c = useColors();
   const params = useLocalSearchParams<{ date?: string }>();
   const { me, today, settings, jobs, people, has, offlineSince, boot } = useApp();
@@ -31,6 +34,7 @@ export default function Schedule() {
   const [day, setDay] = useState(() => (params.date && inWeek(params.date) ? params.date : inWeek(today) ? today : firstOpen()));
   const [mine, setMine] = useState<'all' | 'me'>('all');
   const [view, setView] = useState<'day' | 'week'>('day');
+  const [sort, setSort] = useDaySort('schedule', 'room');
   useEffect(() => { if (!inWeek(day)) setDay(inWeek(today) ? today : firstOpen()); }, [ws]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!params.date) return;
@@ -44,7 +48,9 @@ export default function Schedule() {
   const covers = useMemo(() => Object.fromEntries((coversQ.data?.days || []).filter((d) => d.totalCovers > 0).map((d) => [d.date, d.totalCovers])), [coversQ.data]);
   const weekShifts = useMemo(() => (data?.shifts || []).filter((s) => s.published && (mine === 'all' || s.userId === me.id)), [data, mine, me.id]);
   const shifts = useMemo(() => weekShifts.filter((s) => s.date === day), [weekShifts, day]);
-  const sections = useMemo(() => daySections(shifts, jobs, settings, boot.layout), [shifts, jobs, settings, boot.layout]);
+  const list = useMemo(() => dayList({ shifts, jobs, people, layout: dayLayout(shifts, jobs, settings, boot.layout), mode: sort, lang }),
+    [shifts, jobs, people, settings, boot.layout, sort, lang]);
+  const groups = list.groups;
   const closed = settings.closedDays.includes(dow(day));
   const events = (data?.events || []).filter((e) => e.date === day);
   const notes = (data?.notes || []).filter((n) => (n.kind === 'day' && n.date === day) || (view === 'week' && n.kind === 'week' && n.date === ws));
@@ -115,29 +121,35 @@ export default function Schedule() {
             </Pressable>
           ))}
           {notes.map((n) => <Notice key={n.id} tone="brand" icon="alert" text={n.text} />)}
+          {data && !closed && shifts.length ? <DaySortPicker value={sort} onChange={setSort} /> : null}
           {data && closed ? <Card><Empty title={t('schedule.closed')} /></Card> : null}
-          {data && !closed && !sections.length ? <Card><Empty title={mine === 'me' ? t('schedule.youreOff') : t('schedule.noShifts')} /></Card> : null}
+          {data && !closed && !groups.length ? <Card><Empty title={mine === 'me' ? t('schedule.youreOff') : t('schedule.noShifts')} /></Card> : null}
 
-          {sections.map((sec, i) => (
-            <View key={sec.key} style={{ gap: 6 }}>
-              {sec.banner && sec.banner !== sections[i - 1]?.banner ? (
-                <View style={[styles.banner, { backgroundColor: c.surface2, borderColor: c.border }]}><Txt v="small" bold style={{ textTransform: 'uppercase', letterSpacing: 0.6 }}>{sec.banner}</Txt></View>
+          {groups.map((g, i) => (
+            <View key={g.key} style={{ gap: 6 }}>
+              {g.room && g.room !== groups[i - 1]?.room ? (
+                <Row style={[styles.banner, { backgroundColor: c.surface2, borderColor: c.border }]}>
+                  <Txt v="small" bold style={{ flex: 1, textTransform: 'uppercase', letterSpacing: 0.6 }}>{g.room}</Txt>
+                  <Txt v="small" tone="faint">{g.roomCount}</Txt>
+                </Row>
               ) : null}
               <Row style={{ paddingHorizontal: 4 }}>
-                <JobDot color={sec.job.color} />
-                <Txt v="small" tone="muted" bold style={{ flex: 1 }}>{sec.job.name}</Txt>
-                <Txt v="small" tone="faint">{sec.shifts.length}</Txt>
+                {g.job ? <JobDot color={g.job.color} /> : null}
+                <Txt v="small" tone="muted" bold style={{ flex: 1 }}>{g.job ? g.job.name : tn('schedule.shiftCount', g.count)}</Txt>
+                {g.job ? <Txt v="small" tone="faint">{g.count}</Txt> : null}
               </Row>
               <Card pad={false} style={{ overflow: 'hidden' }}>
-                {sec.shifts.map((s) => {
+                {g.items.map(({ shift: s, job, room }) => {
                   const isMe = s.userId === me.id;
+                  // Besides the name and time, what the order doesn't already show.
+                  const sub = (list.mode === 'room' ? [s.area, s.tag] : list.mode === 'position' ? [room, s.tag] : [job.name, room, s.tag]).filter(Boolean).join(' · ');
                   return (
                     <Pressable key={s.id} onPress={() => open(s)} accessibilityRole="button"
                       accessibilityLabel={`${s.userId ? people[s.userId]?.name || '' : t('schedule.openShift')}, ${shiftTime(s)}`}
                       style={({ pressed }) => [styles.shift, { borderColor: c.border, backgroundColor: pressed ? c.surface2 : isMe ? c.brandSoft : 'transparent', borderLeftColor: jobs[s.jobCodeId]?.color || c.border }]}>
                       <View style={{ flex: 1, gap: 2 }}>
                         <Txt style={{ fontWeight: '700' }} lines={1}>{s.userId ? people[s.userId]?.name || '—' : t('schedule.openShift')}{isMe ? ` (${t('schedule.you')})` : ''}</Txt>
-                        {s.area || s.tag ? <Txt v="small" tone="muted">{[s.area, s.tag].filter(Boolean).join(' · ')}</Txt> : null}
+                        {sub ? <Txt v="small" tone="muted">{sub}</Txt> : null}
                       </View>
                       <Txt style={{ fontWeight: '700' }}>{shiftTime(s)}</Txt>
                       {s.pending ? <Badge tone="warn" text={t('myShifts.pending')} /> : canTrade(s, me.id, today) ? <Badge tone="brand" text={t('myShifts.trade')} /> : !s.userId ? <Badge tone="ok" text={t('myShifts.pickUp')} /> : null}

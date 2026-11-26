@@ -176,6 +176,13 @@ const en = {
     scrollHint: 'Swipe sideways to see the whole week.',
     guests: '{count} guests',
     you: 'You',
+    // The day list's order (lib/dayList.ts), remembered on the phone
+    sortBy: 'Sort by',
+    sortRoom: 'Room',
+    sortPosition: 'Position',
+    sortTime: 'Time',
+    sortName: 'Name',
+    shiftCount: { one: '{count} shift', other: '{count} shifts' },
   },
   shift: {
     title: 'Shift',

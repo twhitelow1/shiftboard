@@ -176,6 +176,12 @@ const es: Messages = {
     scrollHint: 'Desliza hacia los lados para ver toda la semana.',
     guests: '{count} invitados',
     you: 'Tú',
+    sortBy: 'Ordenar por',
+    sortRoom: 'Salón',
+    sortPosition: 'Puesto',
+    sortTime: 'Hora',
+    sortName: 'Nombre',
+    shiftCount: { one: '{count} turno', other: '{count} turnos' },
   },
   shift: {
     title: 'Turno',
