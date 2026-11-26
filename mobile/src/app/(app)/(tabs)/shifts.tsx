@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { Pressable, View } from 'react-native';
 
 import { EightySixBanner } from '@/components/EightySixBanner';
+import { StockCard } from '@/components/StockParts';
 import { Icon } from '@/components/Icon';
 import { ModCard } from '@/components/ModCard';
 import { Screen } from '@/components/Screen';
@@ -91,6 +92,7 @@ export default function MyShifts() {
       ) : null}
 
       {has('eightySix') ? <EightySixBanner /> : null}
+      {has('stock') ? <StockCard /> : null}
       <ModCard compact />
 
       {myTips ? (
