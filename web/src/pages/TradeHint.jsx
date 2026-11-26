@@ -2,9 +2,14 @@ import React, { useState } from 'react';
 import { useApp, Icon } from '../ui.jsx';
 import { useT } from '../i18n/index.js';
 
+// Whether this person's role may ask for trades (Settings → Roles & features); set by main.jsx from bootstrap.
+let tradesOn = true;
+export const setTradesOn = (on) => { tradesOn = on !== false; };
+export const tradesAllowed = () => tradesOn;
+
 /** Can this person trade or give away this shift right now (their own, posted, still ahead, nothing pending)? */
 export function canTrade(s, me, today) {
-  return !!s && s.userId === me.id && s.published && s.date >= today && !s.pending;
+  return tradesOn && !!s && s.userId === me.id && s.published && s.date >= today && !s.pending;
 }
 
 /**

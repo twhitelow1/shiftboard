@@ -23,7 +23,8 @@
 // sections. People whose language is Spanish (user.language === 'es') see it where it exists, English otherwise.
 // Words the app writes itself (generated quiz questions, allergen names, notifications) are in TEXT below.
 import { uid } from './store.js';
-import { atLeast, canManageSchedule, canChangeSettings } from './roles.js';
+import { atLeast, canManageSchedule, canChangeSettings, canSeeContacts } from './roles.js';
+import { isManagerJob, isModShift } from './mod.js';
 import { addDays, todayStr, daysBetween, shiftSpan, parseDate, MONTHS, DOW_SHORT } from './time.js';
 import { effectiveShift } from './forecast.js';
 
@@ -601,7 +602,7 @@ export function trainingApi({ store, now, settings, notify, fail, random = Math.
 
   // ---------- manager on duty ----------
   const absNow = () => { const n = now(); return daysBetween('2000-01-01', todayStr(n)) * 1440 + n.getHours() * 60 + n.getMinutes(); };
-  const managerJob = (job) => job?.defaultRole === 'manager';
+  const managerJob = isManagerJob; // core/mod.js: the same rule as the printed schedule's M.O.D. block
   const canBeMod = (u) => !!u && u.active !== false && (atLeast(u, 'supervisor') || jobIdsOf(u).some((id) => managerJob(store.get('jobCodes', id))));
   /** Published shifts on `date` (and the night before's, which can run past midnight) worked by manager-level people. */
   function managerShifts(date) {
@@ -612,7 +613,7 @@ export function trainingApi({ store, now, settings, notify, fail, random = Math.
       const u = store.get('users', s.userId);
       if (!u || u.active === false) continue;
       const job = jobs[s.jobCodeId];
-      if (!managerJob(job) && !atLeast(u, 'manager')) continue;
+      if (!isModShift(u, job)) continue;
       const eff = effectiveShift(s, st);
       const [from, to] = shiftSpan(eff);
       out.push({ shift: s, user: u, job, mgrJob: managerJob(job), kitchen: KITCHEN_JOB.test(`${job?.name || ''} ${job?.department || ''}`), from, to, end: eff.end });
@@ -655,7 +656,26 @@ export function trainingApi({ store, now, settings, notify, fail, random = Math.
       person: user ? personOut(user, chosen) : null,
       alsoOn: onNow.filter((x) => x.user.id !== user?.id).map((x) => ({ id: x.user.id, name: x.user.name }))
         .filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i),
+      managers: managersOn(date, { all, onNow, isToday, t, inCharge: user }),
     };
+  }
+  /**
+   * Every manager on the schedule that day, one entry each: who's on now first (the one in charge at the top),
+   * then later today, then earlier today (latest finish first). Another day: by start time ('planned').
+   * state: 'now' | 'later' | 'earlier' | 'planned'; inCharge: the manager on duty the card names.
+   */
+  function managersOn(date, { all, onNow, isToday, t, inCharge }) {
+    const seen = new Set();
+    const pick = (list, state) => list.filter((x) => !seen.has(x.user.id) && seen.add(x.user.id)).map((x) => ({ ...personOut(x.user, x), state, inCharge: x.user.id === inCharge?.id }));
+    const own = all.filter((x) => x.shift.date === date);
+    const out = isToday ? [
+      ...pick([...onNow].sort((a, b) => (a.user.id === inCharge?.id ? -1 : b.user.id === inCharge?.id ? 1 : 0)), 'now'),
+      ...pick(own.filter((x) => x.from > t).sort((a, b) => a.from - b.from || charge(a, b)), 'later'),
+      ...pick(own.filter((x) => x.to <= t).sort((a, b) => b.to - a.to || charge(a, b)), 'earlier'),
+    ] : pick(own.sort((a, b) => a.from - b.from || charge(a, b)), 'planned');
+    // A manager picked by hand who isn't on the schedule that day still shows, first.
+    if (inCharge && !seen.has(inCharge.id)) out.unshift({ ...personOut(inCharge, null), state: isToday ? 'now' : 'planned', inCharge: true });
+    return out;
   }
   function quizPhoto(actor, attemptId, qKey) {
     const p = quizPhotoFor(store, actor, attemptId, qKey);
@@ -1088,6 +1108,9 @@ export function trainingApi({ store, now, settings, notify, fail, random = Math.
       needAuth(actor);
       const d = isMgr(actor) && DATE.test(date || '') ? date : today();
       const out = modOn(d);
+      // Every manager on today's schedule can be called. Someone who already went home keeps their number
+      // only for shift leads and up (who see everyone's contacts anyway).
+      out.managers = out.managers.map((m) => (m.state === 'earlier' && !canSeeContacts(actor) ? { ...m, phone: '' } : m));
       if (!isMgr(actor)) return out;
       const scheduled = managerShifts(d).filter((x) => x.shift.date === d).sort((a, b) => a.from - b.from)
         .map((x) => ({ id: x.user.id, name: x.user.name, start: x.shift.start, end: x.shift.end || null, jobName: x.job?.name || '' }));

@@ -10,13 +10,16 @@ import { PhotoPicker } from './ProfilePhoto.jsx';
 import { LegalNameFields } from './LegalName.jsx';
 import { TotpSetup, RecoveryCodesView } from './TwoStep.jsx';
 import { rememberDemoPhoto } from '../photo.js';
+import { SecurityHidden } from './ViewAs.jsx'; // View as: their sign-in details stay private
+import ConnectedApps from './ConnectedApps.jsx'; // apps that use ShiftBoard as me (Claude)
 import '../auth.css';
 
 export default function Account() {
+  const { viewAs } = useApp();
   return (
     <div style={{ maxWidth: 720 }} className="col">
       <ProfileCard />
-      <SecurityCard />
+      {viewAs ? <SecurityHidden /> : <SecurityCard />}
     </div>
   );
 }
@@ -157,6 +160,7 @@ function SecurityCard() {
           : <div><button type="button" className="btn sm" disabled={busy} onClick={() => setSure('codes')}>{t('security.getNewCodes')}</button></div>)}
       </div>
 
+      <ConnectedApps />
       {!IS_DEMO && !support && <PasswordBlock />}
     </div>
   );

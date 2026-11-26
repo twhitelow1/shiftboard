@@ -38,9 +38,20 @@
 .tr-mod-num { font-weight: 500; opacity: .85; margin-left: 2px; }
 .tr-mod-nophone { flex: 1 1 100%; }
 .tr-mod.compact { box-shadow: none; }
+.tr-mod-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.tr-mod-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); min-width: 0; }
+.tr-mod-row.on { background: var(--brand-soft); border-color: var(--brand); }
+.tr-mod-row.past { opacity: .75; }
+.tr-mod-person { flex: 1; min-width: 0; }
+.tr-mod-row .tr-mod-name { font-size: 15px; }
+.tr-mod-charge { margin-left: 6px; vertical-align: 2px; }
+.tr-mod-btns { display: flex; gap: 6px; flex: none; }
+.tr-mod-btns .btn { min-height: 40px; }
+.tr-mod-row .tr-mod-nophone { flex: none; max-width: 40%; text-align: right; }
+@media (max-width: 380px) { .tr-mod-btns .btn { padding-left: 9px; padding-right: 9px; } }
 @media (min-width: 760px) {
-  .tr-mod:not(.compact) { flex-direction: row; align-items: center; }
-  .tr-mod:not(.compact) .tr-mod-main { flex: 1; }
+  .tr-mod:not(.compact):not(:has(.tr-mod-list)) { flex-direction: row; align-items: center; }
+  .tr-mod:not(.compact):not(:has(.tr-mod-list)) .tr-mod-main { flex: 1; }
   .tr-mod:not(.compact) .tr-mod-actions { flex: none; flex-wrap: nowrap; }
   .tr-mod:not(.compact) .tr-mod-actions .btn { min-width: 104px; }
 }

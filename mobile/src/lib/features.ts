@@ -7,7 +7,7 @@
 import type { Boot, ServerConfig } from './types';
 
 /** Feature keys, as the server names them (server/platform/plans.js on the platform). */
-export type Feature = 'training' | 'tips' | 'eightySix' | 'events' | 'forecast' | 'venue' | 'toast' | 'sms';
+export type Feature = 'training' | 'tips' | 'eightySix' | 'events' | 'forecast' | 'venue' | 'toast' | 'sms' | 'announcements';
 
 export type Features = Partial<Record<string, boolean>> | null;
 

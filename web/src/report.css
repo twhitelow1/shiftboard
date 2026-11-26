@@ -1,0 +1,19 @@
+/* Report a problem (pages/ReportProblem.jsx) and the crash screen (ErrorBoundary.jsx). Phone first. */
+.report-form { display: flex; flex-direction: column; gap: 14px; }
+.report-form textarea.input { min-height: 104px; }
+.report-add { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.report-shot { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.report-shot img { max-width: min(220px, 100%); max-height: 180px; border-radius: 10px; border: 1px solid var(--border); object-fit: contain; background: var(--surface-2); }
+.report-shot-actions { display: flex; flex-direction: column; gap: 6px; }
+.report-done { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 18px 8px 8px; }
+.report-done-icon { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--ok-soft); color: var(--ok); margin-bottom: 4px; }
+.report-done-title { font-size: 18px; font-weight: 700; }
+
+.crash { display: flex; justify-content: center; padding: 32px 0; }
+.crash-app { min-height: 100vh; align-items: center; padding: 24px 16px; background: var(--bg); }
+.crash-card { width: 100%; max-width: 420px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px 20px; text-align: center; box-shadow: var(--shadow); }
+.crash-card h2 { margin: 8px 0 6px; font-size: 19px; }
+.crash-card p { margin: 0 0 16px; }
+.crash-icon { width: 48px; height: 48px; border-radius: 50%; display: inline-grid; place-items: center; background: var(--warn-soft); color: var(--warn); }
+.crash-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.crash-actions .btn { min-width: 120px; }

@@ -14,14 +14,21 @@ export const FEATURES = [
   { key: 'training', label: 'Training', hint: 'Menu study guide, quizzes, leaderboard, employee manual, manager on duty' },
   { key: 'tips', label: 'Tip pool', hint: 'Pools, daily tips, weekly split' },
   { key: 'eightySix', label: '86 List', hint: 'What’s out or running low, with photos' },
+  { key: 'announcements', label: 'Announcements', hint: 'Managers message the team: in the app, phone notifications, email; texts with Text messages' },
   { key: 'events', label: 'Events & BEOs', hint: 'Banquet event orders and event staffing' },
   { key: 'forecast', label: 'Forecast & labor', hint: 'Sales history, forecast, labor rules and labor review' },
   { key: 'toast', label: 'Toast POS', hint: 'Daily sales, covers and clock-ins from Toast' },
   { key: 'adp', label: 'ADP clock-ins', hint: 'Actual hours from ADP: timecard CSV import and daily sync' },
   { key: 'tripleseat', label: 'Tripleseat (events)', hint: 'Events booked in Tripleseat flow into Events & BEOs: daily sync and webhook' },
+  { key: 'opentable', label: 'OpenTable', hint: 'Reservations and reviews from OpenTable: exports today, API sync once OpenTable grants access' },
+  { key: 'impact', label: 'Positive impact', hint: 'Staff named in 5-star reviews, guests asking for someone, kudos; reports by season' },
   { key: 'sms', label: 'Text messages', hint: 'Notifications by text (Twilio)' },
   { key: 'venue', label: 'Venue & floor plans', hint: 'Rooms, floor plans and server sections' },
   { key: 'multiLocation', label: 'Multiple locations', hint: 'Placeholder for a later phase; nothing uses it yet' },
+  { key: 'reports', label: 'Reports', hint: 'Reports for managers, starting with the 86 List report (each report also needs its own feature)' },
+  // Claude connector (server/mcp/): Pro and Beta. Not Starter: most of what it does for a restaurant is managers'
+  // work (drafts, approvals, forecast, events) that's Pro already; DubLow can switch it on for one restaurant.
+  { key: 'mcp', label: 'Claude connector', hint: 'People use ShiftBoard from Claude (claude.ai, Desktop, phone, Claude Code) as themselves' },
 ];
 export const FEATURE_KEYS = FEATURES.map((f) => f.key);
 
@@ -33,11 +40,11 @@ export const FEATURE_KEYS = FEATURES.map((f) => f.key);
 export const PLANS = {
   starter: {
     label: 'Starter', priceCents: 4900, interval: 'month', selfServe: true, stripePriceEnv: 'STRIPE_PRICE_STARTER',
-    features: ['training', 'tips', 'eightySix'],
+    features: ['training', 'tips', 'eightySix', 'reports', 'announcements'],
   },
   pro: {
     label: 'Pro', priceCents: 9900, interval: 'month', selfServe: true, stripePriceEnv: 'STRIPE_PRICE_PRO',
-    features: ['training', 'tips', 'eightySix', 'events', 'forecast', 'toast', 'adp', 'tripleseat', 'sms', 'venue'],
+    features: ['training', 'tips', 'eightySix', 'events', 'forecast', 'toast', 'adp', 'tripleseat', 'sms', 'venue', 'reports', 'announcements', 'mcp', 'opentable', 'impact'],
   },
   beta: {
     label: 'Beta (everything, free)', priceCents: 0, interval: 'month', selfServe: false, stripePriceEnv: null,
@@ -105,23 +112,34 @@ const NAMESPACE_FEATURE = {
   toast: 'toast',
   adp: 'adp',
   tripleseat: 'tripleseat',
+  opentable: 'opentable', impact: 'impact',
   clock: 'forecast', calibration: 'forecast',
   sms: 'sms',
   venue: 'venue', sections: 'venue',
+  reports: 'reports',
+  announcements: 'announcements',
 };
 const METHOD_FEATURE = { 'settings.laborRules': 'forecast' };
+// Methods that need more than one feature: each report needs Reports and its own feature.
+const PREFIX_FEATURES = [['reports.eightySix.', ['reports', 'eightySix']]];
 
-/** The feature an RPC method needs, or null when it's in every plan. */
-export function featureForMethod(method) {
+/** Every feature an RPC method needs ([] when it's in every plan). */
+export function featuresForMethod(method) {
   const m = String(method || '');
-  return METHOD_FEATURE[m] || NAMESPACE_FEATURE[m.split('.')[0]] || null;
+  const multi = PREFIX_FEATURES.find(([prefix]) => m.startsWith(prefix));
+  if (multi) return [...multi[1]];
+  const one = METHOD_FEATURE[m] || NAMESPACE_FEATURE[m.split('.')[0]] || null;
+  return one ? [one] : [];
 }
+/** The (first) feature an RPC method needs, or null when it's in every plan. */
+export const featureForMethod = (method) => featuresForMethod(method)[0] || null;
 
 // HTTP routes (server/app.js and the modules it mounts) that belong to a feature.
 export const ROUTE_FEATURES = [
   ['/api/toast', 'toast'],
   ['/api/adp', 'adp'],
   ['/api/tripleseat', 'tripleseat'],
+  ['/api/opentable', 'opentable'],
   ['/api/training', 'training'],
   ['/api/eighty-six', 'eightySix'],
   ['/api/sms', 'sms'],

@@ -7,6 +7,7 @@ import { DEFAULT_SETTINGS } from './service.js';
 import { findArea } from './areas.js';
 import { seedDemoTips } from './tips.js';
 import { seedTraining } from './training-seed.js';
+import { seedTradeHistory } from './trade-seed.js';
 
 const WEEK = '2026-09-28'; // Monday
 const D = { MON: 0, TUE: 1, WED: 2, THU: 3, FRI: 4, SAT: 5, SUN: 6 };
@@ -365,12 +366,17 @@ export function seedDemo(store, { hashPassword = (p) => `plain:${p}`, password =
   seedAdpDemo(store, { week: WEEK });
   // SAMPLE event from Tripleseat (Events & BEOs), as a sync brings it in: seedTripleseatDemo, at the end of this file
   seedTripleseatDemo(store, { week: WEEK, userId });
+  // SAMPLE trade history over three seasons, for Trades & pickups (core/trade-seed.js)
+  seedTradeHistory(store, { userId });
+  // SAMPLE OpenTable reservations and reviews, Google and Yelp reviews and kudos (Positive impact): core/impact-seed.js
+  seedImpactDemo(store, { userId, now: clock });
 
   return { userId, jobId, eventId };
 }
 
 import { seedLaborDemo } from './labor-demo.js';
 import { seedEightySix } from './eighty-six.js';
+import { seedImpactDemo } from './impact-seed.js';
 
 // ---------- SAMPLE ADP time entries (Forecast & Labor, Settings → Integrations → ADP) ----------
 // As if last Friday's and Saturday's ADP timecard export had been imported (core/adp.js): demo people

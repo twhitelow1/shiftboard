@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useApp, Icon, Avatar, shiftTime, Empty, useAction, Warnings, JobDot } from '../ui.jsx';
 import { addDays } from '../../../core/time.js';
 import ShiftDialog from './ShiftDialog.jsx';
+import { TradeStatsLink } from './reports/TradeStats.jsx'; // managers: Trades & pickups by season
+import { tradesAllowed } from './TradeHint.jsx'; // Roles & features: may this role ask for trades
 import { useT, prettyDate, stamp } from '../i18n/index.js';
 
 // Catalog keys (web/src/i18n).
@@ -12,7 +14,8 @@ const STATUS = {
 };
 // Notes the app itself writes on a request (core/service.js), shown in the reader's language.
 const SYSTEM_NOTES = { 'Auto-approved': 'swaps.noteAutoApproved', 'Shift was given to someone else': 'swaps.noteGivenToSomeoneElse',
-  'the shift was changed by a manager': 'swaps.noteChangedByManager', 'the shift was removed': 'swaps.noteShiftRemoved', 'the event was removed': 'swaps.noteEventRemoved' };
+  'the shift was changed by a manager': 'swaps.noteChangedByManager', 'the shift was removed': 'swaps.noteShiftRemoved', 'the event was removed': 'swaps.noteEventRemoved',
+  'the schedule was pulled back for changes': 'swaps.noteSchedulePulledBack' };
 
 export default function Swaps() {
   const t = useT();
@@ -37,6 +40,7 @@ export default function Swaps() {
       <StartTrade onDone={load} />
       <div className="tabs">
         {tabs.map((t) => <button key={t.key} className={cur === t.key ? 'on' : ''} onClick={() => setTab(t.key)}>{t.label}{t.n > 0 && <span className="count" style={{ background: cur === t.key ? 'var(--brand)' : 'var(--text-3)' }}>{t.n}</span>}</button>)}
+        <TradeStatsLink style={{ marginLeft: 'auto', alignSelf: 'center', flex: 'none' }} />
       </div>
       {cur === 'offers' && <p className="small muted" style={{ marginTop: -4 }}>{t('swaps.shiftsCoworkersAreGivingAway')}{settings.requireSwapApproval ? t('swaps.aManagerApprovesBeforeIts') : ''}</p>}
       <div className="card">
@@ -75,7 +79,7 @@ function StartTrade({ onDone }) {
             <b>{prettyDate(s.date)} · {shiftTime(s)}</b>
             <div className="small muted row" style={{ gap: 5 }}><JobDot job={jobs[s.jobCodeId]} />{jobs[s.jobCodeId]?.name}{s.area ? ` · ${s.area}` : ''}</div>
           </div>
-          {s.pending ? <span className="badge warn">{t('swaps.requestInProgress')}</span> : <>
+          {s.pending ? <span className="badge warn">{t('swaps.requestInProgress')}</span> : tradesAllowed() && <>
             <button className="btn sm primary" onClick={() => setDialog({ shift: s, startIn: 'swap' })}><Icon name="swap" />{t('common.trade')}</button>
             <button className="btn sm" onClick={() => setDialog({ shift: s, startIn: 'drop' })}><Icon name="hand" />{t('swaps.giveAway')}</button>
           </>}
@@ -145,9 +149,9 @@ function RequestCard({ r, mode, onDone }) {
         <div className="row">
           <span className="spacer" />
           {r.type === 'swap' && <button className="btn sm" disabled={busy} onClick={() => act('swaps.decline', t('swaps.tradeDeclined'))}>{t('swaps.decline')}</button>}
-          <button className="btn sm primary" disabled={busy} onClick={() => act('swaps.accept', r.type === 'swap' ? t('swaps.tradeAccepted') : t('swaps.youPickedItUp'))}>
+          {tradesAllowed() && <button className="btn sm primary" disabled={busy} onClick={() => act('swaps.accept', r.type === 'swap' ? t('swaps.tradeAccepted') : t('swaps.youPickedItUp'))}>
             <Icon name="check" />{r.type === 'swap' ? t('swaps.acceptTrade') : t('swaps.pickUpShift')}
-          </button>
+          </button>}
         </div>
       )}
       {(mode === 'mine' || mode === 'open') && ['open', 'pending_approval'].includes(r.status) && (r.requesterId === me.id || mode === 'open') && (

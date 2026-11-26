@@ -8,8 +8,8 @@ import { INTEGRATION_FIELDS, PLAIN_KEYS, cleanIntegrations, tenantEnv, parseFrom
 import { NOT_IN_PLAN } from './plans.js';
 
 /** The integrations in the order Settings shows them, and the plan feature each needs (email: every plan). */
-export const GROUPS = ['adp', 'toast', 'tripleseat', 'twilio', 'email'];
-export const GROUP_FEATURE = { adp: 'adp', toast: 'toast', tripleseat: 'tripleseat', twilio: 'sms', email: null };
+export const GROUPS = ['adp', 'toast', 'tripleseat', 'opentable', 'twilio', 'email'];
+export const GROUP_FEATURE = { adp: 'adp', toast: 'toast', tripleseat: 'tripleseat', opentable: 'opentable', twilio: 'sms', email: null };
 export const groupAllowed = (group, resolved) => !GROUP_FEATURE[group] || !resolved || resolved[GROUP_FEATURE[group]] !== false;
 /**
  * Sender identities DubLow manages, set only in the platform console: texts go out under DubLow Digital's
@@ -59,6 +59,7 @@ const NEEDS = {
   adp: (e) => ['ADP_CLIENT_ID', 'ADP_CLIENT_SECRET', 'ADP_CERT_PEM', 'ADP_KEY_PEM'].filter((k) => !e[k]),
   toast: (e) => ['TOAST_CLIENT_ID', 'TOAST_CLIENT_SECRET', 'TOAST_RESTAURANT_GUID'].filter((k) => !e[k]),
   tripleseat: (e) => (e.TRIPLESEAT_PUBLIC_KEY && e.TRIPLESEAT_SECRET_KEY ? [] : ['TRIPLESEAT_CLIENT_ID', 'TRIPLESEAT_CLIENT_SECRET'].filter((k) => !e[k])),
+  opentable: (e) => ['OPENTABLE_CLIENT_ID', 'OPENTABLE_CLIENT_SECRET', 'OPENTABLE_RID'].filter((k) => !e[k]),
   twilio: (e) => (e.TWILIO_MESSAGING_SERVICE_SID || e.TWILIO_FROM_NUMBER ? [] : ['TWILIO_MESSAGING_SERVICE_SID']),
   email: (e) => (parseFrom(e.EMAIL_FROM).address ? [] : ['EMAIL_FROM_ADDRESS']),
 };

@@ -94,8 +94,8 @@ function EnrollStep({ ticket, onDone, onBack }) {
   );
 }
 
-/** The sign-in screen: password, passkey, email link, forgot password. */
-export function SignIn({ onDone, emailEnabled }) {
+/** The sign-in screen: password, passkey, email link, forgot password. intro: a line above the form (connecting Claude). */
+export function SignIn({ onDone, emailEnabled, intro = null }) {
   const t = useT();
   const [mode, setMode] = useState('login'); // login | forgot | sent | link | linkSent
   const [email, setEmail] = useState('');
@@ -123,7 +123,7 @@ export function SignIn({ onDone, emailEnabled }) {
     </AuthCard>
   );
   return (
-    <AuthCard onSubmit={submit}>
+    <AuthCard onSubmit={submit} top={mode === 'login' ? intro : null}>
       {mode === 'forgot' && <div className="small muted">{t('main.enterYourSignInEmail')}</div>}
       {mode === 'link' && <div><b className="auth-title">{t('signin.emailLinkTitle')}</b><div className="small muted">{t('signin.emailLinkHelp')}</div></div>}
       <label className="field"><span>{t('common.email')}</span><input className="input" type="email" autoComplete="username webauthn" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus /></label>

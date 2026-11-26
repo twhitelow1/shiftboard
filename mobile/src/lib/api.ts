@@ -3,6 +3,7 @@
 // Every call is POST <server>/api/rpc/<method> with a JSON body; the session is sent as
 // Authorization: Bearer <token> (see server/app.js).
 import { LINK_SCHEMES } from '@/brand';
+import { noteRpc } from './errors';
 import type { ServerConfig } from './types';
 
 /** status 0 = no answer (offline, wrong address); code is for messages the app words itself. */
@@ -163,11 +164,14 @@ export interface Client {
 export function createClient(server: string, getToken: () => string | null, hooks: { onUnauthorized: () => void; onToken: (t: string) => void }): Client {
   async function post<T>(path: string, args: object = {}): Promise<T> {
     const token = getToken();
+    const started = Date.now();
+    const rpc = path.startsWith('/api/rpc/') ? path.slice(9) : '';
     const res = await request(`${server}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: JSON.stringify(args),
-    });
+    }).catch((e) => { if (rpc) noteRpc(rpc, 0, Date.now() - started); throw e; });
+    if (rpc) noteRpc(rpc, res.status, Date.now() - started); // for Report a problem: the method and status only
     const fresh = res.headers.get('x-session-token');
     if (fresh) hooks.onToken(fresh);
     const body = await json(res);

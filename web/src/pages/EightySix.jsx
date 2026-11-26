@@ -1,4 +1,5 @@
-// The 86 List: what's out ("86'd") or running low, list by list, with the bar's lists apart from the rest.
+// The 86 List: the ingredients and supplies that are out ("86'd") or running low, list by list, with the bar's lists
+// apart from the rest. Not menu items (Training has its own 86'd flag for a dish that's off).
 // Routes: #/86 (the lists) | #/86/history (managers: the log and what was 86'd most).
 // Also used elsewhere: the banner on the Schedule's day view and My Shifts (EightySixBanner), and the summary
 // Training reads for its "86'd today" badge (useEightySix). Who may see, report and clear is checked on the server
@@ -18,6 +19,8 @@ const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-
 export const listName = (l, lang) => (lang === 'es' && l?.nameEs ? l.nameEs : l?.name || '');
 const itemName = (it, lang) => (lang === 'es' && it?.nameEs ? it.nameEs : it?.name || '');
 const barFirst = (a, b) => (a.kind === 'bar' ? 0 : 1) - (b.kind === 'bar' ? 0 : 1);
+/** A category's name in the reader's language (the restaurant's own names, Settings → 86 List). */
+export const catName = (cats, id, lang) => { const c = (cats || []).find((x) => x.id === id); return c ? (lang === 'es' ? c.nameEs || c.name : c.name) : ''; };
 const MAX_PHOTOS = 3;
 
 const demoPhotos = new Map(); // the demo has no server: photos come from the in-browser store as data URLs
@@ -33,7 +36,7 @@ function E86Photo({ id, alt = '', className = '' }) {
   return src ? <img className={className} src={src} alt={alt} loading="lazy" decoding="async" draggable={false} /> : <span className={`${className} e86-photo-ph`} />;
 }
 /** Small photos under an item; tap one to see it full screen. */
-function Thumbs({ photos, name, onOpen, small = false }) {
+export function Thumbs({ photos, name, onOpen, small = false }) {
   const t = useT();
   if (!photos?.length) return null;
   return (
@@ -47,7 +50,7 @@ function Thumbs({ photos, name, onOpen, small = false }) {
   );
 }
 /** Full screen, with previous and next, and Remove for the person who added it, the reporter and managers. */
-function PhotoViewer({ item, start = 0, onClose, onRemoved }) {
+export function PhotoViewer({ item, start = 0, onClose, onRemoved }) {
   const t = useT();
   const { call, toast } = useApp();
   const [i, setI] = useState(start);
@@ -90,7 +93,7 @@ export function ago(t, iso, now = nowDate()) {
   return t('eightySix.daysAgo', { count: Math.floor(h / 24) });
 }
 /** How long something was out: '45 min', '3 h', '2 days'. */
-function duration(t, from, to) {
+export function duration(t, from, to) {
   const min = Math.max(0, Math.round((new Date(to) - new Date(from)) / 60000));
   if (min < 60) return t('eightySix.durMin', { count: min });
   if (min < 48 * 60) return t('eightySix.durHours', { count: Math.round(min / 60) });
@@ -261,7 +264,11 @@ function ItemRow({ it, list, onEdit, onClear, onPhoto }) {
   );
 }
 
-/** Pick the list, search the menu (or type), then one tap: 86'd or running low. Also updates an item already on a list. */
+/**
+ * Pick the list, type what's out (or tap something reported there before), then one tap: 86'd or running low. Also
+ * updates an item already on a list. The category is optional and pre-filled from the last time that name was filed.
+ * Menu items are offered too only on a list an admin set to suggest them.
+ */
 function ReportDialog({ board, start, onClose, onDone }) {
   const t = useT();
   const { call, toast } = useApp();
@@ -274,6 +281,7 @@ function ReportDialog({ board, start, onClose, onDone }) {
   const [count, setCount] = useState(editing?.count ?? '');
   const [note, setNote] = useState(editing?.note || '');
   const [area, setArea] = useState(editing?.area || '');
+  const [cat, setCat] = useState(editing ? { id: editing.category || '' } : null); // null: follow what the name was filed under
   const [busy, setBusy] = useState(false);
   const input = useRef(null);
   const file = useRef(null);
@@ -293,19 +301,29 @@ function ReportDialog({ board, start, onClose, onDone }) {
   };
 
   const words = norm(q).split(' ').filter(Boolean);
+  const matches = (text) => words.every((w) => norm(text).includes(w));
+  // What was reported on this list before, most often first: "limes" is one tap.
+  const recent = (list?.recent || []).filter((r) => matches(r.name));
   const options = (list?.suggest || []).map((id) => ({ id, ...board.menu[id] }))
-    .filter((m) => m.name && words.every((w) => norm(`${m.name} ${m.nameEs} ${m.category}`).includes(w)));
-  const exact = q.trim() ? options.find((m) => norm(m.name) === norm(q) || (m.nameEs && norm(m.nameEs) === norm(q))) : null;
-  const current = picked || (q.trim() ? { name: q.trim(), menuItemId: exact?.id || null } : null);
+    .filter((m) => m.name && matches(`${m.name} ${m.nameEs} ${m.category}`));
+  const exactRecent = q.trim() ? recent.find((r) => norm(r.name) === norm(q)) : null;
+  const exact = q.trim() && !exactRecent ? options.find((m) => norm(m.name) === norm(q) || (m.nameEs && norm(m.nameEs) === norm(q))) : null;
+  const current = picked || (q.trim() ? { name: exactRecent?.name || q.trim(), menuItemId: exact?.id || null } : null);
   const existing = !editing && current && list?.items.find((i) => (current.menuItemId ? i.menuItemId === current.menuItemId : norm(i.name) === norm(current.name)));
   const pickMenu = (m) => { setPicked({ name: m.name, nameEs: m.nameEs, menuItemId: m.id }); setQ(''); };
-  const pickTyped = () => { if (q.trim()) { setPicked({ name: q.trim(), nameEs: '', menuItemId: null }); setQ(''); } };
+  const pickName = (name) => { setPicked({ name, nameEs: '', menuItemId: null }); setQ(''); };
+  const pickTyped = () => { if (q.trim()) pickName(exactRecent?.name || q.trim()); };
+  // The category: chosen here, else what this name was filed under last time (on any list).
+  const filed = (name) => (list?.recent || []).find((r) => norm(r.name) === norm(name))?.category || (board.known || []).find((k) => norm(k.name) === norm(name))?.category || '';
+  const category = cat ? cat.id : current ? filed(current.name) : '';
+  const categories = board.categories || [];
 
   const send = async (status) => {
     if (!current) { toast(t('eightySix.pickFirst'), 'bad'); input.current?.focus(); return; }
     setBusy(true);
     try {
-      const r = await call('eightySix.report', { listId, name: current.name, menuItemId: current.menuItemId || null, status, count: status === 'low' ? count : '', note, area });
+      const r = await call('eightySix.report', { listId, name: current.name, menuItemId: current.menuItemId || null, status, count: status === 'low' ? count : '', note, area,
+        ...(cat || category ? { category } : {}) }); // left out: the server keeps what the name was filed under
       const nm = itemName(r.item, t.lang);
       // One photo per request, after the report is saved: a photo that fails never loses the report.
       for (const p of photos) {
@@ -333,7 +351,7 @@ function ReportDialog({ board, start, onClose, onDone }) {
           <span>{t('eightySix.list')}</span>
           <div className="e86-chips tight">
             {reportable.map((l) => (
-              <button key={l.id} type="button" className={`chip ${l.id === listId ? 'on' : ''}`} aria-pressed={l.id === listId} onClick={() => { setListId(l.id); setPicked(null); }}>
+              <button key={l.id} type="button" className={`chip ${l.id === listId ? 'on' : ''}`} aria-pressed={l.id === listId} onClick={() => { setListId(l.id); setPicked(null); setCat(null); }}>
                 {l.kind === 'bar' && <Icon name="glass" size={13} />}{listName(l, t.lang)}
               </button>
             ))}
@@ -343,19 +361,28 @@ function ReportDialog({ board, start, onClose, onDone }) {
       {picked ? (
         <div className="e86-picked">
           <span className="e86-picked-name">{itemName(picked, t.lang)}</span>
-          {!editing && <button type="button" className="btn sm ghost" onClick={() => { setPicked(null); setTimeout(() => input.current?.focus(), 0); }}>{t('eightySix.change')}</button>}
+          {!editing && <button type="button" className="btn sm ghost" onClick={() => { setPicked(null); setCat(null); setTimeout(() => input.current?.focus(), 0); }}>{t('eightySix.change')}</button>}
         </div>
       ) : (
         <div className="e86-search">
           <label className="e86-search-box">
             <Icon name="search" size={18} />
-            <input ref={input} className="input" type="search" value={q} autoFocus enterKeyHint="done" placeholder={t('eightySix.search')} aria-label={t('eightySix.search')}
-              onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (exact) pickMenu(exact); else pickTyped(); } }} />
+            <input ref={input} className="input" type="search" value={q} autoFocus enterKeyHint="done" placeholder={t('eightySix.search')} aria-label={t('eightySix.searchLabel')}
+              aria-describedby="e86-search-help" onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (exact) pickMenu(exact); else pickTyped(); } }} />
           </label>
-          {(options.length > 0 || q.trim()) && (
+          <div className="help" id="e86-search-help">{t('eightySix.searchHelp')}</div>
+          {(recent.length > 0 || options.length > 0 || q.trim()) && (
             <div className="e86-results">
-              {!q.trim() && <div className="tiny faint e86-results-h">{t('eightySix.fromMenu')}</div>}
-              {q.trim() && !exact && <button type="button" className="e86-result typed" onClick={pickTyped}><Icon name="plus" size={16} /><span className="e86-result-name">{t('eightySix.useTyped', { text: q.trim() })}</span></button>}
+              {q.trim() && !exact && !exactRecent && <button type="button" className="e86-result typed" onClick={pickTyped}><Icon name="plus" size={16} /><span className="e86-result-name">{t('eightySix.useTyped', { text: q.trim() })}</span></button>}
+              {recent.length > 0 && !q.trim() && <div className="tiny faint e86-results-h">{t('eightySix.reportedBefore')}</div>}
+              {recent.slice(0, q.trim() ? 6 : 8).map((r) => (
+                <button key={`r:${r.name}`} type="button" className="e86-result" onClick={() => pickName(r.name)}>
+                  <span className="e86-result-name">{r.name}</span>
+                  {r.category && <span className="tiny faint">{catName(categories, r.category, t.lang)}</span>}
+                </button>
+              ))}
+              {options.length > 0 && !q.trim() && <div className="tiny faint e86-results-h">{t('eightySix.fromMenu')}</div>}
               {options.slice(0, q.trim() ? 8 : 6).map((m) => (
                 <button key={m.id} type="button" className="e86-result" onClick={() => pickMenu(m)}>
                   <span className="e86-result-name">{t.lang === 'es' && m.nameEs ? m.nameEs : m.name}</span>
@@ -367,6 +394,14 @@ function ReportDialog({ board, start, onClose, onDone }) {
         </div>
       )}
       {existing && <div className="alert info"><Icon name="alert" size={16} />{existing.status === 'out' ? t('eightySix.alreadyOut') : t('eightySix.alreadyLow')}</div>}
+      {categories.length > 0 && (
+        <Field label={t('eightySix.category')} help={category ? t('eightySix.categoryHelp') : null}>
+          <select className="input" value={category} onChange={(e) => setCat({ id: e.target.value })}>
+            <option value="">{t('eightySix.noCategory')}</option>
+            {categories.map((c) => <option key={c.id} value={c.id}>{catName(categories, c.id, t.lang)}</option>)}
+          </select>
+        </Field>
+      )}
       <div className="e86-fields">
         <Field label={t('eightySix.howMany')}>
           <input className="input" type="number" inputMode="numeric" min="0" step="1" value={count} onChange={(e) => setCount(e.target.value)} placeholder={t('eightySix.countPlaceholder')} />
@@ -412,10 +447,10 @@ function ReportDialog({ board, start, onClose, onDone }) {
   );
 }
 
-/** Managers: what was 86'd most (for ordering) and the log, newest first. */
+/** Managers: what was 86'd most (for ordering) and the log, newest first. The full report is in Reports → 86 List. */
 function History() {
   const t = useT();
-  const { call, version, toast } = useApp();
+  const { call, version, toast, has } = useApp();
   const [days, setDays] = useState(30);
   const [h, setH] = useState(null);
   const [viewer, setViewer] = useState(null);
@@ -435,6 +470,7 @@ function History() {
     <>
       <div className="e86-hist-bar">
         <div className="seg">{[30, 90].map((d) => <button key={d} className={days === d ? 'on' : ''} onClick={() => setDays(d)}>{t('eightySix.lastDays', { days: d })}</button>)}</div>
+        {(!has || has('reports')) && <a className="btn sm" href="#/reports/86/history"><Icon name="report" />{t('eightySix.reportLink')}</a>}
       </div>
       <div className="card card-pad section">
         <h2>{t('eightySix.mostTitle', { days: h.days })}</h2>

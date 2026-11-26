@@ -1,5 +1,8 @@
-// The 86 List: what the restaurant is out of ("86'd") or running low on, reported from the bar and the floor.
-// core/service.js spreads these methods into its API; each one checks its own permissions like the rest.
+// The 86 List: the ingredients and supplies the restaurant is out of ("86'd") or running low on, reported from the
+// bar and the floor. It's for what the team stocks or has to order to do the work (limes, oat milk, Bacardi, napkins,
+// rocks glasses, fryer oil, CO2…), not for menu items: a dish that's off the menu is Training's own 86'd flag.
+// core/service.js spreads these methods into its API; each one checks its own permissions like the rest. The
+// managers' 86 List report (Reports → 86 List) is in core/reports-86.js and spread in here.
 //
 // Collections
 //   eightySixLists  one per list. Bar and Kitchen by default (made the first time anyone opens the 86 List);
@@ -8,13 +11,21 @@
 //                     sections: [menu sections; when set they replace `menu`], reporters: rule, viewers: rule,
 //                     notify, notifyLow, resetAt: '' | 'HH:MM', order, createdAt, updatedAt }
 //                   rule: { all: true } or { departments: [...], jobCodeIds: [...] }
+//                   menu: Training menu items the report form also suggests. 'none' for every list (the
+//                   eightySix-menu-none migration set the old ones once); Settings → "Also suggest menu items" turns it on.
 //   eightySixItems  what's out or low right now. key is the menu item ('m:<id>') or the name ('n:<letters>'), so the
-//                   same thing reported twice on a list updates it instead of listing it twice.
-//                   { id, listId, name, key, menuItemId, status: 'out' | 'low', count, note, area,
-//                     reportedBy, reportedAt, outAt, updatedBy, updatedAt }
+//                   same thing reported twice on a list updates it instead of listing it twice. Only lists that suggest
+//                   menu items link new reports to the menu (for Training's "86'd today" badge); older links keep working.
+//                   { id, listId, name, key, menuItemId, status: 'out' | 'low', count, note, area, category,
+//                     reportedBy, reportedAt, outAt, lowAt, updatedBy, updatedAt }
 //                   photos: [{ id, w, h, by, at }] (up to 3, optional: the empty bottle, the shelf)
+//                   category: one of the restaurant's categories (Produce, Dairy… see DEFAULT_CATEGORIES), or ''.
 //   eightySixLog    items that came off a list, under the same id: the history managers read.
 //                   { ...item, listName, clearedAt, clearedBy, clearedHow: 'back' | 'reset' | 'removed' }
+//   eightySixNames  what each item name was last filed under, so the second report pre-fills its category.
+//                   { id: 'n:<letters>', name, category, updatedAt }
+//   eightySixConfig { id: 'categories', list: [{ id, name, nameEs }], updatedAt }: the categories in order, when an admin
+//                   changed them (Settings → 86 List). A built-in category with no name keeps its translated name.
 //   eightySixPhotos one photo per document (base64), uploaded one per request (eightySix.addPhoto). The server keeps
 //                   the bytes in Postgres only (server/db.js LAZY_DATA) and serves them at /api/eighty-six/photos/:id
 //                   to people who can see the list (server/eighty-six-routes.js). Kept with the history for 30 days
@@ -38,12 +49,51 @@ import { addDays, todayStr, daysBetween, shiftSpan } from './time.js';
 import { effectiveShift } from './forecast.js';
 import { scheduleAreas, uniqueAreas, findArea, cleanArea, sameArea } from './areas.js';
 import { checkPhoto } from './training.js';
+import { eightySixReportsApi } from './reports-86.js';
 
 export const KINDS = ['bar', 'kitchen', 'other'];
 export const MENU_MODES = ['drinks', 'food', 'all', 'none'];
 export const UNDO_MINUTES = 60; // "Back in stock" can be undone for an hour
 export const PHOTOS_PER_ITEM = 3;
 export const KEEP_PHOTOS_DAYS = 30; // after an item comes off the list
+export const MENU_NONE_MIGRATION = 'eightySix-menu-none'; // the marker in `migrations`: old lists stopped suggesting menu items
+export const SUGGESTIONS = 12; // past reports the report form offers per list
+const KNOWN_NAMES = 400; // item names with a remembered category sent to the report form
+export const MAX_CATEGORIES = 30;
+
+/**
+ * The categories an item can be filed under (optional), in order. Admins rename them or add their own in
+ * Settings → 86 List; 'other' always stays. The 86 List report groups by them and so does its shopping list.
+ */
+export const DEFAULT_CATEGORIES = [
+  { id: 'produce', en: 'Produce', es: 'Frutas y verduras' },
+  { id: 'dairy', en: 'Dairy', es: 'Lácteos' },
+  { id: 'proteins', en: 'Proteins', es: 'Proteínas' },
+  { id: 'dry', en: 'Dry goods', es: 'Abarrotes' },
+  { id: 'liquor', en: 'Liquor, beer & wine', es: 'Licores, cerveza y vino' },
+  { id: 'paper', en: 'Paper & disposables', es: 'Papel y desechables' },
+  { id: 'glassware', en: 'Glassware & smallwares', es: 'Cristalería y utensilios' },
+  { id: 'cleaning', en: 'Cleaning & chemicals', es: 'Limpieza y químicos' },
+  { id: 'other', en: 'Other', es: 'Otros' },
+];
+const BUILT_IN = Object.fromEntries(DEFAULT_CATEGORIES.map((c) => [c.id, c]));
+/**
+ * The restaurant's categories in order, with their names in both languages: [{ id, name, nameEs, builtIn }].
+ * A built-in one keeps its translated name unless an admin renamed it.
+ */
+export function categoriesOf(store) {
+  const saved = store.get('eightySixConfig', 'categories')?.list;
+  const list = Array.isArray(saved) && saved.length ? saved : DEFAULT_CATEGORIES.map((c) => ({ id: c.id, name: '', nameEs: '' }));
+  return list.map((c) => {
+    const b = BUILT_IN[c.id];
+    const name = c.name || b?.en || c.id;
+    return { id: c.id, name, nameEs: c.nameEs || b?.es || name, builtIn: !!b };
+  });
+}
+/** A category's name in a language ('' for none). */
+export const categoryName = (cat, lang = 'en') => (cat ? (lang === 'es' ? cat.nameEs || cat.name : cat.name) : '');
+/** Does this list also suggest Training menu items (and link new reports to them)? Off unless an admin turns it on. */
+export const suggestsMenu = (list) => !!list?.sections?.length || (!!list?.menu && list.menu !== 'none');
 // The bar's departments and positions (bartenders, barbacks), for the Bar list's default reporters.
 const BAR_DEPT = /\bbars?\b|bartend|barback/i;
 const BAR_JOB = /bartend|barback|\bbar\b/i;
@@ -51,14 +101,17 @@ const BAR_JOB = /bartend|barback|\bbar\b/i;
 const DRINKS = /cocktail|beer|wine|spirit|liquor|drink|beverage|\bbar\b|alcohol|mocktail|bourbon|whisk|scotch|tequila|mezcal|vodka|\bgin\b|\brum\b|sake|cider|seltzer|champagne|sparkling|bubbl|aperitiv|digestiv|amaro|cordial|\bshots?\b|\bdraft\b|bebida|cerveza|vino|coctel|cóctel/i;
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-/** Notifications, in each language. Item names, notes and list names are restaurant data and stay as written. */
+/**
+ * Notifications, in each language. Item names, notes and list names are restaurant data and stay as written.
+ * Worded for supplies, singular or plural: "Bar: out of limes", "Bar: running low on CO2 (1 left)".
+ */
 export const TEXT = {
   en: {
-    out: (list, name, note) => `${list}: ${name} is 86'd${note ? ` (${note})` : ''}`,
-    low: (list, name, count, note) => `${list}: ${name} is running low${paren([count != null ? `${count} left` : '', note])}`,
+    out: (list, name, note) => `${list}: out of ${name}${note ? ` (${note})` : ''}`,
+    low: (list, name, count, note) => `${list}: running low on ${name}${paren([count != null ? `${count} left` : '', note])}`,
   },
   es: {
-    out: (list, name, note) => `${list}: se acabó ${name}${note ? ` (${note})` : ''}`,
+    out: (list, name, note) => `${list}: no hay ${name}${note ? ` (${note})` : ''}`,
     low: (list, name, count, note) => `${list}: queda poco de ${name}${paren([count != null ? (count === 1 ? 'queda 1' : `quedan ${count}`) : '', note])}`,
   },
 };
@@ -76,6 +129,8 @@ const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0) || String(a.createdAt 
 const isDrink = (item) => DRINKS.test(item?.category || '');
 /** The dedupe key of an item: its menu item, else its name. */
 export const itemKey = (menuItemId, name) => (menuItemId ? `m:${menuItemId}` : `n:${key(name)}`);
+/** The key of an item's name alone (accents, case and spaces don't matter): its remembered category, report groups. */
+export const nameKey = (name) => `n:${key(name)}`;
 
 // ---------- who can see and report (also used by the photo route, server/eighty-six-routes.js) ----------
 function ruleMatches(store, user, rule) {
@@ -107,17 +162,35 @@ function departmentsOf(store, st) {
 
 /**
  * The two lists a restaurant starts with. Bar: the bar department (and any Bartender or Barback position elsewhere)
- * reports drinks. Kitchen: every other department reports food. Managers report on both anyway; everyone sees both.
+ * reports what the bar runs out of. Kitchen: every other department reports the rest. Managers report on both anyway;
+ * everyone sees both. Neither suggests menu items: the 86 List is for ingredients and supplies.
  */
 export function defaultLists(store, st, at = new Date().toISOString()) {
   const depts = departmentsOf(store, st);
   const bar = depts.filter((d) => BAR_DEPT.test(d));
   const barJobs = store.list('jobCodes').filter((j) => !j.archived && BAR_JOB.test(j.name) && !bar.some((d) => same(d, j.department))).map((j) => j.id);
-  const base = { area: '', sections: [], viewers: { all: true }, notify: true, notifyLow: false, resetAt: '', createdAt: at, updatedAt: at };
+  const base = { area: '', menu: 'none', sections: [], viewers: { all: true }, notify: true, notifyLow: false, resetAt: '', createdAt: at, updatedAt: at };
   return [
-    { ...base, id: 'e86_bar', name: 'Bar', nameEs: 'Bar', kind: 'bar', menu: 'drinks', reporters: { departments: bar, jobCodeIds: barJobs }, order: 0 },
-    { ...base, id: 'e86_kitchen', name: 'Kitchen', nameEs: 'Cocina', kind: 'kitchen', menu: 'food', reporters: { departments: depts.filter((d) => !BAR_DEPT.test(d)), jobCodeIds: [] }, order: 1 },
+    { ...base, id: 'e86_bar', name: 'Bar', nameEs: 'Bar', kind: 'bar', reporters: { departments: bar, jobCodeIds: barJobs }, order: 0 },
+    { ...base, id: 'e86_kitchen', name: 'Kitchen', nameEs: 'Cocina', kind: 'kitchen', reporters: { departments: depts.filter((d) => !BAR_DEPT.test(d)), jobCodeIds: [] }, order: 1 },
   ];
+}
+
+/**
+ * Once per restaurant: lists from before the 86 List was about ingredients and supplies stop suggesting menu items.
+ * The marker in `migrations` keeps what each list had, so an admin can see it (and turn it back on in Settings).
+ * Returns how many lists changed, or null when it ran before.
+ */
+export function migrateMenuNone(store, at = new Date().toISOString()) {
+  if (store.get('migrations', MENU_NONE_MIGRATION)) return null;
+  const changed = [];
+  for (const l of store.list('eightySixLists')) {
+    if (!suggestsMenu(l)) continue;
+    changed.push({ id: l.id, menu: l.menu, sections: l.sections || [] });
+    store.update('eightySixLists', l.id, { menu: 'none', sections: [], updatedAt: at });
+  }
+  store.insert('migrations', { id: MENU_NONE_MIGRATION, at, lists: changed });
+  return changed.length;
 }
 
 export function eightySixApi({ store, now, settings, notify, fail }) {
@@ -165,13 +238,14 @@ export function eightySixApi({ store, now, settings, notify, fail }) {
     const doc = { ...item, listName: list?.name || item.listName || '', ...extra };
     if (store.get('eightySixLog', item.id)) store.update('eightySixLog', item.id, doc); else store.insert('eightySixLog', doc);
   }
-  /** Before anything else: make the default lists if there are none, and run any reset that's due. */
+  /** Before anything else: make the default lists if there are none, migrate old lists once, and run any reset that's due. */
   function ready() {
     let all = lists();
     if (!all.length) {
       for (const l of defaultLists(store, settings(), nowIso())) store.insert('eightySixLists', l);
       all = lists();
     }
+    if (migrateMenuNone(store, nowIso())) all = lists();
     for (const list of all) {
       const at = lastReset(list);
       if (!at) continue;
@@ -189,18 +263,60 @@ export function eightySixApi({ store, now, settings, notify, fail }) {
     return all;
   }
 
-  // ---------- menu suggestions ----------
+  // ---------- menu suggestions (only for lists an admin set to suggest menu items) ----------
   const menuItems = () => store.list('menuItems').sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  /** The Training menu items a list suggests: its sections, else drinks (Bar), food (Kitchen), all or none. Not ones taken off the menu. */
+  /** The Training menu items a list suggests: its sections, else drinks, food, all or none (the default). Not ones taken off the menu. */
   function suggestions(list, menu = menuItems()) {
+    if (!suggestsMenu(list)) return [];
     const on = menu.filter((i) => !i.eightySixed);
     if (list.sections?.length) return on.filter((i) => list.sections.some((c) => same(c, i.category)));
     if (list.menu === 'all') return on;
-    if (list.menu === 'none') return [];
     return on.filter((i) => (list.menu === 'drinks' ? isDrink(i) : !isDrink(i)));
   }
   /** The menu item a typed name means (its English or Spanish name), if any. */
   const menuMatch = (name, menu = menuItems()) => menu.find((m) => same(m.name, name) || same(m.es?.name, name)) || null;
+
+  // ---------- categories, and what was reported before ----------
+  const categories = () => categoriesOf(store);
+  const cleanCategory = (v, cats = categories()) => { const id = text(v, 40); return cats.some((c) => c.id === id) ? id : ''; };
+  const remembered = (name) => store.get('eightySixNames', nameKey(name));
+  function remember(name, category) {
+    const id = nameKey(name);
+    if (id === 'n:') return;
+    const cur = store.get('eightySixNames', id);
+    if (cur && cur.category === category && cur.name === name) return;
+    const doc = { name, category, updatedAt: nowIso() };
+    if (cur) store.update('eightySixNames', id, doc); else store.insert('eightySixNames', { id, ...doc });
+  }
+  /**
+   * Past reports on each list (on it now or in the history), most frequent first, then the latest: the report form
+   * offers them so "limes" is one tap. One pass over the log for every list. { listId: [{ name, times, category }] }
+   */
+  function pastReports(listIds) {
+    const want = new Set(listIds);
+    const per = new Map();
+    for (const col of ['eightySixLog', 'eightySixItems']) {
+      for (const r of store.list(col, (x) => want.has(x.listId))) {
+        const k = nameKey(r.name);
+        if (k === 'n:') continue;
+        const m = per.get(r.listId) || new Map();
+        const at = r.updatedAt || r.reportedAt || '';
+        const g = m.get(k) || { name: r.name, times: 0, at: '', category: '' };
+        g.times++;
+        if (at >= g.at) { g.at = at; g.name = r.name; g.category = r.category || g.category; }
+        m.set(k, g);
+        per.set(r.listId, m);
+      }
+    }
+    const out = {};
+    for (const id of listIds) {
+      out[id] = [...(per.get(id)?.values() || [])]
+        .sort((a, b) => b.times - a.times || b.at.localeCompare(a.at))
+        .slice(0, SUGGESTIONS)
+        .map((g) => ({ name: g.name, times: g.times, category: remembered(g.name)?.category ?? g.category ?? '' }));
+    }
+    return out;
+  }
 
   // ---------- views ----------
   /** An item as `viewer` sees it; each photo says whether they may remove it (who added it, who reported the item, managers). */
@@ -208,8 +324,8 @@ export function eightySixApi({ store, now, settings, notify, fail }) {
     const m = it.menuItemId ? menu?.find((x) => x.id === it.menuItemId) || store.get('menuItems', it.menuItemId) : null;
     return {
       id: it.id, listId: it.listId, name: it.name, nameEs: m?.es?.name || '', menuItemId: it.menuItemId || null,
-      status: it.status, count: it.count ?? null, note: it.note || '', area: it.area || '',
-      reportedBy: { id: it.reportedBy, name: nameOf(it.reportedBy) }, reportedAt: it.reportedAt, outAt: it.outAt || null,
+      status: it.status, count: it.count ?? null, note: it.note || '', area: it.area || '', category: it.category || '',
+      reportedBy: { id: it.reportedBy, name: nameOf(it.reportedBy) }, reportedAt: it.reportedAt, outAt: it.outAt || null, lowAt: it.lowAt || null,
       updatedBy: { id: it.updatedBy || it.reportedBy, name: nameOf(it.updatedBy || it.reportedBy) }, updatedAt: it.updatedAt || it.reportedAt,
       photos: (it.photos || []).map((ph) => ({ id: ph.id, w: ph.w || 0, h: ph.h || 0, canRemove: !!viewer && (isMgr(viewer) || ph.by === viewer.id || it.reportedBy === viewer.id) })),
     };
@@ -275,7 +391,7 @@ export function eightySixApi({ store, now, settings, notify, fail }) {
       nameEs: text(a.nameEs ?? cur?.nameEs, 40),
       kind,
       area: 'area' in a ? cleanItemArea(a.area) : cur?.area || '',
-      menu: MENU_MODES.includes(a.menu) ? a.menu : cur?.menu || (kind === 'bar' ? 'drinks' : 'food'),
+      menu: MENU_MODES.includes(a.menu) ? a.menu : cur?.menu || 'none',
       sections: 'sections' in a ? uniq(asList(a.sections).map((c) => text(c, 40))).slice(0, 40) : cur?.sections || [],
       reporters: ('reporters' in a ? cleanRule(a.reporters) : cur?.reporters) || { departments: [], jobCodeIds: [] },
       viewers: ('viewers' in a ? cleanRule(a.viewers) : cur?.viewers) || { all: true },
@@ -287,29 +403,39 @@ export function eightySixApi({ store, now, settings, notify, fail }) {
 
   // ---------- API ----------
   const api = {
-    // Every list the person may see with what's on it, what each list suggests from the menu, and what they may do.
+    // Every list the person may see with what's on it, and what they may do. For the lists they report on: what was
+    // reported there before (most often first), the menu items it suggests (only when an admin turned that on), the
+    // categories, and the category each item name was last filed under.
     'eightySix.board.get': (actor) => {
       needAuth(actor);
       ready();
       const u = fresh(actor);
       const menu = menuItems();
       const items = store.list('eightySixItems');
-      const out = lists().filter((l) => canSee(u, l)).map((l) => ({
+      const seen = lists().filter((l) => canSee(u, l));
+      const past = pastReports(seen.filter((l) => canReport(u, l)).map((l) => l.id));
+      const out = seen.map((l) => ({
         ...listView(l), canReport: canReport(u, l),
         suggest: suggestions(l, menu).map((i) => i.id),
+        recent: past[l.id] || [],
         items: items.filter((i) => i.listId === l.id).sort(byUrgency).map((i) => itemView(i, menu, u)),
       }));
       const wanted = new Set(out.flatMap((l) => l.suggest));
+      const reporter = out.some((l) => l.canReport);
       return {
         lists: out,
         menu: Object.fromEntries(menu.filter((i) => wanted.has(i.id)).map((i) => [i.id, { name: i.name, nameEs: i.es?.name || '', category: i.category || '' }])),
+        categories: categories().map(({ id, name, nameEs }) => ({ id, name, nameEs })),
+        known: reporter ? store.list('eightySixNames', (x) => !!x.category).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
+          .slice(0, KNOWN_NAMES).map((x) => ({ name: x.name, category: x.category })) : [],
         areas: areas(),
-        canReport: out.some((l) => l.canReport),
+        canReport: reporter,
         isMgr: isMgr(u),
         now: nowIso(),
       };
     },
-    // Counts per list for the banners on the Schedule and My Shifts, and the menu items 86'd today (Training's badge).
+    // Counts per list for the banners on the Schedule and My Shifts, and the menu items 86'd today (Training's badge:
+    // items linked to a menu item, and on lists that suggest menu items, a typed name that is one).
     'eightySix.summary': (actor) => {
       needAuth(actor);
       ready();
@@ -318,8 +444,10 @@ export function eightySixApi({ store, now, settings, notify, fail }) {
       const items = store.list('eightySixItems');
       const mine = lists().filter((l) => canSee(u, l));
       const seen = new Set(mine.map((l) => l.id));
+      const menuLists = new Set(mine.filter(suggestsMenu).map((l) => l.id));
       const visible = items.filter((i) => seen.has(i.listId));
-      const ids = (status) => [...new Set(visible.filter((i) => i.status === status).map((i) => i.menuItemId || menuMatch(i.name, menu)?.id).filter(Boolean))];
+      const ids = (status) => [...new Set(visible.filter((i) => i.status === status)
+        .map((i) => i.menuItemId || (menuLists.has(i.listId) ? menuMatch(i.name, menu)?.id : null)).filter(Boolean))];
       return {
         lists: mine.map((l) => ({ ...listView(l), out: visible.filter((i) => i.listId === l.id && i.status === 'out').length, low: visible.filter((i) => i.listId === l.id && i.status === 'low').length })),
         out: visible.filter((i) => i.status === 'out').length,
@@ -329,6 +457,7 @@ export function eightySixApi({ store, now, settings, notify, fail }) {
       };
     },
     // Report something 86'd (out) or running low. The same thing again on the same list updates it.
+    // category: optional; left out (the phone app), the item keeps its own or the one its name was last filed under.
     'eightySix.report': (actor, a = {}) => {
       needAuth(actor);
       ready();
@@ -336,21 +465,30 @@ export function eightySixApi({ store, now, settings, notify, fail }) {
       const list = visibleList(u, a.listId);
       if (!canReport(u, list)) fail(403, 'You can’t report on this list');
       const menu = menuItems();
-      const picked = a.menuItemId ? menu.find((m) => m.id === a.menuItemId) || null : null;
+      const onList = (k) => store.list('eightySixItems', (x) => x.listId === list.id && x.key === k)[0] || null;
       const typed = text(a.name, 80);
-      const linked = picked || (typed ? menuMatch(typed, menu) : null);
-      if (!linked && !typed) fail(400, 'Say what’s out');
-      const k = itemKey(linked?.id, linked ? linked.name : typed);
-      const cur = store.list('eightySixItems', (x) => x.listId === list.id && x.key === k)[0] || null;
+      // Menu items only on a list set to suggest them, or to update an item linked to one before (Training's badge).
+      const picked = a.menuItemId ? menu.find((m) => m.id === a.menuItemId) || null : null;
+      const match = !picked && typed ? menuMatch(typed, menu) : null;
+      const linkable = (m) => !!m && (suggestsMenu(list) || !!onList(itemKey(m.id)));
+      const linked = linkable(picked) ? picked : linkable(match) ? match : null;
+      const name = linked ? linked.name : typed || (picked ? picked.name : '');
+      if (!name) fail(400, 'Say what’s out');
+      const k = itemKey(linked?.id, name);
+      const cur = onList(k);
       const status = a.status === 'low' ? 'low' : 'out';
       const count = status === 'out' ? null : cleanCount(a.count);
-      // A menu item keeps the menu's name; typed text keeps the spelling it was first reported with.
-      const doc = { name: linked ? linked.name : cur?.name || typed, menuItemId: linked?.id || null, status, count, note: text(a.note, 140), area: cleanItemArea(a.area) };
+      const shown = linked ? linked.name : cur?.name || name; // a menu item keeps the menu's name; typed text its first spelling
+      const category = 'category' in a ? cleanCategory(a.category) : cur?.category || remembered(shown)?.category || '';
+      const doc = { name: shown, menuItemId: linked?.id || null, status, count, note: text(a.note, 140), area: cleanItemArea(a.area), category };
       const at = nowIso();
       const nowOut = status === 'out' && cur?.status !== 'out';
+      const nowLow = status === 'low' && cur?.status !== 'low';
       const saved = cur
-        ? store.update('eightySixItems', cur.id, { ...doc, updatedBy: u.id, updatedAt: at, ...(nowOut ? { outAt: at } : {}) })
-        : store.insert('eightySixItems', { id: uid('e86'), listId: list.id, key: k, ...doc, reportedBy: u.id, reportedAt: at, outAt: status === 'out' ? at : null, updatedBy: u.id, updatedAt: at });
+        ? store.update('eightySixItems', cur.id, { ...doc, updatedBy: u.id, updatedAt: at, ...(nowOut ? { outAt: at } : {}), ...(nowLow ? { lowAt: at } : {}) })
+        : store.insert('eightySixItems', { id: uid('e86'), listId: list.id, key: k, ...doc, reportedBy: u.id, reportedAt: at,
+          outAt: status === 'out' ? at : null, lowAt: status === 'low' ? at : null, updatedBy: u.id, updatedAt: at });
+      if ('category' in a) remember(shown, category);
       const announce = list.notify !== false && (nowOut || (status === 'low' && !cur && !!list.notifyLow));
       return { item: itemView(saved, menu, u), updated: !!cur, notified: announce ? tell(list, saved, u) : 0 };
     },
@@ -463,6 +601,7 @@ export function eightySixApi({ store, now, settings, notify, fail }) {
       const jobs = store.list('jobCodes').filter((j) => !j.archived).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       return {
         lists: lists().map((l) => ({ ...fullList(l), itemCount: counts[l.id] || 0 })),
+        categories: categories(),
         options: {
           departments: departmentsOf(store, settings()),
           jobCodes: jobs.map((j) => ({ id: j.id, name: j.name, department: j.department || '' })),
@@ -481,6 +620,29 @@ export function eightySixApi({ store, now, settings, notify, fail }) {
         : store.insert('eightySixLists', { id: uid('e86l'), ...doc, order: Math.max(0, ...lists().map((l) => (l.order ?? 0) + 1)), createdAt: nowIso() });
       return fullList(out);
     },
+    // The categories items can be filed under, in order: rename the built-in ones (in either language) or add more.
+    // A removed category's items show under Other. 'other' always stays (last, unless it's placed elsewhere).
+    'eightySix.saveCategories': (actor, { categories: list } = {}) => {
+      needAdmin(actor);
+      if (!Array.isArray(list)) fail(400, 'Send the categories');
+      const seen = new Set();
+      const out = [];
+      for (const c of list.slice(0, MAX_CATEGORIES)) {
+        const b = BUILT_IN[c?.id];
+        const name = text(c?.name, 40);
+        const nameEs = text(c?.nameEs, 40);
+        if (!b && !name) fail(400, 'Every category needs a name');
+        const id = b || (c?.id && /^e86c_[a-z0-9]+$/.test(c.id)) ? c.id : uid('e86c');
+        if (seen.has(id)) continue;
+        seen.add(id);
+        // A built-in name left as it is keeps following the translation.
+        out.push({ id, name: b && (!name || same(name, b.en)) ? '' : name, nameEs: b && (!nameEs || same(nameEs, b.es)) ? '' : nameEs });
+      }
+      if (!seen.has('other')) out.push({ id: 'other', name: '', nameEs: '' });
+      const doc = { list: out, updatedAt: nowIso() };
+      if (store.get('eightySixConfig', 'categories')) store.update('eightySixConfig', 'categories', doc); else store.insert('eightySixConfig', { id: 'categories', ...doc });
+      return { categories: categories() };
+    },
     // Removing a list takes what's on it into the history.
     'eightySix.deleteList': (actor, { id } = {}) => {
       needAdmin(actor);
@@ -493,17 +655,21 @@ export function eightySixApi({ store, now, settings, notify, fail }) {
       return { ok: true };
     },
   };
+  // Reports → 86 List (managers): what's missing now, the history and the trends (core/reports-86.js).
+  Object.assign(api, eightySixReportsApi({ store, now, settings, fail, ready, lists, categories, itemView, menuItems, nameOf, remembered }));
   return api;
 }
 
 /**
- * SAMPLE 86 List for the demo: the Bar and Kitchen lists plus a Moon Rabbit bar list, a few items on them now, and
- * a month of history. Invented items (from the sample Training menu, or made up) and demo people only.
+ * SAMPLE 86 List for the demo: the Bar, Moon Rabbit bar and Kitchen lists, plus a Storeroom list only managers see.
+ * A few supplies out or low now, and about fourteen months of history (two Winters and two Summers, so the 86 List
+ * report has seasons to compare): limes and mint run out in summer, short rib and heavy cream in winter, and
+ * everything runs out more on Fridays and Saturdays. Invented supplies, demo people only, the same every time.
  */
 export function seedEightySix(store, { userId, now = new Date() }) {
   const st = store.get('settings', 'settings') || {};
   const at = (minutesAgo) => new Date(now.getTime() - minutesAgo * 60000).toISOString();
-  const [bar, kitchen] = defaultLists(store, st, at(60 * 24 * 40));
+  const [bar, kitchen] = defaultLists(store, st, at(60 * 24 * 450));
   store.insert('eightySixLists', bar);
   store.insert('eightySixLists', { ...kitchen, order: 2 });
   const cocktail = store.list('jobCodes', (j) => /cocktail/i.test(j.name)).map((j) => j.id);
@@ -511,38 +677,95 @@ export function seedEightySix(store, { userId, now = new Date() }) {
     ...bar, id: 'e86_moon', name: 'Moon Rabbit bar', nameEs: 'Bar del Moon Rabbit', area: 'Moon Rabbit', order: 1,
     reporters: { departments: bar.reporters.departments, jobCodeIds: [...bar.reporters.jobCodeIds, ...cocktail] },
   });
-  const menu = (id) => store.get('menuItems', id);
-  const item = (listId, name, menuItemId, status, by, minutesAgo, extra = {}) => {
-    const m = menuItemId ? menu(menuItemId) : null;
-    const nm = m ? m.name : name;
-    return {
-      id: uid('e86'), listId, name: nm, key: itemKey(m ? menuItemId : null, nm), menuItemId: m ? menuItemId : null, status, count: null, note: '', area: '',
-      reportedBy: userId[by], reportedAt: at(minutesAgo), outAt: status === 'out' ? at(minutesAgo) : null, updatedBy: userId[by], updatedAt: at(minutesAgo), ...extra,
-    };
-  };
-  // On the lists now
-  for (const it of [
-    item('e86_bar', '', 'mnu_mule', 'out', 'Mak', 35, { note: 'Ginger beer comes Tuesday', area: 'Rabbit Hole' }),
-    item('e86_bar', 'Smoked pineapple syrup', null, 'low', 'Karen', 130, { count: 1 }),
-    item('e86_moon', '', 'mnu_rose', 'low', 'Dante', 70, { count: 3, note: 'Offer the Garden Spritz' }),
-    item('e86_kitchen', '', 'mnu_burrata', 'out', 'Chef Lucas', 50, { note: 'Peaches back Friday' }),
-  ]) store.insert('eightySixItems', it);
-  // History: what was out, for how long, and who said it was back
-  const day = 60 * 24;
-  const past = (listId, name, menuItemId, status, by, minutesAgo, outFor, backBy, extra) => ({
-    ...item(listId, name, menuItemId, status, by, minutesAgo, extra),
-    listName: store.get('eightySixLists', listId)?.name || '', clearedAt: at(minutesAgo - outFor), clearedBy: userId[backBy], clearedHow: 'back',
+  store.insert('eightySixLists', {
+    ...kitchen, id: 'e86_store', name: 'Storeroom', nameEs: 'Bodega', kind: 'other', order: 3,
+    reporters: { departments: ['Leadership'], jobCodeIds: [] }, viewers: { departments: ['Leadership'], jobCodeIds: [] },
   });
-  for (const it of [
-    past('e86_bar', '', 'mnu_mule', 'out', 'Yair', 3 * day + 300, 20 * 60, 'Mak', { note: 'Out of ginger beer' }),
-    past('e86_bar', '', 'mnu_mule', 'out', 'Mak', 9 * day + 240, 26 * 60, 'Dante'),
-    past('e86_bar', '', 'mnu_mule', 'out', 'Dante', 17 * day + 200, 22 * 60, 'Yair'),
-    past('e86_bar', 'Fresh lime juice', null, 'out', 'Karen', 2 * day + 400, 90, 'Karen', { note: 'Juicing more now' }),
-    past('e86_bar', 'Fresh lime juice', null, 'out', 'Torie', 11 * day + 360, 120, 'Torie'),
-    past('e86_moon', '', 'mnu_rose', 'out', 'Romina', 20 * day + 300, 2 * day, 'Todd'),
-    past('e86_moon', '', 'mnu_spritz', 'low', 'Todd', 6 * day + 280, 8 * 60, 'Romina', { count: 4 }),
-    past('e86_kitchen', '', 'mnu_burrata', 'out', 'Chef Lucas', 6 * day + 420, 2 * day, 'Chef Lucas', { note: 'Peach delivery late' }),
-    past('e86_kitchen', '', 'mnu_burger', 'out', 'Kelly', 12 * day + 330, 18 * 60, 'Chef Lucas', { note: 'Out of brioche buns' }),
-    past('e86_kitchen', '', 'mnu_cake', 'low', 'Ben', 4 * day + 300, 5 * 60, 'Chef Lucas', { count: 2 }),
-  ]) store.insert('eightySixLog', it);
+  store.insert('migrations', { id: MENU_NONE_MIGRATION, at: at(60 * 24 * 450), lists: [] });
+
+  // [list, name, category, times a Summer, times a Winter, who reports]
+  const BAR = ['Mak', 'Yair', 'Dante', 'Karen', 'Torie', 'Arthur', 'Luciano'];
+  const MOON = ['Romina', 'Dante', 'Ciaran', 'Agustina'];
+  const KITCHEN = ['Chef Lucas', 'Kelly', 'Ben', 'Courtney'];
+  const SUPPLIES = [
+    ['e86_bar', 'Limes', 'produce', 14, 6, BAR], ['e86_bar', 'Mint', 'produce', 6, 1, BAR], ['e86_bar', 'Lemons', 'produce', 4, 3, BAR],
+    ['e86_bar', 'Ginger beer', 'dry', 5, 3, BAR], ['e86_bar', 'Bacardi', 'liquor', 5, 3, BAR], ['e86_bar', 'Tito’s', 'liquor', 3, 3, BAR],
+    ['e86_bar', 'Buffalo Trace', 'liquor', 2, 4, BAR], ['e86_bar', 'Prosecco', 'liquor', 4, 2, BAR], ['e86_bar', 'Oat milk', 'dairy', 3, 4, BAR],
+    ['e86_bar', 'CO2', 'other', 3, 3, BAR], ['e86_bar', 'Rocks glasses', 'glassware', 3, 2, BAR], ['e86_bar', 'Coupe glasses', 'glassware', 2, 2, BAR],
+    ['e86_bar', 'Cocktail napkins', 'paper', 4, 3, BAR], ['e86_bar', 'Straws', 'paper', 2, 1, BAR],
+    ['e86_moon', 'Rosé', 'liquor', 6, 1, MOON], ['e86_moon', 'Aperol', 'liquor', 4, 1, MOON], ['e86_moon', 'Champagne flutes', 'glassware', 2, 2, MOON],
+    ['e86_moon', 'Oranges', 'produce', 2, 2, MOON], ['e86_moon', 'Mezcal', 'liquor', 2, 2, MOON], ['e86_moon', 'Ice', 'other', 3, 0, MOON],
+    ['e86_kitchen', 'Fryer oil', 'dry', 3, 3, KITCHEN], ['e86_kitchen', 'Flour', 'dry', 2, 2, KITCHEN], ['e86_kitchen', 'Brioche buns', 'dry', 3, 2, KITCHEN],
+    ['e86_kitchen', 'Burrata', 'dairy', 3, 1, KITCHEN], ['e86_kitchen', 'Heavy cream', 'dairy', 1, 4, KITCHEN], ['e86_kitchen', 'Eggs', 'dairy', 2, 2, KITCHEN],
+    ['e86_kitchen', 'Salmon', 'proteins', 2, 2, KITCHEN], ['e86_kitchen', 'Short rib', 'proteins', 1, 4, KITCHEN], ['e86_kitchen', 'Tomatoes', 'produce', 3, 1, KITCHEN],
+    ['e86_kitchen', 'Peaches', 'produce', 3, 0, KITCHEN], ['e86_kitchen', 'Avocados', 'produce', 3, 3, KITCHEN], ['e86_kitchen', 'Napkins', 'paper', 3, 2, KITCHEN],
+    ['e86_kitchen', 'To-go containers', 'paper', 3, 2, KITCHEN], ['e86_kitchen', 'To-go cups', 'paper', 2, 1, KITCHEN], ['e86_kitchen', 'Nitrile gloves', 'paper', 1, 1, KITCHEN],
+    ['e86_kitchen', 'Sanitizer', 'cleaning', 2, 2, KITCHEN], ['e86_kitchen', 'Dish soap', 'cleaning', 1, 1, KITCHEN],
+    ['e86_store', 'Receipt paper', 'paper', 2, 2, ['Kelly', 'Ben']], ['e86_store', 'Trash bags', 'cleaning', 1, 1, ['Kelly', 'Ben']],
+    ['e86_store', 'Hand soap', 'cleaning', 1, 1, ['Kelly', 'Courtney']], ['e86_store', 'Toilet paper', 'paper', 1, 2, ['Ben', 'Courtney']],
+  ];
+  const NOTES = ['Ordered', 'On the Sysco truck Tuesday', 'Delivery came short', 'Borrowed some from the other bar', 'Costco run tomorrow', 'Vendor is out too'];
+  const CLEARERS = ['Kelly', 'Ben', 'Chef Lucas', 'Courtney'];
+  let seed = 86;
+  const rand = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  const pick = (arr) => arr[Math.floor(rand() * arr.length)];
+  const who = (name) => userId[name] || userId.Kelly;
+  const listNameOf = (id) => store.get('eightySixLists', id)?.name || '';
+  for (const [, name, category] of SUPPLIES) {
+    if (!store.get('eightySixNames', nameKey(name))) store.insert('eightySixNames', { id: nameKey(name), name, category, updatedAt: at(60 * 24 * 450) });
+  }
+
+  // On the lists now: what's missing tonight.
+  const item = (listId, name, status, by, minutesAgo, extra = {}) => ({
+    id: uid('e86'), listId, name, key: itemKey(null, name), menuItemId: null, status, count: null, note: '', area: '',
+    category: SUPPLIES.find((x) => x[1] === name)?.[2] || '',
+    reportedBy: who(by), reportedAt: at(minutesAgo), outAt: status === 'out' ? at(minutesAgo) : null, lowAt: status === 'low' ? at(minutesAgo) : null,
+    updatedBy: who(by), updatedAt: at(minutesAgo), ...extra,
+  });
+  const nowItems = [
+    item('e86_bar', 'Limes', 'out', 'Mak', 35, { note: 'Produce comes tomorrow morning', area: 'Rabbit Hole' }),
+    item('e86_bar', 'CO2', 'low', 'Karen', 130, { count: 1 }),
+    item('e86_bar', 'Rocks glasses', 'low', 'Yair', 75, { count: 6, note: 'Dish machine is backed up' }),
+    item('e86_bar', 'Oat milk', 'low', 'Torie', 300, { count: 2 }),
+    item('e86_moon', 'Rosé', 'low', 'Dante', 70, { count: 3, note: 'Offer the Garden Spritz' }),
+    item('e86_moon', 'Aperol', 'out', 'Romina', 160),
+    item('e86_kitchen', 'To-go cups', 'out', 'Kelly', 50, { note: 'Using the 12 oz for now' }),
+    item('e86_kitchen', 'Fryer oil', 'low', 'Chef Lucas', 240, { count: 1 }),
+    item('e86_kitchen', 'Napkins', 'low', 'Ben', 95, { count: 2, note: 'Two sleeves left' }),
+    item('e86_store', 'Receipt paper', 'low', 'Kelly', 60 * 26, { count: 3 }),
+  ];
+  for (const it of nowItems) store.insert('eightySixItems', it);
+  const busyUntil = new Map(); // one time on a list at once: the next report of the same thing starts after it came back
+  const onNow = new Map(nowItems.map((it) => [`${it.listId}|${it.name}`, Date.parse(it.reportedAt)]));
+
+  // History: day by day back about fourteen months, busier on weekends; closed Mondays (like the demo schedule).
+  const DOW = [1, 0, 0.7, 0.8, 1, 1.7, 1.8];
+  const day0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  for (let back = 430; back >= 1; back--) {
+    const d = new Date(day0.getFullYear(), day0.getMonth(), day0.getDate() - back);
+    const summer = d.getMonth() >= 4 && d.getMonth() <= 9;
+    for (const [listId, name, category, sumTimes, winTimes, people] of SUPPLIES) {
+      const p = ((summer ? sumTimes : winTimes) / 182) * DOW[d.getDay()] * 1.05;
+      if (rand() >= p) continue;
+      const k = `${listId}|${name}`;
+      const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 15 + Math.floor(rand() * 7), Math.floor(rand() * 60));
+      if ((busyUntil.get(k) || 0) > start.getTime()) continue;
+      const lowFirst = rand() < 0.45;
+      const goesOut = !lowFirst || rand() < 0.3;
+      const lowFor = lowFirst ? (2 + rand() * 20) * 60 : 0; // minutes low before it ran out (or came back)
+      const outFor = goesOut ? (1 + rand() * 30) * 60 : 0; // minutes out before it came back
+      const outAt = goesOut ? new Date(start.getTime() + lowFor * 60000) : null;
+      const clearedAt = new Date(start.getTime() + (lowFor + outFor + (goesOut ? 0 : 60)) * 60000);
+      if (clearedAt.getTime() >= (onNow.get(k) ?? now.getTime())) continue; // back before tonight's report of it
+      busyUntil.set(k, clearedAt.getTime());
+      const by = who(pick(people));
+      store.insert('eightySixLog', {
+        id: uid('e86'), listId, name, key: itemKey(null, name), menuItemId: null, status: goesOut ? 'out' : 'low',
+        count: goesOut ? null : 1 + Math.floor(rand() * 4), note: rand() < 0.18 ? pick(NOTES) : '', area: '', category,
+        reportedBy: by, reportedAt: start.toISOString(), outAt: outAt ? outAt.toISOString() : null, lowAt: lowFirst ? start.toISOString() : null,
+        updatedBy: by, updatedAt: (outAt || start).toISOString(),
+        listName: listNameOf(listId), clearedAt: clearedAt.toISOString(), clearedBy: who(rand() < 0.5 ? pick(people) : pick(CLEARERS)), clearedHow: 'back',
+      });
+    }
+  }
 }

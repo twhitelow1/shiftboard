@@ -142,6 +142,7 @@ export default function More() {
       </Card>
 
       <Card pad={false} style={{ overflow: 'hidden' }}>
+        <ListRow icon="alert" title={t('report.menu')} sub={t('report.menuHelp')} onPress={() => router.push('/report-problem')} />
         <ListRow icon="shield" title={t('more.privacy')} onPress={() => open('/privacy')} />
         <ListRow icon="help" title={t('more.help')} onPress={() => open('/support')} />
         <ListRow icon="trash" title={t('more.delete')} danger onPress={busy ? undefined : deleteAccount} />

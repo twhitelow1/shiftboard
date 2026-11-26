@@ -12,11 +12,14 @@ import { cleanArea, uniqueAreas, findArea, scheduleAreas, sameArea } from './are
 import { tipMethods } from './tips.js';
 import { langOf, render, renderAll } from './i18n.js';
 import { msg } from './messages.js';
-import { ROLE_IDS, roleOf, roleLabel, canManageSchedule, canChangeSettings, canManageEvents, canSeeContacts, canApprove,
+import { ROLE_IDS, roleOf, roleLabel, canManageSchedule, canChangeSettings, canManageEvents, canApprove,
   offSchedule, assignableRoles, canManageUser } from './roles.js';
 import { channelApi } from './notify-prefs.js';
 import { venueLinks } from './venue-links.js';
 import { tripleseatLinks } from './tripleseat.js';
+import { unpublishApi } from './unpublish.js';
+import { openTableLinks, bookingBlend } from './opentable.js';
+import { impactLinks } from './impact.js';
 import { trainingApi } from './training.js';
 import { eightySixApi } from './eighty-six.js';
 import { rosterApi } from './roster.js';
@@ -25,6 +28,11 @@ import { profileApi } from './profile.js';
 import { consentState, smsConsentOf, emailConsentOf, smsStatusOf, recordConsent, consentText } from './consent.js';
 import { SECRET_FIELDS, twoStepOf, twoStepMap, passwordProblem } from './auth-factors.js';
 import { legalNameFor, legalNamePatch } from './names.js';
+import { tradeStatsApi } from './trade-stats.js';
+import { announcementApi } from './announcements.js';
+import { effectiveFeatures, roleAllows, roleRefusal, roleFeatureApi, ROLE_OFF } from './role-features.js';
+import { publishOptions, scheduleNotice } from './publish-notify.js';
+import { emailTemplateApi } from './email-templates.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -105,6 +113,8 @@ export function createService(store, opts = {}) {
   const isApprover = (a) => canApprove(a, settings());
   const needAuth = (a) => { if (!a) fail(401, 'Please sign in'); };
   const needMgr = (a) => { needAuth(a); if (!isMgr(a)) fail(403, 'Managers only'); };
+  // A missing or malformed week answers 400 ("Pick a week"), not a crash: the beta error log caught forecast.week called with none.
+  const needWeek = (ws) => { if (typeof ws !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(ws)) fail(400, 'Pick a week'); };
   const needApprover = (a) => { needAuth(a); if (!isApprover(a)) fail(403, 'Managers and supervisors only'); };
   const needEvents = (a) => { needAuth(a); if (!isEvents(a)) fail(403, 'Events team or managers only'); };
   const needAdmin = (a) => { needAuth(a); if (!canChangeSettings(a)) fail(403, 'Admins only'); };
@@ -136,11 +146,11 @@ export function createService(store, opts = {}) {
    * A notification text in each recipient's language: say('newShift', desc(s)) → (lang) => MSG[lang].newShift(…).
    * Arguments that are functions get the language too (desc(s), a date, a name that can be "Open shift").
    */
-  const say = (key, ...args) => (lang) => {
+  const say = (key, ...args) => Object.assign((lang) => {
     const m = msg(lang)[key];
     const vals = args.map((a) => (typeof a === 'function' ? a(lang) : a));
     return typeof m === 'function' ? m(...vals) : m;
-  };
+  }, { key, args }); // the key and arguments: an email template's placeholders (core/email-templates.js)
   const day = (date, opts = {}) => (lang) => prettyDate(date, { ...opts, lang });
   const isFuture = (s) => {
     const [start] = shiftSpan(s);
@@ -155,15 +165,21 @@ export function createService(store, opts = {}) {
    * list follows the person's language if they change it; `text` is theirs at the time, which email,
    * web push, phone app push and texts send (server/channels.js, server/expo-push.js).
    */
-  function notify(userIds, text, link = '') {
+  function notify(userIds, text, link = '', extra = null) {
     const at = now().toISOString();
     const all = renderAll(text);
     const st = settings();
+    // A say() message keeps its key and arguments (in each language) and who made the change, for the email's
+    // placeholders (core/email-templates.js); extra adds fields (the publish email's PDF: core/publish-notify.js).
+    const kind = typeof text === 'function' && text.key ? text.key : null;
+    const args = kind ? Object.fromEntries(['en', 'es'].map((l) => [l, text.args.map((a) => (typeof a === 'function' ? a(l) : a))])) : null;
+    const meta = { ...(kind ? { kind, args } : {}), ...(currentActor?.id ? { by: currentActor.id } : {}), ...(extra || {}) };
     for (const id of new Set(userIds.filter(Boolean))) {
       const body = all ? all[langOf(userById(id), st)] : render(text);
-      store.insert('notifications', { id: uid('ntf'), userId: id, text: body, ...(all ? { i18n: all } : {}), link, read: false, at });
+      store.insert('notifications', { id: uid('ntf'), userId: id, text: body, ...(all ? { i18n: all } : {}), link, read: false, at, ...meta });
     }
   }
+  let currentActor = null; // who is calling (set by call()), for notifications' `by`
 
   /** A consent record for a change to someone's notification emails, made in their settings. */
   function recordEmailChoice(actor, granted, lang) {
@@ -341,8 +357,9 @@ export function createService(store, opts = {}) {
       return Number(own ?? jobById(s.jobCodeId)?.defaultRate ?? 0) || 0;
     };
 
+    const booked = bookingBlend(store, st, today(), ws); // OpenTable bookings for upcoming days (core/opentable.js)
     const out = days.map((date) => {
-      const f = forecastDay(date, salesByDate, st, overrides[date]);
+      const f = booked(forecastDay(date, salesByDate, st, overrides[date]));
       const dayEvents = events.filter((e) => e.date === date);
       const eventGuests = dayEvents.reduce((t, e) => t + (Number(e.guestCount) || 0), 0);
       const eventRevenue = dayEvents.reduce((t, e) => t + (Number(e.estRevenue) || 0), 0);
@@ -393,13 +410,14 @@ export function createService(store, opts = {}) {
       // the first read makes the layout and puts its rooms in settings.areas.
       const layout = layouts.forViewer(isMgr(actor));
       const st = settings();
+      const contacts = roleAllows(actor, st).coworkerContacts; // Roles & features (core/role-features.js)
       const jobCodes = store.list('jobCodes').sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       const twoStepOn = isMgr(actor) ? twoStepMap(store) : null; // Team shows who has two-step sign-in on
       const employees = users().map((u) => {
         const pub = userView(u, twoStepOn ? twoStepOn.has(u.id) : undefined);
         if (isMgr(actor) || u.id === actor.id) return legalNameFor(actor, u, pub); // the legal name: self, admins, their managers
         const basic = { id: u.id, name: u.name, sheetName: u.sheetName || '', role: pub.role, active: u.active, color: u.color, photoId: u.photoId || null, onSchedule: pub.onSchedule, order: u.order, jobCodes: (u.jobCodes || []).map((j) => ({ jobCodeId: j.jobCodeId, ...(j.areas?.length ? { areas: j.areas } : {}) })) };
-        return canSeeContacts(actor) ? { ...basic, email: u.email, phone: u.phone } : basic;
+        return contacts ? { ...basic, email: u.email, phone: u.phone } : basic;
       }).sort((a, b) => a.name.localeCompare(b.name));
       // My own consent and two-step status: the app shows the one-time consent screen when terms are missing.
       const mine = userById(actor.id);
@@ -411,7 +429,8 @@ export function createService(store, opts = {}) {
       const openOffers = store.list('requests', (r) => r.status === 'open' && (
         (r.type === 'swap' && r.targetUserId === actor.id) ||
         (r.type === 'drop' && r.requesterId !== actor.id && qualified(me, store.get('shifts', r.shiftId)?.jobCodeId)))).length;
-      return { settings: st, jobCodes, employees, me, unread, pendingApprovals, openOffers, today: today(), layout };
+      return { settings: st, jobCodes, employees, me, unread, pendingApprovals, openOffers, today: today(), layout,
+        features: effectiveFeatures(actor, { settings: st, plan: opts.planFeatures || null }) }; // plan ∩ role: the apps hide what's off
     },
 
     // ----- settings -----
@@ -696,11 +715,14 @@ export function createService(store, opts = {}) {
     // ----- shifts -----
     'shifts.list': (actor, { start, end }) => {
       needAuth(actor);
-      const shifts = store.list('shifts', (s) => s.date >= start && s.date <= end && visibleShift(actor, s));
-      const timeOff = store.list('timeOff', (t) => t.status !== 'cancelled' && t.status !== 'denied' && t.endDate >= start && t.startDate <= end && (isMgr(actor) || t.status === 'approved'))
+      // Roles & features: without the schedule, people see their own shifts and open ones; without events, no events.
+      const allows = roleAllows(actor, settings());
+      const seen = (userId) => allows.schedule || !userId || userId === actor.id;
+      const shifts = store.list('shifts', (s) => s.date >= start && s.date <= end && visibleShift(actor, s) && seen(s.userId));
+      const timeOff = store.list('timeOff', (t) => t.status !== 'cancelled' && t.status !== 'denied' && t.endDate >= start && t.startDate <= end && (isMgr(actor) || t.status === 'approved') && seen(t.userId))
         .map((t) => (isMgr(actor) || t.userId === actor.id ? t : { id: t.id, userId: t.userId, startDate: t.startDate, endDate: t.endDate, status: t.status }));
       // Tentative events are the events team's until they're confirmed (or within two weeks: core/beo.js).
-      const events = store.list('events', (e) => e.date >= start && e.date <= end && e.status !== 'cancelled' && (isEvents(actor) || eventStatus(e, today()) !== 'tentative'))
+      const events = store.list('events', (e) => allows.events && e.date >= start && e.date <= end && e.status !== 'cancelled' && (isEvents(actor) || eventStatus(e, today()) !== 'tentative'))
         .map((e) => ({ id: e.id, name: e.name, date: e.date, start: e.start, end: e.end, room: e.room, guestCount: e.guestCount, status: eventStatus(e, today()), captainId: e.captainId }));
       const activeReq = store.list('requests', (r) => ['open', 'pending_approval'].includes(r.status));
       const pendingByShift = {};
@@ -1009,19 +1031,17 @@ export function createService(store, opts = {}) {
       store.transaction(() => drafts.forEach((s) => store.remove('shifts', s.id)));
       return { removed: drafts.length };
     },
-    'shifts.publish': (actor, { start, end, eventId }) => {
+    // notify: false publishes silently; attachPdf (+ pdf: paper options) emails the week's PDF (core/publish-notify.js).
+    'shifts.publish': (actor, { start, end, eventId, ...opts }) => {
       needMgr(actor);
       const drafts = store.list('shifts', (s) => !s.published && (eventId ? s.eventId === eventId : s.date >= start && s.date <= end));
       store.transaction(() => drafts.forEach((s) => store.update('shifts', s.id, { published: true, publishedAt: now().toISOString() })));
-      const byUser = new Set(drafts.map((s) => s.userId).filter(Boolean));
-      notify([...byUser], eventId ? say('eventShiftsPosted', store.get('events', eventId)?.name) : say('schedulePosted', day(start, { dow: false }), day(end, { dow: false })), '#/my');
-      const open = drafts.filter((s) => !s.userId);
-      if (open.length) {
-        const jobs = new Set(open.map((s) => s.jobCodeId));
-        const eligible = users().filter((u) => u.active !== false && u.jobCodes?.some((j) => jobs.has(j.jobCodeId)) && !byUser.has(u.id)).map((u) => u.id);
-        notify(eligible, say('openShiftsPosted', open.length), '#/my');
-      }
-      return { published: drafts.length, notified: byUser.size };
+      const { notify: tell, attach, remember } = publishOptions(opts, settings());
+      if (remember && !eventId) putSettings({ publishPdf: remember });
+      // Posted again after an unpublish: those people hear what changed for them instead (core/unpublish.js).
+      const told = eventId ? new Set() : unpublish.republished({ start, end, published: drafts, args: { notify: tell } });
+      const { notified } = scheduleNotice({ notify, users, say, day, store }, { shifts: drafts, start, end, eventId, notify: tell, attach, skip: told });
+      return { published: drafts.length, notified, silent: !tell };
     },
     'shifts.eligible': (actor, { shiftId }) => {
       needAuth(actor);
@@ -1229,18 +1249,21 @@ export function createService(store, opts = {}) {
       });
       return { saved: n };
     },
-    'forecast.week': (actor, { weekStart: ws }) => {
+    'forecast.week': (actor, { weekStart: ws } = {}) => {
       needMgr(actor);
+      needWeek(ws);
       return computeForecastWeek(ws);
     },
-    'forecast.summary': (actor, { weekStart: ws }) => {
+    'forecast.summary': (actor, { weekStart: ws } = {}) => {
       needMgr(actor);
+      needWeek(ws);
       const f = computeForecastWeek(ws);
       return { days: f.days.map((d) => ({ date: d.date, covers: d.covers, totalCovers: d.totalCovers, sales: d.totalSales, laborPct: d.laborPct, laborCost: d.laborCost, hours: d.hours, closed: d.closed })), totals: f.totals, targetLaborPct: f.targetLaborPct };
     },
     // Projected covers only (no sales or labor), for everyone: the house sheet shows them to all staff.
-    'forecast.covers': (actor, { weekStart: ws }) => {
+    'forecast.covers': (actor, { weekStart: ws } = {}) => {
       needAuth(actor);
+      needWeek(ws);
       const f = computeForecastWeek(ws);
       return { days: f.days.map((d) => ({ date: d.date, totalCovers: d.totalCovers, closed: d.closed })) };
     },
@@ -1250,8 +1273,9 @@ export function createService(store, opts = {}) {
       const doc = { id: date, date, covers: Number(covers) || 0, sales: Number(sales) || 0 };
       return store.get('forecastOverrides', date) ? store.update('forecastOverrides', date, doc) : store.insert('forecastOverrides', doc);
     },
-    'forecast.fillGaps': (actor, { weekStart: ws }) => {
+    'forecast.fillGaps': (actor, { weekStart: ws } = {}) => {
       needMgr(actor);
+      needWeek(ws);
       const f = computeForecastWeek(ws);
       const toCreate = [];
       for (const d of f.days) for (const dp of d.dayparts) for (const row of dp.rows) {
@@ -1567,19 +1591,27 @@ export function createService(store, opts = {}) {
     ...profileApi({ store, now, fail, needAuth, settings, langOf: L, request: opts.request, channels: opts.channels, legal: opts.legal }),
     // ----- training: menu study guide, quizzes, leaderboard, employee manual, manager on duty (core/training.js) -----
     ...trainingApi({ store, now, settings, notify, fail, random: opts.random, langOf: L }),
+    // ----- Settings → Email notifications: the automatic emails' words, per type (core/email-templates.js) -----
+    ...emailTemplateApi({ store, settings, putSettings, needAdmin, fail }),
     // ----- 86 List: what's out or running low, per list; the bar separate (core/eighty-six.js) -----
     ...eightySixApi({ store, now, settings, notify, fail }),
     // ----- who is listed in each schedule section, and in what order (core/roster.js) -----
     ...rosterApi({ store, settings, fail, needMgr, today, putSettings, layouts }),
     // ----- the schedule's rooms and their positions: Settings → Rooms & positions (core/layout.js) -----
     ...layouts.api,
+    // ----- trades & pickups by season, Settings → Seasons (core/trade-stats.js) -----
+    ...tradeStatsApi({ store, settings, fail, needAuth, needMgr, needAdmin, isMgr, today, langOf: L, putSettings }),
+    // ----- announcements: in-app, push, email and texts from management (core/announcements.js) -----
+    ...announcementApi({ store, now, settings, fail, needAuth, needAdmin, langOf: L, channels: opts.announce }),
+    // ----- Settings → Roles & features: which parts of the app each role gets (core/role-features.js) -----
+    ...roleFeatureApi({ settings, putSettings, fail, needAdmin, plan: opts.planFeatures || null }),
 
     // ----- notifications -----
     'notifications.list': (actor) => {
       needAuth(actor);
       const lang = L(actor);
       return store.list('notifications', (n) => n.userId === actor.id).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 60)
-        .map(({ i18n, ...n }) => (i18n?.[lang] ? { ...n, text: i18n[lang] } : n)); // in the reader's language now
+        .map(({ i18n, args, attach, ...n }) => (i18n?.[lang] ? { ...n, text: i18n[lang] } : n)); // in the reader's language now
     },
     'notifications.readAll': (actor) => {
       needAuth(actor);
@@ -1626,12 +1658,19 @@ export function createService(store, opts = {}) {
   venueLinks({ store, api, fail, needAuth, needMgr, needEvents, visibleShift, now });
   // Events booked in Tripleseat: tripleseat.* methods, and what the server's sync writes. See core/tripleseat.js.
   const tripleseat = tripleseatLinks({ store, api, fail, needAuth, needMgr, needEvents, needAdmin, notify, say, day, now, cancelRequestsForShift });
+  // Unpublish (back to draft) and the "what changed" notification when it's posted again. See core/unpublish.js.
+  const unpublish = unpublishApi({ store, api, fail, needMgr, notify, say, day, describe, settings, nameOf, jobName, isFuture, cancelRequestsForShift, now });
+  // Positive impact (impact.*: review mentions, reservation requests, kudos) and OpenTable (opentable.*): core/impact.js, core/opentable.js.
+  const impact = impactLinks({ store, api, fail, needAuth, needMgr, needAdmin, notify, now, settings, langOf: L });
+  const opentable = openTableLinks({ store, api, fail, needMgr, now, settings, impact });
 
   return {
     api,
     call(actor, method, args = {}) {
       const fn = api[method];
       if (!fn) fail(404, `Unknown method ${method}`);
+      currentActor = actor;
+      if (roleRefusal(actor, method, settings())) fail(403, ROLE_OFF); // Roles & features, like the plan's features
       return fn(actor, args || {});
     },
     settings,
@@ -1639,5 +1678,9 @@ export function createService(store, opts = {}) {
     langOf: L,
     /** For server/tripleseat-sync.js: apply Tripleseat events inside a write. */
     tripleseat,
+    /** For server/opentable-sync.js: apply OpenTable reservations and reviews inside a write. */
+    opentable,
+    /** Positive impact: applyReviews() for any review source (a Google or Yelp connector only fetches). */
+    impact,
   };
 }

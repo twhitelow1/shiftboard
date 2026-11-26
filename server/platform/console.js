@@ -17,6 +17,7 @@ import { INTEGRATION_FIELDS, integrationsView } from './tenant-env.js';
 import { saveIntegrations } from './integrations.js';
 import { createTenant, OnboardError } from './onboard.js';
 import { encryptionKey } from './secrets.js';
+import { errorConsoleRoutes } from './errors-console.js';
 
 const COOKIE = 'sb_platform';
 const MAX_ATTEMPTS = 10;
@@ -310,6 +311,8 @@ export function consoleRouter({ platform }) {
     res.cookie(COOKIE, jwt.sign({ sub: a.id, v: Number(a.session_version), kind: 'platform' }, await platform.consoleSecret(), { expiresIn: `${SESSION_HOURS}h` }), cookieOpts);
     return { ok: true };
   }));
+
+  errorConsoleRoutes(r, { platform, signedIn, wrap, HttpError }); // Errors & reports (DubLow only)
 
   r.use((req, res) => res.status(404).json({ error: 'Not found' }));
   return r;

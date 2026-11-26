@@ -64,10 +64,16 @@ test('default lists: Bar for bar staff plus managers, Kitchen for the kitchen an
   assert.deepEqual(names('sup'), ['Bar', 'Kitchen+']);
   assert.deepEqual(names('cook'), ['Bar', 'Kitchen+']);
   assert.deepEqual(names('mgr'), ['Bar+', 'Kitchen+'], 'managers report on every list');
-  const bar = f.list('bar', 'Bar'), kitchen = f.list('bar', 'Kitchen');
+  let bar = f.list('bar', 'Bar'), kitchen = f.list('bar', 'Kitchen');
   assert.equal(bar.kind, 'bar');
   assert.equal(f.list('srv', 'Kitchen').nameEs, 'Cocina');
-  // The Bar suggests the drinks on the Training menu; the Kitchen the food. Not what's off the menu.
+  // The 86 List is for ingredients and supplies: neither list suggests menu items until an admin turns that on.
+  assert.deepEqual([bar.suggest, kitchen.suggest, bar.recent, kitchen.recent], [[], [], [], []]);
+  assert.deepEqual(f.admin('eightySix.settings.get').lists.map((l) => l.menu), ['none', 'none']);
+  // Turned on ("Also suggest menu items"): drinks for the Bar, food for the Kitchen. Not what's off the menu.
+  f.admin('eightySix.saveList', { id: bar.id, menu: 'drinks' });
+  f.admin('eightySix.saveList', { id: kitchen.id, menu: 'food' });
+  bar = f.list('bar', 'Bar'); kitchen = f.list('bar', 'Kitchen');
   const menuName = (b, id) => b.menu[id].name;
   const b = f.board('bar');
   assert.deepEqual(bar.suggest.map((id) => menuName(b, id)).sort(), ['House Red', 'Margarita']);
@@ -93,6 +99,7 @@ test('default lists: Bar for bar staff plus managers, Kitchen for the kitchen an
 
 test('reporting: menu items or free text, the same thing twice updates it, a count and a note, back in stock with undo', () => {
   const f = withMenu();
+  f.admin('eightySix.saveList', { id: f.list('admin', 'Bar').id, menu: 'drinks' }); // a list that also suggests menu items
   const bar = f.list('bar', 'Bar');
   const report = (args) => f.as('bar')('eightySix.report', { listId: bar.id, ...args });
   const first = report({ name: '  Buffalo   Trace ', note: 'use Maker’s' });
@@ -107,7 +114,7 @@ test('reporting: menu items or free text, the same thing twice updates it, a cou
   assert.equal(again.item.id, first.item.id, 'the same item, not a second line');
   assert.deepEqual([again.item.status, again.item.count, again.item.note, again.item.updatedBy.name, again.item.reportedBy.name], ['low', 3, 'back Friday', 'bar2', 'bar']);
   assert.equal(f.list('srv', 'Bar').items.length, 1);
-  // A typed name that's on the menu (in either language) links to the menu item.
+  // On a list that suggests menu items, a typed name that's on the menu (in either language) links to the menu item.
   f.clock.now = new Date('2026-11-20T15:21:00');
   const marg = report({ name: 'margarita' }).item;
   assert.equal(marg.menuItemId, f.menu.Margarita.id);
@@ -148,7 +155,7 @@ test('visibility: a list limited to some departments never reaches anyone else, 
   assert.throws(() => f.mgr('eightySix.saveList', { id: bar.id, name: 'Bar' }), /Admins only/);
   assert.throws(() => f.as('bar')('eightySix.settings.get'), /Admins only/);
   // Back-bar stock: only the bar sees it. A list the kitchen reports on but only managers and the kitchen see.
-  const stock = f.admin('eightySix.saveList', { name: 'Back bar stock', kind: 'bar', viewers: { departments: ['Bar'] }, reporters: { departments: ['Bar'] }, menu: 'none' });
+  const stock = f.admin('eightySix.saveList', { name: 'Back bar stock', kind: 'bar', viewers: { departments: ['Bar'] }, reporters: { departments: ['Bar'] }, menu: 'drinks' });
   const prep = f.admin('eightySix.saveList', { name: 'Prep', kind: 'kitchen', viewers: { departments: [] }, reporters: { departments: ['Kitchen'] } });
   assert.deepEqual(stock.viewers, { departments: ['Bar'], jobCodeIds: [] });
   const sees = (id) => f.board(id).lists.map((l) => l.name);
@@ -215,6 +222,7 @@ test('the nightly reset: off by default; when on, items from before the reset ti
 
 test('notifications: marking something 86’d tells the people working today who can see the list, in their language, not the reporter', () => {
   const f = withMenu();
+  f.admin('eightySix.saveList', { id: f.list('admin', 'Kitchen').id, menu: 'food' }); // linked menu items go by their Spanish name
   const today = '2026-11-20', clock = f.clock;
   clock.now = new Date('2026-11-20T17:00:00');
   shift(f, 'bar', today, '16:00', '23:00'); // the reporter
@@ -229,11 +237,11 @@ test('notifications: marking something 86’d tells the people working today who
   const r = f.as('bar')('eightySix.report', { listId: bar.id, name: 'Buffalo Trace', note: 'use the other bourbon' });
   assert.equal(r.notified, 3);
   const got = (id) => notes(f, id).map((n) => n.text);
-  assert.deepEqual(got('srv'), ['Bar: Buffalo Trace is 86\'d (use the other bourbon)']);
-  assert.deepEqual(got('bar2'), ['Bar: Buffalo Trace is 86\'d (use the other bourbon)']);
-  assert.deepEqual(got('esp'), ['Bar: se acabó Buffalo Trace (use the other bourbon)'], 'Spanish; the note stays as typed');
+  assert.deepEqual(got('srv'), ['Bar: out of Buffalo Trace (use the other bourbon)']);
+  assert.deepEqual(got('bar2'), ['Bar: out of Buffalo Trace (use the other bourbon)']);
+  assert.deepEqual(got('esp'), ['Bar: no hay Buffalo Trace (use the other bourbon)'], 'Spanish; the note stays as typed');
   for (const id of ['bar', 'cook', 'srv2', 'sup', 'bbk', 'mgr', 'admin']) assert.deepEqual(got(id), [], id);
-  assert.deepEqual(notes(f, 'srv')[0].i18n, { en: 'Bar: Buffalo Trace is 86\'d (use the other bourbon)', es: 'Bar: se acabó Buffalo Trace (use the other bourbon)' });
+  assert.deepEqual(notes(f, 'srv')[0].i18n, { en: 'Bar: out of Buffalo Trace (use the other bourbon)', es: 'Bar: no hay Buffalo Trace (use the other bourbon)' });
   // The same thing again while it's still out: nobody hears twice.
   assert.equal(f.as('bar2')('eightySix.report', { listId: bar.id, name: 'Buffalo Trace', note: 'still out' }).notified, 0);
   assert.equal(got('srv').length, 1);
@@ -243,26 +251,26 @@ test('notifications: marking something 86’d tells the people working today who
   const kitchen = f.list('srv', 'Kitchen');
   assert.equal(f.as('srv')('eightySix.report', { listId: kitchen.id, menuItemId: f.menu.Fries.id, status: 'low', count: 3 }).notified, 0);
   assert.equal(f.as('esp')('eightySix.report', { listId: kitchen.id, menuItemId: f.menu.Fries.id }).notified, 3, 'srv, bar, bar2: not esp who reported it');
-  assert.deepEqual(got('esp'), ['Bar: se acabó Buffalo Trace (use the other bourbon)']);
-  assert.equal(got('srv').at(-1), 'Kitchen: Fries is 86\'d');
-  assert.equal(got('bar').at(-1), 'Kitchen: Fries is 86\'d');
+  assert.deepEqual(got('esp'), ['Bar: no hay Buffalo Trace (use the other bourbon)']);
+  assert.equal(got('srv').at(-1), 'Kitchen: out of Fries');
+  assert.equal(got('bar').at(-1), 'Kitchen: out of Fries');
   f.as('srv')('eightySix.report', { listId: kitchen.id, menuItemId: f.menu.Steak.id });
-  assert.equal(got('esp').at(-1), 'Cocina: se acabó Bistec', 'the list and the menu item in Spanish');
+  assert.equal(got('esp').at(-1), 'Cocina: no hay Bistec', 'the list and the menu item in Spanish');
   // A list that tells people when something is running low, in each language, with the count.
   f.admin('eightySix.saveList', { id: bar.id, notifyLow: true });
   f.as('bar')('eightySix.report', { listId: bar.id, name: 'Limes', status: 'low', count: 3 });
-  assert.equal(got('srv').at(-1), 'Bar: Limes is running low (3 left)');
+  assert.equal(got('srv').at(-1), 'Bar: running low on Limes (3 left)');
   assert.equal(got('esp').at(-1), 'Bar: queda poco de Limes (quedan 3)');
   assert.equal(TEXT.es.low('Bar', 'Limes', 1, 'pide más'), 'Bar: queda poco de Limes (queda 1, pide más)');
   // Only people who can see the list hear about it: the bar's own list stays with the bar.
   f.admin('eightySix.saveList', { id: bar.id, viewers: { departments: ['Bar'] }, nameEs: 'Barra' });
   f.as('bar2')('eightySix.report', { listId: bar.id, name: 'Mezcal' });
-  assert.equal(got('bar').at(-1), 'Bar: Mezcal is 86\'d');
+  assert.equal(got('bar').at(-1), 'Bar: out of Mezcal');
   assert.ok(!got('srv').some((x) => /Mezcal/.test(x)) && !got('esp').some((x) => /Mezcal/.test(x)));
   // The list's area or the item's own area, and the list's Spanish name.
   f.admin('eightySix.saveList', { id: bar.id, viewers: { all: true } });
   f.as('bar')('eightySix.report', { listId: bar.id, name: 'Tequila', area: 'Rooftop' });
-  assert.equal(got('esp').at(-1), 'Barra (Rooftop): se acabó Tequila');
+  assert.equal(got('esp').at(-1), 'Barra (Rooftop): no hay Tequila');
   // Notifications off for a list.
   f.admin('eightySix.saveList', { id: kitchen.id, notify: false });
   assert.equal(f.as('srv')('eightySix.report', { listId: kitchen.id, name: 'Onion rings' }).notified, 0);
@@ -270,13 +278,15 @@ test('notifications: marking something 86’d tells the people working today who
   shift(f, 'mgr', today, '19:00', '02:00');
   clock.now = new Date('2026-11-21T01:00:00');
   assert.equal(f.as('bar')('eightySix.report', { listId: bar.id, name: 'Vodka' }).notified, 2);
-  assert.equal(got('mgr').at(-1), 'Bar: Vodka is 86\'d', 'on until 2am');
-  assert.equal(got('srv2').at(-1), 'Bar: Vodka is 86\'d', 'working later today (Saturday)');
+  assert.equal(got('mgr').at(-1), 'Bar: out of Vodka', 'on until 2am');
+  assert.equal(got('srv2').at(-1), 'Bar: out of Vodka', 'working later today (Saturday)');
   for (const id of ['srv', 'bar2', 'esp']) assert.ok(!got(id).some((x) => /Vodka/.test(x)), `${id} went home`);
 });
 
 test('history: what was 86’d and when, and the most 86’d in the last 30 days, for managers', () => {
   const f = withMenu();
+  f.admin('eightySix.saveList', { id: f.list('admin', 'Bar').id, menu: 'drinks' });
+  f.admin('eightySix.saveList', { id: f.list('admin', 'Kitchen').id, menu: 'food' });
   const bar = f.list('bar', 'Bar'), kitchen = f.list('cook', 'Kitchen');
   const at = (iso) => { f.clock.now = new Date(iso); };
   const out = (who, listId, args) => f.as(who)('eightySix.report', { listId, ...args }).item;
@@ -322,7 +332,7 @@ test('history: what was 86’d and when, and the most 86’d in the last 30 days
 test('settings: admins add, rename and limit lists (one bar list per bar area); the defaults appear once', () => {
   const f = withMenu();
   const s = f.admin('eightySix.settings.get');
-  assert.deepEqual(s.lists.map((l) => [l.name, l.kind, l.menu]), [['Bar', 'bar', 'drinks'], ['Kitchen', 'kitchen', 'food']]);
+  assert.deepEqual(s.lists.map((l) => [l.name, l.kind, l.menu]), [['Bar', 'bar', 'none'], ['Kitchen', 'kitchen', 'none']]);
   assert.deepEqual(s.lists[0].reporters, { departments: ['Bar'], jobCodeIds: [] });
   assert.deepEqual(s.lists[1].reporters, { departments: ['Leadership', 'Restaurant', 'Kitchen'], jobCodeIds: [] });
   assert.deepEqual(s.lists[0].viewers, { all: true });
@@ -330,7 +340,7 @@ test('settings: admins add, rename and limit lists (one bar list per bar area); 
   assert.deepEqual(s.options.sections.sort(), ['Cocktails', 'Mains', 'Sides', 'Wine']);
   f.admin('eightySix.saveList', { id: s.lists[0].id, name: 'Main bar', nameEs: 'Barra principal', area: 'dining room' });
   const roof = f.admin('eightySix.saveList', { name: 'Rooftop bar', kind: 'bar', area: 'Rooftop', reporters: { departments: ['Bar'], jobCodeIds: ['job_srv', 'nope'] }, sections: ['Cocktails'] });
-  assert.deepEqual([roof.area, roof.menu, roof.reporters.jobCodeIds, roof.notify, roof.notifyLow, roof.resetAt], ['Rooftop', 'drinks', ['job_srv'], true, false, '']);
+  assert.deepEqual([roof.area, roof.menu, roof.reporters.jobCodeIds, roof.notify, roof.notifyLow, roof.resetAt], ['Rooftop', 'none', ['job_srv'], true, false, '']);
   assert.throws(() => f.admin('eightySix.saveList', { name: ' ' }), /Give the list a name/);
   const lists = f.board('srv').lists;
   assert.deepEqual(lists.map((l) => [l.name, l.area, l.canReport]), [['Main bar', 'Dining Room', false], ['Kitchen', '', true], ['Rooftop bar', 'Rooftop', true]]);
@@ -338,7 +348,7 @@ test('settings: admins add, rename and limit lists (one bar list per bar area); 
   assert.equal(f.store.list('eightySixLists').length, 3, 'the defaults were made once');
 });
 
-test('the demo has a Bar, a Moon Rabbit bar and a Kitchen list with items on them; bartenders report on the bars', () => {
+test('the demo has a Bar, a Moon Rabbit bar and a Kitchen list with supplies on them, and a Storeroom only managers see', () => {
   const store = new MemoryStore();
   const now = new Date('2026-09-27T12:00:00');
   const ids = seedDemo(store, { now });
@@ -351,10 +361,16 @@ test('the demo has a Bar, a Moon Rabbit bar and a Kitchen list with items on the
   assert.deepEqual(alex.lists.map((l) => l.canReport), [false, false, true]);
   assert.equal(svc.call(u('Agustina'), 'eightySix.board.get').lists[1].canReport, true, 'cocktail servers report on the Moon Rabbit bar');
   const sum = svc.call(u('Alex D'), 'eightySix.summary');
-  assert.deepEqual([sum.out, sum.low], [2, 2]);
-  const h = svc.call(u('Moe'), 'eightySix.history.get');
-  assert.equal(h.top[0].name, 'Copper Fox Mule');
-  for (const e of h.entries) assert.ok(e.reportedBy.name, 'demo people only');
+  assert.deepEqual([sum.out, sum.low], [3, 6]);
+  assert.deepEqual([sum.outMenuItemIds, sum.lowMenuItemIds], [[], []], 'supplies, not menu items');
+  assert.deepEqual(svc.call(u('Moe'), 'eightySix.board.get').lists.map((l) => l.name), ['Bar', 'Moon Rabbit bar', 'Kitchen', 'Storeroom']);
+  const h = svc.call(u('Moe'), 'eightySix.history.get', { days: 90 });
+  assert.ok(h.top.length >= 5);
+  assert.ok(h.entries.every((e) => !e.menuItemId && e.reportedBy.name && e.category), 'supplies with a category, demo people only');
+  // Two seasons and more of history, for the 86 List report.
+  const seasons = svc.call(u('Moe'), 'reports.eightySix.history.get', {}).seasons.map((s) => s.id);
+  assert.deepEqual(seasons, ['summer-2026', 'winter-2025', 'summer-2025']);
+  assert.ok(mak.lists[0].recent.length >= 5, 'the Bar suggests what was reported there before');
 });
 
 test('the API: read-only methods, reports and errors in the caller’s language', async () => {

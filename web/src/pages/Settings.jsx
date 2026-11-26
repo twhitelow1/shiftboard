@@ -6,9 +6,15 @@ import { applyBranding, logoUrl, imageToPng, THEMES } from '../theme.js';
 import TipPoolSettings from './TipPoolSettings.jsx';
 import { TextSettingsCard } from './PhoneCards.jsx';
 import { IntegrationsCard } from './IntegrationsSettings.jsx'; // ADP, Toast, Tripleseat, the text sender, the email From
+import ClaudeConnectorCard from './ClaudeConnector.jsx'; // the Claude connector (MCP)
 import { TrainingSettingsCard } from './TrainingShared.jsx';
 import EightySixSettings from './EightySixSettings.jsx';
 import RoomsPositions from './RoomsPositions.jsx';
+import SeasonsCard from './SeasonsSettings.jsx'; // the seasons reports count by
+import { AnnouncementSettingsCard } from './Announcements.jsx'; // texts per person per day, quiet hours
+import RolesEditor, { RolesCard } from './RolesEditor.jsx'; // Settings → Roles & features
+import { ImpactSettingsCard } from './ImpactShared.jsx'; // Positive impact: notifications, alerts, words that are never names
+import EmailTemplates from './EmailTemplates.jsx'; // Settings → Email notifications
 import { tx, useT, dowLong, dowShort , LANGUAGE_NAMES } from '../i18n/index.js';
 
 export default function Settings({ parts = [] }) {
@@ -27,7 +33,7 @@ export default function Settings({ parts = [] }) {
 
   // Branding saves on its own (BrandingCard), and so do the rooms and their colors (Rooms & positions),
   // so this Save never overwrites them.
-  const save = () => run(() => call('settings.update', { ...s, brandColor: undefined, navColor: undefined, bgColor: undefined, appearance: undefined, areas: undefined, areaColors: undefined, sectionOrder: undefined,
+  const save = () => run(() => call('settings.update', { ...s, brandColor: undefined, navColor: undefined, bgColor: undefined, appearance: undefined, areas: undefined, areaColors: undefined, sectionOrder: undefined, supervisorsCanApprove: undefined,
     weekStartDow: Number(s.weekStartDow), dayparts: s.dayparts.map((d) => ({ ...d, share: Number(d.share) })) }), t('settings.settingsSaved'));
   // #/settings/rooms[/<room>]: open Rooms & positions (at that room).
   const rooms = parts[1] === 'rooms' ? <RoomsPositions key={parts[2] || ''} focus={decodeURIComponent(parts[2] || '')} /> : <RoomsPositions />;
@@ -41,6 +47,8 @@ export default function Settings({ parts = [] }) {
   );
   // Managers run the schedule's rooms and positions; the rest of Settings is for admins.
   if (!isAdmin) return <div style={{ maxWidth: 820 }} className="col">{isMgr && rooms}{passwordCard}</div>;
+  if (parts[1] === 'roles') return <RolesEditor />; // #/settings/roles (it saves on its own, like Rooms & positions)
+  if (parts[1] === 'emails') return <EmailTemplates />; // #/settings/emails
 
   return (
     <div style={{ maxWidth: 820 }} className="col">
@@ -78,6 +86,8 @@ export default function Settings({ parts = [] }) {
 
       {rooms}
 
+      <RolesCard />
+
       <BrandingCard />
 
       <div className="card card-pad col" style={{ gap: 12 }}>
@@ -89,7 +99,7 @@ export default function Settings({ parts = [] }) {
         </div>
         <label className="check"><input type="checkbox" checked={s.requireSwapApproval} onChange={set('requireSwapApproval')} />{t('settings.managersMustApproveTradesGiveaways')}</label>
         <label className="check"><input type="checkbox" checked={s.requirePickupApproval} onChange={set('requirePickupApproval')} />{t('settings.managersMustApproveOpenShift')}</label>
-        <label className="check"><input type="checkbox" checked={s.supervisorsCanApprove !== false} onChange={set('supervisorsCanApprove')} />{t('settings.supervisorsCanApproveTradesPickups')}</label>
+        <a className="help" href="#/settings/roles">{t('roles.approveMoved')}</a>
         <label className="check"><input type="checkbox" checked={!!s.startTimesOnly} onChange={set('startTimesOnly')} />
           <span>{t('settings.showStartTimesOnlyThe')}</span></label>
         <Field label={t('settings.shiftTagsCommaSeparated')} help={t('settings.quickPicksWhenAddingA')}><input className="input" {...listField('tags')} /></Field>
@@ -104,11 +114,17 @@ export default function Settings({ parts = [] }) {
           : <div className="alert warn"><Icon name="alert" size={16} />{managed ? t('platform.askDublowEmail') : t('settings.notSetUpYetAdd')}</div>}
         <label className="check"><input type="checkbox" checked={s.emailNotifications !== false} onChange={set('emailNotifications')} disabled={!emailEnabled} />{t('settings.emailStaffACopyOf')}</label>
         <div className="help">{t('settings.peopleYouAddWithAn')}</div>
+        <div className="row wrap" style={{ gap: 8 }}><a className="btn sm" href="#/settings/emails"><Icon name="mail" />{t('emailTemplates.open')}</a>
+          <span className="help" style={{ margin: 0 }}>{t('emailTemplates.openHelp')}</span></div>
         {emailEnabled && <div><button className="btn sm" disabled={busy} onClick={() => run(() => sendTestEmail(), (r) => t('settings.testEmailSentToTo', { to: r.to }))}><Icon name="send" />{t('settings.sendMeATestEmail')}</button></div>}
       </div>
 
       <TextSettingsCard />
+      <AnnouncementSettingsCard />
+      <SeasonsCard />
       <IntegrationsCard />
+      <ClaudeConnectorCard />
+      <ImpactSettingsCard />
 
       <div className="card card-pad col" style={{ gap: 12 }}>
         <h2>{t('settings.forecasting')}</h2>

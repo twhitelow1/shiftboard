@@ -14,6 +14,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
+import { waitUntil } from '@vercel/functions';
 import { DocDb } from '../db.js';
 import { createApp } from '../app.js';
 import { cronAuthorized, BUDGET_MS } from '../toast-routes.js';
@@ -23,6 +24,8 @@ import { adpConfig } from '../adp.js';
 import { integration as adpIntegration } from '../../core/adp.js';
 import { tripleseatConfig } from '../tripleseat.js';
 import { integration as tripleseatIntegration } from '../../core/tripleseat.js';
+import { opentableConfig } from '../opentable.js';
+import { integration as opentableIntegration } from '../../core/opentable.js';
 import { Registry } from './registry.js';
 import { TenantCache } from './tenant-cache.js';
 import { hostConfig, resolveHost, consoleAllowed, tenantAddress } from './hosts.js';
@@ -31,6 +34,9 @@ import { restaurantView, saveIntegrations, allowedKeys } from './integrations.js
 import { encryptionKey } from './secrets.js';
 import { consoleRouter } from './console.js';
 import { isPaused } from './plans.js';
+import { announcementsCronAll } from '../announcements.js';
+import { capture } from '../errors-routes.js';
+import { createPlatformErrors, recordCronFailure, mountErrorCron } from './errors-console.js';
 
 const NOT_FOUND_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Restaurant not found · ShiftBoard</title><style>body{font:16px/1.5 system-ui,sans-serif;margin:0;display:grid;place-items:center;min-height:100vh;background:#f8fafc;color:#0f172a}
@@ -57,8 +63,10 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
   const hashPassword = (p) => bcrypt.hashSync(p, 10);
 
   let secretPromise = null;
+  // Errors & reports from every restaurant (server/errors.js), read in the console (errors-console.js).
+  const errors = createPlatformErrors({ conn, env, registry, hostCfg, mailerFor, texterFor, now, background: env.VERCEL ? waitUntil : null });
   const platform = {
-    registry, conn, env, hostCfg, cache,
+    registry, conn, env, hostCfg, cache, errors,
     /** Signs console sessions: derived from JWT_SECRET, else generated once and kept in platform.meta. */
     consoleSecret: () => (secretPromise ??= env.JWT_SECRET
       ? Promise.resolve(crypto.createHmac('sha256', env.JWT_SECRET).update('shiftboard-platform-console').digest('hex'))
@@ -83,7 +91,7 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
   function tenantContext(t) {
     return {
       id: t.id, slug: t.slug, name: t.name, isDefault: t.is_default, status: t.status, plan: t.plan,
-      features: t.resolved, trialEndsAt: t.trial_ends_at,
+      features: t.resolved, trialEndsAt: t.trial_ends_at, errors: errors.forTenant(t),
       consumeSupportGrant: (token) => registry.consumeSupportGrant(token, t.id),
       // Settings → Integrations for the restaurant's own admins (server/integrations-routes.js): the same
       // settings and encrypted secrets as the console, for the integrations in its plan only, audited.
@@ -148,6 +156,7 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
     res.setHeader('Referrer-Policy', 'same-origin');
     next();
   });
+  app.use(capture({ recorder: errors.forTenant(null) })); // 500s, here or in a restaurant's app (which says whose)
 
   const booted = async (req, res, next) => {
     try { await ready(); next(); } catch (e) {
@@ -177,7 +186,7 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
         break;
       }
       let rt;
-      try { rt = await runtime(t); } catch (e) { tenants.push({ slug: t.slug, ok: false, error: e.message }); continue; }
+      try { rt = await runtime(t); } catch (e) { tenants.push({ slug: t.slug, ok: false, error: e.message }); recordCronFailure(errors, { tenant: t, label, error: e.message, stack: e.stack }); continue; }
       if (!configured(rt.env)) { tenants.push({ slug: t.slug, skipped: `${label} is not set up` }); continue; }
       const release = cache.hold(rt);
       try {
@@ -185,10 +194,13 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
         const last = lastCron(rt.db.store);
         if (last?.ok && Date.now() - Date.parse(last.at) < 20 * 3_600_000) { tenants.push({ slug: t.slug, skipped: 'Already synced today' }); continue; }
         const share = Math.max(2500, Math.floor(left / (order.length - i)));
-        tenants.push({ slug: t.slug, ...(await run(rt, share, t)) });
+        const out = await run(rt, share, t);
+        tenants.push({ slug: t.slug, ...out });
+        if (out?.ok === false) recordCronFailure(errors, { tenant: t, label, error: out.error });
       } catch (e) {
         console.error(`${label} cron for ${t.slug} failed:`, e);
         tenants.push({ slug: t.slug, ok: false, error: e.message });
+        recordCronFailure(errors, { tenant: t, label, error: e.message, stack: e.stack });
       } finally { release(); }
     }
     return { tenants, ms: Date.now() - started };
@@ -223,6 +235,19 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
   });
   cronRoute('/api/cron/tripleseat', tripleseatCronAll);
   app.locals.tripleseatCronAll = tripleseatCronAll;
+  // Announcements: scheduled ones when their time comes, and big ones still going out (every few minutes).
+  const announcementsCron = () => announcementsCronAll({ registry, runtime, cache, conn, env, base: (t) => tenantAddress(t, hostCfg) || '' });
+  cronRoute('/api/cron/announcements', announcementsCron);
+  app.locals.announcementsCronAll = announcementsCron;
+  mountErrorCron(app, { platform, booted }); // the daily errors digest
+
+  // OpenTable: reservations (and reviews, with a Reviews API grant), once OpenTable grants API access.
+  const opentableCronAll = () => cronAll({
+    feature: 'opentable', label: 'OpenTable', configured: (e) => opentableConfig(e).configured, lastCron: (store) => opentableIntegration(store).lastCron,
+    run: (rt, budgetMs, t) => rt.app.locals.opentableCron({ budgetMs, base: tenantAddress(t, hostCfg) || '' }),
+  });
+  cronRoute('/api/cron/opentable', opentableCronAll);
+  app.locals.opentableCronAll = opentableCronAll;
   /** Open the default restaurant (its schema, first account or demo data) before the first request. */
   app.locals.warmDefault = async () => {
     await ready();
@@ -254,7 +279,8 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
       // The Host header itself (Vercel passes the requested domain), not X-Forwarded-Host, which a client could set.
       where = resolveHost(req.headers.host, hostCfg, await registry.snapshot());
     } catch (e) { return next(e); }
-    const api = req.path.startsWith('/api/');
+    // The Claude connector's endpoints (server/mcp/) answer in JSON too.
+    const api = req.path.startsWith('/api/') || /^\/(mcp$|oauth\/(register|token|revoke)$|\.well-known\/oauth-)/.test(req.path);
 
     if (where.kind === 'console') {
       // admin.<PLATFORM_DOMAIN>: the console. The web app at / reads /api/config and goes to /platform.

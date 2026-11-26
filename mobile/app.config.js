@@ -21,6 +21,8 @@ module.exports = ({ config }) => {
   const local = path.join(__dirname, 'google-services.json');
   const googleServicesFile = process.env.GOOGLE_SERVICES_JSON || (fs.existsSync(local) ? './google-services.json' : undefined);
   const projectId = process.env.EAS_PROJECT_ID || config.extra?.eas?.projectId || undefined;
+  // The commit being built, sent with error reports (src/lib/errors.ts): Vercel sets it for /app, EAS for its builds.
+  const commit = String(process.env.VERCEL_GIT_COMMIT_SHA || process.env.EAS_BUILD_GIT_COMMIT_HASH || '').slice(0, 7);
   const en = BRAND.permissions.en;
   const es = BRAND.permissions.es;
   const plugins = (config.plugins || []).map((p) => (Array.isArray(p) && p[0] === 'expo-image-picker'
@@ -46,8 +48,9 @@ module.exports = ({ config }) => {
     runtimeVersion: { policy: 'sdkVersion' },
     // The browser version a ShiftBoard server hosts at /app is built with WEB_BASE_URL=/app (npm run build:app).
     ...(process.env.WEB_BASE_URL ? { experiments: { ...config.experiments, baseUrl: process.env.WEB_BASE_URL } } : {}),
+    ...(commit ? { extra: { ...config.extra, commit } } : {}),
     ...(projectId ? {
-      extra: { ...config.extra, eas: { ...config.extra?.eas, projectId } },
+      extra: { ...config.extra, ...(commit ? { commit } : {}), eas: { ...config.extra?.eas, projectId } },
       updates: { ...config.updates, url: `https://u.expo.dev/${projectId}` },
     } : {}),
   };

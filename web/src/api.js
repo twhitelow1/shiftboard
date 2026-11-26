@@ -3,8 +3,11 @@
 import { MemoryStore } from '../../core/store.js';
 import { createService } from '../../core/service.js';
 import { seedDemo } from '../../core/seed.js';
+import { seedAnnouncementDemo, DEMO_CHANNELS } from '../../core/announce-seed.js';
 import { startServiceWorker, forgetThisDevice } from './push.js';
 import { getLang, translateError } from './i18n/index.js';
+import { viewCall, viewedPerson } from '../../core/view-as.js';
+import { noteRpc } from './errors.js';
 
 // The server answers errors in the caller's language; this tells it the app's language (which it uses
 // when the person hasn't picked one, and before sign-in). See server/app.js and core/errors.js.
@@ -20,8 +23,12 @@ function getDemo() {
   if (!demo) {
     const store = new MemoryStore();
     const ids = seedDemo(store, { now: DEMO_NOW }); // the demo clock, so the 86 List's sample items are from "today"
-    const service = createService(store, { now: () => DEMO_NOW });
-    demo = { store, ids, service, userId: ids.userId['Moe'] };
+    seedAnnouncementDemo(store, { userId: ids.userId, now: DEMO_NOW }); // consents, phones and two sample announcements
+    // A Super Admin persona for the demo (the seed has none), to show View as and the whole Roles & features editor.
+    ids.userId.Owner = store.insert('users', { id: 'usr_demo_owner', name: 'Owner', role: 'super_admin', order: 0, email: 'owner@demo.shiftboard', phone: '',
+      jobCodes: [], active: true, availability: {}, onSchedule: false, passwordHash: null, createdAt: DEMO_NOW.toISOString() }).id;
+    const service = createService(store, { now: () => DEMO_NOW, announce: DEMO_CHANNELS }); // announcements "go out" at once
+    demo = { store, ids, service, userId: ids.userId['Moe'], view: null };
   }
   return demo;
 }
@@ -35,18 +42,24 @@ export async function call(method, args = {}) {
     const d = getDemo();
     const actor = d.store.get('users', d.userId);
     try {
+      // View as (core/view-as.js), like the server: reads only, as the viewed person, never saved. It ends on time.
+      const viewing = d.view && d.view.until > Date.now() && viewedPerson(d.store, actor, d.view.target, getLang());
+      if (d.view && !viewing) d.view = null;
+      const out = viewing ? viewCall(d.store, { ...d.view, real: actor, actor: viewing, lang: getLang() }, method, args, { now: () => DEMO_NOW }) : d.service.call(actor, method, args);
       // Clone to mimic a network boundary (no shared references into the store).
-      return JSON.parse(JSON.stringify(d.service.call(actor, method, args) ?? null));
+      return JSON.parse(JSON.stringify(out ?? null));
     } catch (e) {
       throw new ApiError(e.status || 500, translateError(e.message)); // the demo has no server to translate it
     }
   }
+  const started = Date.now();
   const res = await fetch(`/api/rpc/${method}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...langHeader() },
     credentials: 'same-origin',
     body: JSON.stringify(args),
-  });
+  }).catch((e) => { noteRpc(method, 0, Date.now() - started); throw e; });
+  noteRpc(method, res.status, Date.now() - started); // for Report a problem: the name and status only
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, body.error || translateError(`Request failed (${res.status})`));
   return body.result;
@@ -75,10 +88,12 @@ export async function icalLink() {
 // Demo-only persona switching
 export function demoPersonas() {
   const d = getDemo();
-  const pick = ['Moe', 'Kelly', 'Events Team', 'Alex D', 'Styves', 'Tori', 'Ever', 'Hans', 'Agustina'];
+  const pick = ['Owner', 'Moe', 'Kelly', 'Events Team', 'Alex D', 'Styves', 'Tori', 'Ever', 'Hans', 'Agustina'];
   return pick.map((n) => d.store.get('users', d.ids.userId[n])).map((u) => ({ id: u.id, name: u.name, role: u.role }));
 }
-export function demoSwitch(userId) { getDemo().userId = userId; }
+export function demoSwitch(userId) { const d = getDemo(); d.userId = userId; d.view = null; }
+/** The demo's data, for View as in the demo (web/src/view-as-api.js). */
+export const demoData = () => getDemo();
 export function demoCurrent() { return getDemo().userId; }
 export function nowDate() { return IS_DEMO ? DEMO_NOW : new Date(); }
 

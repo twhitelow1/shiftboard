@@ -182,7 +182,7 @@ test('LRU: keeps the most recently used restaurants, never evicts one with a req
 });
 
 test('plans: features per plan with overrides, RPCs mapped to features, prices for Stripe, billing banners', () => {
-  assert.deepEqual(Object.entries(resolveFeatures('starter')).filter(([, v]) => v).map(([k]) => k), ['training', 'tips', 'eightySix']);
+  assert.deepEqual(Object.entries(resolveFeatures('starter')).filter(([, v]) => v).map(([k]) => k), ['training', 'tips', 'eightySix', 'announcements', 'reports']);
   assert.equal(resolveFeatures('starter', { events: true }).events, true);
   assert.equal(resolveFeatures('pro', { toast: false }).toast, false);
   assert.ok(Object.values(resolveFeatures('beta')).every(Boolean));
@@ -192,7 +192,7 @@ test('plans: features per plan with overrides, RPCs mapped to features, prices f
   assert.equal(planForPrice('price_unknown', {}), null);
   for (const [m, f] of [['menu.list', 'training'], ['mod.get', 'training'], ['myTips.week', 'tips'], ['eightySix.board.get', 'eightySix'], ['events.list', 'events'],
     ['labor.week', 'forecast'], ['settings.laborRules', 'forecast'], ['toast.get', 'toast'], ['sms.preferences', 'sms'], ['sections.list', 'venue'],
-    ['shifts.list', null], ['app.bootstrap', null], ['settings.update', null], ['push.subscribe', null]]) {
+    ['reports.eightySix.missing.get', 'reports'], ['shifts.list', null], ['app.bootstrap', null], ['settings.update', null], ['push.subscribe', null]]) {
     assert.equal(featureForMethod(m), f, m);
   }
   const now = Date.parse('2026-11-01T12:00:00Z');

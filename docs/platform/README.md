@@ -66,7 +66,7 @@ The restaurant's own admins (Admin and up) set these in **Settings → Integrati
 
 Secrets are encrypted with AES-256-GCM (`PLATFORM_ENCRYPTION_KEY`; each value is bound to its restaurant and setting) and never sent to a browser: the console shows "set" and the last 4 characters. The default restaurant falls back to the env vars it uses today for anything not set in the console, so production keeps working unchanged. No other restaurant ever sees those env values (its admin account, Toast keys, sender, From address, `APP_URL`). A feature not in the plan is switched off at the source too (no Toast or Twilio settings at all).
 
-The daily crons (`/api/cron/toast`, `/api/cron/adp`, `/api/cron/tripleseat`, `CRON_SECRET`) loop over every active restaurant with that integration in its plan and set up, each with its share of the time budget, starting at a different restaurant each hour and skipping any already synced in the last 20 hours. A restaurant left out of one run catches up on the next (the sync reaches back up to 14 days).
+`/api/cron/announcements` runs once a day (any Vercel plan; on Pro it can run every few minutes), and any request to a restaurant also starts a run: it sends scheduled announcements when their time comes and finishes big ones, and only opens restaurants that have one due (one small query each). The daily crons (`/api/cron/toast`, `/api/cron/adp`, `/api/cron/tripleseat`, `CRON_SECRET`) loop over every active restaurant with that integration in its plan and set up, each with its share of the time budget, starting at a different restaurant each hour and skipping any already synced in the last 20 hours. A restaurant left out of one run catches up on the next (the sync reaches back up to 14 days).
 
 ### The platform console
 
@@ -104,6 +104,7 @@ New (all optional; without them the deployment behaves as a single restaurant):
 | `PLATFORM_ADMIN_EMAIL`, `PLATFORM_ADMIN_PASSWORD` | The first platform admin, created while there are none (like `ADMIN_EMAIL`). `PLATFORM_ADMIN_NAME` optional. |
 | `PLATFORM_ENCRYPTION_KEY` | 32 random bytes, base64 or hex (`openssl rand -base64 32`). Encrypts per-restaurant secrets. Mark it Sensitive. Keep it: losing it means re-entering those secrets. |
 | `PLATFORM_EMAIL_FROM` | The default sender for restaurants without their own, e.g. `ShiftBoard <schedule@mail.dublowdigital.com>` (domain verified in Resend). Restaurants get "<Restaurant name> <that address>". |
+| `PLATFORM_ALERT_PHONE` | Optional. DubLow's own phone (E.164) for a text on each new server 500. Errors & reports, alerts and the daily digest (to `PLATFORM_ADMIN_EMAIL`): [docs/BETA-TESTING.md](../BETA-TESTING.md). |
 | `TENANT_CACHE_MAX` | Restaurants each instance keeps open (default 25). |
 | `TENANT_REGISTRY_TTL_MS` | How long an instance trusts its copy of the registry (default 5000). Console changes apply at once on the instance that made them, and on the others within this time. |
 | `CRON_BUDGET_MS` | Time the Toast cron spends per run, across restaurants (default 18000, inside the 30 s function limit). |
