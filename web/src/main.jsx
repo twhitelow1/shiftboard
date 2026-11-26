@@ -27,6 +27,8 @@ import { setTradesOn } from './pages/TradeHint.jsx';
 import ImpactReport from './pages/reports/Impact.jsx'; // Positive impact (the Reports hub registers it later)
 import Kudos from './pages/Kudos.jsx';
 import Assistant from './pages/Assistant.jsx'; // Ask ShiftBoard (#/ask)
+import Feedback from './pages/Feedback.jsx'; // Feedback box (#/feedback): write, My feedback, You said, we did
+import FeedbackInbox from './pages/FeedbackInbox.jsx'; // the readers' inbox (#/feedback-inbox)
 import { SignIn, ResetPassword, LinkSignIn } from './pages/SignIn.jsx';
 import { Welcome, ConsentGate } from './pages/Onboarding.jsx';
 import ConnectClaude from './pages/ConnectClaude.jsx'; // connecting Claude (OAuth sign-in and consent)
@@ -73,6 +75,10 @@ const NAV = [
   { key: 'reports', label: 'reports.nav', icon: 'report', mgr: true, feature: 'reports' }, // managers and up (core/reports.js)
   { key: 'impact', label: 'main.impact', icon: 'star', mgr: true, feature: 'impact', hide: true }, // a card in Reports
   { key: 'kudos', label: 'main.myKudos', icon: 'sparkle', feature: 'impact' },
+  // Feedback box (core/feedback.js): everyone writes; the inbox for the people who read it (bootstrap's feedbackInbox
+  // is the role feature ∩ who reads: managers and up, supervisors when an admin allows it).
+  { key: 'feedback', label: 'feedback.nav', icon: 'message', feature: 'feedback' },
+  { key: 'feedback-inbox', label: 'feedback.inboxNav', icon: 'inbox', feature: 'feedbackInbox' },
   { key: 'venue', label: 'main.venueFloorPlans', short: 'main.venue', icon: 'map', mgr: true, feature: 'venue' },
   { key: 'team', label: 'main.teamJobCodes', icon: 'users', mgr: true, feature: 'team' },
   // Managers get Settings for Rooms & positions (the schedule's layout); the rest of it is admins'.
@@ -81,7 +87,7 @@ const NAV = [
 ];
 
 // Shorter page titles for the phone's top bar, where the language switch and the bell sit too.
-const PHONE_TITLE = { swaps: 'main.phoneTitleSwaps', events: 'main.phoneTitleEvents', forecast: 'main.phoneTitleForecast', venue: 'main.phoneTitleVenue', team: 'main.phoneTitleTeam', 'trade-stats': 'tradeStats.phoneTitle', ask: 'assistant.phoneTitle' };
+const PHONE_TITLE = { swaps: 'main.phoneTitleSwaps', events: 'main.phoneTitleEvents', forecast: 'main.phoneTitleForecast', venue: 'main.phoneTitleVenue', team: 'main.phoneTitleTeam', 'trade-stats': 'tradeStats.phoneTitle', ask: 'assistant.phoneTitle', feedback: 'feedback.phoneTitle', 'feedback-inbox': 'feedback.inboxPhoneTitle' };
 
 // The address has no restaurant, or the restaurant's account is paused (server/platform/). Signed out or in.
 function NoticeCard({ title, help, icon = 'alert' }) {
@@ -283,7 +289,7 @@ function App() {
     forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue, training: Training, 86: EightySix, reports: Reports,
     account: Account, announcements: Announcements, 'trade-stats': TradeStats,
     forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue, training: Training, 86: EightySix,
-    account: Account, impact: ImpactReport, kudos: Kudos, ask: Assistant,
+    account: Account, impact: ImpactReport, kudos: Kudos, ask: Assistant, feedback: Feedback, 'feedback-inbox': FeedbackInbox,
   }[route] || Schedule;
 
   const signOut = async () => { await logout(); setBoot(null); setAuthed(false); };

@@ -460,6 +460,27 @@ export const ERRORS_ES = {
   'A button can only go to {link} or an https:// address': 'Un botón solo puede llevar a {link} o a una dirección https://',
   'Keep the subject on one line': 'Escribe el asunto en una sola línea',
   'The PDF could not be made. Try again in a minute.': 'No se pudo hacer el PDF. Inténtalo de nuevo en un minuto.',
+  // ----- Feedback box (core/feedback.js) -----
+  'Only the people who read the Feedback box can do this': 'Solo las personas que leen el buzón de sugerencias pueden hacer esto',
+  'That entry isn’t here': 'Ese mensaje no está aquí',
+  'Write a message first': 'Primero escribe un mensaje',
+  'That message is too long': 'Ese mensaje es demasiado largo',
+  'Pick what kind of entry this is': 'Elige qué tipo de mensaje es',
+  'Pick a topic from the list': 'Elige un tema de la lista',
+  'That’s the most entries for one day. Try again tomorrow.': 'Ya llegaste al máximo de mensajes por día. Inténtalo de nuevo mañana.',
+  'That’s the most messages for one day. Try again tomorrow.': 'Ya llegaste al máximo de respuestas por día. Inténtalo de nuevo mañana.',
+  'No entry has that code': 'Ningún mensaje tiene ese código',
+  'Send the codes': 'Manda los códigos',
+  'Pick a status': 'Elige un estado',
+  'This conversation is full': 'Esta conversación ya está llena',
+  'They haven’t agreed to show their name': 'Esa persona no aceptó que se muestre su nombre',
+  'Anonymous entries are only ever shared without a name': 'Los mensajes anónimos solo se comparten sin nombre',
+  'Send the Feedback box settings': 'Manda la configuración del buzón de sugerencias',
+  'Send up to 12 kinds': 'Manda hasta 12 tipos',
+  'Every kind needs a name': 'Cada tipo necesita un nombre',
+  'Keep at least one kind on': 'Deja al menos un tipo activado',
+  'Send up to 20 topics': 'Manda hasta 20 temas',
+  'Every topic needs a name': 'Cada tema necesita un nombre',
 };
 
 /** Messages with names or numbers in them: [English pattern, Spanish]. */

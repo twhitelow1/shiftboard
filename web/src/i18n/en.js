@@ -16,6 +16,7 @@ import beo from './en-beo.js'; // a BEO's sections, the import's duplicate check
 import smartImport from './en-import.js'; // smart import: Team → Import, Training → Menu → Import
 import superAdmin from './en-superadmin.js'; // an Admin making themselves Super Admin, and its switch in Roles & features
 import floor from './en-floor.js'; // the floor plan editor's palette, sections, Import (Toast, a picture, a CSV) and Export
+import feedback, { roles as feedbackRoles } from './en-feedback.js'; // the Feedback box: writing, My feedback, the inbox, Settings → Feedback box
 const catalog = {
   lang: {
     change: 'Change language',
@@ -2310,7 +2311,9 @@ const catalog = {
   ...smartImport,
   ...superAdmin,
   ...floor,
+  ...feedback,
 };
 Object.assign(catalog.integrations, reviewIntegrations); // Settings → Integrations: the Google and Yelp cards
+Object.assign(catalog.roles, feedbackRoles); // Settings → Roles & features: the Feedback box's two rows
 
 export default catalog;

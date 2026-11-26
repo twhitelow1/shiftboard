@@ -56,6 +56,10 @@ export const ROLE_FEATURES = [
   { key: 'coversForStaff', group: 'feature', plan: 'forecast', cells: ALL(true) },
   // Ask ShiftBoard (server/assistant/): everyone by default; it acts with the person's own permissions anyway.
   { key: 'assistant', group: 'feature', plan: 'assistant', cells: ALL(true) },
+  // Feedback box (core/feedback.js): everyone submits; reading is managers and up. Supervisors read only when an admin
+  // turns that on in Settings → Feedback box, so their cell isn't here; Concern / report goes to Admins by default.
+  { key: 'feedback', group: 'feature', plan: 'feedback', cells: ALL(true) },
+  { key: 'feedbackInbox', group: 'feature', plan: 'feedback', cells: MGR(true) },
   { key: 'coworkerContacts', group: 'feature', plan: null, cells: { employee: false, supervisor: true, manager: 'on', admin: 'on' } },
   { key: 'tradeRequests', group: 'capability', plan: null, cells: ALL(true) },
   { key: 'approve', group: 'capability', plan: null, cells: { employee: null, supervisor: true, manager: 'on', admin: 'on' }, setting: 'supervisorsCanApprove' },
@@ -75,6 +79,7 @@ const NAMESPACE_FEATURE = {
   jobCodes: 'team',
   announcements: 'announcements',
   reports: 'reports', tradeStats: 'reports',
+  feedback: 'feedback',
 };
 const METHOD_FEATURES = {
   'swaps.create': ['trades', 'tradeRequests'],
@@ -87,6 +92,11 @@ const METHOD_FEATURES = {
   'employees.importMapping': ['team'], // smart import (core/import-api.js)
   'employees.importPreview': ['team'],
   'employees.importApply': ['team'],
+  // Feedback box: the readers' methods need the inbox (not submitting); its settings are admins' whatever their role has.
+  ...Object.fromEntries(['feedback.inbox.list', 'feedback.inbox.get', 'feedback.setStatus', 'feedback.reply', 'feedback.note', 'feedback.share',
+    'feedback.unshare', 'feedback.askName'].map((m) => [m, ['feedbackInbox']])),
+  'feedback.settings.get': [],
+  'feedback.settings.save': [],
 };
 
 /** The role features an RPC method needs ([] when every role that may call it has it). */

@@ -87,11 +87,17 @@ const migrations = (S) => [
  */
 export const LAZY_DATA = ['menuPhotos', 'eightySixPhotos', 'profilePhotos'];
 const LAZY_SQL = `ARRAY[${LAZY_DATA.map((c) => `'${c}'`).join(',')}]::text[]`;
+/**
+ * Collections whose rows keep the day they were written, not the time (updated_at at midnight): the Feedback box
+ * stores the date only, so the database's own bookkeeping mustn't keep the time of day either (core/feedback.js).
+ */
+export const DATE_ONLY = ['feedback', 'feedbackLimits'];
+const DATE_ONLY_SQL = `ARRAY[${DATE_ONLY.map((c) => `'${c}'`).join(',')}]::text[]`;
 
 // A cached lazy document has no `data`; saving it again keeps the bytes already stored.
 const upsertDocs = (S) => `
   INSERT INTO ${S}.docs (col, id, data, deleted, seq, updated_at)
-  SELECT t.c, t.i, t.d, t.x, nextval('${S}.docs_seq'), now()
+  SELECT t.c, t.i, t.d, t.x, nextval('${S}.docs_seq'), CASE WHEN t.c = ANY(${DATE_ONLY_SQL}) THEN date_trunc('day', now()) ELSE now() END
     FROM jsonb_to_recordset($1::text::jsonb) AS t(c text, i text, d jsonb, x boolean)
   ON CONFLICT (col, id) DO UPDATE
     SET data = CASE

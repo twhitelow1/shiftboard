@@ -141,6 +141,9 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   // with no t is from before the platform existed: it belongs to the default restaurant (Chasing Rabbits).
   // "Sign in as owner" sessions also carry sup: { by: the DubLow admin's email, until: ms }.
   const sign = (u, extra = {}, expiresIn = '30d') => jwt.sign({ sub: u.id, v: u.sessionVersion || 0, ...(tenant ? { t: tenant.id } : {}), ...extra }, secret, { expiresIn });
+  // The Feedback box's rate limit counts per person per day by an HMAC with this key (core/feedback.js), so the count
+  // never names anyone. FEEDBACK_SECRET (env, never in the database) when set; otherwise derived from the signing secret.
+  const feedbackKey = () => env.FEEDBACK_SECRET || crypto.createHmac('sha256', secret).update('shiftboard-feedback-rate-limit').digest('hex');
   const icalToken = (userId) => crypto.createHmac('sha256', secret).update(`ical:${userId}`).digest('hex').slice(0, 24);
 
   /** The signed-in person and the session's claims, or null. */
@@ -430,7 +433,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
       const out = await db.run((store) => {
         const actor = userFromToken(store, token);
         if (!actor) throw new AppError(401, 'Please sign in');
-        const result = createService(store, { hashPassword, channels: channels.info, request, legal, announce: announcer.info, planFeatures: planFeatures(), freshStep }).call(actor, method, structuredClone(args));
+        const result = createService(store, { hashPassword, channels: channels.info, request, legal, announce: announcer.info, planFeatures: planFeatures(), freshStep, feedbackKey: feedbackKey() }).call(actor, method, structuredClone(args));
         // Changing your password signs out other devices; this one gets a fresh cookie.
         const rotated = method === 'employees.changePassword'
           ? store.update('users', actor.id, { sessionVersion: (actor.sessionVersion || 0) + 1 })

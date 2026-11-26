@@ -28,6 +28,8 @@ export const FEATURES = [
   { key: 'sms', label: 'Text messages', hint: 'Notifications by text (Twilio)' },
   { key: 'venue', label: 'Venue & floor plans', hint: 'Rooms, floor plans and server sections' },
   { key: 'multiLocation', label: 'Multiple locations', hint: 'Placeholder for a later phase; nothing uses it yet' },
+  // Feedback box (core/feedback.js): in every plan. A restaurant's admins decide who reads it (Settings → Feedback box).
+  { key: 'feedback', label: 'Feedback box', hint: 'Anonymous (or signed) suggestions, feedback, concerns and shout-outs; the readers’ inbox and “You said, we did”' },
   { key: 'reports', label: 'Reports', hint: 'Reports for managers, starting with the 86 List report (each report also needs its own feature)' },
   // Claude connector (server/mcp/): Pro and Beta. Not Starter: most of what it does for a restaurant is managers'
   // work (drafts, approvals, forecast, events) that's Pro already; DubLow can switch it on for one restaurant.
@@ -46,11 +48,11 @@ export const FEATURE_KEYS = FEATURES.map((f) => f.key);
 export const PLANS = {
   starter: {
     label: 'Starter', priceCents: 4900, interval: 'month', selfServe: true, stripePriceEnv: 'STRIPE_PRICE_STARTER',
-    features: ['training', 'tips', 'eightySix', 'reports', 'announcements'],
+    features: ['training', 'tips', 'eightySix', 'reports', 'announcements', 'feedback'],
   },
   pro: {
     label: 'Pro', priceCents: 9900, interval: 'month', selfServe: true, stripePriceEnv: 'STRIPE_PRICE_PRO',
-    features: ['training', 'tips', 'eightySix', 'events', 'forecast', 'toast', 'adp', 'tripleseat', 'sms', 'venue', 'reports', 'announcements', 'mcp', 'opentable', 'impact', 'assistant', 'reviews'],
+    features: ['training', 'tips', 'eightySix', 'events', 'forecast', 'toast', 'adp', 'tripleseat', 'sms', 'venue', 'reports', 'announcements', 'mcp', 'opentable', 'impact', 'assistant', 'reviews', 'feedback'],
     aiMonthlyCapUsd: 5, // what DubLow pays for AI per restaurant per month at most (server/ai/); a restaurant's own key isn't capped
   },
   beta: {
@@ -130,6 +132,7 @@ const NAMESPACE_FEATURE = {
   venue: 'venue', sections: 'venue',
   reports: 'reports',
   announcements: 'announcements',
+  feedback: 'feedback',
 };
 const METHOD_FEATURE = { 'settings.laborRules': 'forecast' };
 // Methods that need more than one feature: each report needs Reports and its own feature.
