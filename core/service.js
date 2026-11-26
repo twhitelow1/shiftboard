@@ -37,6 +37,7 @@ import { effectiveFeatures, roleAllows, roleRefusal, roleFeatureApi, ROLE_OFF } 
 import { publishOptions, scheduleNotice } from './publish-notify.js';
 import { emailTemplateApi } from './email-templates.js';
 import { importApi, employeeExtrasPatch } from './import-api.js';
+import { superAdminApi } from './super-admin.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -1671,6 +1672,10 @@ export function createService(store, opts = {}) {
     ...announcementApi({ store, now, settings, fail, needAuth, needAdmin, langOf: L, channels: opts.announce }),
     // ----- Settings → Roles & features: which parts of the app each role gets (core/role-features.js) -----
     ...roleFeatureApi({ settings, putSettings, fail, needAdmin, plan: opts.planFeatures || null }),
+    // ----- an Admin making themselves Super Admin, and the switch that allows it (core/super-admin.js) -----
+    // freshStep: the second step server/app.js checked for this request; via: the Claude connector or Ask ShiftBoard.
+    ...superAdminApi({ store, settings, fail, needAuth, needAdmin, notify, say, now, freshStep: opts.freshStep || null, via: opts.via || null,
+      view: (u) => legalNameFor(u, u, userView(u)) }),
 
     // ----- notifications -----
     'notifications.list': (actor) => {

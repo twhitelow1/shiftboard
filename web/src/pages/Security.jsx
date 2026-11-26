@@ -12,6 +12,7 @@ import { TotpSetup, RecoveryCodesView } from './TwoStep.jsx';
 import { rememberDemoPhoto } from '../photo.js';
 import { SecurityHidden } from './ViewAs.jsx'; // View as: their sign-in details stay private
 import ConnectedApps from './ConnectedApps.jsx'; // apps that use ShiftBoard as me (Claude)
+import { BecomeSuperAdminCard } from './SuperAdmin.jsx'; // Admins, while the restaurant allows it (core/super-admin.js)
 import '../auth.css';
 
 export default function Account() {
@@ -20,6 +21,7 @@ export default function Account() {
     <div style={{ maxWidth: 720 }} className="col">
       <ProfileCard />
       {viewAs ? <SecurityHidden /> : <SecurityCard />}
+      <BecomeSuperAdminCard />
     </div>
   );
 }

@@ -440,13 +440,15 @@ export class Registry {
   async tenantStats(t) {
     const S = `"${t.schema_name}"`;
     try {
-      const [staff, last] = await Promise.all([
+      const [staff, last, st] = await Promise.all([
         this.query(`SELECT count(*)::int AS n FROM ${S}.docs WHERE col = 'users' AND NOT deleted AND coalesce(data ->> 'active', 'true') <> 'false'`),
         this.query(`SELECT updated_at FROM ${S}.docs ORDER BY seq DESC LIMIT 1`),
+        // "Admins can make themselves Super Admin" (core/super-admin.js): on unless the restaurant stored false.
+        this.query(`SELECT data ->> 'adminsCanBecomeSuperAdmin' AS v FROM ${S}.docs WHERE col = 'settings' AND id = 'settings' AND NOT deleted`),
       ]);
-      return { staff: Number(staff.rows[0].n), lastActivity: iso(last.rows[0]?.updated_at) };
+      return { staff: Number(staff.rows[0].n), lastActivity: iso(last.rows[0]?.updated_at), adminsCanBecomeSuperAdmin: st.rows[0]?.v !== 'false' };
     } catch (e) {
-      if (e.code === '42P01' || e.code === '3F000') return { staff: 0, lastActivity: null }; // not created yet
+      if (e.code === '42P01' || e.code === '3F000') return { staff: 0, lastActivity: null, adminsCanBecomeSuperAdmin: true }; // not created yet
       throw e;
     }
   }

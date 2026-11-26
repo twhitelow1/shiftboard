@@ -13,6 +13,8 @@
 //   POST /api/auth/forgot {email}, POST /api/auth/reset {token, password} → the second step, like login
 //   GET  /api/auth/security, and passkey rename/remove, authenticator remove, new recovery codes (signed in)
 //   POST /api/users/:id/reset-2fa (managers): the recovery path when someone lost their phone
+//   POST /api/auth/step-up/passkey/options (signed in): a passkey challenge (5 minutes) for an action that needs
+//        the second step again, entered with the request (stepUp below: making yourself Super Admin)
 //
 // A session is a cookie (sb_session), or { token, expiresIn } for the phone app ({ client: 'mobile' }).
 // Factors live in the authFactors collection (core/auth-factors.js); nothing secret is ever sent back.
@@ -278,6 +280,46 @@ export function createAuth(d) {
     return { passkey: factorView(passkey), recoveryCodes: hasRecovery(user.id, pending) ? null : await makeRecoveryCodes(user.id, { pending }) };
   }
 
+  // ---------- the second step again, for one sensitive action (stepUp) ----------
+  // The person types a current authenticator code, or uses a passkey, WITH the request: { code } or { passkey }
+  // (an assertion for a challenge from /api/auth/step-up/passkey/options, made in the last 5 minutes, for them
+  // only, used once). Recovery codes don't count. Wrong codes and passkeys count toward the same limit as
+  // sign-in codes (5 per 15 minutes). A code that worked can't be used again (lastStep), here or to sign in.
+  // Returns { method: 'totp' | 'passkey' } or throws.
+  async function stepUp(req, user) {
+    const b = req.body && typeof req.body === 'object' ? req.body : {};
+    if (!b.code && !b.passkey) fail(403, 'Confirm it’s you with your authenticator app or a passkey first');
+    if (await tooManyCodes(user.id)) fail(429, 'Too many tries. Try again in 15 minutes.');
+    if (b.passkey) {
+      const response = b.passkey;
+      const f = passkeysOf(user.id).find((x) => x.credentialId === String(response?.id || ''));
+      let v = null;
+      if (f) {
+        try {
+          v = await verifyAuthenticationResponse({
+            response, expectedChallenge: consumeChallenge('webauthn-step', user.id), expectedOrigin: originsFor(req), expectedRPID: rpIdFor(req),
+            credential: { id: f.credentialId, publicKey: new Uint8Array(Buffer.from(f.publicKey, 'base64url')), counter: f.counter || 0, transports: f.transports || [] },
+            requireUserVerification: true,
+          });
+        } catch (e) {
+          console.error('Passkey step-up failed:', e.message);
+        }
+      }
+      const handle = response?.response?.userHandle;
+      if (!v?.verified || !v.authenticationInfo.userVerified || (handle && handle !== b64u(userHandle(user.id)))) {
+        await wrongCode(user.id);
+        fail(403, 'That passkey didn’t work. Try again, or use your authenticator app.');
+      }
+      await db.run((s) => s.update('authFactors', f.id, { counter: v.authenticationInfo.newCounter, lastUsedAt: new Date(now()).toISOString() }), { write: true });
+      return { method: 'passkey' };
+    }
+    if (!(await useTotp(user.id, String(b.code)))) {
+      await wrongCode(user.id);
+      fail(403, 'That code didn’t work. Check your authenticator app and try again.');
+    }
+    return { method: 'totp' };
+  }
+
   // ---------- the audit log (restaurant-wide security events; append-only, never sent to the apps) ----------
   function audit(s, actorId, targetId, action, details = {}) {
     s.insert('auditLog', { id: uid('aud'), at: new Date(now()).toISOString(), actorId, targetId, action, details });
@@ -526,6 +568,16 @@ export function createAuth(d) {
       res.json({ result: { recoveryCodes: codes, ...securityView(user.id) } });
     }));
 
+    // A passkey challenge for stepUp: this person's own passkeys only, 5 minutes, once. Not in a support session.
+    app.post('/api/auth/step-up/passkey/options', wrap('step-up', async (req, res) => {
+      const user = await mine(req);
+      const keys = passkeysOf(user.id);
+      if (!keys.length) fail(400, 'You don’t have a passkey yet. Use your authenticator app.');
+      const token = await db.createToken(user.id, 'webauthn-step', CHALLENGE_MINUTES);
+      res.json({ options: await generateAuthenticationOptions({ rpID: rpIdFor(req), challenge: challengeFor(token), userVerification: 'required',
+        allowCredentials: keys.map((p) => ({ id: p.credentialId, transports: p.transports || undefined })) }) });
+    }));
+
     // ---------- the recovery path: a manager or admin resets someone's second step ----------
     // Their authenticator app, passkeys and recovery codes are removed, every session ends (sessionVersion),
     // they get a security notice by email, and it's in the audit log. They set up a new one at their next sign-in.
@@ -554,7 +606,7 @@ export function createAuth(d) {
   }
 
   return {
-    routes, box, sendSession, secondStep, ticketFor, readTicket,
+    routes, box, sendSession, secondStep, ticketFor, readTicket, stepUp,
     // for the invite wizard (server/onboarding.js)
     startTotp, confirmTotp, makeRecoveryCodes, hasRecovery, passkeyRegistrationOptions, passkeyRegister, passkeysOf, audit, tooManyCodes, wrongCode,
   };

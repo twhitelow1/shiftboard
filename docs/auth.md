@@ -68,6 +68,15 @@ accepted as a session (cookie or bearer).
 `POST /api/auth/mfa/recovery/regenerate` → `{ result: { recoveryCodes, … } }`. The last second step can't be removed (add another first).
 Managers and admins: `POST /api/users/:id/reset-2fa` (anyone they can manage, never themselves).
 
+### The second step again, for one action (web only)
+
+Making yourself Super Admin (`POST /api/rpc/account.becomeSuperAdmin`, core/super-admin.js) needs the second step
+**entered with the request**: `{ code }` (a current authenticator code, not one already used, not a recovery code) or
+`{ passkey }` (the answer to `POST /api/auth/step-up/passkey/options {}`, a challenge for this person's own passkeys,
+5 minutes, used once). Wrong ones count toward the same limit as sign-in codes (5 per 15 minutes). Refused before any
+code is checked when the person can't do it anyway, and always refused from the phone app, in View as, in a DubLow
+support session, and through the Claude connector or Ask ShiftBoard.
+
 ### The invitation wizard
 
 Team → Add employee (or `employees.save` with `invite: true`) creates the person **without a password** and emails

@@ -14,6 +14,7 @@ import reviews, { integrations as reviewIntegrations } from './en-reviews.js'; /
 import dayList from './en-daylist.js'; // the day lists' sort (room, position, time, name) and the week grid by position
 import beo from './en-beo.js'; // a BEO's sections, the import's duplicate check and "Read it with AI"
 import smartImport from './en-import.js'; // smart import: Team → Import, Training → Menu → Import
+import superAdmin from './en-superadmin.js'; // an Admin making themselves Super Admin, and its switch in Roles & features
 const catalog = {
   lang: {
     change: 'Change language',
@@ -2308,6 +2309,7 @@ const catalog = {
   ...dayList,
   ...beo,
   ...smartImport,
+  ...superAdmin,
 };
 Object.assign(catalog.integrations, reviewIntegrations); // Settings → Integrations: the Google and Yelp cards
 

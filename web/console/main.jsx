@@ -23,7 +23,7 @@ const ACTION_LABEL = {
   'admin.signin': 'Signed in to the console', 'admin.create': 'Added a platform admin', 'admin.password': 'Changed their password',
   'tenant.create': 'Created the restaurant', 'tenant.update': 'Changed settings', 'tenant.pause': 'Paused the restaurant', 'tenant.resume': 'Reactivated the restaurant',
   'tenant.integrations': 'Changed integrations', 'tenant.invite': 'Sent the owner an invite', 'support.start': 'Started a support sign-in', 'support.signin': 'Signed in as the owner (support)',
-  'error.status': 'Changed an error’s status (Errors & reports)',
+  'error.status': 'Changed an error’s status (Errors & reports)', 'tenant.settings': 'Changed a restaurant setting',
 };
 
 const Flash = createContext(() => {});
@@ -141,7 +141,7 @@ function TenantList({ meta }) {
       {list && (
         <div className="card table-card">
           <table className="table responsive">
-            <thead><tr><th>Restaurant</th><th>Address</th><th>Status</th><th>Plan</th><th className="num">Staff</th><th className="num">AI this month</th><th>Last activity</th><th>Created</th></tr></thead>
+            <thead><tr><th>Restaurant</th><th>Address</th><th>Status</th><th>Plan</th><th className="num">Staff</th><th className="num">AI this month</th><th title="Admins can make themselves Super Admin">Self Super Admin</th><th>Last activity</th><th>Created</th></tr></thead>
             <tbody>
               {shown.map((t) => (
                 <tr key={t.id} className="click" onClick={() => go(`t/${t.id}`)}>
@@ -151,11 +151,12 @@ function TenantList({ meta }) {
                   <td data-label="Plan">{meta?.plans[t.plan]?.label || t.plan}</td>
                   <td data-label="Staff" className="num">{t.staff}</td>
                   <td data-label="AI this month" className="num">{t.ai?.inPlan || t.ai?.calls ? <span title={t.ai.ownUsd ? `+ ${usd(t.ai.ownUsd)} on their own key` : ''}>{usd(t.ai.usedUsd)} <span className="muted tiny">/ {usd(t.ai.capUsd)}</span></span> : <span className="muted">—</span>}</td>
+                  <td data-label="Self Super Admin" title="Admins can make themselves Super Admin">{t.adminsCanBecomeSuperAdmin === false ? <span className="muted">Off</span> : 'Allowed'}</td>
                   <td data-label="Last activity" title={stamp(t.lastActivity)}>{ago(t.lastActivity)}</td>
                   <td data-label="Created">{day(t.createdAt)}</td>
                 </tr>
               ))}
-              {!shown.length && <tr><td colSpan={8} className="muted center">No restaurants match.</td></tr>}
+              {!shown.length && <tr><td colSpan={9} className="muted center">No restaurants match.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -287,6 +288,7 @@ function TenantDetail({ id, meta }) {
         </div>
         <div className="col">
           <SupportCard t={t} />
+          <SuperAdminCard t={t} onSaved={setT} />
           <AiCard t={t} onSaved={setT} />
           <IntegrationsCard t={t} meta={meta} onSaved={setT} />
           <NotesCard t={t} onSaved={setT} />
@@ -413,6 +415,25 @@ function SupportCard({ t }) {
       )}
       {link && <div className="note warn">Your browser blocked the new tab. <a href={link} target="_blank" rel="noreferrer">Open the support link</a> (works once, for a few minutes).</div>}
       <InviteResult invite={invite} owner={t.ownerEmail} />
+    </div>
+  );
+}
+
+/** "Admins can make themselves Super Admin" (core/super-admin.js): only a Super Admin or DubLow can turn it back on. */
+function SuperAdminCard({ t, onSaved }) {
+  const [run, busy] = useAction();
+  const on = t.adminsCanBecomeSuperAdmin !== false;
+  const set = (next) => run(() => api(`/tenants/${t.id}`, { method: 'PATCH', body: { adminsCanBecomeSuperAdmin: next } }),
+    next ? 'Admins can make themselves Super Admin again' : 'Admins can no longer make themselves Super Admin').then((r) => r && onSaved(r));
+  return (
+    <div className="card pad">
+      <h2>Super Admin access</h2>
+      <div className="muted small">When on, an Admin in this restaurant can make themselves Super Admin from My settings, after confirming with their authenticator app or a passkey. The other Admins and Super Admins are told. Their Super Admins can turn it off; once it’s off, only a Super Admin there or you can turn it back on. Logged in both audit logs.</div>
+      <div className="feature-row">
+        <div className={`dot ${on ? 'on' : ''}`} aria-hidden />
+        <div className="feature-text"><div className="strong">Admins can make themselves Super Admin</div><div className="muted tiny">{on ? 'On' : 'Off'}</div></div>
+        <button className="btn sm" disabled={busy} onClick={() => set(!on)}>{on ? 'Turn off' : 'Turn on'}</button>
+      </div>
     </div>
   );
 }
