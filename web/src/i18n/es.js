@@ -9,6 +9,7 @@ import claude from './es-claude.js'; // el conector de Claude
 import impact from './es-impact.js'; // Impacto positivo y OpenTable
 import print from './es-print.js'; // el PDF del horario, Publicar, Configuración → Notificaciones por correo
 import assistant from './es-assistant.js'; // Pregúntale a ShiftBoard: el chat y Configuración → Pregúntale a ShiftBoard
+import dayList from './es-daylist.js'; // el orden de las listas del día y la cuadrícula por puesto
 const catalog = {
   lang: {
     change: 'Cambiar idioma',
@@ -2299,6 +2300,7 @@ const catalog = {
   ...impact,
   ...print,
   ...assistant,
+  ...dayList,
 };
 
 export default catalog;

@@ -298,6 +298,13 @@ table.sched { border-collapse: separate; border-spacing: 0; width: 100%; min-wid
 .mshift.open { border-style: dashed; }
 .mshift .who { font-weight: 700; flex: 1; min-width: 0; }
 .mshift .when { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* The day list's controls: Everyone / Just me, the sort, covers, Add (core/day-list.js). */
+.day-ctl { margin-bottom: 12px; row-gap: 8px; }
+.day-ctl .day-sort { width: auto; flex: 0 1 auto; min-width: 0; max-width: 190px; }
+.dbanner-n { margin-left: 8px; opacity: .65; font-variant-numeric: tabular-nums; }
+/* Desktops' Day view: the same list, at a readable width. Never printed (print uses the sheet). */
+.day-desk { max-width: 720px; }
+@media (max-width: 900px) { .day-desk { max-width: none; } }
 
 /* shift cards (my shifts) */
 .scard { display: flex; gap: 14px; padding: 14px 16px; border-bottom: 1px solid var(--border); align-items: center; cursor: pointer; }
