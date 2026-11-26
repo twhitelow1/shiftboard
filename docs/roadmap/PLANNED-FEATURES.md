@@ -27,6 +27,9 @@ _Working name "ShiftBoard"; a new product name is still to be chosen (see Busine
 |---|---|
 | **Ask ShiftBoard** (built-in Claude chat for staff and managers, EN/ES, web + phone app + /app): Claude Haiku 5.5, the connector's tools as the signed-in person, changes only on Confirm (audited); **usage metered and capped per restaurant** ($5/month default on Pro and Beta, console override, 80% warning, 50 messages/person/day, bring-your-own key); `server/ai/` for every AI feature | built and tested; in the next PR |
 | Google Business Profile + Yelp reviews: alerts, AI-drafted replies | building |
+| Full BEO import: every non-money detail (timeline, menus, dietary, bar, setup, rentals/AV, vendors, notes), shown only where the BEO has it; re-import shows what changed; AI reading for non-Tripleseat BEOs | building |
+| Smart import for employees and menu items: CSV / PDF / DOCX, field matching, preview with changes, AI reading for unstructured files; connector tools to import menus and employees from Claude | building |
+| Employee sync from other platforms | later (after the import) |
 
 ## Next
 | Feature | Notes |
