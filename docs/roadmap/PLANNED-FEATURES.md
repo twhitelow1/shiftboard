@@ -25,14 +25,14 @@ _Working name "ShiftBoard"; a new product name is still to be chosen (see Busine
 | Google Business Profile + Yelp reviews: daily sync, staff mentions, review alerts (all / ≤3★ / off), replies posted to Google, **AI-drafted replies** (via `server/ai/`; Yelp: copy and open Yelp, its API can't reply) | #18 | live Nov 26 |
 | Day list sorting: who's on by room, position, start time or name (web day view, new desktop Day view, phone app schedule and Today on the floor); desktop grid By position | #18 | live Nov 26 |
 | Phone app matches the website's Branding: brand, nav and background colors, light/dark, logo, room-colored banners (website day view and grid too), sign-in backdrop, live refresh | #18 | live Nov 26 |
+| Full BEO import: every non-money detail (timeline, menus, dietary, bar, setup, rentals/AV, vendors, notes), shown only where the BEO has it; re-import shows what changed; AI reading for non-Tripleseat BEOs | #19 | live Nov 26 |
+| Smart import for employees and menu items: CSV / PDF / DOCX, field matching, preview with changes, AI reading for unstructured files; connector tools to import menus and employees from Claude | #19 | live Nov 26 |
 
 ## Building
 | Feature | Notes |
 |---|---|
-| Admins can make themselves Super Admin (re-auth, audited, others alerted), with a Super-Admin-only switch to turn it off | building |
-| Floor plan: import from Toast / a picture or PDF (AI) / CSV, Toast-style editor (shapes, bar seats, walls, sections), export + "set this up in Toast" helper | building |
-| Full BEO import: every non-money detail (timeline, menus, dietary, bar, setup, rentals/AV, vendors, notes), shown only where the BEO has it; re-import shows what changed; AI reading for non-Tripleseat BEOs | built and tested; in PR #19 |
-| Smart import for employees and menu items: CSV / PDF / DOCX, field matching, preview with changes, AI reading for unstructured files; connector tools to import menus and employees from Claude | built and tested; in PR #19 |
+| Admins can make themselves Super Admin (re-auth, audited, others alerted), with a Super-Admin-only switch to turn it off | built and tested; in PR #20 |
+| Floor plan: import from Toast / a picture or PDF (AI) / CSV, Toast-style editor (shapes, bar seats, walls, sections), export + "set this up in Toast" helper | built and tested; in PR #20 |
 | Employee sync from other platforms | later (after the import) |
 
 ## Next

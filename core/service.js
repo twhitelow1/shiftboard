@@ -18,6 +18,8 @@ import { ROLE_IDS, roleOf, roleLabel, canManageSchedule, canChangeSettings, canM
   offSchedule, assignableRoles, canManageUser } from './roles.js';
 import { channelApi } from './notify-prefs.js';
 import { venueLinks } from './venue-links.js';
+import { LEGACY_TYPES, cleanPlan as cleanFloorPlan, emptyPlan } from './floor-plan.js';
+import { cleanIncoming, planImport } from './floor-import.js';
 import { tripleseatLinks } from './tripleseat.js';
 import { unpublishApi } from './unpublish.js';
 import { openTableLinks, bookingBlend } from './opentable.js';
@@ -37,6 +39,7 @@ import { effectiveFeatures, roleAllows, roleRefusal, roleFeatureApi, ROLE_OFF } 
 import { publishOptions, scheduleNotice } from './publish-notify.js';
 import { emailTemplateApi } from './email-templates.js';
 import { importApi, employeeExtrasPatch } from './import-api.js';
+import { superAdminApi } from './super-admin.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -1502,40 +1505,14 @@ export function createService(store, opts = {}) {
     // A one-room restaurant needs none of this; the UI offers a one-click start from settings.rooms.
     // Room names are mirrored into settings.rooms, which events and the schedule importer use.
     ...(() => {
-      const ITEM_TYPES = ['table-round', 'table-square', 'table-rect', 'booth', 'bar', 'stage', 'dancefloor', 'dj', 'host', 'wall', 'door', 'plant', 'label'];
-      const SEATED = new Set(['table-round', 'table-square', 'table-rect', 'booth', 'bar']);
+      // Floor plans themselves (types, validation, geometry) live in core/floor-plan.js; imports in core/floor-import.js.
       const KINDS = ['dining', 'bar', 'events', 'other'];
       const BOOKING_TYPES = /full buyout/i; // in settings.rooms but not a physical space
       const num = (v, d) => (v !== '' && v != null && Number.isFinite(Number(v)) ? Number(v) : d);
       const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
       const text = (v, max) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
       const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0) || String(a.name).localeCompare(String(b.name));
-      const emptyPlan = () => ({ width: 1000, height: 700, items: [] });
-
-      function cleanPlan(p) {
-        const width = clamp(Math.round(num(p?.width, 1000)), 200, 5000);
-        const height = clamp(Math.round(num(p?.height, 700)), 200, 5000);
-        const raw = Array.isArray(p?.items) ? p.items : [];
-        if (raw.length > 500) fail(400, 'A floor plan can have at most 500 items');
-        const ids = new Set();
-        const items = raw.map((i) => {
-          if (!ITEM_TYPES.includes(i?.type)) fail(400, `Unknown floor plan item "${text(i?.type, 30)}"`);
-          const w = clamp(Math.round(num(i.w, 60)), 4, width);
-          const h = clamp(Math.round(num(i.h, 60)), 4, height);
-          let id = text(i.id, 40);
-          if (!id || ids.has(id)) id = uid('itm');
-          ids.add(id);
-          return {
-            id, type: i.type, w, h,
-            x: clamp(Math.round(num(i.x, 0)), 0, width - w),
-            y: clamp(Math.round(num(i.y, 0)), 0, height - h),
-            r: ((Math.round(num(i.r, 0)) % 360) + 360) % 360,
-            label: text(i.label, 40),
-            seats: SEATED.has(i.type) ? clamp(Math.round(num(i.seats, 0)), 0, 40) : 0,
-          };
-        });
-        return { width, height, items };
-      }
+      const cleanPlan = (p) => cleanFloorPlan(p, { fail, uid });
 
       function syncRoomNames() {
         const rooms = store.list('rooms');
@@ -1553,10 +1530,12 @@ export function createService(store, opts = {}) {
         return first || store.insert('locations', { id: uid('loc'), name: settings().restaurantName || 'Main location', address: '', order: 0 });
       }
 
+      const pickCounts = (c) => ({ created: c.create, updated: c.update, unchanged: c.same, skipped: c.skip, ambiguous: c.ambiguous });
       const view = () => ({
         locations: store.list('locations').sort(byOrder),
         rooms: store.list('rooms').sort(byOrder),
-        itemTypes: ITEM_TYPES,
+        // The version 1 types, as before: installed phone apps draw these. Newer types: core/floor-plan.js ITEM_TYPES.
+        itemTypes: LEGACY_TYPES,
         kinds: KINDS,
       });
 
@@ -1646,6 +1625,40 @@ export function createService(store, opts = {}) {
           if (!store.get('rooms', roomId)) fail(404, 'Room not found');
           return store.update('rooms', roomId, { plan: cleanPlan(plan) });
         },
+        // Import a floor plan (Venue → Edit layout → Import): what it would do, then do it. `incoming` comes from
+        // Toast or the AI through server/venue-import-routes.js, or from a CSV read in the browser (core/floor-import.js).
+        // decisions settle the ambiguous rows ('skip' by default: an import never makes a duplicate on its own).
+        'venue.importPreview': (actor, { incoming, decisions, positions } = {}) => {
+          needMgr(actor);
+          const inc = cleanIncoming(incoming, fail);
+          return planImport(store.list('rooms'), inc, { decisions: decisions || {}, positions: positions === 'replace' ? 'replace' : 'keep', uid });
+        },
+        'venue.importApply': (actor, { incoming, decisions, positions, fileName } = {}) => {
+          needMgr(actor);
+          const inc = cleanIncoming(incoming, fail);
+          const out = planImport(store.list('rooms'), inc, { decisions: decisions || {}, positions: positions === 'replace' ? 'replace' : 'keep', uid });
+          const bad = out.rooms.find((r) => r.error === 'noRoomName');
+          if (bad) fail(400, 'Pick a room for these tables');
+          store.transaction(() => {
+            const loc = defaultLocation();
+            let order = store.list('rooms').length;
+            for (const r of out.rooms) {
+              const toast = r.toast ? { toast: r.toast } : {};
+              if (r.create) {
+                store.insert('rooms', { id: r.roomId, locationId: loc.id, level: 'Main floor', name: text(r.name, 60), kinds: ['dining'], capacity: 0, order: order++, plan: r.plan, ...toast });
+              } else {
+                store.update('rooms', r.roomId, { plan: r.plan, ...toast });
+              }
+            }
+            for (const x of out.also) store.update('rooms', x.roomId, { plan: x.plan });
+            store.insert('auditLog', {
+              id: uid('aud'), at: now().toISOString(), actorId: actor.id, targetId: null, action: 'venue.imported',
+              details: { source: inc.source, fileName: text(fileName, 120) || null, rooms: out.rooms.map((r) => r.roomId), newRooms: out.counts.newRooms, ...pickCounts(out.counts) },
+            });
+          });
+          syncRoomNames();
+          return { ...view(), counts: out.counts, roomIds: out.rooms.map((r) => r.roomId) };
+        },
       };
     })(),
 
@@ -1671,6 +1684,10 @@ export function createService(store, opts = {}) {
     ...announcementApi({ store, now, settings, fail, needAuth, needAdmin, langOf: L, channels: opts.announce }),
     // ----- Settings → Roles & features: which parts of the app each role gets (core/role-features.js) -----
     ...roleFeatureApi({ settings, putSettings, fail, needAdmin, plan: opts.planFeatures || null }),
+    // ----- an Admin making themselves Super Admin, and the switch that allows it (core/super-admin.js) -----
+    // freshStep: the second step server/app.js checked for this request; via: the Claude connector or Ask ShiftBoard.
+    ...superAdminApi({ store, settings, fail, needAuth, needAdmin, notify, say, now, freshStep: opts.freshStep || null, via: opts.via || null,
+      view: (u) => legalNameFor(u, u, userView(u)) }),
 
     // ----- notifications -----
     'notifications.list': (actor) => {

@@ -8,6 +8,7 @@ import { roleLabel, roleOf } from '../../../core/roles.js';
 import { useT } from '../i18n/index.js';
 import { beginView } from './ViewAs.jsx';
 import { peekDraft, keepDraft } from '../view-as-api.js';
+import { SelfPromotionSetting } from './SuperAdmin.jsx'; // "Admins can make themselves Super Admin" (core/super-admin.js)
 import '../view-as.css';
 
 /** Only the switches (true/false) of the roles below Super Admin: what the server takes. */
@@ -127,6 +128,7 @@ export default function RolesEditor() {
           <button className="btn primary" disabled={busy || !dirty || !!viewAs} onClick={save}><Icon name="check" />{t('roles.save')}</button>
         </div>
       </div>
+      <SelfPromotionSetting />
     </div>
   );
 }

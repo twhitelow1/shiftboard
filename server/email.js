@@ -182,6 +182,22 @@ export function securityResetEmail({ user, restaurant, brand, by, appUrl, lang =
   return { to: user.email, subject: E.securitySubject(restaurant), html, text };
 }
 
+/**
+ * Someone made themselves Super Admin (core/super-admin.js): a security notice to the other Admins and Super Admins
+ * who agreed to emails. Fixed words, like the other security notices.
+ */
+export function superAdminEmail({ user, name, restaurant, brand, appUrl, lang = 'en' }) {
+  const E = msg(lang).email;
+  const { html, text } = layout({
+    restaurant, brand, lang,
+    heading: E.superAdminHeading(name),
+    paragraphs: [hello(user.name, lang), E.superAdminBody(name)],
+    button: appUrl ? { label: E.open, url: `${appUrl}/#/team` } : null,
+    footer: E.superAdminFooter,
+  });
+  return { to: user.email, subject: E.superAdminSubject(name, restaurant), html, text };
+}
+
 /** An announcement from management (core/announcements.js): its title as the heading, each paragraph of the message. */
 export function announcementEmail({ user, title, body, link, restaurant, brand, lang = 'en' }) {
   const E = msg(lang).email;

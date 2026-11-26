@@ -13,8 +13,8 @@
 //    with no tables means "working this room". Entries for deleted or moved shifts and tables no longer
 //    on the plan are skipped when read and dropped on the next write, so other code never has to
 //    clean up after them.
+import { SEATED } from './floor-plan.js'; // what a section is made of
 
-const SEATED = new Set(['table-round', 'table-square', 'table-rect', 'booth', 'bar']); // what a section is made of
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_DAYS = 62; // sections.list range
 const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();

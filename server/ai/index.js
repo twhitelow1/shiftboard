@@ -38,10 +38,11 @@ export { aiMessage } from './messages.js';
  *   reviews    AI-drafted review replies (server/review-replies.js)
  *   events     "Read it with AI" for BEOs (server/beo-ai-routes.js)
  *   training   smart import reading a menu (server/import-routes.js, purpose 'menu_import')
+ *   venue      reading a floor plan picture (server/venue-import-routes.js)
  * Reading a roster (purpose 'employee_import') has no plan key of its own: Team is in every plan, so it works wherever
  * one of these is (a key that isn't a plan feature would count as "in the plan" for every restaurant).
  */
-export const AI_FEATURES = ['assistant', 'reviews', 'events', 'training'];
+export const AI_FEATURES = ['assistant', 'reviews', 'events', 'training', 'venue'];
 export const DEFAULT_DAILY_MESSAGES = 50;
 const DEFAULT_CALLS_PER_MINUTE = 120; // per restaurant, every feature together
 const DEFAULT_MESSAGES_PER_MINUTE = 8; // per person (the assistant)

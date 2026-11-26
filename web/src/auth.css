@@ -81,3 +81,6 @@ img.avatar-photo { object-fit: cover; background: var(--surface-3); display: inl
 @media (max-width: 640px) {
   .sec-block .btn.sm, .role-choice { min-height: 40px; }
 }
+
+/* My settings → Become Super Admin (web/src/pages/SuperAdmin.jsx) */
+.sa-effects { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
