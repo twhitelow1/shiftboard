@@ -19,6 +19,8 @@ import Venue from './pages/Venue.jsx';
 import Training from './pages/Training.jsx';
 import EightySix from './pages/EightySix.jsx';
 import Account from './pages/Security.jsx';
+import ImpactReport from './pages/reports/Impact.jsx'; // Positive impact (the Reports hub registers it later)
+import Kudos from './pages/Kudos.jsx';
 import { SignIn, ResetPassword, LinkSignIn } from './pages/SignIn.jsx';
 import { Welcome, ConsentGate } from './pages/Onboarding.jsx';
 import { AuthCard, SignInBrand, BrandMark, DEFAULT_NAME } from './pages/AuthCard.jsx';
@@ -50,6 +52,8 @@ const NAV = [
   { key: 'tips', label: 'main.tips', icon: 'dollar', feature: 'tips' },
   { key: 'training', label: 'main.training', icon: 'book', feature: 'training' },
   { key: 'forecast', label: 'main.forecastLabor', icon: 'chart', mgr: true, feature: 'forecast' },
+  { key: 'impact', label: 'main.impact', icon: 'star', mgr: true, feature: 'impact' },
+  { key: 'kudos', label: 'main.myKudos', icon: 'sparkle', feature: 'impact' },
   { key: 'venue', label: 'main.venueFloorPlans', short: 'main.venue', icon: 'map', mgr: true, feature: 'venue' },
   { key: 'team', label: 'main.teamJobCodes', icon: 'users', mgr: true },
   // Managers get Settings for Rooms & positions (the schedule's layout); the rest of it is admins'.
@@ -249,7 +253,7 @@ function App() {
   const Page = {
     schedule: Schedule, calendar: CalendarPage, my: MyShifts, swaps: Swaps, events: Events, tips: Tips,
     forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue, training: Training, 86: EightySix,
-    account: Account,
+    account: Account, impact: ImpactReport, kudos: Kudos,
   }[route] || Schedule;
 
   const signOut = async () => { await logout(); setBoot(null); setAuthed(false); };

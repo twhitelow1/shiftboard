@@ -1,6 +1,7 @@
 // Español (Latinoamérica neutro, "tú"): the same keys as en.js. Vocabulary: docs/i18n/GLOSSARY.md, and
 // the phone app (mobile/src/i18n/es.ts) for the words they share. Restaurant data stays as entered.
 import auth from './es-auth.js'; // iniciar sesión, dos pasos, la bienvenida, el consentimiento, Mi configuración
+import impact from './es-impact.js'; // Impacto positivo y OpenTable
 const catalog = {
   lang: {
     change: 'Cambiar idioma',
@@ -50,6 +51,8 @@ const catalog = {
     training: 'Capacitación',
     eightySix: 'Lista 86',
     forecastLabor: 'Pronóstico y mano de obra',
+    impact: 'Impacto positivo',
+    myKudos: 'Mis reconocimientos',
     venueFloorPlans: 'Local y planos',
     venue: 'Local',
     teamJobCodes: 'Equipo y puestos',
@@ -444,6 +447,7 @@ const catalog = {
     basis_noHistory: 'Todavía no hay historial',
     basis_weighted: { one: 'Promedio ponderado de {count} {dow} anterior', other: 'Promedio ponderado de los {count} {dow} anteriores' },
     basis_weightedTrend: { one: 'Promedio ponderado de {count} {dow} anterior, tendencia {trend}', other: 'Promedio ponderado de los {count} {dow} anteriores, tendencia {trend}' },
+    basis_bookings: '{booked} reservados en OpenTable + {walkIns} clientes sin reservación habituales (solo el historial: {history})',
   },
   importDialog: {
     pdfImportWorksInThe: 'Importar PDF funciona en la app real',
@@ -2068,6 +2072,7 @@ const catalog = {
     title_adp: 'ADP (checadas)',
     title_toast: 'Toast POS',
     title_tripleseat: 'Tripleseat (eventos)',
+    title_opentable: 'OpenTable (reservaciones y reseñas)',
     title_twilio: 'Mensajes de texto (número remitente)',
     title_email: 'Remitente de correo',
     status_connected: 'Conectado',
@@ -2080,6 +2085,7 @@ const catalog = {
     help_adp: 'De ADP Workforce Now con API Central: el client ID y el client secret de tu proyecto, y el certificado que ADP firmó a partir de tu solicitud (CSR) con su clave privada. Abre cada archivo en un editor de texto y pega todo, desde la línea -----BEGIN hasta la línea -----END. Sin API Central, importa los archivos CSV de checadas (abajo).',
     help_toast: 'En Toast Web, alguien con el permiso Manage Integrations crea credenciales de la API estándar para este local (Integrations → Toast API access), con los permisos orders:read, labor:read, labor.employees:read y restaurants:read. Pega el client ID, el secreto y el GUID del local.',
     help_tripleseat: 'En Tripleseat, un administrador de la cuenta abre Settings → API y crea una aplicación OAuth 2.0. Pega su client ID y su client secret. Si tu cuenta tiene más de un local, agrega el ID de este local. La clave de firma del webhook es opcional.',
+    help_opentable: 'La API de OpenTable es solo para socios aprobados: cuando OpenTable apruebe la solicitud y el restaurante le dé acceso (OpenTable → Integrations → API partners), pega el client ID, el secreto y el ID del restaurante (RID). Mientras tanto, importa los archivos que exporta OpenTable aquí abajo.',
     help_twilio: 'Los mensajes salen por la cuenta de Twilio y el programa de mensajes registrado de DubLow Digital, así que DubLow configura el número remitente. Pídele a DubLow que lo cambie.',
     help_email: 'Los correos salen por el servicio de correo de DubLow Digital. DubLow configura la dirección del remitente (tiene que estar en un dominio verificado); tú puedes cambiar el nombre del remitente y a dónde llegan las respuestas del personal.',
     emailsGoOutAs: 'Los correos salen como: {from}',
@@ -2100,6 +2106,11 @@ const catalog = {
     field_TRIPLESEAT_PUBLIC_KEY: 'Clave pública anterior (OAuth 1.0)',
     field_TRIPLESEAT_SECRET_KEY: 'Clave secreta anterior (OAuth 1.0)',
     field_TRIPLESEAT_API_HOST: 'Host de la API (solo si Tripleseat te dio otro)',
+    field_OPENTABLE_CLIENT_ID: 'Client ID (aplicación de socio de OpenTable)',
+    field_OPENTABLE_CLIENT_SECRET: 'Client secret',
+    field_OPENTABLE_RID: 'ID del restaurante (RID)',
+    field_OPENTABLE_API_HOST: 'Host de la API (solo si OpenTable te dio otro)',
+    field_OPENTABLE_TOKEN_URL: 'URL del token (solo si OpenTable te dio otra)',
     field_TWILIO_MESSAGING_SERVICE_SID: 'Messaging Service SID',
     field_TWILIO_FROM_NUMBER: 'o número remitente',
     field_EMAIL_FROM_NAME: 'Nombre del remitente',
@@ -2126,6 +2137,7 @@ const catalog = {
     textsAfter: 'Cuando esté conectado, aquí puedes mandarte un mensaje de prueba.',
   },
   ...auth,
+  ...impact,
 };
 
 export default catalog;

@@ -9,6 +9,7 @@ import { IntegrationsCard } from './IntegrationsSettings.jsx'; // ADP, Toast, Tr
 import { TrainingSettingsCard } from './TrainingShared.jsx';
 import EightySixSettings from './EightySixSettings.jsx';
 import RoomsPositions from './RoomsPositions.jsx';
+import { ImpactSettingsCard } from './ImpactShared.jsx'; // Positive impact: notifications, alerts, words that are never names
 import { tx, useT, dowLong, dowShort , LANGUAGE_NAMES } from '../i18n/index.js';
 
 export default function Settings({ parts = [] }) {
@@ -109,6 +110,7 @@ export default function Settings({ parts = [] }) {
 
       <TextSettingsCard />
       <IntegrationsCard />
+      <ImpactSettingsCard />
 
       <div className="card card-pad col" style={{ gap: 12 }}>
         <h2>{t('settings.forecasting')}</h2>

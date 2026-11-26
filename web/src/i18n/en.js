@@ -2,6 +2,7 @@
 // Values: a string with {placeholders} and <b>…</b> for bold words, or { one, other } for plurals (by {count}).
 // Restaurant data (names, positions, areas, notes) is passed in as a placeholder and never translated here.
 import auth from './en-auth.js'; // signing in, two-step, the welcome wizard, consent, My settings
+import impact from './en-impact.js'; // Positive impact and OpenTable
 const catalog = {
   lang: {
     change: 'Change language',
@@ -51,6 +52,8 @@ const catalog = {
     training: 'Training',
     eightySix: '86 List',
     forecastLabor: 'Forecast & Labor',
+    impact: 'Positive Impact',
+    myKudos: 'My Kudos',
     venueFloorPlans: 'Venue & Floor Plans',
     venue: 'Venue',
     teamJobCodes: 'Team & Job Codes',
@@ -445,6 +448,7 @@ const catalog = {
     basis_noHistory: 'No history yet',
     basis_weighted: { one: 'Weighted avg of {count} prior {dow}s', other: 'Weighted avg of {count} prior {dow}s' },
     basis_weightedTrend: { one: 'Weighted avg of {count} prior {dow}s, trend {trend}', other: 'Weighted avg of {count} prior {dow}s, trend {trend}' },
+    basis_bookings: '{booked} booked on OpenTable + {walkIns} usual walk-ins (history alone: {history})',
   },
   importDialog: {
     pdfImportWorksInThe: 'PDF import works in the hosted app',
@@ -2069,6 +2073,7 @@ const catalog = {
     title_adp: 'ADP (clock-ins)',
     title_toast: 'Toast POS',
     title_tripleseat: 'Tripleseat (events)',
+    title_opentable: 'OpenTable (reservations and reviews)',
     title_twilio: 'Texts (sender number)',
     title_email: 'Email sender',
     status_connected: 'Connected',
@@ -2081,6 +2086,7 @@ const catalog = {
     help_adp: 'From ADP Workforce Now with API Central: your project’s client ID and client secret, and the certificate ADP signed from your request (CSR) with its private key. Open each file in a text editor and paste everything, from the -----BEGIN line to the -----END line. Without API Central, import timecard CSV files instead (below).',
     help_toast: 'In Toast Web, someone with the Manage Integrations permission creates Standard API credentials for this location (Integrations → Toast API access), with the scopes orders:read, labor:read, labor.employees:read and restaurants:read. Paste the client ID and secret, and the location’s GUID.',
     help_tripleseat: 'In Tripleseat, an account admin opens Settings → API and creates an OAuth 2.0 application. Paste its client ID and client secret. If your account has more than one venue, add this venue’s location ID. The webhook’s signing key is optional.',
+    help_opentable: 'OpenTable’s API is for approved partners: once OpenTable approves the application and the restaurant grants it access (OpenTable → Integrations → API partners), paste the client ID, secret and the restaurant ID (RID). Until then, import OpenTable’s exports below.',
     help_twilio: 'Texts go out through DubLow Digital’s Twilio account and registered texting program, so DubLow sets the sending number. Ask DubLow to change it.',
     help_email: 'Emails go out through DubLow Digital’s email service. DubLow sets the From address (it has to be on a verified domain); you can change the From name and where staff replies go.',
     emailsGoOutAs: 'Emails go out as: {from}',
@@ -2101,6 +2107,11 @@ const catalog = {
     field_TRIPLESEAT_PUBLIC_KEY: 'Old public key (OAuth 1.0)',
     field_TRIPLESEAT_SECRET_KEY: 'Old secret key (OAuth 1.0)',
     field_TRIPLESEAT_API_HOST: 'API host (only if Tripleseat gave you another)',
+    field_OPENTABLE_CLIENT_ID: 'Client ID (OpenTable partner application)',
+    field_OPENTABLE_CLIENT_SECRET: 'Client secret',
+    field_OPENTABLE_RID: 'Restaurant ID (RID)',
+    field_OPENTABLE_API_HOST: 'API host (only if OpenTable gave you another)',
+    field_OPENTABLE_TOKEN_URL: 'Token URL (only if OpenTable gave you another)',
     field_TWILIO_MESSAGING_SERVICE_SID: 'Messaging Service SID',
     field_TWILIO_FROM_NUMBER: 'or From number',
     field_EMAIL_FROM_NAME: 'From name',
@@ -2127,6 +2138,7 @@ const catalog = {
     textsAfter: 'Once it’s connected, you can send yourself a test text here.',
   },
   ...auth,
+  ...impact,
 };
 
 export default catalog;
