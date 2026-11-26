@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useApp, Icon, Avatar, Modal, Field, shiftTime, money, useAction, JobDot, Empty } from '../ui.jsx';
 import { addDays, weekStart, range, dow, parseDate } from '../../../core/time.js';
 import { hoursOf } from '../../../core/forecast.js';
-import { sameArea } from '../../../core/areas.js';
+import { sameArea, bannerColor, textOn } from '../../../core/areas.js';
 import { buildSections, shiftChoices } from '../../../core/layout.js';
 import { dayList, daySort, positionSections } from '../../../core/day-list.js';
 import ShiftDialog from './ShiftDialog.jsx';
@@ -288,7 +288,7 @@ export default function Schedule() {
                   <React.Fragment key={sec.key}>
                     {/* Area banner when the area changes, like the house sheet (RESTAURANT, RABBIT HOLE…). */}
                     {groupBy === 'job' && sec.banner && sec.banner !== sections[i - 1]?.banner && (
-                      <tr className="section area"><td colSpan={8}><div className="row">{sec.banner}
+                      <tr className="section area"><td colSpan={8} style={(() => { const c = bannerColor(settings, sec.banner, sec.roomIndex ?? 0); return { background: c, color: textOn(c) }; })()}><div className="row">{sec.banner}
                         {isMgr && <button className="btn ghost sm no-print" style={{ marginLeft: 'auto', color: 'inherit' }} onClick={() => setArrange(sec.banner)}><Icon name="layers" />{t('arrange.button')}</button>}</div></td></tr>
                     )}
                     {groupBy !== 'emp' && (
@@ -427,7 +427,9 @@ function StrayDialog({ stray, ws, onClose }) {
  */
 function MobileDay({ days, selDay, setSelDay, data, room, mine, setMine, openDialog, isClosed, fcDay, addAt }) {
   const t = useT();
-  const { jobs, people, me, isMgr, today, has, layout } = useApp();
+  const { jobs, people, me, isMgr, today, has, layout, settings } = useApp();
+  // Room banners in the room's color (Settings → Rooms & positions), like the sheet, the PDF and the phone app.
+  const roomStyle = (room) => { const c = bannerColor(settings, room, Math.max(0, (layout?.rooms || []).findIndex((r) => sameArea(r.room, room)))); return { background: c, color: textOn(c) }; };
   const [sort, setSortState] = useState(initialSort);
   const setSort = (v) => { setSortState(v); try { localStorage.setItem(SORT_KEY, v); } catch { /* ignore */ } };
   const evs = data.events.filter((e) => e.date === selDay);
@@ -479,7 +481,7 @@ function MobileDay({ days, selDay, setSelDay, data, room, mine, setMine, openDia
       {!isClosed(selDay) && !groups.length && <Empty title={mine ? t('schedule.youreOff') : t('schedule.noShifts')} />}
       {groups.map((g, i) => (
         <div key={g.key} className="dgroup">
-          {g.room && g.room !== groups[i - 1]?.room && <div className="dbanner">{g.room}<span className="dbanner-n">{g.roomCount}</span></div>}
+          {g.room && g.room !== groups[i - 1]?.room && <div className="dbanner" style={roomStyle(g.room)}>{g.room}<span className="dbanner-n">{g.roomCount}</span></div>}
           <div className="dgroup-h">{g.job ? <><JobDot job={g.job} />{g.job.name}<span className="faint">{g.count}</span></> : t('dayList.shifts', { count: g.count })}</div>
           {g.items.map((x) => {
             const s = x.shift;

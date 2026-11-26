@@ -16,6 +16,7 @@ import { Badge, Button, Card, Empty, JobDot, Loading, Notice, OfflineNote, Row, 
 import { useI18n } from '@/i18n';
 import { useRpc } from '@/lib/hooks';
 import { dayList } from '@/lib/dayList';
+import { bannerColor, textOn } from '@/lib/theme';
 import { canTrade, dayLayout, useDaySort } from '@/lib/schedule';
 import { useApp } from '@/lib/session';
 import { addDays, dow, range, weekStart } from '@/lib/time';
@@ -48,8 +49,10 @@ export default function Schedule() {
   const covers = useMemo(() => Object.fromEntries((coversQ.data?.days || []).filter((d) => d.totalCovers > 0).map((d) => [d.date, d.totalCovers])), [coversQ.data]);
   const weekShifts = useMemo(() => (data?.shifts || []).filter((s) => s.published && (mine === 'all' || s.userId === me.id)), [data, mine, me.id]);
   const shifts = useMemo(() => weekShifts.filter((s) => s.date === day), [weekShifts, day]);
-  const list = useMemo(() => dayList({ shifts, jobs, people, layout: dayLayout(shifts, jobs, settings, boot.layout), mode: sort, lang }),
-    [shifts, jobs, people, settings, boot.layout, sort, lang]);
+  const lay = useMemo(() => dayLayout(shifts, jobs, settings, boot.layout), [shifts, jobs, settings, boot.layout]);
+  const list = useMemo(() => dayList({ shifts, jobs, people, layout: lay, mode: sort, lang }), [shifts, jobs, people, lay, sort, lang]);
+  // Room banners in the room's color (Settings → Rooms & positions), like the website's sheet and the PDF.
+  const roomColor = (room: string) => bannerColor(settings, room, Math.max(0, (lay?.rooms || []).findIndex((r) => r.room === room)));
   const groups = list.groups;
   const closed = settings.closedDays.includes(dow(day));
   const events = (data?.events || []).filter((e) => e.date === day);
@@ -128,9 +131,9 @@ export default function Schedule() {
           {groups.map((g, i) => (
             <View key={g.key} style={{ gap: 6 }}>
               {g.room && g.room !== groups[i - 1]?.room ? (
-                <Row style={[styles.banner, { backgroundColor: c.surface2, borderColor: c.border }]}>
-                  <Txt v="small" bold style={{ flex: 1, textTransform: 'uppercase', letterSpacing: 0.6 }}>{g.room}</Txt>
-                  <Txt v="small" tone="faint">{g.roomCount}</Txt>
+                <Row style={[styles.banner, { backgroundColor: roomColor(g.room), borderColor: roomColor(g.room) }]}>
+                  <Txt v="small" bold style={{ flex: 1, textTransform: 'uppercase', letterSpacing: 0.6, color: textOn(roomColor(g.room)) }}>{g.room}</Txt>
+                  <Txt v="small" style={{ color: textOn(roomColor(g.room)), opacity: 0.8 }}>{g.roomCount}</Txt>
                 </Row>
               ) : null}
               <Row style={{ paddingHorizontal: 4 }}>

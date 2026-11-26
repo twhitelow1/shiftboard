@@ -38,7 +38,7 @@ export default function Forgot() {
   };
 
   return (
-    <Screen title={t('forgot.title')} back bell={false} bottomInset>
+    <Screen title={t('forgot.title')} back bell={false} bottomInset backdrop>
       {sent ? (
         <Card style={{ gap: 12 }}>
           <Txt v="h2">{t('forgot.sentTitle')}</Txt>

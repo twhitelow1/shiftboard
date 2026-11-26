@@ -29,6 +29,8 @@ _Working name "ShiftBoard"; a new product name is still to be chosen (see Busine
 | Google Business Profile + Yelp reviews: daily sync, staff mentions, review alerts (all / ≤3★ / off), replies posted to Google, **AI-drafted replies** (via `server/ai/`; Yelp: copy and open Yelp, its API can't reply) | built and tested; in the next PR |
 | Full BEO import: every non-money detail (timeline, menus, dietary, bar, setup, rentals/AV, vendors, notes), shown only where the BEO has it; re-import shows what changed; AI reading for non-Tripleseat BEOs | building |
 | Smart import for employees and menu items: CSV / PDF / DOCX, field matching, preview with changes, AI reading for unstructured files; connector tools to import menus and employees from Claude | building |
+| Day list sorting: who's on by room, position, start time or name (web day view, new desktop Day view, phone app schedule and Today on the floor); desktop grid By position | built and tested; in the next PR |
+| Phone app matches the website's Branding: brand, nav and background colors, light/dark, logo, room-colored banners (website day view and grid too), sign-in backdrop, live refresh | built and tested; in the next PR |
 | Employee sync from other platforms | later (after the import) |
 
 ## Next

@@ -14,7 +14,7 @@ import { featureOn, featuresOf, type Feature, type Features } from './features';
 import { registerForPush, unregisterPush, onPushReceived } from './push';
 import { hostedServer } from './hosted';
 import { getItem, setItem } from './storage';
-import { palette, type Palette } from './theme';
+import { brandFrom, isDark, palette, type Brand, type Palette } from './theme';
 import { todayStr } from './time';
 import type { Boot, JobCode, Person, ServerConfig } from './types';
 
@@ -25,6 +25,11 @@ export interface Account {
   name?: string;
   color?: string;
   logo?: string;
+  /**
+   * The restaurant's Branding last seen (and the person's own appearance), so the app opens in its colors
+   * before the restaurant's data has loaded. Replaced every time fresh data comes in.
+   */
+  brand?: Brand;
   userName?: string;
   signedIn?: boolean;
 }
@@ -163,13 +168,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       tokenRef.current = t;
       setToken(t);
       setReady(true);
-      if (s) fetchConfig(s).then(setConfig).catch(() => {});
+      if (s && !t) fetchConfig(s).then(setConfig).catch(() => {}); // signed in: refresh() fetches it with the data
     })();
   }, []);
 
   const refresh = useCallback(async () => {
     const s = serverRef.current;
     if (!s || !tokenRef.current) return;
+    // The sign-in page's Branding and the plan's features too, so neither stays as it was when the app opened.
+    fetchConfig(s).then((c) => { if (serverRef.current === s) setConfig(c); }).catch(() => {});
     try {
       const b = await client.call<Boot>('app.bootstrap');
       if (serverRef.current !== s) return; // switched restaurants meanwhile
@@ -177,7 +184,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setBootError(null);
       setOfflineSince(null);
       writeCache(`${s}|boot`, b);
-      patchAccount(s, { name: b.settings.restaurantName, color: b.settings.brandColor || undefined, userName: b.me.name, signedIn: true });
+      patchAccount(s, { name: b.settings.restaurantName, userName: b.me.name, signedIn: true });
     } catch (e) {
       if (!(e instanceof ApiError) || e.status === 401 || serverRef.current !== s) return;
       setBootError(e);
@@ -297,10 +304,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [saveAccounts, startAdding]);
 
   const features = featuresOf(boot, config);
-  const mode = boot?.me.appearance || boot?.settings.appearance || config?.brand?.mode || 'auto';
-  const dark = mode === 'dark' || (mode !== 'light' && scheme === 'dark');
-  const colors = useMemo(() => palette(dark, boot?.settings.brandColor || config?.brand?.color), [dark, boot?.settings.brandColor, config?.brand?.color]);
-  const logoPath = config?.brand?.logo || (boot?.settings.logoVersion ? `/api/branding/logo?v=${boot.settings.logoVersion}` : '');
+  // The restaurant's look (Settings → Branding): its data first, so a change there shows on the next refresh.
+  const saved = server ? accounts.find((a) => a.server === server)?.brand : undefined;
+  const brand = brandFrom({ boot, config, saved, signedIn: !!token });
+  const dark = isDark(brand.mode, scheme);
+  const colors = useMemo(() => palette(dark, brand), [dark, brand.brand, brand.nav, brand.bg]); // eslint-disable-line react-hooks/exhaustive-deps
+  const logoPath = brand.logo;
+  // Keep the latest with the account, for the next start. Signed in, only the restaurant's data counts (it has
+  // the person's own appearance); signed out, the sign-in page's Branding.
+  useEffect(() => {
+    if (!server || (!boot && (token || !config?.brand))) return;
+    const fresh = brandFrom({ boot, config });
+    patchAccount(server, { brand: fresh, color: fresh.brand || undefined, logo: fresh.logo || undefined });
+  }, [server, boot, config, token, patchAccount]);
   const value = useMemo<Session>(() => {
     const me = boot?.me;
     const st = boot?.settings;

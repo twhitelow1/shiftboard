@@ -52,6 +52,9 @@ export interface Settings {
   openEndHours?: number;
   appearance?: 'auto' | 'light' | 'dark';
   brandColor?: string;
+  /** Settings → Branding: the website's sidebar color (the app's header) and the light-mode background. */
+  navColor?: string;
+  bgColor?: string;
   logoVersion?: number;
   hours?: Record<string, { open?: string; close?: string }>;
   departments?: string[];
