@@ -29,10 +29,14 @@ Limits:
 // Added to the description of every tool that changes something (they're written for the Claude connector).
 const WRITE_NOTE = ' In Ask ShiftBoard: calling this shows the person a card with Confirm and Cancel; nothing changes until they tap Confirm. Leave out confirm.';
 
-/** The tools for the model: the person's visible tools, in the registry's order, with confirm left out. */
+/**
+ * The tools for the model: the person's visible tools, in the registry's order, with confirm left out. Tool inputs
+ * stream as they're generated (eager_input_streaming); the API then doesn't validate them, so ShiftBoard does:
+ * runTool checks every read's input against its schema, and loop.js checks a change's before it becomes a card.
+ */
 export function claudeTools(tools) {
   return tools.map((t) => {
-    const c = toClaudeTool(t);
+    const c = { ...toClaudeTool(t), eager_input_streaming: true };
     if (!t.write) return c;
     const { confirm: _c, ...properties } = c.input_schema.properties || {};
     const required = (c.input_schema.required || []).filter((k) => k !== 'confirm');
