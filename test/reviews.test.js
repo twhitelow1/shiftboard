@@ -477,10 +477,17 @@ test('syncing Google over HTTP, then replying: post, edit, delete on Google, aud
   } finally { await A.close(); }
 });
 
-test('AI drafts aren’t set up: the module missing (this branch) or off answers available: false, and nothing fails', async () => {
+test('AI drafts aren’t set up: the module missing (this branch), off, or its cap reached answers available: false, and nothing fails', async () => {
   const S = await setup({ ai: async () => ({ aiFor: () => ({ available: false, reason: 'off' }) }) });
   const S2 = await setup();
+  // aiFor() is synchronous; complete() throws AiUnavailable (with .reason) when the month's cap is reached.
+  class AiUnavailable extends Error { constructor(reason) { super('This month’s AI limit is reached'); this.name = 'AiUnavailable'; this.reason = reason; } }
+  const S3 = await setup({ ai: async () => ({ aiFor: () => ({ available: true, complete: async () => { throw new AiUnavailable('cap'); } }) }) });
   try {
+    const m3 = await cookieFor(S3.A.base, S3.pick('manager').email);
+    const capped = await S3.req(m3, 'POST', '/api/reviews/draft', { id: S3.A.db.store.list('guestReviews')[0].id });
+    assert.equal(capped.status, 200);
+    assert.deepEqual([capped.body.result.available, capped.body.result.reason], [false, 'cap']);
     for (const { A, pick, req } of [S, S2]) {
       const manager = await cookieFor(A.base, pick('manager').email);
       const id = A.db.store.list('guestReviews')[0].id;
@@ -489,7 +496,7 @@ test('AI drafts aren’t set up: the module missing (this branch) or off answers
       assert.equal(r.body.result.available, false);
       assert.equal((await req(manager, 'GET', '/api/reviews/ai')).body.result.available, false);
     }
-  } finally { await S.A.close(); await S2.A.close(); }
+  } finally { await S.A.close(); await S2.A.close(); await S3.A.close(); }
 });
 
 test('plan: Google & Yelp reviews are in Pro and Beta, not Starter; without it routes and RPCs answer 403', async () => {

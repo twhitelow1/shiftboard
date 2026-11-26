@@ -9,11 +9,13 @@
 //                                   platform runs every restaurant from server/platform/index.js)
 // Every draft, post, edit and delete is in the restaurant's audit log (who, which review; never the review's text).
 //
-// The AI: server/ai/index.js (built alongside this) exports aiFor({ db, tenant, env, now }) →
-// { available, reason?, complete({ purpose, system, messages, maxTokens, user }) }, metered and capped per
-// restaurant. It's loaded when first needed and only if it's there: without it, or when it says it isn't
-// available, the page shows "AI drafts aren't set up" and the manager writes the reply. Never sent to it: a
-// staff member's last name, anyone's schedule, or Yelp's review text (Yelp's API terms forbid it).
+// The AI: server/ai/index.js (built alongside this) exports aiFor({ db, tenant, env, now, lang? }), synchronous →
+// { available, reason?: 'no_key' | 'off' | 'cap' | 'plan', complete({ purpose, system, messages, maxTokens, user }) },
+// metered and capped per restaurant; complete() throws AiUnavailable (with .reason and a friendly message) when it
+// can't run. Review replies need the plan feature 'reviews' in its AI_FEATURES. It's loaded when first needed and
+// only if it's there: without it, or when it isn't available, the page shows "AI drafts aren't set up" (or "this
+// month's AI limit is reached" for 'cap') and the manager writes the reply. Never sent to it: a staff member's last
+// name, anyone's schedule, or Yelp's review text (Yelp's API terms forbid it).
 import { canManageSchedule } from '../core/roles.js';
 import { uid } from '../core/store.js';
 import { createService } from '../core/service.js';
@@ -38,7 +40,7 @@ export async function loadAi({ db, tenant = null, env, now, importer = () => imp
   }
   if (typeof mod?.aiFor !== 'function') return { available: false, reason: 'missing' };
   try {
-    const ai = await mod.aiFor({ db, tenant, env, now });
+    const ai = await mod.aiFor({ db, tenant, env, now }); // synchronous today; awaiting is harmless
     if (!ai?.available || typeof ai.complete !== 'function') return { available: false, reason: ai?.reason || 'off' };
     return ai;
   } catch (e) {
@@ -84,11 +86,15 @@ export function mountReviewReplies(app, { db, env, tenant = null, userOf, now = 
     const { staff, lastNames } = staffForReply(db.store, review.id);
     const restaurant = createService(db.store).settings().restaurantName;
     try {
-      const d = await draftReply({ complete: a.complete, restaurant, review, staff, lastNames, settings: replySettings(db.store), user: u.id });
+      const d = await draftReply({ complete: (o) => a.complete(o), restaurant, review, staff, lastNames, settings: replySettings(db.store), user: { id: u.id, name: u.name, role: u.role, language: u.language || null } });
       if (!d.text) return res.status(502).json({ error: 'The AI didn’t write a draft. Try again, or write the reply yourself.' });
       await db.run((store) => audit(store, u.id, 'reviews.drafted', { reviewId: review.id, source: review.source, stopReason: d.stopReason }), { write: true }).catch(() => {});
       res.json({ result: { available: true, text: d.text, usage: d.usage || null } });
     } catch (e) {
+      // The AI module's AiUnavailable: not set up, switched off, not in the plan, or this month's cap reached.
+      if (e?.name === 'AiUnavailable' || (e?.reason && ['no_key', 'off', 'cap', 'plan'].includes(e.reason))) {
+        return res.json({ result: { available: false, reason: e.reason || 'off', ...(typeof e.message === 'string' ? { message: e.message } : {}) } });
+      }
       const status = Number(e?.status) || 0;
       if (status === 429 || /limit|cap|quota/i.test(String(e?.message))) return res.status(429).json({ error: 'This restaurant’s AI drafts for this month are used up. Write the reply yourself, or try again next month.' });
       console.error('AI draft failed:', e);

@@ -62,7 +62,7 @@ export function ReviewsTab({ args }) {
       </div>
       {error && <div className="alert bad">{error}</div>}
       {data && <span className="small muted">{t('impact.reviewsCount', { count: data.total })}</span>}
-      {ai && !ai.available && <div className="help">{t('reviews.aiNotSetUpHelp')}</div>}
+      {ai && !ai.available && <div className="help">{ai.reason === 'cap' ? t('reviews.aiLimitHelp') : t('reviews.aiNotSetUpHelp')}</div>}
 
       {data?.yelp?.length > 0 && (
         <div className="card card-pad col rv-yelp" style={{ gap: 10 }}>
@@ -122,7 +122,7 @@ export function ReplyPanel({ review: r, ai, googleOk, onDone }) {
     setDrafting(true); setNote('');
     try {
       const d = await draftReply(r.id);
-      if (!d.available) setNote(t('reviews.aiNotSetUp'));
+      if (!d.available) setNote(d.reason === 'cap' ? t('reviews.aiLimit') : t('reviews.aiNotSetUp'));
       else { setText(d.text); if (d.sample) setNote(t('reviews.sampleDraft')); }
     } catch (e) { toast(e.message, 'bad'); } finally { setDrafting(false); }
   };
@@ -138,7 +138,7 @@ export function ReplyPanel({ review: r, ai, googleOk, onDone }) {
         <button className="btn sm" disabled={drafting || busy || (ai && !ai.available)} onClick={draft} title={ai && !ai.available ? t('reviews.aiNotSetUp') : ''}>
           <Icon name="sparkle" />{drafting ? t('reviews.drafting') : t('reviews.draftWithAi')}
         </button>
-        {ai && !ai.available && <span className="small muted">{t('reviews.aiNotSetUp')}</span>}
+        {ai && !ai.available && <span className="small muted">{ai.reason === 'cap' ? t('reviews.aiLimit') : t('reviews.aiNotSetUp')}</span>}
       </div>
       {note && <div className="help">{note}</div>}
       <label className="field"><span>{t('reviews.yourReply')}</span>
@@ -261,7 +261,7 @@ export function ReplySettingsCard() {
         <Field label={t('reviews.tone')}>
           <select className="input" value={f.tone} disabled={!edit} onChange={set('tone')}>{['warm', 'professional'].map((x) => <option key={x} value={x}>{t(`reviews.tone_${x}`)}</option>)}</select>
         </Field>
-        <Field label={t('reviews.signOff')} help={t('reviews.signOffHelp')}><input className="input" value={f.signOff} disabled={!edit} placeholder={s.defaultSignOff} onChange={set('signOff')} /></Field>
+        <Field label={t('reviews.signOff')} help={t('reviews.signOffHelp')}><input className="input" value={f.signOff} disabled={!edit} placeholder={t('reviews.defaultSignOff', { restaurant: s.restaurant })} onChange={set('signOff')} /></Field>
       </div>
       <div className="grid2">
         <Field label={t('reviews.contactEmail')} help={t('reviews.contactHelp')}><input className="input" type="email" inputMode="email" value={f.contactEmail} disabled={!edit} onChange={set('contactEmail')} /></Field>

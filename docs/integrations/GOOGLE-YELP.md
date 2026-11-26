@@ -1,0 +1,93 @@
+# Google Business Profile and Yelp reviews
+
+What Google and Yelp offer, how ShiftBoard uses them, and exactly what the owner (DubLow Digital) has to do. Researched
+26 November 2026 by reading Google's and Yelp's own reference pages (links below). What those pages say is marked
+**verified**; anything this session couldn't confirm is marked **unverified**.
+
+## Summary
+
+| | |
+|---|---|
+| **Google** | Each restaurant's admin clicks **Connect Google** (Settings → Integrations → Google Business Profile), signs in with the Google account that owns or manages the Business Profile, and picks the location. ShiftBoard reads every review (stars, text, the owner's reply) every morning and on **Sync now**, and managers **post, edit and delete replies on Google** from Positive impact → Reviews. |
+| **Yelp** | One Yelp API key (DubLow's, for every restaurant, or a restaurant's own) and the restaurant's Yelp business. Yelp's API gives **up to 3 short excerpts** (7 on its Premium plan), which ShiftBoard shows for **24 hours** (Yelp's terms) with a link to each full review. **No reply API**: managers write or copy a reply and post it in Yelp for Business. Full Yelp reviews still come in by CSV import or by pasting one (**Add a review**). |
+| **Review alerts** | Every new synced review alerts the managers (in the app, plus email and phone per their own preferences): the stars, where, a snippet and the staff it names. Settings → Positive impact: **every new review / only 3 stars or fewer (default) / off**. A first sync's history stays quiet (only the last 7 days alert); nothing older than 30 days alerts; each review alerts once. Yelp alerts never include Yelp's words. CSV imports keep Positive impact's existing alert (2 stars or fewer). |
+| **AI-drafted replies** | **Draft with AI** in the reply panel, through the built-in Claude module (`server/ai/`, metered and capped per restaurant). The draft follows the admin's tone, sign-off and contact settings. Never sent to the AI: a staff member's last name, anyone's schedule, Yelp's API excerpts. Without the AI module (or with it switched off) the page says **"AI drafts aren't set up"** and managers write replies themselves. |
+| **Plan** | One feature, `reviews` ("Google & Yelp reviews"), in **Pro** and **Beta**; it builds on `impact` (Positive impact), also Pro and Beta. DubLow can switch it on or off per restaurant. |
+
+## What the owner must do
+
+### Google (one time, for the whole platform)
+
+1. **Google Cloud project.** In the [Google Cloud console](https://console.cloud.google.com/projectcreate), create a project for ShiftBoard (e.g. "DubLow ShiftBoard"), owned by a DubLow Google Workspace account. Note its **project number** (Dashboard → Project info).
+2. **Request Business Profile API access.** Google requires an application before the APIs work: the quota is **0 requests per minute** until approved, **300 QPM** after ([prerequisites](https://developers.google.com/my-business/content/prereqs), verified).
+   - Eligibility (verified): the applicant manages "a Google Business Profile that is verified and active for 60+ days" and the business has a website on that profile. Apply with an email address that is an owner or manager of a Business Profile (DubLow's own profile works).
+   - Form: [support.google.com/business/contact/api_default](https://support.google.com/business/contact/api_default) → **Application for Basic API Access**; give the project number. Google answers by email. Check approval in Cloud console → APIs & Services → Business Profile APIs → Quotas (300 QPM = approved).
+3. **Enable the APIs** (after approval; some only appear once approved, [basic setup](https://developers.google.com/my-business/content/basic-setup), verified): **Google My Business API** (v4: reviews and replies), **My Business Account Management API** (accounts), **My Business Business Information API** (locations). The other four Business Profile APIs on that page aren't needed.
+4. **OAuth consent screen** (Google Auth Platform → Branding / Audience / Data access): app name "ShiftBoard" (or the new product name), support email, logo, DubLow's home page, **privacy policy** and **terms** links, authorized domain(s) for every domain restaurants use (the platform domain and any custom restaurant domains). Audience: **External**, then **Publish app** (In production): in Testing, only listed test users can connect and refresh tokens expire after 7 days. Data access: add the scope `https://www.googleapis.com/auth/business.manage`.
+5. **Verification.** Google reviews an External app that asks for sensitive scopes before any Google account can grant them ([sensitive scope verification](https://developers.google.com/identity/protocols/oauth2/production-readiness/sensitive-scope-verification), typically 3–5 business days per that page). **Unverified**: whether `business.manage` is classed as sensitive today (Google's scope list wasn't read; one developer forum thread reports the console showing it as non-sensitive while still blocking external users). Plan for brand verification (domain ownership in Search Console, the privacy policy describing Google user data) and, if the console offers it, submit the scope for verification with a short video of Connect → pick location → reviews → Post to Google.
+6. **OAuth client.** Credentials → Create credentials → OAuth client ID → **Web application**. Authorized redirect URIs: `https://<each restaurant host>/api/google/callback` (e.g. `https://bistro.<PLATFORM_DOMAIN>/api/google/callback`, plus the default restaurant's production domain). Google does not allow wildcards, so **each restaurant host has to be added** here before its admin can connect (see Decisions). Settings → Integrations → Google Business Profile shows the exact address to add (`redirectUri` in `/api/google/status`).
+7. **Vercel env (Production, Sensitive):** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`. Also needed (already set for the other syncs): `CRON_SECRET`, `PLATFORM_ENCRYPTION_KEY` (seals each restaurant's Google refresh token; without it the token is sealed with a key derived from the session secret, like the authenticator secrets). Redeploy. `/api/cron/reviews` (in `vercel.json`, 11:45 UTC daily) syncs every restaurant with the feature.
+
+Per restaurant after that: an admin clicks **Connect Google**. If the Google account manages exactly one location, it's picked; otherwise the admin picks it.
+
+### Yelp (one time)
+
+1. **Yelp developer app.** At [Yelp Places API](https://business.yelp.com/data/products/places-api/) start a plan: reviews need **Enhanced ($299/month, up to 3 excerpts)** or **Premium ($643/month, up to 7)**; **Base ($229) has no review excerpts** (verified on that page, 26 Nov 2026). Each plan has a **30-day trial with 5,000 free calls**; pricing is per call with a minimum of 1,000 calls billed daily, overage $6.57 per 1,000 on Enhanced; daily limits reset at midnight UTC (429 when hit). The page's FAQ still uses older plan names and mentions "5,000 daily API calls" and "the first 160 characters of a review", which conflict with the plan table: **confirm the current terms with Yelp** before signing.
+2. **API key.** From the app's Manage App page. Put it in Vercel as **`YELP_API_KEY`** (Production, Sensitive): every restaurant uses DubLow's key unless its admin pastes its own in Settings → Integrations → Yelp. ShiftBoard calls Yelp about once a day per restaurant (plus Sync now), so one Enhanced plan covers many restaurants.
+3. **Per restaurant:** an admin opens Settings → Integrations → Yelp, searches the restaurant by name and city (or pastes its Yelp page), and picks it (saved as `YELP_BUSINESS_ID`).
+4. **Read and accept** Yelp's [API Terms of Use](https://terms.yelp.com/developers/api_terms/) and its Display Requirements (show Yelp's name/logo and link to each review; the Display Requirements page wasn't read: **unverified** whether the "Yelp" badge plus "Read on Yelp" link is enough).
+
+### AI drafts
+
+Built by the parallel `server/ai/` branch (Anthropic key in Vercel, metering and caps per restaurant). Its `AI_FEATURES` list in `server/ai/index.js` must include the plan feature **`reviews`** for review replies (today it holds only `assistant`); without it `aiFor()` answers `available: false, reason: 'plan'`. Once that's merged and on for a restaurant, **Draft with AI** works; until then the page says "AI drafts aren't set up", and when the month's cap is reached (`AiUnavailable`, reason `cap`) it says the limit is reached.
+
+## Google Business Profile APIs (research)
+
+All verified on Google's reference pages unless marked.
+
+| Call | Request | Notes |
+|---|---|---|
+| Accounts | `GET https://mybusinessaccountmanagement.googleapis.com/v1/accounts` | `pageSize` ≤ 20, `pageToken`; [reference](https://developers.google.com/my-business/reference/accountmanagement/rest/v1/accounts/list) |
+| Locations | `GET https://mybusinessbusinessinformation.googleapis.com/v1/{accounts/*}/locations` | **`readMask` required** (ShiftBoard asks `name,title,storefrontAddress,metadata`); `pageSize` ≤ 100; [reference](https://developers.google.com/my-business/reference/businessinformation/rest/v1/accounts.locations/list) |
+| Reviews | `GET https://mybusiness.googleapis.com/v4/{accounts/*/locations/*}/reviews` | `pageSize` ≤ 50, `pageToken`, `orderBy` `rating` / `rating desc` / `updateTime desc` (default); answer `reviews[]`, `averageRating`, `totalReviewCount`, `nextPageToken`; [reference](https://developers.google.com/my-business/reference/rest/v4/accounts.locations.reviews/list) |
+| One review | `GET …/reviews/{reviewId}` | ShiftBoard doesn't need it (the list has everything) |
+| Reply | `PUT https://mybusiness.googleapis.com/v4/{accounts/*/locations/*/reviews/*}/reply` body `{ "comment": "…" }` | returns the ReviewReply; `comment` up to 4,096 bytes; [reference](https://developers.google.com/my-business/reference/rest/v4/accounts.locations.reviews/updateReply) |
+| Delete reply | `DELETE …/reviews/*/reply` | [resource page](https://developers.google.com/my-business/reference/rest/v4/accounts.locations.reviews) |
+| Scope | `https://www.googleapis.com/auth/business.manage` | `plus.business.manage` is deprecated ([implement OAuth](https://developers.google.com/my-business/content/implement-oauth)) |
+
+The Review resource (verified): `name` (`accounts/{a}/locations/{l}/reviews/{r}`), `reviewId`, `reviewer { displayName, profilePhotoUrl, isAnonymous }`, `starRating` (`ONE`…`FIVE`, `STAR_RATING_UNSPECIFIED`), `comment`, `createTime`, `updateTime`, `reviewReply { comment, updateTime, reviewReplyState: PENDING | APPROVED | REJECTED, policyViolation }`. There's no sandbox; `X-GOOG-API-FORMAT-VERSION: 2` gives detailed errors (ShiftBoard sends it).
+
+OAuth (Google's standard web-server flow; the endpoints are Google's well-known ones, not re-read this session): consent at `https://accounts.google.com/o/oauth2/v2/auth` with `access_type=offline` and `prompt=consent` (so a refresh token comes back every time), tokens at `https://oauth2.googleapis.com/token`, revoke at `https://oauth2.googleapis.com/revoke`.
+
+**Unverified / assumptions**
+- Google's machine translations inside `comment` ("(Translated by Google) … (Original) …"): ShiftBoard keeps the original words. The markers are what reviews have been seen to carry; Google doesn't document them.
+- Deleted reviews: the list simply stops returning them; ShiftBoard keeps what it already has (it doesn't delete reviews).
+- New reviews are found by the daily sync; Google's Notifications API (Pub/Sub) could make it near-real-time later.
+- Whether `business.manage` needs sensitive-scope verification today (see step 5).
+
+## Yelp Places API (research)
+
+- Reviews: `GET https://api.yelp.com/v3/businesses/{business_id_or_alias}/reviews`, `Authorization: Bearer <API key>`, optional `locale`, `offset`, `limit` (0–50, default 20, but the endpoint "returns up to three review excerpts"), `sort_by=yelp_sort` only. Answer: `reviews[] { id, url, text, rating, time_created, user { id, profile_url, image_url, name } }`, `total`, `possible_languages`. Needs the Enhanced or Premium plan. Businesses with no reviews aren't returned ([reference](https://docs.developer.yelp.com/reference/v3_business_reviews), verified).
+- ShiftBoard asks `limit=7` (Premium gives 7, Enhanced 3) and finds the business with `GET /v3/businesses/{id or alias}` or `GET /v3/businesses/search?term=…&location=…`.
+- **No API to reply** to a review: owners reply in Yelp for Business (biz.yelp.com).
+- **API Terms** ([terms.yelp.com/developers/api_terms](https://terms.yelp.com/developers/api_terms/), "Last Updated: September 22, 2026", verified): no Yelp content stored "for a period longer than twenty-four (24) hours" (Yelp business IDs excepted); no Yelp content used to train AI, and you may not "Submit or ingest any Yelp Content into any Generative AI Model", explicitly including prompts; don't modify or remove the hyperlink in Yelp content. ShiftBoard follows this: excerpts live in their own collection (`yelpExcerpts`) and are deleted after 24 hours; they never go through `applyReviews` (which keeps reviews), never to the AI, never into a notification; what's kept is the business ID and one-way hashes of review IDs (to alert once and remember "replied").
+- No scraping of Yelp pages, anywhere.
+
+## How it works in ShiftBoard
+
+- **Connect (Google):** `POST /api/google/connect` (admins) returns Google's consent URL with a **state** signed with the restaurant's own secret, naming the restaurant and the admin, valid 10 minutes, plus an HttpOnly cookie with a random nonce. `GET /api/google/callback` accepts it only if the signature, purpose, restaurant, nonce cookie (same browser) and the signed-in admin all match; then it exchanges the code and seals the **refresh token** (AES-256-GCM, `server/secret-box.js`) in the restaurant's own store (`integrations/google.refreshTokenEnc`, never sent to a browser). Disconnect revokes it at Google. Connect, location changes and disconnect are in the restaurant's audit log.
+- **Sync (Google):** newest change first; a run stops at reviews changed before the last finished run (a day of overlap), or 400 days back the first time; chunked to fit Vercel's 30 s (Sync now calls again with `next`, the cron resumes the next day). Each review's key comes from Google's `reviewId`, so re-syncs and a CSV import of the same review never double count. Stars ONE…FIVE → 1–5. The owner's reply on Google comes in as the review's reply (and is cleared if deleted on Google). Staff matching, Needs review, "you were mentioned" and the season reports come from Positive impact unchanged.
+- **Replies:** `POST /api/reviews/reply` (managers; Google reviews that came from Google's API only) → `PUT …/reply`; editing is the same call; `POST /api/reviews/reply/delete` → `DELETE …/reply`. Each is audited (`reviews.replyPosted`, `reviews.replyEdited`, `reviews.replyDeleted`, who and which review). For OpenTable, Yelp, TripAdvisor and Google reviews from a file: **Copy reply**, **Open <site>**, **Mark replied**.
+- **AI drafts:** `POST /api/reviews/draft` (managers). `core/review-reply.js` builds the prompt: the restaurant's name, the review's stars and text (as data, with an instruction to ignore instructions inside it), the guest's first name only, staff the review names by their common first names only, the admin's tone (warm/professional), sign-off and contact, and the rules (reply in the review's language, thank specifically, never argue, low ratings apologize and invite offline contact at the admin's email/phone, never promise refunds or comps, never a staff last name or schedule, under 120 words). The answer is tidied and any staff last name removed. `purpose: 'review_reply'`, `user`: `{ id, name, role, language }` of the manager (no other fields). `aiFor()` is synchronous; an `AiUnavailable` thrown by `complete()` (reasons `no_key`, `off`, `cap`, `plan`) answers `available: false` with its reason instead of an error. Drafting is audited without the text.
+- **Demo build:** sample Google connection and Yelp business, Google reviews marked as synced (two answered), three invented Yelp excerpts, canned drafts from a template; nothing calls Google, Yelp or an AI, and "posted" replies stay in the demo.
+
+Code: `core/review-reply.js`, `core/google-reviews.js`, `core/yelp-reviews.js`, `core/review-seed.js` (demo), `server/google.js`, `server/google-sync.js`, `server/google-routes.js`, `server/yelp.js`, `server/yelp-routes.js`, `server/review-replies.js`, `web/src/pages/ReviewReplies.jsx`, `web/src/pages/ReviewsSettings.jsx`, `web/src/reviews-api.js`. Tests: `test/reviews.test.js`.
+
+## Decisions to confirm
+
+1. **One plan feature (`reviews`)** for Google and Yelp, Pro and Beta (not Starter), needing `impact` too.
+2. **Redirect URIs per restaurant host.** Google needs every `https://<host>/api/google/callback` registered in the OAuth client (no wildcards). Alternative: one callback on the platform domain that forwards to the restaurant (a small follow-up).
+3. **Yelp key**: DubLow's platform key by default (one Enhanced plan, ~$299/month, shared), a restaurant's own key optional. Or no Yelp API at all and CSV/paste only, given the 3-excerpt limit and price.
+4. **AI drafts for Yelp reviews pasted by hand.** Yelp's API terms forbid sending API content to an AI; ShiftBoard refuses drafts for the API excerpts. A review a manager copies from Yelp for Business and pastes is drafted like any other review: confirm Yelp's general terms are fine with that, or switch drafting off for `source: 'yelp'` entirely (one line in `server/review-replies.js`).
+5. **Alerts for CSV imports** keep Positive impact's existing rule (2 stars or fewer, last 30 days) and text; synced reviews use the new setting. (Unchanged so the demo data and the role-parity fingerprint stay as they were.)
+6. Default alert setting: "only 3 stars or fewer" (follows the older low-rating switch until an admin picks).
