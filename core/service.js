@@ -31,6 +31,8 @@ import { legalNameFor, legalNamePatch } from './names.js';
 import { tradeStatsApi } from './trade-stats.js';
 import { announcementApi } from './announcements.js';
 import { effectiveFeatures, roleAllows, roleRefusal, roleFeatureApi, ROLE_OFF } from './role-features.js';
+import { publishOptions, scheduleNotice } from './publish-notify.js';
+import { emailTemplateApi } from './email-templates.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -111,6 +113,8 @@ export function createService(store, opts = {}) {
   const isApprover = (a) => canApprove(a, settings());
   const needAuth = (a) => { if (!a) fail(401, 'Please sign in'); };
   const needMgr = (a) => { needAuth(a); if (!isMgr(a)) fail(403, 'Managers only'); };
+  // A missing or malformed week answers 400 ("Pick a week"), not a crash: the beta error log caught forecast.week called with none.
+  const needWeek = (ws) => { if (typeof ws !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(ws)) fail(400, 'Pick a week'); };
   const needApprover = (a) => { needAuth(a); if (!isApprover(a)) fail(403, 'Managers and supervisors only'); };
   const needEvents = (a) => { needAuth(a); if (!isEvents(a)) fail(403, 'Events team or managers only'); };
   const needAdmin = (a) => { needAuth(a); if (!canChangeSettings(a)) fail(403, 'Admins only'); };
@@ -142,11 +146,11 @@ export function createService(store, opts = {}) {
    * A notification text in each recipient's language: say('newShift', desc(s)) → (lang) => MSG[lang].newShift(…).
    * Arguments that are functions get the language too (desc(s), a date, a name that can be "Open shift").
    */
-  const say = (key, ...args) => (lang) => {
+  const say = (key, ...args) => Object.assign((lang) => {
     const m = msg(lang)[key];
     const vals = args.map((a) => (typeof a === 'function' ? a(lang) : a));
     return typeof m === 'function' ? m(...vals) : m;
-  };
+  }, { key, args }); // the key and arguments: an email template's placeholders (core/email-templates.js)
   const day = (date, opts = {}) => (lang) => prettyDate(date, { ...opts, lang });
   const isFuture = (s) => {
     const [start] = shiftSpan(s);
@@ -161,15 +165,21 @@ export function createService(store, opts = {}) {
    * list follows the person's language if they change it; `text` is theirs at the time, which email,
    * web push, phone app push and texts send (server/channels.js, server/expo-push.js).
    */
-  function notify(userIds, text, link = '') {
+  function notify(userIds, text, link = '', extra = null) {
     const at = now().toISOString();
     const all = renderAll(text);
     const st = settings();
+    // A say() message keeps its key and arguments (in each language) and who made the change, for the email's
+    // placeholders (core/email-templates.js); extra adds fields (the publish email's PDF: core/publish-notify.js).
+    const kind = typeof text === 'function' && text.key ? text.key : null;
+    const args = kind ? Object.fromEntries(['en', 'es'].map((l) => [l, text.args.map((a) => (typeof a === 'function' ? a(l) : a))])) : null;
+    const meta = { ...(kind ? { kind, args } : {}), ...(currentActor?.id ? { by: currentActor.id } : {}), ...(extra || {}) };
     for (const id of new Set(userIds.filter(Boolean))) {
       const body = all ? all[langOf(userById(id), st)] : render(text);
-      store.insert('notifications', { id: uid('ntf'), userId: id, text: body, ...(all ? { i18n: all } : {}), link, read: false, at });
+      store.insert('notifications', { id: uid('ntf'), userId: id, text: body, ...(all ? { i18n: all } : {}), link, read: false, at, ...meta });
     }
   }
+  let currentActor = null; // who is calling (set by call()), for notifications' `by`
 
   /** A consent record for a change to someone's notification emails, made in their settings. */
   function recordEmailChoice(actor, granted, lang) {
@@ -1021,21 +1031,17 @@ export function createService(store, opts = {}) {
       store.transaction(() => drafts.forEach((s) => store.remove('shifts', s.id)));
       return { removed: drafts.length };
     },
-    'shifts.publish': (actor, { start, end, eventId }) => {
+    // notify: false publishes silently; attachPdf (+ pdf: paper options) emails the week's PDF (core/publish-notify.js).
+    'shifts.publish': (actor, { start, end, eventId, ...opts }) => {
       needMgr(actor);
       const drafts = store.list('shifts', (s) => !s.published && (eventId ? s.eventId === eventId : s.date >= start && s.date <= end));
       store.transaction(() => drafts.forEach((s) => store.update('shifts', s.id, { published: true, publishedAt: now().toISOString() })));
-      const byUser = new Set(drafts.map((s) => s.userId).filter(Boolean));
+      const { notify: tell, attach, remember } = publishOptions(opts, settings());
+      if (remember && !eventId) putSettings({ publishPdf: remember });
       // Posted again after an unpublish: those people hear what changed for them instead (core/unpublish.js).
-      const told = eventId ? new Set() : unpublish.republished({ start, end, published: drafts });
-      notify([...byUser].filter((id) => !told.has(id)), eventId ? say('eventShiftsPosted', store.get('events', eventId)?.name) : say('schedulePosted', day(start, { dow: false }), day(end, { dow: false })), '#/my');
-      const open = drafts.filter((s) => !s.userId);
-      if (open.length) {
-        const jobs = new Set(open.map((s) => s.jobCodeId));
-        const eligible = users().filter((u) => u.active !== false && u.jobCodes?.some((j) => jobs.has(j.jobCodeId)) && !byUser.has(u.id)).map((u) => u.id);
-        notify(eligible, say('openShiftsPosted', open.length), '#/my');
-      }
-      return { published: drafts.length, notified: new Set([...byUser, ...told]).size };
+      const told = eventId ? new Set() : unpublish.republished({ start, end, published: drafts, args: { notify: tell } });
+      const { notified } = scheduleNotice({ notify, users, say, day, store }, { shifts: drafts, start, end, eventId, notify: tell, attach, skip: told });
+      return { published: drafts.length, notified, silent: !tell };
     },
     'shifts.eligible': (actor, { shiftId }) => {
       needAuth(actor);
@@ -1243,18 +1249,21 @@ export function createService(store, opts = {}) {
       });
       return { saved: n };
     },
-    'forecast.week': (actor, { weekStart: ws }) => {
+    'forecast.week': (actor, { weekStart: ws } = {}) => {
       needMgr(actor);
+      needWeek(ws);
       return computeForecastWeek(ws);
     },
-    'forecast.summary': (actor, { weekStart: ws }) => {
+    'forecast.summary': (actor, { weekStart: ws } = {}) => {
       needMgr(actor);
+      needWeek(ws);
       const f = computeForecastWeek(ws);
       return { days: f.days.map((d) => ({ date: d.date, covers: d.covers, totalCovers: d.totalCovers, sales: d.totalSales, laborPct: d.laborPct, laborCost: d.laborCost, hours: d.hours, closed: d.closed })), totals: f.totals, targetLaborPct: f.targetLaborPct };
     },
     // Projected covers only (no sales or labor), for everyone: the house sheet shows them to all staff.
-    'forecast.covers': (actor, { weekStart: ws }) => {
+    'forecast.covers': (actor, { weekStart: ws } = {}) => {
       needAuth(actor);
+      needWeek(ws);
       const f = computeForecastWeek(ws);
       return { days: f.days.map((d) => ({ date: d.date, totalCovers: d.totalCovers, closed: d.closed })) };
     },
@@ -1264,8 +1273,9 @@ export function createService(store, opts = {}) {
       const doc = { id: date, date, covers: Number(covers) || 0, sales: Number(sales) || 0 };
       return store.get('forecastOverrides', date) ? store.update('forecastOverrides', date, doc) : store.insert('forecastOverrides', doc);
     },
-    'forecast.fillGaps': (actor, { weekStart: ws }) => {
+    'forecast.fillGaps': (actor, { weekStart: ws } = {}) => {
       needMgr(actor);
+      needWeek(ws);
       const f = computeForecastWeek(ws);
       const toCreate = [];
       for (const d of f.days) for (const dp of d.dayparts) for (const row of dp.rows) {
@@ -1581,6 +1591,8 @@ export function createService(store, opts = {}) {
     ...profileApi({ store, now, fail, needAuth, settings, langOf: L, request: opts.request, channels: opts.channels, legal: opts.legal }),
     // ----- training: menu study guide, quizzes, leaderboard, employee manual, manager on duty (core/training.js) -----
     ...trainingApi({ store, now, settings, notify, fail, random: opts.random, langOf: L }),
+    // ----- Settings → Email notifications: the automatic emails' words, per type (core/email-templates.js) -----
+    ...emailTemplateApi({ store, settings, putSettings, needAdmin, fail }),
     // ----- 86 List: what's out or running low, per list; the bar separate (core/eighty-six.js) -----
     ...eightySixApi({ store, now, settings, notify, fail }),
     // ----- who is listed in each schedule section, and in what order (core/roster.js) -----
@@ -1599,7 +1611,7 @@ export function createService(store, opts = {}) {
       needAuth(actor);
       const lang = L(actor);
       return store.list('notifications', (n) => n.userId === actor.id).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 60)
-        .map(({ i18n, ...n }) => (i18n?.[lang] ? { ...n, text: i18n[lang] } : n)); // in the reader's language now
+        .map(({ i18n, args, attach, ...n }) => (i18n?.[lang] ? { ...n, text: i18n[lang] } : n)); // in the reader's language now
     },
     'notifications.readAll': (actor) => {
       needAuth(actor);
@@ -1657,6 +1669,7 @@ export function createService(store, opts = {}) {
     call(actor, method, args = {}) {
       const fn = api[method];
       if (!fn) fail(404, `Unknown method ${method}`);
+      currentActor = actor;
       if (roleRefusal(actor, method, settings())) fail(403, ROLE_OFF); // Roles & features, like the plan's features
       return fn(actor, args || {});
     },

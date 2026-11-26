@@ -7,6 +7,7 @@ import trades from './es-trades.js'; // Trades & pickups by season, Settings →
 import report from './es-report.js'; // Reportar un problema, y la pantalla cuando algo falla
 import claude from './es-claude.js'; // el conector de Claude
 import impact from './es-impact.js'; // Impacto positivo y OpenTable
+import print from './es-print.js'; // el PDF del horario, Publicar, Configuración → Notificaciones por correo
 const catalog = {
   lang: {
     change: 'Cambiar idioma',
@@ -2289,6 +2290,7 @@ const catalog = {
   ...report,
   ...claude,
   ...impact,
+  ...print,
 };
 
 export default catalog;

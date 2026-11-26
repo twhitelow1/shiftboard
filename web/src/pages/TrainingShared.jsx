@@ -164,16 +164,21 @@ export function Chips({ options, value = [], onChange, render = (o) => o.label ?
 }
 
 // ---------- manager on duty ----------
-function shiftLine(mod, t, lang) {
-  const s = mod.person?.shift;
-  const until = s?.end ? t.until(fmtTime(s.end)) : '';
-  if (mod.status === 'now') return [t.onNow, until].filter(Boolean).join(' · ');
-  if (mod.status === 'next') return t.inAt(fmtTime(s.start));
-  if (mod.status === 'planned') return `${fmtDay(mod.date, lang)} · ${t.inAt(fmtTime(s.start))}`;
-  if (mod.status === 'override') return s ? `${t.todayOverride} · ${fmtTime(s.start)}–${fmtTime(s.end)}` : t.todayOverride;
-  return '';
+/** One manager's line: "On now · until 10 pm", "In at 4 pm today", "Earlier today · 10 am–4 pm". */
+function managerLine(m, mod, t, lang) {
+  const s = m.shift;
+  if (!s) return m.state === 'now' ? t.todayOverride : '';
+  const span = `${fmtTime(s.start)}${s.end ? `–${fmtTime(s.end)}` : ''}`;
+  if (m.state === 'now') return [t.onNow, s.end ? t.until(fmtTime(s.end)) : ''].filter(Boolean).join(' · ');
+  if (m.state === 'later') return t.inAt(fmtTime(s.start));
+  if (m.state === 'earlier') return t.earlierToday(span);
+  return `${fmtDay(mod.date, lang)} · ${span}`;
 }
-/** Who to call: name, shift, Call (tel:) and Text (sms:) buttons, and the restaurant's call-out line. */
+/**
+ * Every manager on duty today, each with their shift and Call (tel:) and Text (sms:) buttons: who's on now first
+ * (highlighted, the one in charge at the top), then later today, then earlier. With none on the schedule, the
+ * restaurant's call-out line.
+ */
 export function ModCard({ compact = false, mod: given = null }) {
   const { call, version, isMgr, has } = useApp();
   const t = useT();
@@ -183,32 +188,44 @@ export function ModCard({ compact = false, mod: given = null }) {
   // The manager on duty is part of Training (not in every plan).
   useEffect(() => { if (!given && (!has || has('training'))) call('mod.get').then(setMod).catch(() => setMod(false)); }, [version, given]);
   if (!mod) return null;
-  const p = mod.person;
+  // Older servers answer with one person only.
+  const list = mod.managers || (mod.person ? [{ ...mod.person, state: mod.status === 'now' || mod.status === 'override' ? 'now' : mod.status === 'next' ? 'later' : 'planned', inCharge: true }] : []);
+  const anyPhone = list.some((m) => m.phone);
   return (
     <div className={`card tr-mod ${compact ? 'compact' : ''}`}>
       <div className="tr-mod-main">
         <div className="tr-mod-icon"><TIcon name="phone" size={18} /></div>
         <div className="tr-mod-who">
-          <div className="tr-kicker">{t.managerOnDuty}</div>
-          {p ? <>
-            <div className="tr-mod-name">{p.name}</div>
-            <div className="small muted">{shiftLine(mod, t, lang)}</div>
-          </> : <div className="small muted">{t.noManagerNow}</div>}
-          {!compact && mod.alsoOn?.length > 0 && <div className="tiny faint">{t.alsoOn(mod.alsoOn.map((x) => x.name).join(', '))}</div>}
+          <div className="tr-kicker">{list.length > 1 ? t.managersOnDuty(list.length) : t.managerOnDuty}</div>
+          {!list.length && <div className="small muted">{t.noManagerNow}</div>}
         </div>
         {isMgr && !compact && <button className="btn sm ghost" onClick={() => setEditing(true)}>{t.change}</button>}
       </div>
-      <div className="tr-mod-actions">
-        {p?.phone ? <>
-          <a className="btn primary" href={telHref(p.phone)}><TIcon name="phone" />{t.call}</a>
-          <a className="btn" href={smsHref(p.phone)}><TIcon name="message" />{t.text}</a>
-        </> : p ? <span className="small muted tr-mod-nophone">{t.noPhone(p.name)}</span> : null}
-        {mod.callOutPhone && (
-          <a className={`btn ${p?.phone ? 'ghost' : ''}`} href={telHref(mod.callOutPhone)} title={mod.callOutPhone}>
-            <TIcon name="phone" />{t.callOutLine}{!p?.phone && <span className="tr-mod-num">{mod.callOutPhone}</span>}
+      {list.length > 0 && (
+        <ul className="tr-mod-list">
+          {list.map((m) => (
+            <li key={m.id} className={`tr-mod-row ${m.state === 'now' ? 'on' : ''} ${m.state === 'earlier' ? 'past' : ''}`}>
+              <div className="tr-mod-person">
+                <div className="tr-mod-name">{m.name}{m.inCharge && list.length > 1 && <span className="badge tr-mod-charge">{t.inCharge}</span>}</div>
+                <div className="small muted">{managerLine(m, mod, t, lang)}</div>
+              </div>
+              {m.phone ? (
+                <div className="tr-mod-btns">
+                  <a className={`btn sm ${m.state === 'now' ? 'primary' : ''}`} href={telHref(m.phone)} aria-label={t.callName(m.name)}><TIcon name="phone" size={15} />{t.call}</a>
+                  <a className="btn sm" href={smsHref(m.phone)} aria-label={t.textName(m.name)}><TIcon name="message" size={15} />{t.text}</a>
+                </div>
+              ) : <span className="tiny faint tr-mod-nophone">{m.state === 'earlier' ? '' : t.noPhoneShort}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {mod.callOutPhone && (
+        <div className="tr-mod-actions">
+          <a className={`btn ${anyPhone ? 'ghost' : ''}`} href={telHref(mod.callOutPhone)} title={mod.callOutPhone}>
+            <TIcon name="phone" />{t.callOutLine}{!anyPhone && <span className="tr-mod-num">{mod.callOutPhone}</span>}
           </a>
-        )}
-      </div>
+        </div>
+      )}
       {editing && <ModOverrideModal onClose={(next) => { setEditing(false); if (next) setMod(next.today); }} />}
     </div>
   );

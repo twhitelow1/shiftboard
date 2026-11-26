@@ -12,6 +12,8 @@ import { RoomDialog } from './RoomsPositions.jsx';
 import TradeHint, { canTrade } from './TradeHint.jsx';
 import { EightySixBanner } from './EightySix.jsx';
 import UnpublishWeek from './UnpublishWeek.jsx';
+import PublishDialog from './PublishDialog.jsx';
+import SchedulePdfDialog from './SchedulePdf.jsx';
 import { IS_DEMO } from '../api.js';
 import { useT, dowShort, fmtTime, monthShort, prettyDate, num , getLang } from '../i18n/index.js';
 
@@ -73,6 +75,8 @@ export default function Schedule() {
   const [importOpen, setImportOpen] = useState(false);
   const [copyOpen, setCopyOpen] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false); // Publish: notify or not, the PDF attachment
+  const [pdfOpen, setPdfOpen] = useState(false); // Download PDF (everyone: staff get the published week)
   const [run, busy] = useAction();
   const days = range(ws, 7);
 
@@ -136,7 +140,6 @@ export default function Schedule() {
   // The sheet lists everyone on the roster (like the PDF), whatever the grid's filters are.
   const sheetSections = allSections.filter((x) => (!dept || sameArea(x.banner, dept)) && (x.rows.length || x.open.length));
 
-  const publish = () => run(() => call('shifts.publish', { start: ws, end: addDays(ws, 6) }), (r) => t('schedule.publishedPublishedShiftsNotifiedPeople', { published: r.published, notified: r.notified })).then(load);
 
   const exportCsv = () => {
     const rows = [['date', 'employee', 'job', 'area', 'start', 'end', 'tag', 'notes', 'status']];
@@ -201,7 +204,7 @@ export default function Schedule() {
         </div>
         {isMgr && <>
           <button className="btn sm desktop-only" onClick={() => setDialog({ shift: { date: selDay, start: '16:00' } })}><Icon name="plus" />{t('schedule.addShift')}</button>
-          <button className={`btn sm ${drafts ? 'primary' : ''}`} onClick={publish} disabled={!drafts || busy}><Icon name="send" />{drafts ? t('schedule.publishCount', { count: drafts }) : t('schedule.published')}</button>
+          <button className={`btn sm ${drafts ? 'primary' : ''}`} onClick={() => setPublishOpen(true)} disabled={!drafts || busy}><Icon name="send" />{drafts ? t('schedule.publishCount', { count: drafts }) : t('schedule.published')}</button>
           <UnpublishWeek ws={ws} shifts={shifts} rooms={banners} room={dept} />
         </>}
       </div>
@@ -223,6 +226,7 @@ export default function Schedule() {
           {!IS_DEMO && <button className="btn sm ghost desktop-only" onClick={exportCsv}><Icon name="download" />{t('schedule.csv')}</button>}
           {!IS_DEMO && <button className="btn sm ghost desktop-only" onClick={() => window.print()}><Icon name="print" />{t('schedule.print')}</button>}
         </div>}
+        <button className="btn sm ghost" onClick={() => setPdfOpen(true)} title={t('schedulePdf.buttonTitle')}><Icon name="download" />{t('schedulePdf.button')}</button>
       </div>
 
       {fc && isMgr && (
@@ -339,6 +343,8 @@ export default function Schedule() {
       {dialog && <ShiftDialog shift={dialog.shift} startIn={dialog.startIn} warnings={dialog.warnings} events={data?.events || []} onClose={closeDialog} />}
       {importOpen && <ImportDialog ws={ws} onClose={(changed) => { setImportOpen(false); if (changed) load(); }} />}
       {clearOpen && <ClearWeekDialog ws={ws} data={data} onClose={(changed) => { setClearOpen(false); if (changed) load(); }} />}
+      {publishOpen && <PublishDialog ws={ws} label={weekLabel(ws)} drafts={drafts} onClose={(changed) => { setPublishOpen(false); if (changed) load(); }} />}
+      {pdfOpen && <SchedulePdfDialog ws={ws} banners={banners} drafts={drafts} onClose={() => setPdfOpen(false)} />}
       {copyOpen && <CopyWeekDialog ws={ws} onClose={(changed, goTo) => { setCopyOpen(false); if (goTo && goTo !== ws) setWs(goTo); else if (changed) load(); }} />}
     </div>
   );

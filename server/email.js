@@ -16,6 +16,9 @@ export function createMailer(env = process.env, { fetchImpl = globalThis.fetch }
   const from = env.EMAIL_FROM || '';
   const replyTo = env.EMAIL_REPLY_TO || undefined;
   const enabled = !!(key && from);
+  // Emails with an attachment go one at a time (Resend's batch API takes no attachments), at Resend's rate.
+  const gap = 1000 / Math.max(0.5, Number(env.RESEND_RATE_LIMIT) || 2);
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   async function post(path, body, idempotencyKey) {
     const res = await fetchImpl(API + path, {
@@ -28,11 +31,12 @@ export function createMailer(env = process.env, { fetchImpl = globalThis.fetch }
       body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(`Resend ${res.status}: ${data.message || data.name || 'request failed'}`);
+    if (!res.ok) throw Object.assign(new Error(`Resend ${res.status}: ${data.message || data.name || 'request failed'}`), { status: res.status });
     return data;
   }
 
-  const envelope = (m) => ({ from, to: [m.to], subject: m.subject, html: m.html, text: m.text, ...(replyTo ? { reply_to: replyTo } : {}) });
+  const envelope = (m) => ({ from, to: [m.to], subject: m.subject, html: m.html, text: m.text, ...(replyTo ? { reply_to: replyTo } : {}),
+    ...(m.attachments?.length ? { attachments: m.attachments } : {}) }); // [{ filename, content: base64 }]
 
   return {
     enabled,
@@ -44,13 +48,27 @@ export function createMailer(env = process.env, { fetchImpl = globalThis.fetch }
     },
     /** Send many emails in as few requests as possible. Undeliverable addresses are skipped. */
     async sendMany(messages, { idempotencyKey } = {}) {
-      const list = messages.filter((m) => deliverable(m.to));
-      if (!enabled || !list.length) return { sent: 0 };
+      const all = messages.filter((m) => deliverable(m.to));
+      if (!enabled || !all.length) return { sent: 0 };
+      const list = all.filter((m) => !m.attachments?.length);
       for (let i = 0; i < list.length; i += BATCH_MAX) {
         const chunk = list.slice(i, i + BATCH_MAX).map(envelope);
         await post('/emails/batch', chunk, idempotencyKey ? `${idempotencyKey}-${i / BATCH_MAX}` : undefined);
       }
-      return { sent: list.length };
+      const single = all.filter((m) => m.attachments?.length);
+      let failed = null;
+      for (const [i, m] of single.entries()) {
+        if (i) await sleep(gap);
+        for (let attempt = 0; ; attempt++) { // too many requests: wait and try again (3 times); one failure never stops the rest
+          try { await post('/emails', envelope(m), idempotencyKey ? `${idempotencyKey}-a${i}` : undefined); break; } catch (e) {
+            if (e.status === 429 && attempt < 3) { await sleep(gap * 2 ** (attempt + 1)); continue; }
+            failed ||= e;
+            break;
+          }
+        }
+      }
+      if (failed) throw failed;
+      return { sent: all.length };
     },
   };
 }

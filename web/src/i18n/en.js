@@ -8,6 +8,7 @@ import trades from './en-trades.js'; // Trades & pickups by season, Settings →
 import report from './en-report.js'; // Report a problem, and the screen when something crashes
 import claude from './en-claude.js'; // the Claude connector: connecting, Connected apps, Settings → Claude connector
 import impact from './en-impact.js'; // Positive impact and OpenTable
+import print from './en-print.js'; // the schedule PDF, the Publish dialog, Settings → Email notifications
 const catalog = {
   lang: {
     change: 'Change language',
@@ -2290,6 +2291,7 @@ const catalog = {
   ...report,
   ...claude,
   ...impact,
+  ...print,
 };
 
 export default catalog;

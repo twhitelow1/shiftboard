@@ -264,6 +264,14 @@ export interface ModInfo {
   callOutPhone: string;
   person: { id: string; name: string; phone: string; shift: { date: string; start: string; end: string | null; estimatedEnd: boolean; jobName: string } | null } | null;
   alsoOn: { id: string; name: string }[];
+  /** Every manager on the schedule that day: on now first, then later today, then earlier (core/training.js). */
+  managers?: ModManager[];
+}
+export interface ModManager {
+  id: string; name: string; phone: string;
+  shift: { date: string; start: string; end: string | null; estimatedEnd: boolean; jobName: string } | null;
+  state: 'now' | 'later' | 'earlier' | 'planned';
+  inCharge: boolean;
 }
 export interface TrainingSummary {
   quizzes: { id: string; title: string; dueDate: string | null; overdue: boolean }[];

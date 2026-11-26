@@ -14,6 +14,7 @@ import SeasonsCard from './SeasonsSettings.jsx'; // the seasons reports count by
 import { AnnouncementSettingsCard } from './Announcements.jsx'; // texts per person per day, quiet hours
 import RolesEditor, { RolesCard } from './RolesEditor.jsx'; // Settings → Roles & features
 import { ImpactSettingsCard } from './ImpactShared.jsx'; // Positive impact: notifications, alerts, words that are never names
+import EmailTemplates from './EmailTemplates.jsx'; // Settings → Email notifications
 import { tx, useT, dowLong, dowShort , LANGUAGE_NAMES } from '../i18n/index.js';
 
 export default function Settings({ parts = [] }) {
@@ -47,6 +48,7 @@ export default function Settings({ parts = [] }) {
   // Managers run the schedule's rooms and positions; the rest of Settings is for admins.
   if (!isAdmin) return <div style={{ maxWidth: 820 }} className="col">{isMgr && rooms}{passwordCard}</div>;
   if (parts[1] === 'roles') return <RolesEditor />; // #/settings/roles (it saves on its own, like Rooms & positions)
+  if (parts[1] === 'emails') return <EmailTemplates />; // #/settings/emails
 
   return (
     <div style={{ maxWidth: 820 }} className="col">
@@ -112,6 +114,8 @@ export default function Settings({ parts = [] }) {
           : <div className="alert warn"><Icon name="alert" size={16} />{managed ? t('platform.askDublowEmail') : t('settings.notSetUpYetAdd')}</div>}
         <label className="check"><input type="checkbox" checked={s.emailNotifications !== false} onChange={set('emailNotifications')} disabled={!emailEnabled} />{t('settings.emailStaffACopyOf')}</label>
         <div className="help">{t('settings.peopleYouAddWithAn')}</div>
+        <div className="row wrap" style={{ gap: 8 }}><a className="btn sm" href="#/settings/emails"><Icon name="mail" />{t('emailTemplates.open')}</a>
+          <span className="help" style={{ margin: 0 }}>{t('emailTemplates.openHelp')}</span></div>
         {emailEnabled && <div><button className="btn sm" disabled={busy} onClick={() => run(() => sendTestEmail(), (r) => t('settings.testEmailSentToTo', { to: r.to }))}><Icon name="send" />{t('settings.sendMeATestEmail')}</button></div>}
       </div>
 

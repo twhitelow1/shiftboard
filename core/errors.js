@@ -381,6 +381,14 @@ export const ERRORS_ES = {
   'Only scheduled announcements can be cancelled': 'Solo se pueden cancelar los avisos programados',
   'Texts per person per day is a number from 0 to 10': 'Los mensajes de texto por persona al día van del 0 al 10',
   'Quiet hours need a start and an end time': 'El horario de silencio necesita una hora de inicio y una de fin',
+  // ----- Settings → Email notifications (core/email-templates.js) and the schedule PDF (server/schedule-pdf-routes.js) -----
+  'Unknown email type': 'Ese tipo de correo no existe',
+  'Pick English or Spanish': 'Elige inglés o español',
+  'Write a subject and a message': 'Escribe un asunto y un mensaje',
+  'That email is too long': 'Ese correo es demasiado largo',
+  'A button can only go to {link} or an https:// address': 'Un botón solo puede llevar a {link} o a una dirección https://',
+  'Keep the subject on one line': 'Escribe el asunto en una sola línea',
+  'The PDF could not be made. Try again in a minute.': 'No se pudo hacer el PDF. Inténtalo de nuevo en un minuto.',
 };
 
 /** Messages with names or numbers in them: [English pattern, Spanish]. */
@@ -438,6 +446,7 @@ export const ERROR_PATTERNS_ES = [
   [/^(.+) \((Super Admin|Admin|Manager|Supervisor|Employee)\) can’t get money from this tip pool$/, (m) => `${m[1]} (${roleEs(m[2]).replace(/^./, (c) => c.toUpperCase())}) no puede recibir dinero de este fondo de propinas`],
   [/^That photo is too large \((\d+) KB\)\. Photos can be up to (\d+) KB\.$/, (m) => `Esa foto es demasiado grande (${m[1]} KB). Las fotos pueden pesar hasta ${m[2]} KB.`],
   [/^An item can have up to (\d+) photos\. Delete one first\.$/, (m) => `Un platillo puede tener hasta ${m[1]} fotos. Primero borra una.`],
+  [/^Unknown placeholder: \{(.*)\}$/, (m) => `Campo desconocido: {${m[1]}}`],
 ];
 
 /** An error message in a language: Spanish from the lists above, otherwise as it is. */

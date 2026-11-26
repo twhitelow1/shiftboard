@@ -464,6 +464,10 @@ const en = {
   },
   mod: {
     title: 'Manager on duty',
+    titleMany: 'Managers on duty ({count})',
+    inCharge: 'In charge',
+    earlierToday: 'Earlier today · {time}',
+    noPhoneShort: 'No phone on file',
     none: 'No manager on the schedule right now.',
     onNow: 'On now',
     until: 'until {time}',
