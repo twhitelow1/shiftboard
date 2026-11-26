@@ -9,6 +9,7 @@ import { t, useT, stampDay } from '../i18n/index.js';
 import { AddEmployeeDialog, PersonBadges, SignInHelp, PreviewOnboardingLink } from './TeamInvite.jsx'; // invitations, status, sign-in help
 import { LegalNameFields, LegalNameNote } from './LegalName.jsx'; // legal name for payroll (core/names.js)
 import { nameMatches, canSeeLegalName } from '../../../core/names.js';
+import { SmartImportButton } from './SmartImportButton.jsx'; // Import people from a file (smart import)
 
 const COLORS = ['#2563eb', '#16a34a', '#65a30d', '#0891b2', '#9333ea', '#a855f7', '#dc2626', '#e11d48', '#d97706', '#ca8a04', '#475569', '#0f766e', '#334155', '#7c2d12', '#db2777'];
 const JOB_ROLES = ['employee', 'supervisor', 'manager'];
@@ -76,6 +77,7 @@ export default function Team() {
               <Icon name="send" />{t('team.inviteEveryoneInvitablecount', { invitableCount: invitable.length })}</button>
           )}
           <PreviewOnboardingLink />
+          <SmartImportButton target="employees" />
           <button className="btn primary sm" onClick={() => setAdding(true)}><Icon name="plus" />{t('teamStatus.addEmployee')}</button>
         </div>
         {!IS_DEMO && !emailEnabled && <div className="alert info" style={{ marginBottom: 10 }}><Icon name="alert" size={16} />{t('team.emailIsntSwitchedOnYet')}</div>}
@@ -271,6 +273,16 @@ function EmployeeDialog({ emp, onClose }) {
           <PersonPositions value={f.jobCodes} onChange={(jobCodes) => setF({ ...f, jobCodes })} />
           <div className="help">{t('team.positionsHelp')}</div>
         </div>
+        {/* Employment details (also filled by Team → Import): managers only; coworkers never see them. */}
+        <details className="tp-help" open={!!(f.hireDate || f.birthday || f.employeeId || f.notes)}>
+          <summary>{t('smartImport.detailsTitle')}</summary>
+          <div className="row wrap" style={{ gap: 10, marginTop: 8, alignItems: 'flex-start' }}>
+            <Field label={t('smartImport.f_employees_hireDate')}><input className="input" type="date" value={f.hireDate || ''} onChange={set('hireDate')} style={{ maxWidth: 170 }} /></Field>
+            <Field label={t('smartImport.f_employees_birthday')} help={t('smartImport.birthdayHelp')}><input className="input" value={f.birthday || ''} onChange={set('birthday')} placeholder="MM-DD" style={{ maxWidth: 140 }} /></Field>
+            <Field label={t('smartImport.f_employees_employeeId')}><input className="input" value={f.employeeId || ''} onChange={set('employeeId')} style={{ maxWidth: 160 }} /></Field>
+          </div>
+          <Field label={t('smartImport.f_employees_notes')}><textarea className="input" rows={2} value={f.notes || ''} onChange={set('notes')} /></Field>
+        </details>
         {!emp.id && (
           <Field label={t('team.passwordOptional')} help={emailEnabled ? t('team.leaveBlankWellEmailThem') : t('team.leaveBlankToGenerateA')}>
             <input className="input" type="text" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" style={{ maxWidth: 300 }} />

@@ -4,7 +4,7 @@
 // Reads run in the loop, as the person (server/tools/ runTool: role, plan ∩ Roles & features, privacy), at most
 // MAX_ROUNDS rounds and within the time the function has left. Writes never run here: only the person's tap on
 // Confirm runs one (server/assistant/index.js).
-import { runTool, toolInputSchema } from '../tools/registry.js';
+import { runTool, toolInputSchema, isPreviewCall } from '../tools/registry.js';
 import { aiMessage } from '../ai/messages.js';
 
 export const MAX_ROUNDS = 6;
@@ -50,7 +50,8 @@ export async function runTurn({ ai, user, lang, system, tools, claudeTools, ctx,
     if (!uses.length || res.stopReason !== 'tool_use') return { text, proposals: [], usage, rounds: round, stop: res.stopReason };
 
     // A change: check its input, then stop and hand it to the person. Reads in the same answer aren't needed then.
-    const writes = uses.filter((u) => byName.get(u.name)?.write);
+    // An import's first call (no confirm) only shows what would change: it runs here like a read.
+    const writes = uses.filter((u) => byName.get(u.name)?.write && !isPreviewCall(byName.get(u.name), u.input));
     const results = [];
     if (writes.length) {
       const proposals = [];

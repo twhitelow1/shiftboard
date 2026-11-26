@@ -31,6 +31,13 @@ export const ERRORS_ES = {
   'Pick a position that shows on the schedule': 'Elige un puesto que se vea en el horario',
   'Someone else just changed the rooms. Look again and retry.': 'Alguien más acaba de cambiar los salones. Revisa y vuelve a intentarlo.',
   'Pick a room': 'Elige un salón',
+  // ----- smart import (core/import-api.js, server/import-routes.js) -----
+  'Nothing to import': 'No hay nada que importar',
+  'Import up to 1000 rows at a time': 'Importa hasta 1000 filas a la vez',
+  'Decide on every possible duplicate first': 'Primero decide qué hacer con cada posible duplicado',
+  'That’s too much text to read at once. Split the document and try again.': 'Es demasiado texto para leer de una vez. Divide el documento e inténtalo de nuevo.',
+  'Pick what to import: the team or the menu': 'Elige qué importar: el equipo o el menú',
+  'The AI reply couldn’t be read. Try again, or use a CSV.': 'No se pudo leer la respuesta de la IA. Inténtalo de nuevo o usa un CSV.',
   // ----- sign-in and accounts -----
   'Please sign in': 'Inicia sesión',
   'Wrong email or password': 'Correo o contraseña incorrectos',

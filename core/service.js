@@ -36,6 +36,7 @@ import { announcementApi } from './announcements.js';
 import { effectiveFeatures, roleAllows, roleRefusal, roleFeatureApi, ROLE_OFF } from './role-features.js';
 import { publishOptions, scheduleNotice } from './publish-notify.js';
 import { emailTemplateApi } from './email-templates.js';
+import { importApi, employeeExtrasPatch } from './import-api.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -85,6 +86,8 @@ export const DEFAULT_SETTINGS = {
 
 // Never sent to anyone: the password hash (and, defensively, any factor secret that ever lands on a user).
 const PUBLIC_USER = (u) => { const out = { ...u }; for (const k of SECRET_FIELDS) delete out[k]; return out; };
+// Managers' notes about a person (Team, smart import): never sent to the person themselves unless they're a manager.
+const mgrOnly = (view) => { if (!('notes' in view)) return view; const { notes: _n, ...rest } = view; return rest; };
 const JOB_ROLES = ['manager', 'supervisor', 'employee']; // roles a job code can suggest
 function randomPassword(len = 10) {
   const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -418,14 +421,15 @@ export function createService(store, opts = {}) {
       const twoStepOn = isMgr(actor) ? twoStepMap(store) : null; // Team shows who has two-step sign-in on
       const employees = users().map((u) => {
         const pub = userView(u, twoStepOn ? twoStepOn.has(u.id) : undefined);
-        if (isMgr(actor) || u.id === actor.id) return legalNameFor(actor, u, pub); // the legal name: self, admins, their managers
+        if (isMgr(actor)) return legalNameFor(actor, u, pub); // the legal name: self, admins, their managers
+        if (u.id === actor.id) return mgrOnly(legalNameFor(actor, u, pub));
         const basic = { id: u.id, name: u.name, sheetName: u.sheetName || '', role: pub.role, active: u.active, color: u.color, photoId: u.photoId || null, onSchedule: pub.onSchedule, order: u.order, jobCodes: (u.jobCodes || []).map((j) => ({ jobCodeId: j.jobCodeId, ...(j.areas?.length ? { areas: j.areas } : {}) })) };
         return contacts ? { ...basic, email: u.email, phone: u.phone } : basic;
       }).sort((a, b) => a.name.localeCompare(b.name));
       // My own consent and two-step status: the app shows the one-time consent screen when terms are missing.
       const mine = userById(actor.id);
       const consent = consentState(store, mine);
-      const me = { ...legalNameFor(actor, mine, userView(mine)), consent, needsTerms: !consent.terms, security: twoStepOf(store, actor.id) };
+      const me = { ...(isMgr(actor) ? legalNameFor(actor, mine, userView(mine)) : mgrOnly(legalNameFor(actor, mine, userView(mine)))), consent, needsTerms: !consent.terms, security: twoStepOf(store, actor.id) };
       const unread = store.list('notifications', (n) => n.userId === actor.id && !n.read).length;
       const pendingApprovals = isApprover(actor) ? store.list('requests', (r) => r.status === 'pending_approval').length
         + store.list('timeOff', (t) => t.status === 'pending').length : 0;
@@ -608,6 +612,7 @@ export function createService(store, opts = {}) {
           ...(Array.isArray(j.areas) && j.areas.length ? { areas: uniqueAreas(j.areas) } : {}) })), // areas they usually work this job in
         active, color: a.color || null, maxHours: Number(a.maxHours) || null,
         ...legalNamePatch(a), // legal name for payroll (core/names.js); left as it is when not sent
+        ...employeeExtrasPatch(a), // hire date, birthday, employee ID, notes (core/import-api.js); left as they are when not sent
       };
       if (cur) {
         const patch = { ...doc };
@@ -622,7 +627,8 @@ export function createService(store, opts = {}) {
       }
       // Team → Add employee (invite: true, with an email): no password at all; the invitation's wizard sets one.
       // The full editor still makes a temporary password to share (or the one the manager typed).
-      const invited = a.invite === true && !!email;
+      // An import (core/import-api.js) makes people without a password too: they sign in through an invitation.
+      const invited = (a.invite === true && !!email) || (a.passwordless === true && !a.password);
       const tempPassword = invited ? null : a.password || randomPassword();
       const u = store.insert('users', { id: uid('usr'), ...doc, availability: {}, passwordHash: tempPassword ? hashPassword(tempPassword) : null,
         smsConsent: false, emailConsent: false, createdAt: now().toISOString(), createdBy: actor.id });
@@ -1720,6 +1726,8 @@ export function createService(store, opts = {}) {
   const tripleseat = tripleseatLinks({ store, api, fail, needAuth, needMgr, needEvents, needAdmin, notify, say, day, now, cancelRequestsForShift });
   // Unpublish (back to draft) and the "what changed" notification when it's posted again. See core/unpublish.js.
   const unpublish = unpublishApi({ store, api, fail, needMgr, notify, say, day, describe, settings, nameOf, jobName, isFuture, cancelRequestsForShift, now });
+  // Smart import: employees.import* and menu.import* (core/import-api.js, core/smart-import.js).
+  Object.assign(api, importApi({ store, api, fail, needMgr, now }));
   // Positive impact (impact.*: review mentions, reservation requests, kudos) and OpenTable (opentable.*): core/impact.js, core/opentable.js.
   const onReview = []; // new reviews from any source: the managers' review alerts (core/review-reply.js)
   const impact = impactLinks({ store, api, fail, needAuth, needMgr, needAdmin, notify, now, settings, langOf: L, onReview });

@@ -19,6 +19,9 @@ const TITLES = {
   report_86_item: ['Report on the 86 List', 'Reportar en la Lista 86'],
   mark_back_in_stock: ['Mark back in stock', 'Marcar que ya hay'],
   save_event: ['Save an event', 'Guardar un evento'],
+  save_menu_item: ['Save a menu item', 'Guardar un platillo del menú'],
+  import_menu_items: ['Import menu items', 'Importar platillos al menú'],
+  import_employees: ['Import people to the team', 'Importar personas al equipo'],
 };
 
 const LABELS = {
@@ -29,6 +32,10 @@ const LABELS = {
   timeOffId: ['Time off', 'Días libres'], item: ['Item', 'Artículo'], status: ['Status', 'Estado'], list: ['List', 'Lista'],
   count: ['Left', 'Quedan'], days: ['Days', 'Días'], name: ['Name', 'Nombre'], guestCount: ['Guests', 'Invitados'],
   eventId: ['Event', 'Evento'], captain: ['Captain', 'Capitán'], client: ['Client', 'Cliente'],
+  items: ['Items', 'Platillos'], people: ['People', 'Personas'], decisions: ['Possible duplicates', 'Posibles duplicados'], category: ['Section', 'Sección'],
+  description: ['Description', 'Descripción'], price: ['Price', 'Precio'], allergens: ['Allergens', 'Alérgenos'], dietary: ['Dietary', 'Dieta'], itemId: ['Item', 'Platillo'],
+  createCategories: ['Create missing sections', 'Crear secciones que faltan'], createPositions: ['Create missing positions', 'Crear puestos que faltan'],
+  sendInvitations: ['Send invitations now', 'Enviar invitaciones ahora'], createNew: ['Add as a separate item', 'Agregar como platillo aparte'],
 };
 const VALUES = {
   out: ['86’d (out)', 'Se acabó (86)'], low: ['Running low', 'Queda poco'], giveaway: ['Give away', 'Ceder'], trade: ['Trade', 'Intercambiar'],
@@ -38,6 +45,8 @@ const OPEN = ['Open shift', 'Turno disponible'];
 const UNTIL_CLOSE = ['Until close', 'Hasta el cierre'];
 const WEEK_OF = ['Week of {date}', 'Semana del {date}'];
 const UNAVAILABLE = ['not available', 'no disponible'];
+const YES_NO = [['Yes', 'Sí'], ['No', 'No']];
+const DECIDED = { update: ['update', 'actualizar'], skip: ['skip', 'omitir'], new: ['new', 'nuevo'] };
 const DAY_INDEX = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
 const HIDDEN = new Set(['confirm']);
 
@@ -70,6 +79,11 @@ export function describeAction(tool, args = {}, lang = 'en', look = {}) {
     } else if (k === 'days' && Array.isArray(v)) {
       value = v.map((d) => `${dayName(DAY_INDEX[d.day] ?? 0, 'short', lang)}: ${d.available === false ? pick(UNAVAILABLE, lang) : d.from || d.to ? `${fmtTime(d.from || '00:00', lang)}–${d.to ? fmtTime(d.to, lang) : '…'}` : '✓'}`).join(', ');
     } else if (k === 'staffing' && Array.isArray(v)) value = v.map((x) => `${x.count} ${x.position}`).join(', ');
+    else if ((k === 'items' || k === 'people') && Array.isArray(v)) { // an import: how many, and the first names
+      const names = v.map((x) => x?.name || [x?.firstName, x?.lastName].filter(Boolean).join(' ')).filter(Boolean);
+      value = clip(`${v.length}: ${names.slice(0, 6).join(', ')}${names.length > 6 ? '…' : ''}`, 160);
+    } else if (k === 'decisions' && Array.isArray(v)) value = clip(v.map((d) => `${d.row} ${pick(DECIDED[d.action] || [d.action, d.action], lang)}`).join(', '), 160);
+    else if (typeof v === 'boolean') value = pick(YES_NO[v ? 0 : 1], lang);
     else if (typeof v === 'string' && VALUES[v]) value = pick(VALUES[v], lang);
     else if (typeof v === 'object' && v !== null) value = clip(JSON.stringify(v));
     else value = clip(v);

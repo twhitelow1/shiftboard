@@ -427,7 +427,7 @@ export function mountMcp(app, d) {
 
     const ctx = createToolContext({
       db, userId: auth.user.id, v: auth.grant.v || 0, has: d.has, scopes: auth.scopes, now, via: 'claude', client: auth.grant.clientName,
-      serviceOpts: d.serviceOpts(req), onCommit: (changes) => d.onCommit(changes, req),
+      serviceOpts: d.serviceOpts(req), onCommit: (changes) => d.onCommit(changes, req), invite: d.invite ? (ids, by) => d.invite(ids, by, req) : null,
     });
     const settings = createService(db.store).settings();
     const tools = visibleTools(TOOLS, auth.user, { has: d.has, scopes: auth.scopes, settings });
@@ -435,6 +435,7 @@ export function mountMcp(app, d) {
       instructions: `ShiftBoard is ${settings.restaurantName}'s staff schedule app. You act as ${auth.user.name} (${roleLabel(auth.user)}), with exactly their permissions. `
         + 'Call whoami first for today\'s date in the restaurant\'s time zone. Dates are YYYY-MM-DD. Before anything that notifies people or publishes '
         + '(publish_week, changing or deleting a published shift), tell the user what will happen and ask; then pass confirm: true. '
+        + 'Imports (import_menu_items, import_employees) preview first: show the user the preview and every possible duplicate, ask, then call again with confirm: true and a decision for each one. '
         + `${auth.scopes.includes(WRITE) ? '' : 'This connection is read-only: no changes. '}Reply in the user's language.`,
     });
     for (const tool of tools) {

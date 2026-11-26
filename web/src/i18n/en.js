@@ -13,6 +13,7 @@ import assistant from './en-assistant.js'; // Ask ShiftBoard: the chat and Setti
 import reviews, { integrations as reviewIntegrations } from './en-reviews.js'; // Google Business Profile, Yelp, answering reviews, review alerts
 import dayList from './en-daylist.js'; // the day lists' sort (room, position, time, name) and the week grid by position
 import beo from './en-beo.js'; // a BEO's sections, the import's duplicate check and "Read it with AI"
+import smartImport from './en-import.js'; // smart import: Team → Import, Training → Menu → Import
 const catalog = {
   lang: {
     change: 'Change language',
@@ -2306,6 +2307,7 @@ const catalog = {
   ...reviews,
   ...dayList,
   ...beo,
+  ...smartImport,
 };
 Object.assign(catalog.integrations, reviewIntegrations); // Settings → Integrations: the Google and Yelp cards
 
