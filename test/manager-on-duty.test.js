@@ -100,3 +100,18 @@ test('mod.get is in every plan and for every role: not tied to Training', async 
   assert.equal(featureForMethod('mod.get'), null);
   assert.deepEqual(featuresForMethod('mod.get'), []);
 });
+
+test('a switch per person: someone switched off never shows in Managers on duty; managers only', () => {
+  const f = fixture();
+  const vis = f.as('mid')('mod.visibility');
+  assert.ok(vis.people.every((p) => p.shown), 'everyone shows by default');
+  assert.ok(!vis.people.some((p) => p.id === 'srv'), 'staff aren’t in the list');
+  const after = f.as('mid')('mod.setShown', { userId: 'kit', shown: false });
+  assert.equal(after.people.find((p) => p.id === 'kit').shown, false);
+  assert.ok(!f.as('srv')('mod.get').managers.some((m) => m.id === 'kit'), 'switched off: not in the list');
+  f.as('mid')('mod.setShown', { userId: 'kit', shown: true });
+  assert.ok(f.as('srv')('mod.get').managers.some((m) => m.id === 'kit'), 'back on');
+  assert.throws(() => f.as('srv')('mod.setShown', { userId: 'kit', shown: false }), (e) => e.status === 403);
+  assert.throws(() => f.as('srv')('mod.visibility'), (e) => e.status === 403);
+  assert.throws(() => f.as('mid')('mod.setShown', { userId: 'srv', shown: false }), (e) => e.status === 400, 'only people who can be on duty');
+});

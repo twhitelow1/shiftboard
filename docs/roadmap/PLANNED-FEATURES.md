@@ -29,7 +29,7 @@ _Working name "ShiftBoard"; a new product name is still to be chosen (see Busine
 | Smart import for employees and menu items: CSV / PDF / DOCX, field matching, preview with changes, AI reading for unstructured files; connector tools to import menus and employees from Claude | #19 | live Nov 26 |
 | Admins can make themselves Super Admin (re-auth, audited, others alerted), with a Super-Admin-only switch to turn it off | #20 | live Nov 26 |
 | Floor plan: import from Toast / a picture or PDF (AI) / CSV, Toast-style editor (shapes, bar seats, walls, sections), export + "set this up in Toast" helper | #20 | live Nov 26 |
-| Managers on duty: every manager on the day with time in–out and phone number written out, on Today on the floor, My shifts and Training; in every plan (not only with Training) | #21 | |
+| Managers on duty: every manager on the day with time in–out and phone number written out, on Today on the floor, My shifts and Training; in every plan (not only with Training); a switch per person for who shows | #21 | |
 
 ## Building
 | Feature | Notes |

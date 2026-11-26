@@ -3,10 +3,12 @@
 // highlighted (the one in charge at the top), then later today, then earlier. With nobody on the schedule, the
 // restaurant's call-out line. Like the website's ModCard. These are the only coworker phone numbers staff can
 // get; everyone else's stays with shift leads and managers (and someone who already went home keeps theirs too).
-import { Linking, Pressable, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { Linking, Pressable, StyleSheet, Switch, View } from 'react-native';
 
 import { useI18n } from '@/i18n';
-import { useRpc } from '@/lib/hooks';
+import { useAction, useRpc } from '@/lib/hooks';
+import { useSession } from '@/lib/session';
 import type { ModInfo, ModManager } from '@/lib/types';
 import { Icon } from './Icon';
 import { Badge, Button, Card, Txt, useColors, useToast } from './ui';
@@ -89,6 +91,7 @@ export function ModCard({ mod: given, compact = false }: { mod?: ModInfo | null;
           </View>
         );
       })}
+      {compact ? null : <ShownSwitches />}
       {mod.callOutPhone ? (
         <Button small={compact} kind={anyPhone ? 'ghost' : 'secondary'} icon="phone" title={anyPhone ? t('mod.callOutLine') : `${t('mod.callOutLine')} · ${mod.callOutPhone}`}
           label={t('mod.callOutLineNumber', { number: mod.callOutPhone })} onPress={() => phone('tel', mod.callOutPhone)}
@@ -98,11 +101,43 @@ export function ModCard({ mod: given, compact = false }: { mod?: ModInfo | null;
   );
 }
 
+/** Managers and up: a switch per person for whether they show in this list (mod.visibility / mod.setShown). */
+function ShownSwitches() {
+  const { t } = useI18n();
+  const c = useColors();
+  const { isMgr, client } = useSession();
+  const [open, setOpen] = useState(false);
+  const vis = useRpc<{ people: { id: string; name: string; shown: boolean }[] }>('mod.visibility', {}, [open], isMgr && open);
+  const [run, busy] = useAction();
+  if (!isMgr) return null;
+  const people = vis.data?.people || [];
+  return (
+    <View style={{ gap: 6 }}>
+      <Pressable onPress={() => setOpen(!open)} accessibilityRole="button" accessibilityState={{ expanded: open }} style={{ minHeight: 36, justifyContent: 'center' }}>
+        <Txt v="small" tone="brand" bold>{open ? t('mod.shownHide') : t('mod.shownOpen')}</Txt>
+      </Pressable>
+      {open ? (
+        <View style={{ gap: 2 }}>
+          <Txt v="small" tone="muted">{t('mod.shownHelp')}</Txt>
+          {people.map((p) => (
+            <View key={p.id} style={[styles.switchRow, { borderColor: c.border }]}>
+              <Txt style={{ flex: 1 }}>{p.name}</Txt>
+              <Switch value={p.shown} disabled={busy} accessibilityLabel={t('mod.shownSwitch', { name: p.name })}
+                onValueChange={async (v) => { const r = await run(() => client.call('mod.setShown', { userId: p.id, shown: v })); if (r) vis.reload(); }} />
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   main: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   icon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   kicker: { textTransform: 'uppercase', letterSpacing: 0.6 },
   person: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 10 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48, borderTopWidth: StyleSheet.hairlineWidth },
   round: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
 });

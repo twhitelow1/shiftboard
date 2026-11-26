@@ -262,7 +262,34 @@ function ModOverrideModal({ onClose }) {
         </div>
         {day.person && <div className="alert info"><TIcon name="phone" />{t.modIs(day.person.name)}</div>}
       </>}
+      <ModShownList />
     </Modal>
+  );
+}
+
+/** Managers and up: a switch per person for whether they show in Managers on duty (mod.visibility / mod.setShown). */
+function ModShownList() {
+  const { call, refresh } = useApp();
+  const t = useT();
+  const [list, setList] = useState(null);
+  const [run, busy] = useAction();
+  useEffect(() => { call('mod.visibility').then((r) => setList(r.people)).catch(() => setList([])); }, []);
+  const toggle = async (p) => {
+    const r = await run(() => call('mod.setShown', { userId: p.id, shown: !p.shown }), t.saved);
+    if (r) { setList(r.people); refresh(); }
+  };
+  if (!list?.length) return null;
+  return (
+    <div className="tr-mod-shown">
+      <div className="tr-kicker">{t.shownTitle}</div>
+      <div className="small muted" style={{ marginBottom: 6 }}>{t.shownHelp}</div>
+      {list.map((p) => (
+        <label key={p.id} className="tr-mod-shown-row">
+          <input type="checkbox" checked={p.shown} disabled={busy} onChange={() => toggle(p)} />
+          <span>{p.name}</span>
+        </label>
+      ))}
+    </div>
   );
 }
 
