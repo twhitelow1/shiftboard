@@ -163,3 +163,16 @@ export function securityResetEmail({ user, restaurant, brand, by, appUrl, lang =
   });
   return { to: user.email, subject: E.securitySubject(restaurant), html, text };
 }
+
+/** An announcement from management (core/announcements.js): its title as the heading, each paragraph of the message. */
+export function announcementEmail({ user, title, body, link, restaurant, brand, lang = 'en' }) {
+  const E = msg(lang).email;
+  const { html, text } = layout({
+    restaurant, brand, lang,
+    heading: title,
+    paragraphs: [hello(user.name, lang), ...String(body || '').split(/\n+/).map((p) => p.trim()).filter(Boolean)],
+    button: link ? { label: E.open, url: link } : null,
+    footer: E.notificationFooter,
+  });
+  return { to: user.email, subject: `${restaurant}: ${title}`.slice(0, 150), html, text };
+}

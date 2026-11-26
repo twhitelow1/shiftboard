@@ -31,6 +31,7 @@ import { restaurantView, saveIntegrations, allowedKeys } from './integrations.js
 import { encryptionKey } from './secrets.js';
 import { consoleRouter } from './console.js';
 import { isPaused } from './plans.js';
+import { announcementsCronAll } from '../announcements.js';
 
 const NOT_FOUND_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Restaurant not found · ShiftBoard</title><style>body{font:16px/1.5 system-ui,sans-serif;margin:0;display:grid;place-items:center;min-height:100vh;background:#f8fafc;color:#0f172a}
@@ -223,6 +224,10 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
   });
   cronRoute('/api/cron/tripleseat', tripleseatCronAll);
   app.locals.tripleseatCronAll = tripleseatCronAll;
+  // Announcements: scheduled ones when their time comes, and big ones still going out (every few minutes).
+  const announcementsCron = () => announcementsCronAll({ registry, runtime, cache, conn, env, base: (t) => tenantAddress(t, hostCfg) || '' });
+  cronRoute('/api/cron/announcements', announcementsCron);
+  app.locals.announcementsCronAll = announcementsCron;
   /** Open the default restaurant (its schema, first account or demo data) before the first request. */
   app.locals.warmDefault = async () => {
     await ready();

@@ -14,6 +14,7 @@ export const FEATURES = [
   { key: 'training', label: 'Training', hint: 'Menu study guide, quizzes, leaderboard, employee manual, manager on duty' },
   { key: 'tips', label: 'Tip pool', hint: 'Pools, daily tips, weekly split' },
   { key: 'eightySix', label: '86 List', hint: 'What’s out or running low, with photos' },
+  { key: 'announcements', label: 'Announcements', hint: 'Managers message the team: in the app, phone notifications, email; texts with Text messages' },
   { key: 'events', label: 'Events & BEOs', hint: 'Banquet event orders and event staffing' },
   { key: 'forecast', label: 'Forecast & labor', hint: 'Sales history, forecast, labor rules and labor review' },
   { key: 'toast', label: 'Toast POS', hint: 'Daily sales, covers and clock-ins from Toast' },
@@ -33,11 +34,12 @@ export const FEATURE_KEYS = FEATURES.map((f) => f.key);
 export const PLANS = {
   starter: {
     label: 'Starter', priceCents: 4900, interval: 'month', selfServe: true, stripePriceEnv: 'STRIPE_PRICE_STARTER',
-    features: ['training', 'tips', 'eightySix'],
+    // Announcements in every plan: in-app, push and email cost next to nothing; texts need `sms` (Pro).
+    features: ['training', 'tips', 'eightySix', 'announcements'],
   },
   pro: {
     label: 'Pro', priceCents: 9900, interval: 'month', selfServe: true, stripePriceEnv: 'STRIPE_PRICE_PRO',
-    features: ['training', 'tips', 'eightySix', 'events', 'forecast', 'toast', 'adp', 'tripleseat', 'sms', 'venue'],
+    features: ['training', 'tips', 'eightySix', 'announcements', 'events', 'forecast', 'toast', 'adp', 'tripleseat', 'sms', 'venue'],
   },
   beta: {
     label: 'Beta (everything, free)', priceCents: 0, interval: 'month', selfServe: false, stripePriceEnv: null,
@@ -108,6 +110,7 @@ const NAMESPACE_FEATURE = {
   clock: 'forecast', calibration: 'forecast',
   sms: 'sms',
   venue: 'venue', sections: 'venue',
+  announcements: 'announcements',
 };
 const METHOD_FEATURE = { 'settings.laborRules': 'forecast' };
 
