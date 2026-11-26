@@ -9,6 +9,7 @@ import { IS_DEMO, call as rpc } from '../api.js';
 import { photoFromFile } from './TrainingShared.jsx';
 import { SmartImportButton } from './SmartImportButton.jsx';
 import { useT, fmtTime, prettyDate, stamp } from '../i18n/index.js';
+import { productMatches } from '../../../core/products.js';
 import '../stock.css';
 
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -61,7 +62,7 @@ export default function Stock({ parts = [] }) {
           {cat?.newCount > 0 && <span className="count">{cat.newCount}</span>}</button>
       </div>
       {inProducts ? (parts[2] === 'review' && cat?.canManage ? <ReviewQueue /> : <Products cat={cat} />)
-        : sub === 'new' ? <Builder template={parts[2] === 'template'} />
+        : sub === 'new' ? <Builder template={parts[2] === 'template'} quick={parts[2] === 'quick'} />
           : sub === 'edit' ? <Builder id={parts[2]} />
             : sub ? <ListView id={sub} has86={!has || has('eightySix')} /> : <Lists />}
     </div>
@@ -99,7 +100,7 @@ function ListCard({ l, onUse }) {
           <span className="stk-card-name">{l.name}</span>
           {l.status === 'done' && <span className="badge ok">{t('stock.done')}</span>}
           {l.overdue && <span className="badge bad">{t('stock.overdue')}</span>}
-          {l.personal && <span className="badge">{t('stock.personal')}</span>}
+          {l.quick && <span className="badge brand">{t('stock.quickBadge')}</span>}
         </div>
         {l.kind === 'list' && <div className="small muted">{[l.assignLabel && t('stock.forWho', { who: l.assignLabel }), when(t, l)].filter(Boolean).join(' · ')}</div>}
         {l.kind === 'template' ? <div className="small muted">{t('stock.nProducts', { count: l.counts.lines })}</div> : <Progress counts={l.counts} />}
@@ -132,11 +133,12 @@ function Lists() {
           <h2>{t('stock.title')}</h2>
           <div className="small muted">{mgr ? t('stock.introMgr') : t('stock.intro')}</div>
         </div>
-        {(mgr || data?.canOwn) && (
+        {(mgr || data?.canQuick) && (
           <div className="stk-head-btns">
-            {mgr && scope === 'templates'
-              ? <button className="btn primary" onClick={() => go('new/template')}><Icon name="plus" />{t('stock.newTemplate')}</button>
-              : <button className="btn primary" onClick={() => go('new')}><Icon name="plus" />{t('stock.newList')}</button>}
+            <button className="btn primary" onClick={() => go('new/quick')}><Icon name="send" />{t('stock.quickList')}</button>
+            {mgr && (scope === 'templates'
+              ? <button className="btn" onClick={() => go('new/template')}><Icon name="plus" />{t('stock.newTemplate')}</button>
+              : <button className="btn" onClick={() => go('new')}><Icon name="calendar" />{t('stock.newList')}</button>)}
           </div>
         )}
       </div>
@@ -363,7 +365,35 @@ function HistoryLog({ log }) {
 }
 
 // ---------- making a list or a template ----------
-function Builder({ id = '', template = false }) {
+/** Who a quick list goes to: the people on duty now in a position (in a room), or in a room. Default: barbacks, sender's room. */
+function QuickTo({ opts, a, setA }) {
+  const t = useT();
+  const pos = opts.positions.find((p) => p.id === a.jobCodeId)?.name || '';
+  return (
+    <div className="field">
+      <span>{t('stock.sendTo')}</span>
+      <div className="stk-chips tight">
+        <button type="button" className={`chip ${a.type === 'position' ? 'on' : ''}`} aria-pressed={a.type === 'position'} onClick={() => setA({ ...a, type: 'position' })}>{t('stock.toPosition')}</button>
+        <button type="button" className={`chip ${a.type === 'room' ? 'on' : ''}`} aria-pressed={a.type === 'room'} onClick={() => setA({ ...a, type: 'room' })}>{t('stock.toWholeRoom')}</button>
+      </div>
+      <div className="stk-two" style={{ marginTop: 8 }}>
+        {a.type === 'position' && (
+          <select className="input" value={a.jobCodeId} aria-label={t('stock.position')} onChange={(e) => setA({ ...a, jobCodeId: e.target.value })}>
+            <option value="">{t('stock.pickPosition')}</option>
+            {opts.positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        )}
+        <select className="input" value={a.room} aria-label={t('stock.room')} onChange={(e) => setA({ ...a, room: e.target.value })}>
+          <option value="">{a.type === 'position' ? t('stock.anyRoom') : t('stock.pickRoom')}</option>
+          {opts.rooms.map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+      </div>
+      <div className="help">{a.type === 'position' ? t('stock.onDutyHelp', { position: pos || '…', room: a.room || t('stock.anyRoomShort') }) : t('stock.onDutyRoomHelp', { room: a.room || '…' })}</div>
+    </div>
+  );
+}
+
+function Builder({ id = '', template = false, quick: quickAsked = false }) {
   const t = useT();
   const { call, toast } = useApp();
   const [cat, setCat] = useState(null);
@@ -380,7 +410,12 @@ function Builder({ id = '', template = false }) {
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     call('products.list').then(setCat).catch((e) => toast(e.message, 'bad'));
-    call('stock.options.get').then((o) => { setOpts(o); if (!id) setDate(o.today); }).catch(() => {});
+    call('stock.options.get').then((o) => {
+      setOpts(o);
+      if (!id) setDate(o.today);
+      // A quick list (and every list staff make): to the barbacks on duty, in the room the sender works today.
+      if (!id && (quickAsked || !o.canManage)) setA({ type: 'position', userId: '', jobCodeId: o.quick.jobCodeId, room: o.quick.room });
+    }).catch(() => {});
     if (id) {
       call('stock.list.get', { id }).then((l) => {
         setCur(l); setName(l.name); setNotes(l.notes); setDate(l.date); setDue(l.due);
@@ -394,20 +429,22 @@ function Builder({ id = '', template = false }) {
   if (!cur || !cat || !opts) return <div className="empty">{t('common.loading')}</div>;
   const isTemplate = cur.kind === 'template';
   const mgr = opts.canManage;
+  const quick = !isTemplate && (id ? !!cur.quick : quickAsked || !mgr);
   const words = norm(q).split(' ').filter(Boolean);
-  const results = words.length ? cat.products.filter((p) => words.every((w) => norm(`${p.name} ${p.size} ${p.location} ${catName(cat.categories, p.category, t.lang)}`).includes(w))).slice(0, 12) : [];
+  const results = words.length ? cat.products.filter((p) => productMatches(p, q, catName(cat.categories, p.category, t.lang))).slice(0, 12) : [];
   const add = (p) => {
     setLines((ls) => (ls.some((x) => x.productId === p.id) ? ls.map((x) => (x.productId === p.id ? { ...x, qty: x.qty + 1 } : x)) : [...ls, { productId: p.id, qty: 1, note: '' }]));
     setQ('');
   };
   const setLine = (i, patch) => setLines((ls) => ls.map((x, k) => (k === i ? { ...x, ...patch } : x)));
-  const assign = a.type === 'person' ? (a.userId ? { type: 'person', userId: a.userId } : null) : a.type === 'position' ? (a.jobCodeId ? { type: 'position', jobCodeId: a.jobCodeId } : null)
+  const assign = a.type === 'person' ? (a.userId ? { type: 'person', userId: a.userId } : null) : a.type === 'position' ? (a.jobCodeId ? { type: 'position', jobCodeId: a.jobCodeId, ...(a.room ? { room: a.room } : {}) } : null)
     : a.type === 'room' ? (a.room ? { type: 'room', room: a.room } : null) : null;
+  const listName = name.trim() || (quick ? t('stock.quickDefaultName', { time: fmtTime(`${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`) }) : '');
   const save = async () => {
     setBusy(true);
     try {
-      const r = await call('stock.save', { ...(id ? { id } : { kind: isTemplate ? 'template' : 'list' }), name, notes, lines,
-        ...(isTemplate ? {} : { date, due, ...(mgr ? { assign } : {}) }) });
+      const r = await call('stock.save', { ...(id ? { id } : { kind: isTemplate ? 'template' : 'list', ...(quick ? { quick: true } : {}) }), name: listName, notes, lines,
+        ...(isTemplate ? {} : { due, ...(quick ? {} : { date }), ...(mgr || quick ? { assign } : {}) }) });
       toast(r.notified ? t('stock.createdTold', { count: r.notified }) : id ? t('stock.saved') : t('stock.created'));
       go(r.id);
     } catch (e) { toast(e.message, 'bad'); } finally { setBusy(false); }
@@ -415,17 +452,13 @@ function Builder({ id = '', template = false }) {
   return (
     <>
       <a className="stk-back small" href={id ? `#/stock/${id}` : '#/stock'}><Icon name="left" size={14} />{t('stock.back')}</a>
-      <h2 className="stk-title">{id ? (isTemplate ? t('stock.editTemplate') : t('stock.editList')) : isTemplate ? t('stock.newTemplate') : t('stock.newList')}</h2>
+      <h2 className="stk-title">{id ? (isTemplate ? t('stock.editTemplate') : t('stock.editList')) : isTemplate ? t('stock.newTemplate') : quick ? t('stock.quickList') : t('stock.newList')}</h2>
+      {quick && !id && <div className="small muted section">{t('stock.quickIntro')}</div>}
       <div className="card card-pad stk-form">
-        <Field label={t('stock.listName')}><input className="input" value={name} maxLength={60} placeholder={isTemplate ? t('stock.templateNamePh') : t('stock.listNamePh')} onChange={(e) => setName(e.target.value)} /></Field>
+        <Field label={quick ? t('stock.listNameOptional') : t('stock.listName')}><input className="input" value={name} maxLength={60} placeholder={isTemplate ? t('stock.templateNamePh') : t('stock.listNamePh')} onChange={(e) => setName(e.target.value)} /></Field>
         <Field label={t('stock.notes')}><input className="input" value={notes} maxLength={300} placeholder={t('stock.notesPh')} onChange={(e) => setNotes(e.target.value)} /></Field>
-        {!isTemplate && mgr && <AssignFields opts={opts} a={a} setA={setA} date={date} setDate={setDate} due={due} setDue={setDue} />}
-        {!isTemplate && !mgr && (
-          <div className="stk-two">
-            <Field label={t('stock.date')}><input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
-            <Field label={t('stock.due')}><input className="input" type="time" value={due} onChange={(e) => setDue(e.target.value)} /></Field>
-          </div>
-        )}
+        {quick && !id && <QuickTo opts={opts} a={a} setA={setA} />}
+        {!isTemplate && !quick && mgr && <AssignFields opts={opts} a={a} setA={setA} date={date} setDate={setDate} due={due} setDue={setDue} />}
       </div>
       <div className="card card-pad stk-form">
         <h3>{t('stock.productsOnList', { count: lines.length })}</h3>
@@ -467,7 +500,8 @@ function Builder({ id = '', template = false }) {
         </div>
       </div>
       <div className="stk-save">
-        <button className="btn primary block" disabled={busy || !name.trim() || !lines.length} onClick={save}>{isTemplate ? t('stock.saveTemplate') : id ? t('stock.saveList') : t('stock.createList')}</button>
+        <button className="btn primary block" disabled={busy || !listName || !lines.length} onClick={save}>{isTemplate ? t('stock.saveTemplate') : id ? t('stock.saveList')
+          : quick ? (a.type === 'position' && a.jobCodeId === opts.quick.jobCodeId && opts.quick.jobCodeId ? t('stock.sendToBarbacks') : t('stock.send')) : t('stock.createList')}</button>
       </div>
       {adding && <AddProduct start={q.trim()} cat={cat} onClose={() => setAdding(false)}
         onPicked={(p) => { setCat((c) => (c.products.some((x) => x.id === p.id) ? c : { ...c, products: [...c.products, p] })); add(p); setAdding(false); }} />}
@@ -488,6 +522,7 @@ export function AddProduct({ start = '', cat, onClose, onPicked }) {
   const [unit, setUnit] = useState('');
   const [size, setSize] = useState('');
   const [location, setLocation] = useState('');
+  const [aliases, setAliases] = useState('');
   const [matches, setMatches] = useState([]);
   const [photo, setPhoto] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -506,7 +541,7 @@ export function AddProduct({ start = '', cat, onClose, onPicked }) {
   const save = async () => {
     setBusy(true);
     try {
-      const r = await call('products.add', { name, ...(category ? { category } : {}), unit, size, location, force: true });
+      const r = await call('products.add', { name, ...(category ? { category } : {}), unit, size, location, aliases, force: true });
       let p = r.product;
       if (photo) {
         try { const up = await call('products.addPhoto', { id: p.id, dataUrl: photo.dataUrl, w: photo.w, h: photo.h }); rememberPhoto(up.photo.id, photo.dataUrl); p = up.product; } catch (e) { toast(t('stock.photoFailed', { error: e.message }), 'bad'); }
@@ -564,6 +599,7 @@ export function AddProduct({ start = '', cat, onClose, onPicked }) {
         <Field label={t('stock.size')}><input className="input" value={size} maxLength={30} placeholder={t('stock.sizePh')} onChange={(e) => setSize(e.target.value)} /></Field>
         <Field label={t('stock.location')}><input className="input" value={location} maxLength={80} placeholder={t('stock.locationPh')} onChange={(e) => setLocation(e.target.value)} /></Field>
       </div>
+      <Field label={t('stock.aliases')} help={t('stock.aliasesHelp')}><input className="input" value={aliases} maxLength={200} placeholder={t('stock.aliasesPh')} onChange={(e) => setAliases(e.target.value)} /></Field>
       <div className="help">{t('stock.addHelp')}</div>
     </Modal>
   );
@@ -580,11 +616,12 @@ function Products({ cat: first }) {
   const [open, setOpen] = useState(null);
   const [cats, setCats] = useState(false);
   const [archived, setArchived] = useState(false);
+  const [buyers, setBuyers] = useState(false);
   const [tick, setTick] = useState(0);
   useEffect(() => { call('products.list', { archived }).then(setCat).catch((e) => toast(e.message, 'bad')); }, [version, tick, archived]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!cat) return <div className="empty">{t('common.loading')}</div>;
   const words = norm(q).split(' ').filter(Boolean);
-  const shown = cat.products.filter((p) => (!filter || p.category === filter) && words.every((w) => norm(`${p.name} ${p.size} ${p.location} ${p.supplier}`).includes(w)));
+  const shown = cat.products.filter((p) => (!filter || p.category === filter) && (!words.length || productMatches(p, q, `${catName(cat.categories, p.category, t.lang)} ${p.supplier}`)));
   const used = new Set(cat.products.map((p) => p.category));
   return (
     <>
@@ -611,10 +648,10 @@ function Products({ cat: first }) {
         ))}
       </div>
       {!shown.length ? <Empty icon="box" title={t('stock.noProducts')} /> : (
-        <div className="card stk-catalog">
+        <div className="stk-library">
           {shown.map((p) => (
-            <button key={p.id} type="button" className={`stk-prod ${p.status}`} onClick={() => setOpen(p)}>
-              <ProductPhoto product={p} className="stk-thumb lg" alt="" />
+            <button key={p.id} type="button" className={`card stk-tile ${p.status}`} onClick={() => setOpen(p)}>
+              <ProductPhoto product={p} className="stk-tile-photo" alt="" />
               <span className="stk-result-text">
                 <b>{p.name}</b>
                 <span className="small muted">{[p.size, p.unit && unitName(cat.units, p.unit, t.lang), catName(cat.categories, p.category, t.lang)].filter(Boolean).join(' · ')}</span>
@@ -630,11 +667,13 @@ function Products({ cat: first }) {
         <div className="stk-mgr-links">
           <button className="btn sm ghost" onClick={() => setCats(true)}><Icon name="settings" />{t('stock.categories')}</button>
           <button className="btn sm ghost" onClick={() => setArchived(!archived)}>{archived ? t('stock.hideArchived') : t('stock.showArchived')}</button>
+          <button className="btn sm ghost" onClick={() => setBuyers(true)}><Icon name="dollar" />{t('stock.buyers')}</button>
           <SmartImportButton target="products" className="btn sm ghost" />
         </div>
       )}
       {adding && <AddProduct cat={cat} onClose={() => setAdding(false)} onPicked={(p) => { setAdding(false); setTick((n) => n + 1); setOpen(p); }} />}
       {open && <ProductDialog id={open.id} cat={cat} onClose={() => setOpen(null)} onChanged={() => setTick((n) => n + 1)} />}
+      {buyers && <BuyersDialog onClose={() => setBuyers(false)} />}
       {cats && <CategoriesDialog cats={cat.categories} onClose={() => setCats(false)} onSaved={() => { setCats(false); setTick((n) => n + 1); }} />}
     </>
   );
@@ -645,6 +684,7 @@ function ProductDialog({ id, cat, onClose, onChanged }) {
   const { call, toast, viewAs } = useApp();
   const [d, setD] = useState(null);
   const [f, setF] = useState(null);
+  const [shown, setShown] = useState(0);
   const [merging, setMerging] = useState(false);
   const file = useRef(null);
   const load = () => call('products.get', { id }).then((r) => { setD(r); setF({ ...r.product, pars: { ...r.product.pars } }); }).catch((e) => toast(e.message, 'bad'));
@@ -655,7 +695,7 @@ function ProductDialog({ id, cat, onClose, onChanged }) {
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const save = async () => {
     try {
-      await call('products.save', { id: p.id, name: f.name, category: f.category, unit: f.unit, size: f.size, location: f.location, supplier: f.supplier, notes: f.notes,
+      await call('products.save', { id: p.id, name: f.name, aliases: f.aliases, category: f.category, unit: f.unit, size: f.size, location: f.location, supplier: f.supplier, notes: f.notes,
         ...(cat.canManage ? { pars: f.pars } : {}) });
       toast(t('stock.saved')); onChanged(); onClose();
     } catch (e) { toast(e.message, 'bad'); }
@@ -674,14 +714,16 @@ function ProductDialog({ id, cat, onClose, onChanged }) {
   return (
     <Modal title={p.name} sub={p.addedBy ? t('stock.addedByWhen', { name: p.addedBy.name, when: stamp(p.addedAt) }) : p.source === 'migration' ? t('stock.fromThe86') : null} onClose={onClose}
       footer={edit ? <><button className="btn" onClick={onClose}>{t('common.cancel')}</button><button className="btn primary" onClick={save}>{t('common.save')}</button></> : null}>
+      <div className="stk-big"><ProductPhoto product={{ ...p, photos: p.photos.slice(Math.min(shown, Math.max(0, p.photos.length - 1))) }} className="stk-big-img" alt={p.name} /></div>
+      {p.location && <div className="stk-where"><Icon name="pin" size={16} /><b>{p.location}</b></div>}
+      {p.aliases.length > 0 && <div className="small muted">{t('stock.alsoCalled', { names: p.aliases.join(', ') })}</div>}
       <div className="stk-photos">
-        {p.photos.map((ph) => (
-          <div key={ph.id} className="e86-pick-thumb stk-photo-lg">
-            <ProductPhoto product={{ ...p, photos: [ph] }} className="" />
+        {p.photos.map((ph, i) => (
+          <div key={ph.id} className="e86-pick-thumb">
+            <button type="button" className="stk-thumb-btn" onClick={() => setShown(i)} aria-label={t('stock.seePhoto', { name: p.name })}><ProductPhoto product={{ ...p, photos: [ph] }} className="" /></button>
             {ph.canRemove && !viewAs && <button type="button" className="e86-pick-x" onClick={() => run('products.removePhoto', { id: p.id, photoId: ph.id }, t('stock.photoRemoved'))} aria-label={t('stock.removePhoto')}><Icon name="x" size={14} /></button>}
           </div>
         ))}
-        {!p.photos.length && <ProductPhoto product={p} className="stk-photo-lg" />}
         {canAddPhoto && <button type="button" className="e86-pick-add" onClick={() => file.current?.click()} aria-label={t('stock.addPhoto')}><Icon name="camera" size={20} /><span>{t('stock.photo')}</span></button>}
         <input ref={file} type="file" accept="image/*" hidden onChange={(e) => { addPhoto(e.target.files); e.target.value = ''; }} />
       </div>
@@ -696,6 +738,7 @@ function ProductDialog({ id, cat, onClose, onChanged }) {
             <Field label={t('stock.size')}><input className="input" value={f.size} maxLength={30} onChange={set('size')} /></Field>
             <Field label={t('stock.location')}><input className="input" value={f.location} maxLength={80} placeholder={t('stock.locationPh')} onChange={set('location')} /></Field>
           </div>
+          <Field label={t('stock.aliases')} help={t('stock.aliasesHelp')}><input className="input" value={Array.isArray(f.aliases) ? f.aliases.join(', ') : f.aliases} maxLength={300} placeholder={t('stock.aliasesPh')} onChange={set('aliases')} /></Field>
           <Field label={t('stock.supplier')}><input className="input" value={f.supplier} maxLength={80} onChange={set('supplier')} /></Field>
           <Field label={t('stock.productNotes')}><input className="input" value={f.notes} maxLength={300} onChange={set('notes')} /></Field>
           {cat.canManage && (
@@ -713,7 +756,7 @@ function ProductDialog({ id, cat, onClose, onChanged }) {
         </>
       ) : (
         <div className="stk-facts small">
-          {[[t('stock.category'), catName(cat.categories, p.category, t.lang)], [t('stock.unit'), unitName(cat.units, p.unit, t.lang)], [t('stock.size'), p.size], [t('stock.location'), p.location], [t('stock.supplier'), p.supplier], [t('stock.productNotes'), p.notes]]
+          {[[t('stock.category'), catName(cat.categories, p.category, t.lang)], [t('stock.unit'), unitName(cat.units, p.unit, t.lang)], [t('stock.size'), p.size], [t('stock.supplier'), p.supplier], [t('stock.productNotes'), p.notes]]
             .filter(([, v]) => v).map(([k, v]) => <div key={k}><span className="muted">{k}:</span> {v}</div>)}
         </div>
       )}
@@ -890,4 +933,40 @@ export function ProductsCard() {
       <div className="row wrap" style={{ gap: 8 }}><a className="btn sm" href="#/settings/products"><Icon name="box" />{t('stock.settingsOpen')}</a></div>
     </div>
   );
+}
+
+/** Who orders for each 86 list: told when a list reports something out or short; they work the shopping list. */
+function BuyersDialog({ onClose }) {
+  const t = useT();
+  const { call, toast } = useApp();
+  const [d, setD] = useState(null);
+  useEffect(() => { call('products.buyers.get').then(setD).catch((e) => toast(e.message, 'bad')); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const name = (id) => d?.people.find((p) => p.id === id)?.name || '';
+  const toggle = async (l, id) => {
+    const cur = l.buyers.length ? l.buyers : [];
+    const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+    try { setD(await call('products.saveBuyers', { listId: l.id, userIds: next })); } catch (e) { toast(e.message, 'bad'); }
+  };
+  return (
+    <Modal title={t('stock.buyers')} sub={t('stock.buyersHelp')} onClose={onClose} footer={<button className="btn primary" onClick={onClose}>{t('common.close')}</button>}>
+      {!d ? <div className="empty">{t('common.loading')}</div> : d.lists.map((l) => (
+        <div key={l.id} className="field">
+          <span>{listName86(l, t.lang)}</span>
+          {!l.buyers.length && <div className="help">{t('stock.buyersDefault', { names: l.defaults.map(name).join(', ') || '—' })}</div>}
+          <div className="stk-chips tight">
+            {d.people.map((p) => <button key={p.id} type="button" className={`chip ${l.buyers.includes(p.id) ? 'on' : ''}`} aria-pressed={l.buyers.includes(p.id)} onClick={() => toggle(l, p.id)}>{p.name}</button>)}
+          </div>
+        </div>
+      ))}
+    </Modal>
+  );
+}
+
+/** The product library on its own (nav: Products): everyone looks things up there. */
+export function Library() {
+  const { call, version } = useApp();
+  const t = useT();
+  const [cat, setCat] = useState(null);
+  useEffect(() => { call('products.list').then(setCat).catch(() => {}); }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
+  return <div className="stk">{cat ? <Products cat={cat} /> : <div className="empty">{t('common.loading')}</div>}</div>;
 }

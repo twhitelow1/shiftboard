@@ -9,7 +9,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useApp, Icon, Modal, Field, Empty } from '../ui.jsx';
 import { nowDate, IS_DEMO, call as rpc } from '../api.js';
 import { photoFromFile } from './TrainingShared.jsx';
-import { ProductPhoto } from './Stock.jsx'; // the product catalog Stock lists share (core/products.js)
+import { ProductPhoto } from './Stock.jsx';
+import { productMatches } from '../../../core/products.js'; // the product catalog Stock lists share (core/products.js)
 import { sameArea } from '../../../core/areas.js';
 import { categoryLabel } from '../../../core/training.js';
 import { useT, fmtTime, stamp } from '../i18n/index.js';
@@ -310,7 +311,7 @@ function ReportDialog({ board, start, onClose, onDone }) {
   const recent = (list?.recent || []).filter((r) => matches(r.name));
   const options = (list?.suggest || []).map((id) => ({ id, ...board.menu[id] }))
     .filter((m) => m.name && matches(`${m.name} ${m.nameEs} ${m.category}`));
-  const catalog = words.length ? products.filter((p) => matches(`${p.name} ${p.size}`) && !recent.some((r) => norm(r.name) === norm(p.name))).slice(0, 6) : [];
+  const catalog = words.length ? products.filter((p) => productMatches(p, q) && !recent.some((r) => norm(r.name) === norm(p.name))).slice(0, 6) : [];
   const exactRecent = q.trim() ? recent.find((r) => norm(r.name) === norm(q)) : null;
   const exact = q.trim() && !exactRecent ? options.find((m) => norm(m.name) === norm(q) || (m.nameEs && norm(m.nameEs) === norm(q))) : null;
   const current = picked || (q.trim() ? { name: exactRecent?.name || q.trim(), menuItemId: exact?.id || null } : null);

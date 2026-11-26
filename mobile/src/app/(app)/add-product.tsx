@@ -27,6 +27,7 @@ export default function AddProduct() {
   const [category, setCategory] = useState<string[]>([]);
   const [unit, setUnit] = useState<string[]>([]);
   const [location, setLocation] = useState('');
+  const [aliases, setAliases] = useState('');
   const [photo, setPhoto] = useState<ShrunkPhoto | null>(null);
   const [matches, setMatches] = useState<ProductMatch[]>([]);
   const [busy, setBusy] = useState(false);
@@ -49,7 +50,7 @@ export default function AddProduct() {
   const save = async () => {
     setBusy(true);
     try {
-      const r = await client.call<{ product: Product }>('products.add', { name, ...(category[0] ? { category: category[0] } : {}), ...(unit[0] ? { unit: unit[0] } : {}), location, force: true });
+      const r = await client.call<{ product: Product }>('products.add', { name, ...(category[0] ? { category: category[0] } : {}), ...(unit[0] ? { unit: unit[0] } : {}), location, aliases, force: true });
       if (photo) {
         try { await client.call('products.addPhoto', { id: r.product.id, dataUrl: photo.dataUrl, w: photo.w, h: photo.h }); } catch (e) { toast(t('stock.photoFailed', { error: errorText(e) }), 'bad'); }
       }
@@ -111,6 +112,7 @@ export default function AddProduct() {
         </>
       ) : null}
       <Field label={t('stock.location')} value={location} onChangeText={setLocation} placeholder={t('stock.locationPh')} maxLength={80} />
+      <Field label={t('stock.aliases')} value={aliases} onChangeText={setAliases} placeholder={t('stock.aliasesPh')} maxLength={200} autoCorrect={false} />
       <Notice tone="brand" icon="alert" text={t('stock.addHelp')} />
       <Button kind="primary" title={matches.length ? t('stock.addAnyway') : t('stock.addIt')} onPress={save} busy={busy} disabled={!name.trim()} block />
     </Screen>

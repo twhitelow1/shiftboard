@@ -74,6 +74,9 @@ export function seedStockDemo(store, { now = new Date() } = {}) {
     store.insert('products', { ...doc, photos: [photo(id, tile(shape, bg, a, b), 1, mgr)] });
     ids[key] = id;
   }
+  // What people also call them (search finds these too).
+  const ALIASES = { rum: ['well rum', 'silver rum'], vodka: ['house vodka', 'well vodka'], tequila: ['blanco', 'well tequila'], soda: ['soda water'], napkins: ['bev naps'], bartowels: ['bar rags'] };
+  for (const [key, aliases] of Object.entries(ALIASES)) if (ids[key]) store.update('products', ids[key], { aliases });
   for (const [i, [name, category, unit, who, shape, colors]] of STAFF_ADDED.entries()) {
     const id = `prd_demo_new${i + 1}`;
     const by = user(who);

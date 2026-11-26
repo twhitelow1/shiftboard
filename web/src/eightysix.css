@@ -138,3 +138,13 @@ button.e86-item-main:hover { background: var(--surface-2); }
 
 /* a catalog product in the report form's results (Stock lists' products) */
 .e86-result-thumb { flex: none; width: 32px; height: 32px; border-radius: 8px; object-fit: cover; border: 1px solid var(--border); }
+
+/* The 86 report's purchase list (Reports → 86 List → Shopping list): photo, supplier, how often, Ordered / Received. */
+.rp-buy { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin: 8px 0; }
+.rp-buy-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.rp-buy-row:first-child { border-top: 0; }
+.rp-buy-photo { flex: none; width: 48px; height: 48px; border-radius: 10px; object-fit: cover; border: 1px solid var(--border); }
+.rp-buy-text { flex: 1 1 150px; min-width: 0; display: flex; flex-direction: column; gap: 1px; overflow-wrap: anywhere; }
+.rp-buy-badge { align-self: flex-start; margin-top: 2px; }
+.rp-buy-btns { display: flex; gap: 6px; flex: none; }
+.rp-buy-btns .btn.sm { min-height: 36px; }

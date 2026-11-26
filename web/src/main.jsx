@@ -18,7 +18,7 @@ import Settings from './pages/Settings.jsx';
 import Venue from './pages/Venue.jsx';
 import Training from './pages/Training.jsx';
 import EightySix from './pages/EightySix.jsx';
-import Stock from './pages/Stock.jsx'; // Stock lists and the product catalog (#/stock, #/stock/products)
+import Stock, { Library } from './pages/Stock.jsx'; // Stock lists and the product catalog (#/stock, #/stock/products)
 import Reports from './pages/Reports.jsx';
 import Account from './pages/Security.jsx';
 import Announcements from './pages/Announcements.jsx';
@@ -65,6 +65,7 @@ const NAV = [
   { key: 'my', label: 'main.myShifts', icon: 'user', feature: 'myShifts' },
   { key: '86', label: 'main.eightySix', icon: 'ban', feature: 'eightySix' },
   { key: 'stock', label: 'stock.nav', icon: 'box', feature: 'stock' }, // Stock lists: everyone (core/stock.js)
+  { key: 'products', label: 'stock.libraryNav', icon: 'search', feature: 'stock' }, // the product library: look anything up
   { key: 'swaps', label: 'main.swapsTrades', short: 'main.swaps', icon: 'swap', badge: 'swaps', feature: 'trades' },
   { key: 'announcements', label: 'announcements.title', icon: 'megaphone', feature: 'announcements' },
   { key: 'ask', label: 'assistant.nav', icon: 'sparkle', feature: 'assistant' }, // Ask ShiftBoard (plan ∩ role)
@@ -291,7 +292,7 @@ function App() {
     forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue, training: Training, 86: EightySix, reports: Reports,
     account: Account, announcements: Announcements, 'trade-stats': TradeStats,
     forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue, training: Training, 86: EightySix,
-    account: Account, impact: ImpactReport, kudos: Kudos, ask: Assistant, feedback: Feedback, 'feedback-inbox': FeedbackInbox, stock: Stock,
+    account: Account, impact: ImpactReport, kudos: Kudos, ask: Assistant, feedback: Feedback, 'feedback-inbox': FeedbackInbox, stock: Stock, products: Library,
   }[route] || Schedule;
 
   const signOut = async () => { await logout(); setBoot(null); setAuthed(false); };
