@@ -64,6 +64,7 @@ export const FIELDS = {
     F('birthday', ['birthday', 'birth date', 'birthdate', 'date of birth', 'dob', 'cumpleanos', 'fecha de nacimiento']),
     F('employeeId', ['employee id', 'emp id', 'employee number', 'employee no', 'payroll id', 'file number', 'badge', 'badge number', 'employee code', 'clock number', 'id', 'numero de empleado', 'id de empleado', 'numero de nomina']),
     F('payRate', ['pay rate', 'rate', 'hourly rate', 'wage', 'hourly', 'pay', 'tarifa', 'sueldo por hora', 'pago por hora', 'salario por hora']),
+    F('primaryRoom', ['primary room', 'main room', 'home room', 'primary space', 'primary location', 'main space', 'room', 'space', 'location', 'salon principal', 'salon', 'area principal', 'ubicacion principal']),
     F('notes', ['notes', 'note', 'comments', 'comment', 'notas', 'nota', 'comentarios', 'observaciones']),
     F('active', ['active', 'status', 'employment status', 'activo', 'estado', 'estatus']),
   ],
@@ -108,6 +109,7 @@ export const FIELDS = {
     F('notes', ['notes', 'note', 'comments', 'comment', 'availability notes', 'notas', 'nota', 'comentarios', 'observaciones']),
     F('maxHours', ['max hours', 'max hrs', 'maximum hours', 'hours max', 'max hours per week', 'max hours week', 'hours per week', 'max weekly hours', 'horas maximas', 'max horas', 'horas por semana']),
     F('maxDays', ['max days', 'maximum days', 'days max', 'max days per week', 'days per week', 'max shifts', 'shifts per week', 'dias maximos', 'max dias', 'dias por semana']),
+    F('requestedOn', ['requested on', 'request date', 'date requested', 'requested', 'requested date', 'fecha de solicitud', 'pedido el', 'solicitado', 'fecha solicitada']),
   ],
 };
 export const fieldKeys = (target) => FIELDS[target].map((f) => f.key);
@@ -182,6 +184,10 @@ export function readDocx(bytes) {
 /** The first sheet of an Excel workbook (.xlsx) → rows of cell text. */
 export function readXlsx(bytes) {
   const files = zipFiles(bytes, (n) => n === 'xl/sharedStrings.xml' || /^xl\/worksheets\/sheet\d+\.xml$/.test(n) || n === 'xl/workbook.xml' || n === 'xl/_rels/workbook.xml.rels');
+  return readXlsxRaw(files).map((r) => r.text).filter((r) => r.some(Boolean));
+}
+/** The first sheet's rows: [{ text: [cells], fill: [fillOf(cell xml)] }] (empty rows kept, so callers can line fills up). */
+function readXlsxRaw(files, fillOf = null) {
   const shared = [];
   if (files['xl/sharedStrings.xml']) {
     for (const si of strFromU8(files['xl/sharedStrings.xml']).match(/<si>[\s\S]*?<\/si>/g) || []) {
@@ -202,6 +208,7 @@ export function readXlsx(bytes) {
   const rows = [];
   for (const r of strFromU8(files[sheet]).match(/<row\b[\s\S]*?<\/row>/g) || []) {
     const out = [];
+    const fill = [];
     for (const c of r.match(/<c\b[^>]*?(?:\/>|>[\s\S]*?<\/c>)/g) || []) {
       const ref = (c.match(/\br="([A-Z]+)\d+"/) || [])[1];
       const type = (c.match(/\bt="(\w+)"/) || [])[1];
@@ -210,11 +217,181 @@ export function readXlsx(bytes) {
       if (type === 's') value = shared[+v] ?? '';
       else if (type === 'inlineStr') value = unxml((c.match(/<t[^>]*>([\s\S]*?)<\/t>/) || [])[1] || '');
       else if (v !== undefined) value = unxml(v);
-      out[ref ? col(ref) : out.length] = clean(value);
+      const at = ref ? col(ref) : out.length;
+      out[at] = clean(value);
+      if (fillOf) fill[at] = fillOf(c);
     }
-    rows.push(Array.from(out, (x) => x ?? ''));
+    const width = Math.max(out.length, fill.length);
+    rows.push({ text: Array.from({ length: width }, (_, i) => out[i] ?? ''), fill: Array.from({ length: width }, (_, i) => fill[i] ?? '') });
   }
-  return rows.filter((r) => r.some(Boolean));
+  return rows;
+}
+
+// ---------------------------------------------------------------- cell colours (an Excel sheet's fills)
+
+// The 64 indexed colours of the legacy palette (index 0–63), as Excel shows them.
+const INDEXED = ['000000', 'FFFFFF', 'FF0000', '00FF00', '0000FF', 'FFFF00', 'FF00FF', '00FFFF', '000000', 'FFFFFF', 'FF0000', '00FF00', '0000FF', 'FFFF00', 'FF00FF', '00FFFF',
+  '800000', '008000', '000080', '808000', '800080', '008080', 'C0C0C0', '808080', '9999FF', '993366', 'FFFFCC', 'CCFFFF', '660066', 'FF8080', '0066CC', 'CCCCFF',
+  '000080', 'FF00FF', 'FFFF00', '00FFFF', '800080', '800000', '008080', '0000FF', '00CCFF', 'CCFFFF', 'CCFFCC', 'FFFF99', '99CCFF', 'FF99CC', 'CC99FF', 'FFCC99',
+  '3366FF', '33CCCC', '99CC00', 'FFCC00', 'FF9900', 'FF6600', '666699', '969696', '003366', '339966', '003300', '333300', '993300', '993366', '333399', '333333'];
+// Office's default theme (when the file has none): lt1, dk1, lt2, dk2, accent1–6, hlink, folHlink, in the order the
+// theme="n" attribute counts them (Excel swaps the first two pairs).
+const DEFAULT_THEME = ['FFFFFF', '000000', 'E7E6E6', '44546A', '4472C4', 'ED7D31', 'A5A5A5', 'FFC000', '5B9BD5', '70AD47', '0563C1', '954F72'];
+
+const toHsl = (hex) => {
+  const n = parseInt(hex, 16);
+  const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
+  if (max === min) return { h: 0, s: 0, l };
+  const d = max - min;
+  const sat = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  const h = max === r ? ((g - b) / d + (g < b ? 6 : 0)) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return { h: h * 60, s: sat, l };
+};
+const fromHsl = ({ h, s, l }) => {
+  const f = (n) => { const k = (n + h / 30) % 12; const a = s * Math.min(l, 1 - l); return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); };
+  return [f(0), f(8), f(4)].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+};
+/** Excel's tint: towards white (tint > 0) or black (tint < 0), on the lightness. */
+const tinted = (hex, tint) => {
+  if (!tint) return hex;
+  const c = toHsl(hex);
+  c.l = tint < 0 ? c.l * (1 + tint) : c.l * (1 - tint) + tint;
+  return fromHsl(c);
+};
+
+export const COLOR_FAMILIES = ['green', 'lightGreen', 'yellow', 'red', 'other', 'none'];
+/**
+ * A fill colour's family: green · lightGreen · yellow · red · other · none (no fill, white or grey). Tolerant ranges, so
+ * a sheet's "green" is green whichever green it is: hue 70–170 is green; light green when it's pale (lightness ≥ 0.6, or
+ * ≥ 0.5 leaning yellow-green, like Excel's 92D050). Yellow: hue 40–70 (and pale orange-yellows); red: hue < 15 or > 340.
+ */
+export function colorFamily(hex) {
+  const h6 = String(hex || '').replace(/^#?(?:FF)?([0-9a-f]{6})$/i, '$1');
+  if (!/^[0-9a-f]{6}$/i.test(h6)) return 'none';
+  const { h, s, l } = toHsl(h6);
+  if (l > 0.94 || s < 0.12) return 'none';
+  if (h >= 70 && h <= 170) return l >= 0.78 ? 'lightGreen' : 'green'; // pale (a 80% tint) is light green
+  if (h >= 40 && h < 70) return 'yellow';
+  if (h < 15 || h > 340) return 'red';
+  return 'other';
+}
+
+/** A workbook's styles: each cell style's fill ('#RRGGBB' or '') and whether its number format is a date or a time. */
+function loadStyles(files) {
+  const theme = [...DEFAULT_THEME];
+  const themeFile = Object.keys(files).filter((n) => /^xl\/theme\/theme\d+\.xml$/.test(n)).sort()[0];
+  if (themeFile) {
+    const scheme = strFromU8(files[themeFile]).match(/<a:clrScheme\b[\s\S]*?<\/a:clrScheme>/)?.[0] || '';
+    const pick = (tag) => { const m = scheme.match(new RegExp(`<a:${tag}>[\\s\\S]*?(?:srgbClr val="([0-9A-Fa-f]{6})"|lastClr="([0-9A-Fa-f]{6})")`)); return m ? (m[1] || m[2]).toUpperCase() : null; };
+    ['lt1', 'dk1', 'lt2', 'dk2', 'accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6', 'hlink', 'folHlink'].forEach((tag, i) => { const c = pick(tag); if (c) theme[i] = c; });
+  }
+  const colorOf = (attrs) => {
+    if (!attrs) return '';
+    const rgbM = attrs.match(/\brgb="([0-9A-Fa-f]{6,8})"/);
+    const tint = Number((attrs.match(/\btint="(-?[\d.eE-]+)"/) || [])[1] || 0);
+    let hex = null;
+    if (rgbM) hex = rgbM[1].slice(-6);
+    else if (/\btheme="(\d+)"/.test(attrs)) hex = theme[+attrs.match(/\btheme="(\d+)"/)[1]] || null;
+    else if (/\bindexed="(\d+)"/.test(attrs)) { const i = +attrs.match(/\bindexed="(\d+)"/)[1]; hex = i < 64 ? INDEXED[i] : null; } // 64: the system colour
+    return hex ? `#${tinted(hex.toUpperCase(), tint)}` : '';
+  };
+  const fills = [];
+  const xfs = [];
+  if (files['xl/styles.xml']) {
+    const st = strFromU8(files['xl/styles.xml']);
+    const custom = new Map();
+    for (const m of (st.match(/<numFmts\b[\s\S]*?<\/numFmts>/)?.[0] || '').matchAll(/<numFmt\b[^>]*numFmtId="(\d+)"[^>]*formatCode="([^"]*)"/g)) custom.set(+m[1], unxml(m[2]));
+    const kindOf = (id) => {
+      if ((id >= 14 && id <= 17) || id === 22 || (id >= 27 && id <= 36) || (id >= 50 && id <= 58)) return 'date';
+      if ((id >= 18 && id <= 21) || (id >= 45 && id <= 47)) return 'time';
+      const code = (custom.get(id) || '').replace(/"[^"]*"|\[[^\]]*\]/g, '').toLowerCase();
+      if (/[dy]/.test(code) || /m{3,}/.test(code)) return 'date';
+      if (/h/.test(code) || /:mm|ss/.test(code) || /am\/pm/.test(code)) return 'time';
+      return '';
+    };
+    for (const f of (st.match(/<fills\b[\s\S]*?<\/fills>/)?.[0] || '').match(/<fill>[\s\S]*?<\/fill>|<fill\/>/g) || []) {
+      const pattern = f.match(/<patternFill\b([^>]*)>([\s\S]*?)<\/patternFill>|<patternFill\b([^>]*)\/>/);
+      const type = ((pattern?.[1] || pattern?.[3] || '').match(/patternType="(\w+)"/) || [])[1] || 'none';
+      const fg = (pattern?.[2] || '').match(/<fgColor\b([^>]*?)\/?>/)?.[1];
+      const bg = (pattern?.[2] || '').match(/<bgColor\b([^>]*?)\/?>/)?.[1];
+      fills.push(type === 'none' ? '' : colorOf(fg) || colorOf(bg));
+    }
+    for (const xf of (st.match(/<cellXfs\b[\s\S]*?<\/cellXfs>/)?.[0] || '').match(/<xf\b[^>]*?(?:\/>|>[\s\S]*?<\/xf>)/g) || []) {
+      xfs.push({ fill: fills[+(xf.match(/\bfillId="(\d+)"/) || [])[1] || 0] || '', kind: kindOf(+(xf.match(/\bnumFmtId="(\d+)"/) || [])[1] || 0) });
+    }
+  }
+  return { styleOf: (s) => xfs[s] || { fill: '', kind: '' } };
+}
+const sharedStrings = (files) => (files['xl/sharedStrings.xml'] ? (strFromU8(files['xl/sharedStrings.xml']).match(/<si>[\s\S]*?<\/si>/g) || [])
+  .map((si) => unxml((si.match(/<t[^>]*>[\s\S]*?<\/t>/g) || []).map((t) => t.replace(/<[^>]+>/g, '')).join(''))) : []);
+/** An Excel serial date → 'YYYY-MM-DD' (the 1900 system). */
+export const excelDate = (n) => new Date(Math.round((Number(n) - 25569) * 864e5)).toISOString().slice(0, 10);
+/** An Excel time (a day's fraction) → 'HH:MM'. */
+export const excelTime = (n) => { const m = Math.round((Number(n) % 1) * 1440) % 1440; return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
+
+/**
+ * Every sheet of a workbook, in the workbook's order: [{ name, rows: [[{ text, fill, date?, time?, merged? }]] }].
+ * Rows keep their sheet position (row 1 is rows[0], empty rows are empty arrays); text is what the cell shows (a date
+ * cell as 'YYYY-MM-DD', a time as 'HH:MM'); fill is '#RRGGBB' or ''; merged marks a cell covered by a merge (not its
+ * top-left), which has no text of its own.
+ */
+export function readWorkbook(bytes) {
+  const files = zipFiles(bytes, (n) => n === 'xl/sharedStrings.xml' || /^xl\/worksheets\/sheet\d+\.xml$/.test(n) || n === 'xl/workbook.xml' || n === 'xl/_rels/workbook.xml.rels'
+    || n === 'xl/styles.xml' || /^xl\/theme\/theme\d+\.xml$/.test(n));
+  const shared = sharedStrings(files);
+  const { styleOf } = loadStyles(files);
+  const wb = files['xl/workbook.xml'] ? strFromU8(files['xl/workbook.xml']) : '';
+  const rels = files['xl/_rels/workbook.xml.rels'] ? strFromU8(files['xl/_rels/workbook.xml.rels']) : '';
+  const relTarget = (id) => { const m = rels.match(new RegExp(`<Relationship\\b[^>]*Id="${id}"[^>]*Target="([^"]+)"`)) || rels.match(new RegExp(`<Relationship\\b[^>]*Target="([^"]+)"[^>]*Id="${id}"`)); return m ? `xl/${m[1].replace(/^\/?xl\//, '')}` : null; };
+  let list = [...wb.matchAll(/<sheet\b([^>]*)\/?>/g)].map((m) => ({ name: unxml((m[1].match(/\bname="([^"]*)"/) || [])[1] || ''), file: relTarget((m[1].match(/\br:id="([^"]+)"/) || [])[1]) }))
+    .filter((x) => x.file && files[x.file]);
+  if (!list.length) list = Object.keys(files).filter((n) => n.startsWith('xl/worksheets/')).sort().map((file, i) => ({ name: `Sheet${i + 1}`, file }));
+  if (!list.length) throw new Error('not an xlsx');
+  const col = (ref) => [...String(ref).replace(/\d+/g, '')].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
+  return list.map(({ name, file }) => {
+    const xml = strFromU8(files[file]);
+    const rows = [];
+    for (const r of xml.match(/<row\b[^>]*?\/>|<row\b[^>]*?>[\s\S]*?<\/row>/g) || []) {
+      const rn = +((r.match(/^<row\b[^>]*\br="(\d+)"/) || [])[1] || rows.length + 1) - 1;
+      const out = [];
+      for (const c of r.match(/<c\b[^>]*?(?:\/>|>[\s\S]*?<\/c>)/g) || []) {
+        const ref = (c.match(/\br="([A-Z]+)\d+"/) || [])[1];
+        const type = (c.match(/\bt="(\w+)"/) || [])[1];
+        const v = (c.match(/<v>([\s\S]*?)<\/v>/) || [])[1];
+        const st = styleOf(+(c.match(/\bs="(\d+)"/) || [])[1] || 0);
+        const cell = { text: '', fill: st.fill };
+        if (type === 's') cell.text = clean(shared[+v] ?? '');
+        else if (type === 'inlineStr') cell.text = clean(unxml((c.match(/<t[^>]*>([\s\S]*?)<\/t>/) || [])[1] || ''));
+        else if (type === 'str' || type === 'e' || type === 'b') cell.text = clean(unxml(v ?? ''));
+        else if (v !== undefined && v !== '') {
+          const n = Number(v);
+          if (st.kind === 'date' && n >= 1) { cell.date = excelDate(n); cell.text = cell.date; }
+          else if (st.kind === 'time' || (st.kind === 'date' && n < 1)) { cell.time = excelTime(n); cell.text = cell.time; }
+          else cell.text = clean(v);
+        }
+        out[ref ? col(ref) : out.length] = cell;
+      }
+      rows[rn] = Array.from(out, (x) => x || { text: '', fill: '' });
+    }
+    for (let i = 0; i < rows.length; i++) if (!rows[i]) rows[i] = [];
+    for (const m of xml.matchAll(/<mergeCell\b[^>]*ref="([A-Z]+)(\d+):([A-Z]+)(\d+)"/g)) {
+      const c1 = col(m[1]), r1 = +m[2] - 1, c2 = col(m[3]), r2 = +m[4] - 1;
+      for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) {
+        if (r === r1 && c === c1) continue;
+        rows[r] = rows[r] || [];
+        rows[r][c] = { ...(rows[r][c] || { text: '', fill: '' }), merged: true };
+      }
+    }
+    return { name, rows };
+  });
+}
+
+/** The first sheet with each cell's fill: { rows, fills } (empty rows dropped, rows and fills lined up). */
+export function readXlsxStyled(bytes) {
+  const [first] = readWorkbook(bytes);
+  const keep = first.rows.filter((r) => r.some((c) => c?.text));
+  return { rows: keep.map((r) => r.map((c) => c?.text || '')), fills: keep.map((r) => r.map((c) => c?.fill || '')) };
 }
 
 /**
@@ -544,6 +721,7 @@ export function normalizeEmployee(values = {}) {
   if ('employeeId' in values) data.employeeId = v('employeeId').slice(0, 40);
   if ('payRate' in values) { data.payRate = parseMoney(values.payRate); if (v('payRate') && data.payRate == null) issues.push({ code: 'badRate', params: { value: v('payRate') } }); }
   if ('notes' in values) data.notes = para(values.notes).slice(0, 1000);
+  if ('primaryRoom' in values) data.primaryRoom = v('primaryRoom').slice(0, 60);
   if ('active' in values) data.active = yesNo(values.active);
   return { data, issues };
 }
@@ -650,6 +828,7 @@ export function normalizeAvailabilityRow(values = {}) {
   if ('notes' in values) data.notes = para(values.notes).slice(0, 500);
   if ('maxHours' in values) data.maxHours = v('maxHours');
   if ('maxDays' in values) data.maxDays = v('maxDays');
+  if ('requestedOn' in values) data.requestedOn = v('requestedOn');
   return { data, issues: [] };
 }
 

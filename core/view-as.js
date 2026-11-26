@@ -6,7 +6,7 @@
 //
 // How it stays read-only: only reads run (isViewRead), and they run on a throwaway copy of the data
 // (an OverlayStore that's never saved), so even a read that tidies something up as it goes saves nothing.
-import { rankOf, roleOf, roleLabel } from './roles.js';
+import { rankOf, roleOf, roleLabel, customRolesOf } from './roles.js';
 import { addDays } from './time.js';
 import { uid, OverlayStore } from './store.js';
 import { AppError, createService } from './service.js';
@@ -61,9 +61,11 @@ export function resolveTarget(store, real, ask = {}, { today } = {}) {
     if (rankOf(u) > rankOf(real)) fail(403, VIEW_HIGHER);
     return { userId: u.id };
   }
-  if (!VIEW_ROLES.includes(ask.role)) fail(400, 'Unknown role');
+  // A custom role (Bar Manager…): viewed as its base level with its id (core/custom-roles.js).
+  const custom = customOfStore(store, ask.role);
+  if (!VIEW_ROLES.includes(ask.role) && !custom) fail(400, 'Unknown role');
   if (ask.typical) {
-    const u = typicalPerson(store, ask.role, { today, exclude: real.id });
+    const u = custom ? store.list('users', (x) => x.active !== false && x.customRole === custom.id && x.id !== real.id)[0] : typicalPerson(store, ask.role, { today, exclude: real.id });
     if (!u) fail(404, 'Nobody has this role yet');
     return { userId: u.id, typical: ask.role };
   }
@@ -72,14 +74,17 @@ export function resolveTarget(store, real, ask = {}, { today } = {}) {
   const rooms = [...new Set((Array.isArray(ask.rooms) ? ask.rooms : []).map((r) => text(r, 60)).filter(Boolean))].slice(0, 12);
   return { role: ask.role, positions, rooms };
 }
+const customOfStore = (store, id) => (typeof id === 'string' ? customRolesOf(store.get('settings', 'settings') || {}).find((r) => r.id === id) || null : null);
 
 /** The stand-in for a role preview: someone of that role with the positions (in the rooms) picked. */
-export function standIn(target, lang = 'en') {
+export function standIn(target, lang = 'en', custom = null) {
+  const label = custom ? (lang === 'es' && custom.nameEs ? custom.nameEs : custom.name) : roleLabel(target.role, lang);
   return {
-    id: STAND_IN_ID, name: lang === 'es' ? `${roleLabel(target.role, lang)} de muestra` : `Sample ${roleLabel(target.role, lang)}`, sheetName: '', role: target.role,
+    id: STAND_IN_ID, name: lang === 'es' ? `${label} de muestra` : `Sample ${label}`, sheetName: '', role: target.role,
     email: '', phone: '', active: true, onSchedule: false, eventsAccess: false, availability: {}, color: null,
     jobCodes: (target.positions || []).map((jobCodeId, i) => ({ jobCodeId, rate: null, primary: i === 0, ...(target.rooms?.length ? { areas: [...target.rooms] } : {}) })),
     passwordHash: null, smsConsent: false, emailConsent: false, standIn: true,
+    ...(custom ? { role: custom.base, customRole: custom.id } : {}),
   };
 }
 
@@ -89,7 +94,10 @@ export function standIn(target, lang = 'en') {
  */
 export function viewedPerson(store, real, target, lang = 'en') {
   if (!target || !real || roleOf(real) !== 'super_admin' || real.active === false) return null;
-  if (target.role && !target.userId) return VIEW_ROLES.includes(target.role) ? standIn(target, lang) : null;
+  if (target.role && !target.userId) {
+    const custom = customOfStore(store, target.role);
+    return VIEW_ROLES.includes(target.role) || custom ? standIn(target, lang, custom) : null;
+  }
   const u = store.get('users', target.userId);
   if (!u || u.active === false || u.id === real.id || rankOf(u) > rankOf(real)) return null;
   return u;

@@ -24,7 +24,18 @@ function requestOut(r, look) {
     createdAt: r.createdAt, ...(r.resolution ? { resolution: r.resolution } : {}),
   };
 }
-const timeOffOut = (t, look) => ({ id: t.id, person: look.people[t.userId]?.name || '', from: t.startDate, to: t.endDate, status: t.status, ...(t.reason ? { reason: t.reason } : {}), ...(t.note ? { note: t.note } : {}) });
+const ORD = (n) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th'}`;
+/** A time-off request for the tools: when it was requested and its place in line (core/time-off.js timeOff.queue). */
+const timeOffOut = (t, look, q = {}) => {
+  const i = q[t.id] || {};
+  return {
+    id: t.id, person: look.people[t.userId]?.name || '', from: t.startDate, to: t.endDate, status: t.status, ...(t.reason ? { reason: t.reason } : {}), ...(t.note ? { note: t.note } : {}),
+    ...(i.requestedAt ? { requestedAt: i.requestedAt, ...(i.approx ? { requestedAtApprox: true } : {}) } : {}), ...(i.source && i.source !== 'app' ? { cameIn: i.source } : {}),
+    ...(i.enteredByName ? { addedBy: i.enteredByName } : {}),
+    ...(i.place ? { order: `${ORD(i.place)} of ${i.of} for ${i.date}`, ...(i.others ? { othersInLine: i.others.map((o) => ({ person: o.name, requestedAt: o.requestedAt, place: o.place, status: o.status })) } : {}) } : {}),
+  };
+};
+const byRequested = (q) => (a, b) => String(q[a.id]?.requestedAt || '9').localeCompare(String(q[b.id]?.requestedAt || '9')) || a.id.localeCompare(b.id);
 
 export default [
   // ---------- time off ----------
@@ -35,8 +46,8 @@ export default [
     input: { everyone: z.boolean().optional().describe('Approvers only: everyone\'s requests, not just yours') },
     consent: 'read',
     async handler(user, args, ctx) {
-      const [look, rows] = await Promise.all([lookupOf(ctx), ctx.read('timeOff.list')]);
-      const list = rows.filter((t) => args.everyone || t.userId === user.id).map((t) => timeOffOut(t, look));
+      const [look, rows, q] = await Promise.all([lookupOf(ctx), ctx.read('timeOff.list'), ctx.read('timeOff.queue')]);
+      const list = rows.filter((t) => args.everyone || t.userId === user.id).map((t) => timeOffOut(t, look, q));
       return { summary: `${list.length} time-off request(s).`, data: { timeOff: list } };
     },
   }),
@@ -44,14 +55,33 @@ export default [
     name: 'request_time_off',
     title: 'Request time off',
     description: 'Ask for time off (one day, or from startDate to endDate). It goes to the managers for approval, like in the app. '
-      + 'Says how many of your shifts fall on those days (you still have to trade or give those away).',
-    input: { startDate: dateArg('First day off'), endDate: dateArg('Last day off (default: the same day)').optional(), reason: z.string().max(300).optional() },
+      + 'Says how many of your shifts fall on those days (you still have to trade or give those away). '
+      + 'Managers (and approvers for people they approve for) can add it for someone else with person: say how it came in (source) and when they asked '
+      + '(requestedAt, never in the future); it\'s approved unless status is "pending", and the person is notified. Tell the user exactly what will be added, ask, and call again with confirm: true.',
+    input: {
+      startDate: dateArg('First day off'), endDate: dateArg('Last day off (default: the same day)').optional(), reason: z.string().max(300).optional(),
+      person: z.string().max(80).optional().describe('Managers: who it\'s for (name or id). Leave out for your own.'),
+      source: z.enum(['email', 'text', 'phone', 'in_person', 'sheet', 'other']).optional().describe('For someone else: how the request came in'),
+      requestedAt: z.string().max(40).optional().describe('For someone else: when they asked (YYYY-MM-DD or an ISO time), not in the future'),
+      status: z.enum(['approved', 'pending']).optional().describe('For someone else: approved (default) or pending'),
+      confirm: confirmArg,
+    },
     write: true, consent: 'timeOff', idempotent: false,
     async handler(user, args, ctx) {
       const today = ctx.today();
       const startDate = resolveDate(args.startDate, today);
       const endDate = args.endDate ? resolveDate(args.endDate, today) : startDate;
       if (endDate < startDate) throw new AppError(400, 'The end date is before the start date');
+      if (args.person) {
+        const look = await lookupOf(ctx);
+        const who = findPerson(look, args.person);
+        if (who.id !== look.me.id) {
+          if (args.confirm !== true) throw new AppError(409, `Not done: adding time off for ${who.name} notifies them. Tell the user exactly what will be added, ask, and call again with confirm: true.`);
+          const t = await ctx.write('timeOff.create', { userId: who.id, startDate, endDate, reason: args.reason || '', source: args.source || 'other', ...(args.requestedAt ? { requestedAt: args.requestedAt } : {}), status: args.status || 'approved' });
+          return { summary: `Time off added for ${who.name}: ${startDate}${endDate !== startDate ? ` to ${endDate}` : ''} (${t.status}).${t.clashShifts?.length ? ` They have ${t.clashShifts.length} published shift(s) then: cover them or open them up; nothing was removed.` : ''}`,
+            data: { id: t.id, person: who.name, from: t.startDate, to: t.endDate, status: t.status, requestedAt: t.requestedAt, cameIn: t.source, shiftsOnThoseDays: t.clashShifts || [] } };
+        }
+      }
       if (startDate < today) throw new AppError(400, 'Pick a day from today on');
       const t = await ctx.write('timeOff.create', { startDate, endDate, reason: args.reason || '' });
       return { summary: `Time off requested for ${startDate}${endDate !== startDate ? ` to ${endDate}` : ''}: ${t.status}.${t.clashes ? ` You have ${t.clashes} shift(s) on those days.` : ''}`, data: { id: t.id, from: t.startDate, to: t.endDate, status: t.status, shiftsOnThoseDays: t.clashes } };
@@ -205,9 +235,9 @@ export default [
       + 'You can\'t approve your own.',
     role: 'supervisor', can: approver, consent: 'read',
     async handler(user, args, ctx) {
-      const [look, s, t] = await Promise.all([lookupOf(ctx), ctx.read('swaps.list'), ctx.read('timeOff.list')]);
-      // Only what's in this person's "Approves for" scope (the app's "waiting on you").
-      const data = { trades: s.approvals.map((r) => requestOut(r, look)), timeOff: t.filter((x) => x.status === 'pending' && !x.outOfScope).map((x) => timeOffOut(x, look)) };
+      const [look, s, t, q] = await Promise.all([lookupOf(ctx), ctx.read('swaps.list'), ctx.read('timeOff.list'), ctx.read('timeOff.queue')]);
+      // Only what's in this person's "Approves for" scope (the app's "waiting on you"); time off oldest request first.
+      const data = { trades: s.approvals.map((r) => requestOut(r, look)), timeOff: t.filter((x) => x.status === 'pending' && !x.outOfScope).sort(byRequested(q)).map((x) => timeOffOut(x, look, q)) };
       return { summary: `${data.trades.length} trade/pickup request(s) and ${data.timeOff.length} time-off request(s) waiting.`, data };
     },
   }),

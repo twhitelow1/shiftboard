@@ -19,7 +19,7 @@
 // The server applies it like the plan: every RPC of a feature a role doesn't have answers 403 "Your role
 // doesn't include this" (featuresForMethod, in createService's call), and so do its routes (ROLE_ROUTES).
 // app.bootstrap returns the effective features as `features`, so the web app and the phone app hide what's off.
-import { ROLE_IDS, roleOf } from './roles.js';
+import { ROLE_IDS, roleOf, customRolesOf, featureRoleOf } from './roles.js';
 
 export const ROLE_OFF = 'Your role doesn’t include this';
 /** The roles the editor shows, lowest first. Super Admin is always everything. */
@@ -128,42 +128,59 @@ export const ROLE_ROUTES = [
   ['/api/users', 'team'], // send a sign-in link, invite everyone, reset someone's two-step sign-in
 ];
 
+// Custom roles (core/custom-roles.js) get their own column: the cells of their base level (manager, supervisor or
+// employee), starting as a copy of that column's values when the role is made, then their own switches. "Can approve
+// requests" is a plain stored switch for them (not settings.supervisorsCanApprove), always kept, so core/roles.js
+// canApprove reads it. With no custom roles everything below works exactly as before.
+const BASE = new Map(); // custom id → base level
+const baseOf = (role) => BASE.get(role) || role;
+const learn = (settings) => { const list = customRolesOf(settings); for (const r of list) BASE.set(r.id, r.base); return list.map((r) => r.id); };
+const isCustom = (role) => BASE.has(role) && !ROLE_IDS.includes(role);
+/** The roles the editor shows, lowest first, each custom role right after its base level. */
+export function matrixRoles(settings = {}) {
+  const customs = customRolesOf(settings);
+  learn(settings);
+  return MATRIX_ROLES.flatMap((r) => [r, ...customs.filter((c) => c.base === r).map((c) => c.id)]);
+}
+
 /** A cell's fixed value ('on' → true) or its default; null when the feature isn't for that role. */
 const defaultCell = (def, role) => {
   if (role === 'super_admin') return true;
-  const c = def.cells[role];
+  const c = def.cells[baseOf(role)];
   return c === 'on' ? true : c;
 };
-const editableCell = (def, role) => EDITABLE.includes(role) && typeof def.cells[role] === 'boolean';
+const editableCell = (def, role) => EDITABLE.includes(baseOf(role)) && typeof def.cells[baseOf(role)] === 'boolean';
 
 /** The stored overrides, cleaned: only switch cells with true/false, only those that differ from the default. */
-export function cleanRoleFeatures(raw) {
+export function cleanRoleFeatures(raw, settings = {}) {
   const out = {};
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
-  for (const role of EDITABLE) {
+  const customs = learn(settings);
+  for (const role of [...EDITABLE, ...customs]) {
     const row = raw[role];
     if (!row || typeof row !== 'object') continue;
+    const custom = isCustom(role);
     for (const def of ROLE_FEATURES) {
-      if (def.setting || !editableCell(def, role) || typeof row[def.key] !== 'boolean') continue;
-      if (row[def.key] !== def.cells[role]) (out[role] ??= {})[def.key] = row[def.key];
+      if ((def.setting && !custom) || !editableCell(def, role) || typeof row[def.key] !== 'boolean') continue;
+      if (row[def.key] !== def.cells[baseOf(role)] || (def.setting && custom)) (out[role] ??= {})[def.key] = row[def.key];
     }
   }
   return out;
 }
 
 /** The defaults: { employee: { schedule: true, …, forecast: null }, …, super_admin: { all true } }. */
-export function defaultMatrix() {
-  return Object.fromEntries(MATRIX_ROLES.map((role) => [role, Object.fromEntries(ROLE_FEATURES.map((d) => [d.key, defaultCell(d, role)]))]));
+export function defaultMatrix(settings = {}) {
+  return Object.fromEntries(matrixRoles(settings).map((role) => [role, Object.fromEntries(ROLE_FEATURES.map((d) => [d.key, defaultCell(d, role)]))]));
 }
 
 /** Each role's features from the settings (role layer only, no plan): true, false, or null (not for that role). */
 export function roleMatrix(settings = {}) {
-  const stored = cleanRoleFeatures(settings?.roleFeatures);
-  const out = defaultMatrix();
-  for (const role of EDITABLE) {
+  const stored = cleanRoleFeatures(settings?.roleFeatures, settings);
+  const out = defaultMatrix(settings);
+  for (const role of [...EDITABLE, ...customRolesOf(settings).map((c) => c.id)]) {
     for (const def of ROLE_FEATURES) {
       if (!editableCell(def, role)) continue;
-      if (def.setting) out[role][def.key] = settings?.[def.setting] !== false;
+      if (def.setting && !isCustom(role)) out[role][def.key] = settings?.[def.setting] !== false;
       else if (typeof stored[role]?.[def.key] === 'boolean') out[role][def.key] = stored[role][def.key];
     }
   }
@@ -176,8 +193,8 @@ export function roleMatrix(settings = {}) {
  * Events & BEOs access on the person gives them events whatever their role says.
  */
 export function roleAllows(user, settings = {}) {
-  const role = roleOf(user);
-  const row = roleMatrix(settings)[role];
+  const matrix = roleMatrix(settings);
+  const row = matrix[featureRoleOf(user, settings)] || matrix[roleOf(user)]; // a custom role's own column
   const out = {};
   for (const def of ROLE_FEATURES) out[def.key] = row[def.key] === null ? true : row[def.key];
   for (const def of ROLE_FEATURES) if (row[def.key] === null && def.staff) out[def.key] = out[def.staff];
@@ -209,10 +226,11 @@ export function roleRefusal(user, method, settings = {}) {
 }
 
 /** Roles an actor may change in the editor: Super Admins every role below them; Admins the roles below Admin. */
-export function editableRoles(actor) {
+export function editableRoles(actor, settings = {}) {
   const r = roleOf(actor);
-  if (r === 'super_admin') return [...EDITABLE];
-  if (r === 'admin') return EDITABLE.filter((x) => x !== 'admin');
+  const customs = customRolesOf(settings).map((c) => c.id); // all on manager level or below
+  if (r === 'super_admin') return [...EDITABLE, ...customs];
+  if (r === 'admin') return [...EDITABLE.filter((x) => x !== 'admin'), ...customs];
   return [];
 }
 
@@ -224,10 +242,10 @@ export function editableRoles(actor) {
 export function validateRoleFeatures(next, { actor, settings = {}, plan = null, fail }) {
   if (!next || typeof next !== 'object' || Array.isArray(next)) fail(400, 'Send the roles and their features');
   const current = roleMatrix(settings);
-  const mine = editableRoles(actor);
+  const mine = editableRoles(actor, settings);
   const merged = roleMatrix(settings);
   for (const [role, row] of Object.entries(next)) {
-    if (!ROLE_IDS.includes(role)) fail(400, 'Unknown role');
+    if (!ROLE_IDS.includes(role) && !current[role]) fail(400, 'Unknown role');
     if (!row || typeof row !== 'object' || Array.isArray(row)) fail(400, 'Send the roles and their features');
     for (const [key, value] of Object.entries(row)) {
       const def = DEF[key];
@@ -241,27 +259,32 @@ export function validateRoleFeatures(next, { actor, settings = {}, plan = null, 
       merged[role][key] = value;
     }
   }
-  const roleFeatures = cleanRoleFeatures(merged);
+  const roleFeatures = cleanRoleFeatures(merged, settings);
   const approve = DEF.approve;
   return { roleFeatures, [approve.setting]: merged.supervisor.approve !== false };
 }
 
 /** A preview's draft (View as from the editor): cleaned the same way, never stored. */
-export function cleanDraft(raw) {
+export function cleanDraft(raw, settings = {}) {
   if (!raw || typeof raw !== 'object') return null;
-  return { roleFeatures: cleanRoleFeatures(raw.roleFeatures), supervisorsCanApprove: raw.supervisorsCanApprove !== false };
+  return { roleFeatures: cleanRoleFeatures(raw.roleFeatures, settings), supervisorsCanApprove: raw.supervisorsCanApprove !== false };
 }
 
 /** The editor's RPCs: roleFeatures.get and roleFeatures.save (Admins and Super Admins). */
 export function roleFeatureApi({ settings, putSettings, fail, needAdmin, plan = null }) {
-  const view = (actor) => ({
-    roles: MATRIX_ROLES,
-    features: ROLE_FEATURES.map(({ key, group, plan: p, cells }) => ({ key, group, plan: p, inPlan: inPlan(plan, p),
-      cells: Object.fromEntries(MATRIX_ROLES.map((r) => [r, r === 'super_admin' ? 'on' : cells[r] === 'on' ? 'on' : cells[r] === null ? null : 'switch'])) })),
-    values: roleMatrix(settings()),
-    defaults: defaultMatrix(),
-    editable: editableRoles(actor),
-  });
+  const view = (actor) => {
+    const st = settings();
+    const roles = matrixRoles(st);
+    return {
+      roles,
+      customRoles: customRolesOf(st), // names for the custom roles' columns
+      features: ROLE_FEATURES.map(({ key, group, plan: p, cells }) => ({ key, group, plan: p, inPlan: inPlan(plan, p),
+        cells: Object.fromEntries(roles.map((r) => { const b = baseOf(r); return [r, r === 'super_admin' ? 'on' : cells[b] === 'on' ? 'on' : cells[b] === null ? null : 'switch']; })) })),
+      values: roleMatrix(st),
+      defaults: defaultMatrix(st),
+      editable: editableRoles(actor, st),
+    };
+  };
   return {
     'roleFeatures.get': (actor) => {
       needAdmin(actor);

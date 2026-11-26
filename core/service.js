@@ -45,6 +45,10 @@ import { feedbackApi, configOf as feedbackConfig, canRead as canReadFeedback } f
 import { availabilityOn } from './availability.js';
 import { availabilityApi } from './availability-api.js';
 import { approvalScopeApi, scopeOf, coversRequest, coversPerson } from './approval-scope.js';
+import { customRoleApi, customRoleChoice } from './custom-roles.js';
+import { scheduleLogger, scheduleLogApi, shiftChanges } from './schedule-log.js';
+import { timeOffQueue, cleanRequestedAt, SOURCES as TIME_OFF_SOURCES } from './time-off.js';
+import { useCustomRoles } from './roles.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -144,7 +148,11 @@ export function createService(store, opts = {}) {
   const qualified = (user, jobCodeId) => !!user?.jobCodes?.some((j) => j.jobCodeId === jobCodeId);
   const managers = () => users().filter((u) => u.active !== false && canManageSchedule(u));
   // The schedule's rooms and their positions (core/layout.js): made from today's schedule the first time.
-  const layouts = layoutService({ store, settings, putSettings, fail, needMgr, now, today });
+  // The schedule log (core/schedule-log.js): every schedule change, with how it came in. The Claude connector and Ask
+  // ShiftBoard set opts.via; the phone app's requests are marked by server/app.js; syncs pass opts.logVia.
+  const logVia = () => (opts.via === 'claude' ? 'connector' : opts.via === 'assistant' ? 'assistant' : opts.logVia || (opts.request?.phone ? 'phone' : 'web'));
+  const slog = scheduleLogger({ store, now, uid, via: logVia });
+  const layouts = layoutService({ store, settings, putSettings, fail, needMgr, now, today, slog });
   const approvers = () => users().filter((u) => u.active !== false && canApprove(u, settings()));
 
   // ----- "Approves for" (core/approval-scope.js): which requests each approver decides -----
@@ -438,7 +446,7 @@ export function createService(store, opts = {}) {
   const withFeedbackInbox = (features, actor, st) => ({ ...features, feedbackInbox: !!features.feedbackInbox && canReadFeedback(actor, feedbackConfig(store), st) });
 
   // Weekly availability: who may change whose, the log and the person's notification (core/availability-api.js).
-  const availability = availabilityApi({ store, now, today, fail, needAuth, settings, notify, say, userById, isMgr, via: opts.via || null,
+  const availability = availabilityApi({ store, now, today, fail, needAuth, settings, notify, say, userById, isMgr, via: opts.via || null, slog,
     view: (actor, u) => legalNameFor(actor, u, PUBLIC_USER(u)) });
 
   // ---------- API ----------
@@ -610,12 +618,15 @@ export function createService(store, opts = {}) {
       const cur = a.id ? userById(a.id) : null;
       if (a.id && !cur) fail(404, 'User not found');
       const self = cur?.id === actor.id;
-      const role = a.role || (cur ? roleOf(cur) : 'employee');
+      // A custom role (Bar Manager…) is its base level plus its id (core/custom-roles.js).
+      const choice = customRoleChoice(a, cur, settings(), fail);
+      const role = choice.role || a.role || (cur ? roleOf(cur) : 'employee');
+      const customRole = choice.role ? choice.customRole : 'customRole' in a ? null : cur?.customRole && role === roleOf(cur) ? cur.customRole : null;
       if (!ROLE_IDS.includes(role)) fail(400, 'Unknown role');
       const active = a.active !== false;
 
       if (self) {
-        if (role !== roleOf(cur)) fail(400, 'You can’t change your own role. Ask another admin.');
+        if (role !== roleOf(cur) || (customRole || null) !== (cur.customRole || null)) fail(400, 'You can’t change your own role. Ask another admin.');
         if (!active) fail(400, 'You can’t deactivate yourself.');
       } else {
         if (cur && !canManageUser(actor, cur)) fail(403, `Only a higher role can edit ${/^[AEIOU]/.test(roleLabel(cur)) ? 'an' : 'a'} ${roleLabel(cur)}`);
@@ -643,10 +654,12 @@ export function createService(store, opts = {}) {
         name: a.name.trim(), sheetName, email, phone: (a.phone || '').trim(), role,
         eventsAccess: !!a.eventsAccess, onSchedule: a.onSchedule !== false,
         jobCodes: (a.jobCodes || []).filter((j) => jobById(j.jobCodeId)).map((j) => ({ jobCodeId: j.jobCodeId, rate: j.rate === '' || j.rate == null ? null : Number(j.rate), primary: !!j.primary,
-          ...(Array.isArray(j.areas) && j.areas.length ? { areas: uniqueAreas(j.areas) } : {}) })), // areas they usually work this job in
+          ...(Array.isArray(j.areas) && j.areas.length ? { areas: uniqueAreas(j.areas) } : {}), // areas they usually work this job in
+          ...(cleanArea(j.primaryRoom) ? { primaryRoom: cleanArea(j.primaryRoom) } : {}) })), // their main room for it: shifts elsewhere show light green
         active, color: a.color || null, maxHours: Number(a.maxHours) || null,
         ...legalNamePatch(a), // legal name for payroll (core/names.js); left as it is when not sent
         ...employeeExtrasPatch(a), // hire date, birthday, employee ID, notes (core/import-api.js); left as they are when not sent
+        ...(customRole || cur?.customRole ? { customRole: customRole || null } : {}),
       };
       if (cur) {
         const patch = { ...doc };
@@ -656,7 +669,7 @@ export function createService(store, opts = {}) {
         }
         if (!active && cur.active !== false) patch.sessionVersion = (patch.sessionVersion ?? cur.sessionVersion ?? 0) + 1;
         const u = store.update('users', cur.id, patch);
-        if (role !== roleOf(cur)) notify([cur.id], (lang) => msg(lang).roleNow(roleLabel(role, lang)), '#/my');
+        if (role !== roleOf(cur) || (customRole || null) !== (cur.customRole || null)) notify([cur.id], (lang) => msg(lang).roleNow(roleLabel(u, lang)), '#/my');
         return legalNameFor(actor, u, userView(u));
       }
       // Team → Add employee (invite: true, with an email): no password at all; the invitation's wizard sets one.
@@ -783,6 +796,8 @@ export function createService(store, opts = {}) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) fail(400, 'Pick a date');
       const id = `${kind}:${date}`;
       const body = String(text ?? '').replace(/\r/g, '').trim().slice(0, 2000);
+      const old = store.get('notes', id)?.text || '';
+      if (old !== body) slog(actor, 'note.save', { kind: 'note', id, date, changes: [{ field: 'notes', before: old, after: body }], extra: { noteKind: kind } });
       if (!body) { store.remove('notes', id); return { id, text: '' }; }
       const doc = { id, kind, date, text: body, updatedAt: now().toISOString(), updatedBy: actor.id };
       return store.get('notes', id) ? store.update('notes', id, doc) : store.insert('notes', doc);
@@ -804,6 +819,8 @@ export function createService(store, opts = {}) {
         if (!cur) fail(404, 'Shift not found');
         if (cur.userId !== doc.userId || cur.date !== doc.date || cur.start !== doc.start) cancelRequestsForShift(a.id, 'reasonChanged');
         const upd = store.update('shifts', a.id, doc);
+        const changed = shiftChanges(cur, upd);
+        if (changed.length) slog(actor, 'shift.edit', { shift: upd, affected: [cur.userId], changes: changed, extra: { before: { date: cur.date, start: cur.start, end: cur.end || null, jobCodeId: cur.jobCodeId, area: cur.area || '', userId: cur.userId || null }, published: !!cur.published } });
         if (cur.published) {
           if (cur.userId && cur.userId !== doc.userId) notify([cur.userId], say('removedFrom', desc(cur)), '#/my');
           if (doc.userId) notify([doc.userId], cur.userId === doc.userId ? say('shiftChanged', desc(upd)) : say('addedTo', desc(upd)), '#/my');
@@ -811,6 +828,7 @@ export function createService(store, opts = {}) {
         return { shift: upd, warnings: doc.userId ? conflictsFor(doc.userId, upd, [], L(actor)) : [] };
       }
       const s = store.insert('shifts', { id: uid('shf'), ...doc, published: !!a.published, createdAt: now().toISOString(), createdBy: actor.id });
+      slog(actor, 'shift.create', { shift: s, extra: { published: !!s.published } });
       if (s.published && s.userId) notify([s.userId], say('newShift', desc(s)), '#/my');
       return { shift: s, warnings: s.userId ? conflictsFor(s.userId, s, [], L(actor)) : [] };
     },
@@ -820,6 +838,7 @@ export function createService(store, opts = {}) {
       if (!s) return { ok: true };
       cancelRequestsForShift(id, 'reasonRemoved');
       store.remove('shifts', id);
+      slog(actor, 'shift.delete', { shift: s, extra: { published: !!s.published } });
       if (s.published && s.userId) notify([s.userId], say('shiftRemoved', desc(s)), '#/my');
       return { ok: true };
     },
@@ -839,6 +858,7 @@ export function createService(store, opts = {}) {
         if (sh.published) { out.published++; if (sh.userId) told.add(sh.userId); }
       }
       if (told.size) notify([...told], say('weekCleared', day(ws)), '#/my');
+      if (out.removed || out.notes) slog(actor, 'week.clear', { kind: 'week', date: ws, weekStart: ws, affected: [...told], extra: { count: out.removed, notes: out.notes, published: out.published } });
       if (notes) for (const n of store.list('notes', (x) => x.date >= ws && x.date <= end)) { store.remove('notes', n.id); out.notes++; }
       return out;
     },
@@ -851,6 +871,7 @@ export function createService(store, opts = {}) {
           created.push(store.insert('shifts', { id: uid('shf'), ...cleanShift(a), published: !!publish, createdAt: now().toISOString(), createdBy: actor.id }));
         }
       });
+      if (created.length) slog(actor, 'shifts.bulk', { kind: 'week', date: created[0].date, affected: created.map((s) => s.userId), extra: { count: created.length, published: !!publish } });
       return { created: created.length };
     },
     // Everything a schedule import creates, in one all-or-nothing step (see web/src/pages/ImportDialog.jsx).
@@ -1044,6 +1065,7 @@ export function createService(store, opts = {}) {
         if (store.get('forecastOverrides', c.date)) store.update('forecastOverrides', c.date, doc); else store.insert('forecastOverrides', doc);
         out.covers++;
       }
+      if (out.shifts || out.updated) slog(actor, 'schedule.import', { kind: 'week', via: 'import', extra: { count: out.shifts + out.updated, created: out.shifts, updated: out.updated, timeOff: out.timeOff } });
       return out;
     },
     'shifts.copyWeek': (actor, { fromWeek, toWeek, replace }) => {
@@ -1063,12 +1085,14 @@ export function createService(store, opts = {}) {
           store.insert('shifts', { ...rest, id: uid('shf'), date: addDays(s.date, offset), published: false, createdAt: now().toISOString(), createdBy: actor.id });
         }
       });
+      slog(actor, 'week.copy', { kind: 'week', date: toWeek, weekStart: toWeek, extra: { count: src.length - skipped, fromWeek, removed } });
       return { copied: src.length - skipped, removed, skipped };
     },
     'shifts.clearDrafts': (actor, { weekStart: ws }) => {
       needMgr(actor);
       const drafts = store.list('shifts', (s) => s.date >= ws && s.date <= addDays(ws, 6) && !s.published);
       store.transaction(() => drafts.forEach((s) => store.remove('shifts', s.id)));
+      if (drafts.length) slog(actor, 'drafts.clear', { kind: 'week', date: ws, weekStart: ws, extra: { count: drafts.length } });
       return { removed: drafts.length };
     },
     // notify: false publishes silently; attachPdf (+ pdf: paper options) emails the week's PDF (core/publish-notify.js).
@@ -1081,6 +1105,7 @@ export function createService(store, opts = {}) {
       // Posted again after an unpublish: those people hear what changed for them instead (core/unpublish.js).
       const told = eventId ? new Set() : unpublish.republished({ start, end, published: drafts, args: { notify: tell } });
       const { notified } = scheduleNotice({ notify, users, say, day, store }, { shifts: drafts, start, end, eventId, notify: tell, attach, skip: told });
+      if (drafts.length) slog(actor, 'week.publish', { kind: 'week', date: start || drafts[0].date, weekStart: start || null, affected: drafts.map((s) => s.userId), extra: { count: drafts.length, end: end || null, eventId: eventId || null, silent: !tell } });
       return { published: drafts.length, notified, silent: !tell };
     },
     'shifts.eligible': (actor, { shiftId }) => {
@@ -1138,15 +1163,18 @@ export function createService(store, opts = {}) {
           if (c.length) fail(409, c.map((w) => conflictText(w, L(actor))).join('; '));
           store.insert('requests', { ...r, status: 'approved', resolvedAt: now().toISOString(), resolution: 'Auto-approved' });
           executeRequest(r);
+          slog(actor, 'request.approve', { kind: 'request', id: r.id, shift: s, affected: [actor.id], extra: { type: 'pickup', auto: true } });
           return { ok: true, autoApproved: true };
         }
         store.insert('requests', r);
+        slog(actor, 'request.create', { kind: 'request', id: r.id, shift: s, affected: [actor.id], extra: { type: 'pickup' } });
         notify(approversFor('request', r, []).map((m) => m.id), say('wantsPickup', nameOf(actor.id), desc(s)), '#/swaps');
         return r;
       }
       if (s.userId !== actor.id) fail(403, 'You can only trade your own shifts');
       if (type === 'drop') {
         const r = store.insert('requests', { ...base, type: 'drop', status: 'open' });
+        slog(actor, 'request.create', { kind: 'request', id: r.id, shift: s, extra: { type: 'drop' } });
         const eligible = users().filter((u) => u.id !== actor.id && u.active !== false && qualified(u, s.jobCodeId)).map((u) => u.id);
         notify(eligible, say('givingAway', nameOf(actor.id), desc(s)), '#/swaps');
         return r;
@@ -1159,6 +1187,7 @@ export function createService(store, opts = {}) {
         if (!qualified(userById(t.userId), s.jobCodeId)) fail(400, `${nameOf(t.userId)} isn't trained as ${jobName(s.jobCodeId)}`);
         if (!qualified(userById(actor.id), t.jobCodeId)) fail(400, `You aren't trained as ${jobName(t.jobCodeId)}`);
         const r = store.insert('requests', { ...base, type: 'swap', targetShiftId, targetUserId: t.userId, status: 'open' });
+        slog(actor, 'request.create', { kind: 'request', id: r.id, shift: s, affected: [t.userId], extra: { type: 'swap', target: { date: t.date, start: t.start, jobCodeId: t.jobCodeId, userId: t.userId } } });
         notify([t.userId], say('wantsTrade', nameOf(actor.id), desc(s), desc(t)), '#/swaps');
         return r;
       }
@@ -1186,10 +1215,12 @@ export function createService(store, opts = {}) {
       if (!st.requireSwapApproval) {
         executeRequest(updated);
         store.update('requests', r.id, { ...patch, status: 'approved', resolvedAt: now().toISOString(), resolution: 'Auto-approved' });
+        slog(actor, 'request.accept', { kind: 'request', id: r.id, shift: s, affected: [r.requesterId, actor.id], extra: { type: r.type, auto: true } });
         notify([r.requesterId], say('tookYourShift', nameOf(actor.id), desc(s)), '#/my');
         return { ok: true, autoApproved: true };
       }
       store.update('requests', r.id, { ...patch, status: 'pending_approval' });
+      slog(actor, 'request.accept', { kind: 'request', id: r.id, shift: s, affected: [r.requesterId, actor.id], extra: { type: r.type } });
       notify([r.requesterId], say(r.type === 'swap' ? 'acceptedTrade' : 'acceptedShift', nameOf(actor.id)), '#/swaps');
       notify(approversFor('request', updated, [r.requesterId, actor.id]).map((m) => m.id), say('approvalNeeded', r.type, desc(s), nameOf(r.requesterId), nameOf(actor.id)), '#/swaps');
       return { ok: true };
@@ -1199,6 +1230,7 @@ export function createService(store, opts = {}) {
       const r = store.get('requests', requestId);
       if (!r || r.status !== 'open' || r.type !== 'swap' || r.targetUserId !== actor.id) fail(409, 'Nothing to decline');
       store.update('requests', r.id, { status: 'declined', resolvedAt: now().toISOString() });
+      slog(actor, 'request.decline', { kind: 'request', id: r.id, shift: store.get('shifts', r.shiftId), affected: [r.requesterId, actor.id], extra: { type: r.type } });
       notify([r.requesterId], say('declinedTrade', nameOf(actor.id)), '#/swaps');
       return { ok: true };
     },
@@ -1208,6 +1240,7 @@ export function createService(store, opts = {}) {
       if (!r || !['open', 'pending_approval'].includes(r.status)) fail(409, 'Request is already closed');
       if (r.requesterId !== actor.id && !isApprover(actor)) fail(403, 'Not your request');
       store.update('requests', r.id, { status: 'cancelled', resolvedAt: now().toISOString() });
+      slog(actor, 'request.cancel', { kind: 'request', id: r.id, shift: store.get('shifts', r.shiftId), affected: [r.requesterId, r.pickupUserId, r.targetUserId], extra: { type: r.type } });
       if (r.status === 'pending_approval') notify([r.pickupUserId, r.targetUserId].filter((id) => id !== r.requesterId), say('cancelledRequest', nameOf(r.requesterId)), '#/swaps');
       return { ok: true };
     },
@@ -1222,6 +1255,7 @@ export function createService(store, opts = {}) {
         executeRequest(r);
         store.update('requests', r.id, { status: 'approved', resolvedAt: now().toISOString(), resolvedBy: actor.id, resolution: note || '' });
       });
+      slog(actor, 'request.approve', { kind: 'request', id: r.id, shift: s, affected: [r.requesterId, r.pickupUserId, r.targetUserId], extra: { type: r.type }, changes: [{ field: 'userId', before: r.requesterId || '', after: r.pickupUserId || r.targetUserId || '' }] });
       const parties = [r.requesterId, r.pickupUserId, r.targetUserId];
       notify(parties, say('approved', r.type, desc(s)), '#/my');
       return { ok: true };
@@ -1234,6 +1268,7 @@ export function createService(store, opts = {}) {
       if (!canDecide(actor, 'request', r)) fail(403, 'You don’t approve requests for this position. A manager who does will decide it.');
       store.update('requests', r.id, { status: 'denied', resolvedAt: now().toISOString(), resolvedBy: actor.id, resolution: note || '' });
       const s = store.get('shifts', r.shiftId);
+      slog(actor, 'request.deny', { kind: 'request', id: r.id, shift: s, affected: [r.requesterId, r.pickupUserId, r.targetUserId], extra: { type: r.type } });
       notify([r.requesterId, r.pickupUserId, r.targetUserId], say('denied', desc(s), note), '#/swaps');
       return { ok: true };
     },
@@ -1246,16 +1281,78 @@ export function createService(store, opts = {}) {
       return rows.filter((t) => t.endDate >= addDays(today(), -60))
         .map((t) => (t.status === 'pending' && t.userId !== actor.id && isApprover(actor) && !canDecide(actor, 'timeOff', t) ? { ...t, outOfScope: true } : t));
     },
+    // Your own request, or (managers, and approvers for people in their "Approves for" scope) one added for someone
+    // else: how it came in (source), when they asked (requestedAt: never in the future), approved unless status: 'pending',
+    // and they're told unless notify: false. Shifts it clashes with are listed, never removed (core/time-off.js).
     'timeOff.create': (actor, a) => {
       needAuth(actor);
-      const userId = isMgr(actor) && a.userId ? a.userId : actor.id;
+      const forOther = !!a.userId && a.userId !== actor.id;
+      if (forOther) {
+        const target = userById(a.userId);
+        if (!target) fail(404, 'User not found');
+        if (!isMgr(actor) && !(isApprover(actor) && canDecide(actor, 'timeOff', { userId: target.id }))) fail(403, 'You can only add time off for people you approve for');
+      }
+      const userId = forOther ? a.userId : actor.id;
       if (!a.startDate) fail(400, 'Start date required');
       const endDate = a.endDate && a.endDate >= a.startDate ? a.endDate : a.startDate;
-      const status = isMgr(actor) && a.userId && a.userId !== actor.id ? 'approved' : 'pending';
-      const t = store.insert('timeOff', { id: uid('tof'), userId, startDate: a.startDate, endDate, reason: (a.reason || '').trim(), status, createdAt: now().toISOString() });
+      const status = forOther ? (a.status === 'pending' ? 'pending' : 'approved') : 'pending';
+      const at = now().toISOString();
+      const requestedAt = forOther ? cleanRequestedAt(a.requestedAt, now) : null;
+      if (requestedAt === undefined) fail(400, 'The request date can’t be in the future');
+      const source = forOther ? (TIME_OFF_SOURCES.includes(a.source) ? a.source : 'other') : 'app';
+      const t = store.insert('timeOff', { id: uid('tof'), userId, startDate: a.startDate, endDate, reason: (a.reason || '').trim(), status, createdAt: at, requestedAt: requestedAt || at,
+        ...(forOther ? { enteredBy: actor.id, enteredAt: at, source, ...(status === 'approved' ? { decidedBy: actor.id, decidedAt: at } : {}) } : {}) });
+      slog(actor, forOther ? 'timeOff.add' : 'timeOff.create', { kind: 'timeOff', id: t.id, date: t.startDate, affected: [userId], extra: { endDate, status, source, requestedAt: t.requestedAt } });
+      if (forOther && a.notify !== false) notify([userId], say('timeOffAdded', nameOf(actor.id), day(t.startDate), endDate !== t.startDate ? day(endDate) : '', status), '#/timeoff');
       if (status === 'pending') notify(approversFor('timeOff', t).map((m) => m.id), say('requestedOff', nameOf(userId), day(t.startDate), endDate !== t.startDate ? day(endDate) : ''), '#/timeoff');
       const clashes = store.list('shifts', (s) => s.userId === userId && s.date >= t.startDate && s.date <= endDate);
-      return { ...t, clashes: clashes.length };
+      return { ...t, clashes: clashes.length, ...(forOther ? { clashShifts: clashes.filter((s) => s.published).map((s) => ({ id: s.id, date: s.date, start: s.start, end: s.end || null, jobCodeId: s.jobCodeId, area: s.area || '' })) } : {}) };
+    },
+    // Before adding time off for someone: their published shifts on those days (to cover them or give them away).
+    'timeOff.clashes': (actor, { userId, startDate, endDate } = {}) => {
+      needAuth(actor);
+      const id = userId || actor.id;
+      if (id !== actor.id && !isApprover(actor)) fail(403, 'Managers and supervisors only');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate || '')) fail(400, 'Start date required');
+      const end = endDate && endDate >= startDate ? endDate : startDate;
+      return store.list('shifts', (s) => s.userId === id && s.published && s.date >= startDate && s.date <= end)
+        .map((s) => ({ id: s.id, date: s.date, start: s.start, end: s.end || null, jobCodeId: s.jobCodeId, area: s.area || '', text: describe(s, L(actor)) }));
+    },
+    // When each request came in and who asked first, for the requests this person sees (core/time-off.js). People who
+    // approve see the others in line; everyone else only their own place.
+    'timeOff.queue': (actor) => {
+      needAuth(actor);
+      const all = store.list('timeOff');
+      const rows = all.filter((t) => isApprover(actor) || t.userId === actor.id);
+      return timeOffQueue(rows, all, { withNames: isApprover(actor), nameOf: (id) => userById(id)?.name || '' });
+    },
+    // Standing requests off ("every Sunday"), for one person or many at once (initial setup): unavailable those weekdays,
+    // marked standing, with when they asked. rows: [{ userId, days: [0–6], reason?, requestedAt?, source? }].
+    'timeOff.addStanding': (actor, { rows, notify: tell } = {}) => {
+      needAuth(actor);
+      if (!isApprover(actor)) fail(403, 'Managers and supervisors only');
+      if (!Array.isArray(rows) || !rows.length) fail(400, 'Nothing to add');
+      if (rows.length > 200) fail(400, 'Up to 200 people at a time');
+      let added = 0;
+      for (const r of rows) {
+        const u = userById(r?.userId);
+        if (!u) fail(404, 'User not found');
+        if (!isMgr(actor) && !canDecide(actor, 'timeOff', { userId: u.id })) fail(403, 'You can only add time off for people you approve for');
+        if (!availability.canEditOf(actor, u)) fail(403, 'You can only edit your own availability');
+        const days = [...new Set((Array.isArray(r.days) ? r.days : []).map(Number).filter((d) => d >= 0 && d <= 6))];
+        if (!days.length) fail(400, 'Pick at least one day');
+        const requestedAt = cleanRequestedAt(r.requestedAt, now);
+        if (requestedAt === undefined) fail(400, 'The request date can’t be in the future');
+        const next = { ...(u.availability || {}) };
+        const note = String(r.reason || '').trim().slice(0, 200);
+        for (const d of days) {
+          const keep = next[d]?.standing && next[d]?.requestedAt; // already standing: it keeps the date they first asked
+          next[d] = { available: false, standing: true, requestedAt: keep || requestedAt || now().toISOString(), source: TIME_OFF_SOURCES.includes(r.source) ? r.source : 'other', ...(note ? { note } : {}) };
+        }
+        const out = availability.setFor(actor, u, { availability: next }, { notify: tell !== false });
+        if (out.days.length) { added++; slog(actor, 'timeOff.standing', { kind: 'timeOff', id: u.id, affected: [u.id], extra: { weekdays: days, daysText: days.map((d) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ') } }); }
+      }
+      return { added };
     },
     'timeOff.decide': (actor, { id, status, note }) => {
       needApprover(actor);
@@ -1264,7 +1361,8 @@ export function createService(store, opts = {}) {
       if (!cur) fail(404, 'Not found');
       notOwnRequest(actor, [cur.userId]);
       if (!canDecide(actor, 'timeOff', cur)) fail(403, 'You don’t approve time off for this person’s positions. A manager who does will decide it.');
-      const t = store.update('timeOff', id, { status, decidedBy: actor.id, decidedAt: now().toISOString(), note: note || '' });
+      const t = store.update('timeOff', id, { status, decidedBy: actor.id, decidedAt: now().toISOString(), note: note || '' }); // requestedAt never changes
+      slog(actor, status === 'approved' ? 'timeOff.approve' : 'timeOff.deny', { kind: 'timeOff', id, date: t.startDate, affected: [t.userId], changes: [{ field: 'status', before: cur.status, after: status }], extra: { endDate: t.endDate } });
       notify([t.userId], say('timeOffDecided', status, day(t.startDate), t.endDate !== t.startDate ? day(t.endDate) : ''), '#/timeoff');
       return t;
     },
@@ -1273,6 +1371,7 @@ export function createService(store, opts = {}) {
       const t = store.get('timeOff', id);
       if (!t) fail(404, 'Not found');
       if (t.userId !== actor.id && !isApprover(actor)) fail(403, 'Not yours');
+      slog(actor, 'timeOff.cancel', { kind: 'timeOff', id, date: t.startDate, affected: [t.userId], changes: [{ field: 'status', before: t.status, after: 'cancelled' }], extra: { endDate: t.endDate } });
       return store.update('timeOff', id, { status: 'cancelled' });
     },
 
@@ -1518,6 +1617,7 @@ export function createService(store, opts = {}) {
       });
       // The event's room and positions show on the schedule (a new pair goes at the end of its room).
       if (pairs.length) layouts.ensurePairs(pairs, actor);
+      if (created) slog(actor, 'event.shifts', { kind: 'event', id, date: e.date, extra: { count: created, eventId: id } });
       if (publish && created) api['shifts.publish'](actor, { eventId: id });
       return { created };
     },
@@ -1702,7 +1802,7 @@ export function createService(store, opts = {}) {
     // ----- my profile (name, phone, photo) and consent (core/profile.js, core/consent.js) -----
     ...profileApi({ store, now, fail, needAuth, settings, langOf: L, request: opts.request, channels: opts.channels, legal: opts.legal }),
     // ----- training: menu study guide, quizzes, leaderboard, employee manual, manager on duty (core/training.js) -----
-    ...trainingApi({ store, now, settings, notify, fail, random: opts.random, langOf: L }),
+    ...trainingApi({ store, now, settings, notify, fail, random: opts.random, langOf: L, slog }),
     // ----- Settings → Email notifications: the automatic emails' words, per type (core/email-templates.js) -----
     ...emailTemplateApi({ store, settings, putSettings, needAdmin, fail }),
     // ----- 86 List: what's out or running low, per list; the bar separate (core/eighty-six.js) -----
@@ -1719,6 +1819,10 @@ export function createService(store, opts = {}) {
     // feedbackKey: the server's secret for the rate limit's HMAC (server/app.js). mod.get: the safety note's call-out line.
     ...feedbackApi({ store, now, today, settings, fail, needAuth, needAdmin, langOf: L, notify, key: opts.feedbackKey || null,
       modToday: (a) => api['mod.get'](a, {}) }),
+    // ----- the schedule log: Schedule log (managers), My schedule changes, CSV (core/schedule-log.js) -----
+    ...scheduleLogApi({ store, needAuth, needMgr, langOf: L, sameArea }),
+    // ----- custom roles: Bar Manager, Shift Lead… on a base level (core/custom-roles.js) -----
+    ...customRoleApi({ store, settings, putSettings, fail, needAuth, needAdmin, now, uid }),
     // ----- "Approves for": a person's approval scope and the role defaults (core/approval-scope.js) -----
     ...approvalScopeApi({ store, settings, putSettings, fail, needAuth, needMgr, needAdmin, userById, canApprove, canManageUser, now, uid,
       layoutRooms: () => [...(layouts.forViewer(true)?.rooms || []).map((r) => r.room), ...scheduleAreas(settings())] }),
@@ -1784,7 +1888,7 @@ export function createService(store, opts = {}) {
   // Unpublish (back to draft) and the "what changed" notification when it's posted again. See core/unpublish.js.
   const unpublish = unpublishApi({ store, api, fail, needMgr, notify, say, day, describe, settings, nameOf, jobName, isFuture, cancelRequestsForShift, now });
   // Smart import: employees.import*, menu.import* and products.import* (core/import-api.js, core/smart-import.js).
-  Object.assign(api, importApi({ store, api, fail, needMgr, now, settings, availability }));
+  Object.assign(api, importApi({ store, api, fail, needMgr, now, settings, availability, slog }));
   // Stock lists and the product catalog the 86 List shares (core/stock.js, core/products.js). Out → 86 goes through eightySix.report.
   Object.assign(api, stockApi({ store, now, settings, notify, fail, api, langOf: L, planHas: (k) => !opts.planFeatures || opts.planFeatures[k] !== false }));
   // Positive impact (impact.*: review mentions, reservation requests, kudos) and OpenTable (opentable.*): core/impact.js, core/opentable.js.
@@ -1801,6 +1905,7 @@ export function createService(store, opts = {}) {
       const fn = api[method];
       if (!fn) fail(404, `Unknown method ${method}`);
       currentActor = actor;
+      useCustomRoles(settings().customRoles); // role labels: this restaurant's custom roles (core/roles.js)
       if (roleRefusal(actor, method, settings())) fail(403, ROLE_OFF); // Roles & features, like the plan's features
       return fn(actor, args || {});
     },

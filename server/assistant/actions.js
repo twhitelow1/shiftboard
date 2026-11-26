@@ -44,7 +44,7 @@ const LABELS = {
   createCategories: ['Create missing sections', 'Crear secciones que faltan'], createPositions: ['Create missing positions', 'Crear puestos que faltan'],
   sendInvitations: ['Send invitations now', 'Enviar invitaciones ahora'], createNew: ['Add as a separate item', 'Agregar como platillo aparte'],
   products: ['Products', 'Productos'], due: ['Due', 'Para las'], unit: ['Unit', 'Unidad'], size: ['Size', 'Tamaño'], location: ['Kept in', 'Se guarda en'],
-  supplier: ['Supplier', 'Proveedor'],
+  supplier: ['Supplier', 'Proveedor'], source: ['Came in by', 'Llegó por'], requestedAt: ['Requested on', 'Pedido el'],
 };
 const CATEGORY_VALUES = {
   spirits: ['Spirits', 'Licores'], beer: ['Beer', 'Cerveza'], wine: ['Wine', 'Vino'], mixers: ['Mixers', 'Mezcladores'], garnish: ['Garnish', 'Guarniciones'],
@@ -53,6 +53,8 @@ const CATEGORY_VALUES = {
 };
 const VALUES = {
   out: ['86’d (out)', 'Se acabó (86)'], low: ['Running low', 'Queda poco'], giveaway: ['Give away', 'Ceder'], trade: ['Trade', 'Intercambiar'],
+  email: ['Email', 'Correo'], text: ['Text message', 'Mensaje de texto'], phone: ['Phone call', 'Llamada'], in_person: ['In person', 'En persona'], sheet: ['The sheet', 'La hoja'], other: ['Other', 'Otro'],
+  approved: ['Approved', 'Aprobado'], pending: ['Pending', 'Pendiente'],
   tentative: ['Tentative', 'Tentativo'], confirmed: ['Confirmed', 'Confirmado'], cancelled: ['Cancelled', 'Cancelado'],
 };
 const OPEN = ['Open shift', 'Turno disponible'];
@@ -82,7 +84,7 @@ export function describeAction(tool, args = {}, lang = 'en', look = {}) {
     const own = TOOL_LABELS[tool.name]?.[k];
     const label = own ? pick(own, lang) : LABELS[k] ? pick(LABELS[k], lang) : k;
     let value;
-    if (k === 'date' || k === 'startDate' || k === 'endDate') value = date(v);
+    if (k === 'date' || k === 'startDate' || k === 'endDate' || (k === 'requestedAt' && /^\d{4}-\d{2}-\d{2}$/.test(v))) value = date(v);
     else if (k === 'week') {
       try { value = pick(WEEK_OF, lang).replace('{date}', prettyDate(resolveWeek(v, today, look.weekStartDow ?? 1), { lang })); } catch { value = clip(v); }
     } else if (k === 'start' || k === 'due') value = fmtTime(v, lang);

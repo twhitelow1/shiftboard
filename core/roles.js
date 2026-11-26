@@ -43,6 +43,29 @@ export const ROLES = [
 ];
 
 export const ROLE_IDS = ROLES.map((r) => r.id);
+
+// ----- custom roles ("types of managers": Bar Manager, Kitchen Manager, Shift Lead…) -----
+// A custom role is a name (and a Spanish name) on a base level: manager, supervisor or employee. A person with one keeps
+// role = the base level, so every rank check (atLeast, canManageSchedule…) works as before, plus customRole = its id.
+// Stored in settings.customRoles; the labels below use the list the service (or the web app) last set with
+// useCustomRoles. None exist until an admin makes one (core/custom-roles.js).
+export const CUSTOM_BASES = ['manager', 'supervisor', 'employee'];
+let CUSTOM = new Map();
+const validCustom = (r) => r && typeof r.id === 'string' && /^cr_[a-z0-9_]{2,40}$/i.test(r.id) && typeof r.name === 'string' && r.name.trim() && CUSTOM_BASES.includes(r.base);
+/** The custom roles in settings, checked. */
+export const customRolesOf = (settings = {}) => (Array.isArray(settings?.customRoles) ? settings.customRoles.filter(validCustom) : []);
+/** Set the custom roles labels come from (the service on each call; the web app from bootstrap). */
+export function useCustomRoles(list) { CUSTOM = new Map((Array.isArray(list) ? list : []).filter(validCustom).map((r) => [r.id, r])); }
+export const knownCustomRoles = () => [...CUSTOM.values()];
+/** A person's custom role (from settings when given, else the list set last), or null. */
+export function customRoleOf(user, settings) {
+  const id = user?.customRole;
+  if (!id) return null;
+  const r = settings ? customRolesOf(settings).find((x) => x.id === id) : CUSTOM.get(id);
+  return r && r.base === roleOf(user) ? r : null;
+}
+/** The id of the role a person's features and approval default follow: their custom role, else their role. */
+export const featureRoleOf = (user, settings) => customRoleOf(user, settings)?.id || roleOf(user);
 /** A role's name, summary and list of what it can do, in a language. canApprove: the index of the line about approving (Settings can turn it off for supervisors). */
 export const roleInfo = (r, lang = 'en') => ({ ...r, label: roleLabel(r.id, lang), ...(lang === 'es' && r.es ? r.es : {}) });
 const BY_ID = Object.fromEntries(ROLES.map((r) => [r.id, r]));
@@ -56,10 +79,20 @@ export function roleOf(user) {
 const ROLE_ES = { super_admin: ['Superadministrador', 'Superadministradores'], admin: ['Administrador', 'Administradores'],
   manager: ['Gerente', 'Gerentes'], supervisor: ['Supervisor', 'Supervisores'], employee: ['Empleado', 'Empleados'] };
 const roleId = (userOrId) => (typeof userOrId === 'string' ? (BY_ID[userOrId] ? userOrId : 'employee') : roleOf(userOrId));
-/** 'Manager' · 'Gerente'. */
-export const roleLabel = (userOrId, lang = 'en') => (lang === 'es' ? ROLE_ES[roleId(userOrId)][0] : BY_ID[roleId(userOrId)]?.label || 'Employee');
-/** 'Managers' · 'Gerentes'. */
-export const roleLabelPlural = (userOrId, lang = 'en') => (lang === 'es' ? ROLE_ES[roleId(userOrId)][1] : `${roleLabel(userOrId)}s`);
+const customOf = (userOrId) => (typeof userOrId === 'string' ? CUSTOM.get(userOrId) || null : customRoleOf(userOrId));
+const customName = (c, lang) => (lang === 'es' && String(c.nameEs || '').trim() ? c.nameEs.trim() : c.name.trim());
+/** 'Manager' · 'Gerente' (a custom role's own name: 'Bar Manager' · 'Gerente de bar'). */
+export const roleLabel = (userOrId, lang = 'en') => {
+  const c = customOf(userOrId);
+  if (c) return customName(c, lang);
+  return lang === 'es' ? ROLE_ES[roleId(userOrId)][0] : BY_ID[roleId(userOrId)]?.label || 'Employee';
+};
+/** 'Managers' · 'Gerentes' (a custom role's name as it is). */
+export const roleLabelPlural = (userOrId, lang = 'en') => {
+  const c = customOf(userOrId);
+  if (c) return customName(c, lang);
+  return lang === 'es' ? ROLE_ES[roleId(userOrId)][1] : `${roleLabel(userOrId)}s`;
+};
 export const rankOf = (user) => (user ? BY_ID[roleOf(user)].rank : 0);
 /** At least the given role (e.g. atLeast(u, 'manager') is true for managers, admins and super admins). */
 export const atLeast = (user, role) => !!user && rankOf(user) >= BY_ID[role].rank;
@@ -69,7 +102,14 @@ export const canManageSchedule = (u) => atLeast(u, 'manager');
 export const canChangeSettings = (u) => atLeast(u, 'admin');
 export const canManageEvents = (u) => atLeast(u, 'manager') || !!u?.eventsAccess || u?.role === 'events';
 export const canSeeContacts = (u) => atLeast(u, 'supervisor');
-export const canApprove = (u, settings = {}) => atLeast(u, 'manager') || (roleOf(u) === 'supervisor' && settings.supervisorsCanApprove !== false);
+export const canApprove = (u, settings = {}) => {
+  if (atLeast(u, 'manager')) return true;
+  if (roleOf(u) !== 'supervisor') return false;
+  // A custom role on the supervisor level has its own "Can approve requests" switch (Roles & features).
+  const c = customRoleOf(u, settings);
+  if (c) return settings.roleFeatures?.[c.id]?.approve !== false; // copied from Supervisors when the role was made
+  return settings.supervisorsCanApprove !== false;
+};
 /** Not on the schedule grid: office-only users (and the old 'events' role). */
 export const offSchedule = (u) => u?.onSchedule === false || (u?.role === 'events' && u?.onSchedule !== true);
 

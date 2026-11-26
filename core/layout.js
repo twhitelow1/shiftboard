@@ -44,6 +44,18 @@ export function entryInRoom(entry, job, room) {
 /** Does this person hold the position in this room? */
 export const holdsIn = (person, job, room) => (person?.jobCodes || []).some((e) => entryInRoom(e, job, room));
 
+/**
+ * Is this shift in a room other than the person's primary room for its position (Team → person → Positions)? The
+ * schedule (grid, sheet, PDF) shows those light green, like the house sheet. False when no primary room is set.
+ */
+export function offPrimary(shift, person, job) {
+  const entry = (person?.jobCodes || []).find((e) => e.jobCodeId === shift?.jobCodeId);
+  const primary = cleanArea(entry?.primaryRoom);
+  const room = roomOfShift(shift, job);
+  return !!(primary && room && !sameArea(primary, room));
+}
+export const OFF_PRIMARY_COLOR = '#dcfce7'; // light green (the sheet's)
+
 /** A room of the layout, by name. */
 export const findRoom = (layout, name) => (layout?.rooms || []).find((r) => sameArea(r.room, name)) || null;
 /** A room's entry for a position, or null. */
@@ -290,7 +302,7 @@ export function shiftChoices({ layout, jobs = {}, employees = [], room = '', job
  * kept in step when positions merge or go away, and the manager API (layout.*).
  *   putSettings(patch)  writes settings
  */
-export function layoutService({ store, settings, putSettings, fail, needMgr, now, today }) {
+export function layoutService({ store, settings, putSettings, fail, needMgr, now, today, slog = () => {} }) {
   const stamp = () => now().toISOString();
   const jobsById = () => Object.fromEntries(store.list('jobCodes').map((j) => [j.id, j]));
   const jobOf = (id) => {
@@ -639,6 +651,7 @@ export function layoutService({ store, settings, putSettings, fail, needMgr, now
       const toRoom = findRoom(cur, to.room).room;
       if (toJob.id === job.id && sameArea(toRoom, room)) fail(400, 'Pick a different position to move them to');
       const moved = moveSection({ room, job, toRoom, toJob, start, end, toArea: areaForRoom(toRoom, toJob, settings()) });
+      if (moved.shifts) slog(actor, 'layout.move', { kind: 'layout', date: start, weekStart: start, jobCodeId: job.id, extra: { count: moved.shifts, room, toRoom, toJobCodeId: toJob.id } });
       return { moved: moved.shifts };
     },
   };

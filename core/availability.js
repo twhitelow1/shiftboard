@@ -34,15 +34,18 @@ const hhmm = (min) => `${pad(Math.floor(min / 60))}:${pad(min % 60)}`;
 export function dayView(a) {
   if (!a || typeof a !== 'object') return { available: true, from: '', to: '', note: '' };
   const note = clean(a.note).slice(0, NOTE_MAX);
-  if (a.available === false) return { available: false, from: '', to: '', note };
+  // A standing request off (green "REQ OFF", or added by a manager): kept with when it was first asked and how.
+  if (a.available === false) return { available: false, from: '', to: '', note, ...(a.standing ? { standing: true, requestedAt: ISO.test(a.requestedAt || '') ? a.requestedAt : '', source: clean(a.source).slice(0, 20) } : {}) };
   return { available: true, from: HHMM.test(a.from || '') ? a.from : '', to: HHMM.test(a.to || '') ? a.to : '', note };
 }
 /** Two days the same (any time = no entry = { available: true, from: '', to: '' }). */
-export const sameDay = (a, b) => JSON.stringify(dayView(a)) === JSON.stringify(dayView(b));
+const ISO = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/;
+const comparable = (a) => { const { requestedAt: _r, source: _s, ...v } = dayView(a); return v; };
+export const sameDay = (a, b) => JSON.stringify(comparable(a)) === JSON.stringify(comparable(b));
 /** A day as it's stored: null for "any time" with no note (the day is left out). */
 export function storedDay(a) {
   const v = dayView(a);
-  if (!v.available) return { available: false, ...(v.note ? { note: v.note } : {}) };
+  if (!v.available) return { available: false, ...(v.note ? { note: v.note } : {}), ...(v.standing ? { standing: true, ...(v.requestedAt ? { requestedAt: v.requestedAt } : {}), ...(v.source ? { source: v.source } : {}) } : {}) };
   if (!v.from && !v.to && !v.note) return null;
   return { available: true, ...(v.from ? { from: v.from } : {}), ...(v.to ? { to: v.to } : {}), ...(v.note ? { note: v.note } : {}) };
 }
@@ -60,7 +63,7 @@ export function cleanAvailability(raw) {
     const a = raw[d] ?? raw[String(d)];
     if (!a || typeof a !== 'object') continue;
     const note = clean(a.note).slice(0, NOTE_MAX);
-    if (a.available === false) { out[d] = { available: false, ...(note ? { note } : {}) }; continue; }
+    if (a.available === false) { out[d] = storedDay({ ...a, available: false }); continue; }
     const day = { available: true };
     if ('from' in a) day.from = HHMM.test(a.from || '') ? a.from : '';
     if ('to' in a) day.to = HHMM.test(a.to || '') ? a.to : '';

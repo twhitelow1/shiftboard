@@ -17,7 +17,7 @@ import { cleanAvailability, weekChanges, logChange, historyOf, viaOf, dayView, N
 
 const limit = (v, max) => (v === '' || v == null ? null : Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= max ? Number(v) : undefined);
 
-export function availabilityApi({ store, now, today, fail, needAuth, settings, notify, say, userById, isMgr, via, view }) {
+export function availabilityApi({ store, now, today, fail, needAuth, settings, notify, say, userById, isMgr, via, view, slog = () => {} }) {
   /** May `actor` change `target`'s availability? */
   function canEditOf(actor, target) {
     if (!actor || !target) return false;
@@ -66,6 +66,7 @@ export function availabilityApi({ store, now, today, fail, needAuth, settings, n
     const saved = Object.keys(next).length ? store.update('users', u.id, next) : u;
     if (days.length || fields.length) {
       logChange(store, now, { userId: u.id, actorId: actor.id, via: how.via || viaOf(via), days, fields, fileName: how.fileName });
+      slog(actor, 'availability.change', { kind: 'availability', id: u.id, affected: [u.id], ...(how.via === 'import' ? { via: 'import' } : {}), extra: { days: days.length, fields: fields.map((f) => f.field) } });
       const tell = how.notify ?? settings().notifyAvailabilityChanges !== false;
       if (actor.id !== u.id && tell) notify([u.id], say('availabilityChanged', userById(actor.id)?.name || ''), '#/timeoff/availability');
     }

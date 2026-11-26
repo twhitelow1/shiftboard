@@ -25,7 +25,7 @@
 //     decide it and is notified, so nothing gets stuck. Admins always can.
 import { sameArea, cleanArea, uniqueAreas } from './areas.js';
 import { roomOfShift, entryRooms } from './layout.js';
-import { canChangeSettings, roleOf } from './roles.js';
+import { canChangeSettings, featureRoleOf, customRolesOf } from './roles.js';
 
 export const SCOPE_MODES = ['all', 'include', 'exclude', 'none'];
 export const SCOPE_ROLES = ['manager', 'supervisor']; // roles with a default in Settings (admins always approve everything)
@@ -50,13 +50,13 @@ export const roleScopes = (settings = {}) => (settings.approvalScopes && typeof 
 export function scopeSource(user, settings = {}) {
   if (canChangeSettings(user)) return 'admin';
   if (user?.approvalScope?.mode) return 'person';
-  return roleScopes(settings)[roleOf(user)]?.mode ? 'role' : 'default';
+  return roleScopes(settings)[featureRoleOf(user, settings)]?.mode ? 'role' : 'default'; // a custom role's own default
 }
 /** The scope a person approves with. */
 export function scopeOf(user, settings = {}) {
   const src = scopeSource(user, settings);
   if (src === 'person') return { ...ALL_SCOPE, ...user.approvalScope };
-  if (src === 'role') return { ...ALL_SCOPE, ...roleScopes(settings)[roleOf(user)] };
+  if (src === 'role') return { ...ALL_SCOPE, ...roleScopes(settings)[featureRoleOf(user, settings)] };
   return ALL_SCOPE;
 }
 export const isAll = (scope) => !scope || scope.mode === 'all';
@@ -118,7 +118,7 @@ export function approvalScopeApi({ store, settings, putSettings, fail, needAuth,
   const out = (actor, u) => {
     const st = settings();
     const scope = scopeOf(u, st);
-    const role = roleScopes(st)[roleOf(u)];
+    const role = roleScopes(st)[featureRoleOf(u, st)];
     return {
       userId: u.id, scope, own: u.approvalScope?.mode ? { ...ALL_SCOPE, ...u.approvalScope } : null, roleDefault: role ? { ...ALL_SCOPE, ...role } : ALL_SCOPE,
       source: scopeSource(u, st), canApprove: canApprove(u, st), canSet: canSet(actor, u),
@@ -148,12 +148,12 @@ export function approvalScopeApi({ store, settings, putSettings, fail, needAuth,
     'approvalScope.roles': (actor) => {
       needAdmin(actor);
       const r = roleScopes(settings());
-      return Object.fromEntries(SCOPE_ROLES.map((role) => [role, r[role] ? { ...ALL_SCOPE, ...r[role] } : ALL_SCOPE]));
+      return Object.fromEntries([...SCOPE_ROLES, ...customRolesOf(settings()).map((c) => c.id)].map((role) => [role, r[role] ? { ...ALL_SCOPE, ...r[role] } : ALL_SCOPE]));
     },
     'approvalScope.saveRoles': (actor, patch = {}) => {
       needAdmin(actor);
       const cur = { ...roleScopes(settings()) };
-      for (const role of SCOPE_ROLES) {
+      for (const role of [...SCOPE_ROLES, ...customRolesOf(settings()).map((c) => c.id)]) {
         if (!(role in patch)) continue;
         const v = patch[role] == null ? null : check(patch[role]);
         if (!v || (isAll(v) && v.timeOff !== false)) delete cur[role]; else cur[role] = v;

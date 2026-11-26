@@ -18,7 +18,7 @@
 // A week with any draft shift in it is watermarked DRAFT.
 import { PDFDocument, StandardFonts, rgb, degrees } from 'pdf-lib';
 import { range, dow, parseDate, dayName } from './time.js';
-import { buildSections } from './layout.js';
+import { buildSections, offPrimary, OFF_PRIMARY_COLOR } from './layout.js';
 import { bannerColor, textOn, sameArea } from './areas.js';
 import { isManagerJob, isModShift } from './mod.js';
 import { atLeast, offSchedule } from './roles.js';
@@ -33,9 +33,9 @@ const MARGIN = 24;
 
 /** The words printed on the sheet, in the restaurant's language (restaurant data stays as typed). */
 export const PDF_WORDS = {
-  en: { mod: 'M.O.D.', off: 'OFF', reqOff: 'REQ OFF', open: 'OPEN', notes: 'Notes:', covers: 'Projected Covers', draft: 'DRAFT',
+  en: { mod: 'M.O.D.', off: 'OFF', reqOff: 'REQ OFF', open: 'OPEN', notes: 'Notes:', covers: 'Projected Covers', draft: 'DRAFT', elsewhere: 'Light green: working outside their primary room',
     week: (a, b) => `${a} – ${b}`, page: (n, m) => `Page ${n} of ${m}`, cont: '(cont.)', people: 'PPL', schedule: 'Schedule' },
-  es: { mod: 'GERENTE EN TURNO (M.O.D.)', off: 'LIBRE', reqOff: 'PIDIÓ LIBRE', open: 'DISPONIBLE', notes: 'Notas:', covers: 'Cubiertos proyectados',
+  es: { mod: 'GERENTE EN TURNO (M.O.D.)', off: 'LIBRE', reqOff: 'PIDIÓ LIBRE', open: 'DISPONIBLE', notes: 'Notas:', covers: 'Cubiertos proyectados', elsewhere: 'Verde claro: trabaja fuera de su salón principal',
     draft: 'BORRADOR', week: (a, b) => `${a} – ${b}`, page: (n, m) => `Página ${n} de ${m}`, cont: '(cont.)', people: 'PERS.', schedule: 'Horario' },
 };
 const words = (lang) => PDF_WORDS[lang === 'es' ? 'es' : 'en'];
@@ -135,7 +135,8 @@ export function sheetModel({ boot, week, covers = null, weekStart, lang = 'en', 
           name: (user.sheetName || user.name).toUpperCase(),
           cells: days.map((d) => {
             const mine = list.filter((s) => s.date === d).sort(byStart);
-            if (mine.length) return { kind: 'shift', parts: mine.map(shiftText) };
+            // Outside their primary room for the position (Team → person): light green, like the house sheet.
+            if (mine.length) return { kind: 'shift', parts: mine.map(shiftText), ...(mine.some((s) => offPrimary(s, user, jobs[s.jobCodeId])) ? { elsewhere: true } : {}) };
             if (approvedOff(user.id, d)) return { kind: 'reqOff', parts: [] };
             if (workingOn(user.id, d)) return { kind: 'blank', parts: [] }; // working in another section that day
             return { kind: 'off', parts: [] };
@@ -172,6 +173,7 @@ export function sheetModel({ boot, week, covers = null, weekStart, lang = 'en', 
     covers: coverDays.length ? coverCells : null,
     groups,
     weekNote,
+    elsewhere: groups.some((g) => g.sections.some((x) => x.rows.some((r) => r.cells.some((c) => c.elsewhere)))), // the legend line
     rooms: rooms.length ? groups.map((g) => g.title) : [],
   };
 }
@@ -282,7 +284,7 @@ export async function schedulePdf(model, opts = {}) {
           : { rows: [headRow, ...rows], head: 1, headRow, banner });
       });
     }
-    blocks.push({ rows: [{ type: 'notes', h: notesH, lines: noteLines }], head: 1 });
+    blocks.push({ rows: [{ type: 'notes', h: notesH, lines: noteLines }, ...(model.elsewhere ? [{ type: 'legend', h: rowH }] : [])], head: 1 });
     return { f, pad, nameW, dayW, rowH, dates, blocks, eventsSize };
   };
 
@@ -413,7 +415,7 @@ export async function schedulePdf(model, opts = {}) {
           const x = MARGIN + nameW + i * dayW;
           if (c.kind === 'off') { box(x, y, dayW, r.h, COLORS.off); centered(W.off, x, dayW, by, f * 0.9); return; }
           if (c.kind === 'reqOff') { box(x, y, dayW, r.h, COLORS.reqOff); centered(W.reqOff, x, dayW, by, f * 0.9); return; }
-          box(x, y, dayW, r.h);
+          box(x, y, dayW, r.h, c.elsewhere ? OFF_PRIMARY_COLOR : undefined);
           if (c.kind !== 'shift') return;
           // "3:30PM TRAIN": the time in black, its tag in red, several shifts joined by " / ".
           const segs = [];
@@ -458,6 +460,10 @@ export async function schedulePdf(model, opts = {}) {
         box(MARGIN + nameW, y, tableW - nameW, r.h);
         let ly = y + r.h - pad - f * 0.85;
         for (const line of r.lines) { text(line, MARGIN + nameW + pad, ly, f); ly -= f * 1.25; }
+      } else if (r.type === 'legend') {
+        box(MARGIN, y, nameW, r.h, OFF_PRIMARY_COLOR);
+        box(MARGIN + nameW, y, tableW - nameW, r.h);
+        text(safe(W.elsewhere), MARGIN + nameW + pad, by, f * 0.9);
       }
     }
 

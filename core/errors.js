@@ -113,6 +113,17 @@ export const ERRORS_ES = {
   'You can only edit your own availability': 'Solo puedes editar tu propia disponibilidad',
   // Availability (core/availability-api.js) and "Approves for" (core/approval-scope.js)
   'You can only see your own availability': 'Solo puedes ver tu propia disponibilidad',
+  // Time off added by a manager (core/service.js, core/time-off.js) and custom roles (core/custom-roles.js)
+  'Nothing to add': 'No hay nada que agregar',
+  'Pick at least one day': 'Elige al menos un día',
+  'The request date can’t be in the future': 'La fecha de la solicitud no puede ser en el futuro',
+  'Up to 200 people at a time': 'Hasta 200 personas a la vez',
+  'You can only add time off for people you approve for': 'Solo puedes agregar días libres para las personas cuyas solicitudes apruebas',
+  'Give the role a name': 'Ponle nombre al rol',
+  'Pick the level it’s based on: Manager, Supervisor or Employee': 'Elige el nivel en el que se basa: Gerente, Supervisor o Empleado',
+  'There’s already a role with that name': 'Ya hay un rol con ese nombre',
+  'Up to 30 custom roles': 'Hasta 30 roles personalizados',
+  'Role not found': 'No se encontró el rol',
   'Max hours is a number from 0 to 80': 'Las horas máximas son un número del 0 al 80',
   'Max days is a number from 0 to 7': 'Los días máximos son un número del 0 al 7',
   'Admins and Super Admins always approve everything': 'Los administradores y superadministradores siempre aprueban todo',
