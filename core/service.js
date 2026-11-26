@@ -12,7 +12,7 @@ import { cleanArea, uniqueAreas, findArea, scheduleAreas, sameArea } from './are
 import { tipMethods } from './tips.js';
 import { langOf, render, renderAll } from './i18n.js';
 import { msg } from './messages.js';
-import { ROLE_IDS, roleOf, roleLabel, canManageSchedule, canChangeSettings, canManageEvents, canSeeContacts, canApprove,
+import { ROLE_IDS, roleOf, roleLabel, canManageSchedule, canChangeSettings, canManageEvents, canApprove,
   offSchedule, assignableRoles, canManageUser } from './roles.js';
 import { channelApi } from './notify-prefs.js';
 import { venueLinks } from './venue-links.js';
@@ -24,6 +24,7 @@ import { layoutService, addRoom, roomOfShift } from './layout.js';
 import { profileApi } from './profile.js';
 import { consentState, smsConsentOf, emailConsentOf, smsStatusOf, recordConsent, consentText } from './consent.js';
 import { SECRET_FIELDS, twoStepOf, twoStepMap, passwordProblem } from './auth-factors.js';
+import { effectiveFeatures, roleAllows, roleRefusal, roleFeatureApi, ROLE_OFF } from './role-features.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -392,13 +393,14 @@ export function createService(store, opts = {}) {
       // the first read makes the layout and puts its rooms in settings.areas.
       const layout = layouts.forViewer(isMgr(actor));
       const st = settings();
+      const contacts = roleAllows(actor, st).coworkerContacts; // Roles & features (core/role-features.js)
       const jobCodes = store.list('jobCodes').sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       const twoStepOn = isMgr(actor) ? twoStepMap(store) : null; // Team shows who has two-step sign-in on
       const employees = users().map((u) => {
         const pub = userView(u, twoStepOn ? twoStepOn.has(u.id) : undefined);
         if (isMgr(actor) || u.id === actor.id) return pub;
         const basic = { id: u.id, name: u.name, sheetName: u.sheetName || '', role: pub.role, active: u.active, color: u.color, photoId: u.photoId || null, onSchedule: pub.onSchedule, order: u.order, jobCodes: (u.jobCodes || []).map((j) => ({ jobCodeId: j.jobCodeId, ...(j.areas?.length ? { areas: j.areas } : {}) })) };
-        return canSeeContacts(actor) ? { ...basic, email: u.email, phone: u.phone } : basic;
+        return contacts ? { ...basic, email: u.email, phone: u.phone } : basic;
       }).sort((a, b) => a.name.localeCompare(b.name));
       // My own consent and two-step status: the app shows the one-time consent screen when terms are missing.
       const mine = userById(actor.id);
@@ -410,7 +412,8 @@ export function createService(store, opts = {}) {
       const openOffers = store.list('requests', (r) => r.status === 'open' && (
         (r.type === 'swap' && r.targetUserId === actor.id) ||
         (r.type === 'drop' && r.requesterId !== actor.id && qualified(me, store.get('shifts', r.shiftId)?.jobCodeId)))).length;
-      return { settings: st, jobCodes, employees, me, unread, pendingApprovals, openOffers, today: today(), layout };
+      return { settings: st, jobCodes, employees, me, unread, pendingApprovals, openOffers, today: today(), layout,
+        features: effectiveFeatures(actor, { settings: st, plan: opts.planFeatures || null }) }; // plan ∩ role: the apps hide what's off
     },
 
     // ----- settings -----
@@ -691,11 +694,14 @@ export function createService(store, opts = {}) {
     // ----- shifts -----
     'shifts.list': (actor, { start, end }) => {
       needAuth(actor);
-      const shifts = store.list('shifts', (s) => s.date >= start && s.date <= end && visibleShift(actor, s));
-      const timeOff = store.list('timeOff', (t) => t.status !== 'cancelled' && t.status !== 'denied' && t.endDate >= start && t.startDate <= end && (isMgr(actor) || t.status === 'approved'))
+      // Roles & features: without the schedule, people see their own shifts and open ones; without events, no events.
+      const allows = roleAllows(actor, settings());
+      const seen = (userId) => allows.schedule || !userId || userId === actor.id;
+      const shifts = store.list('shifts', (s) => s.date >= start && s.date <= end && visibleShift(actor, s) && seen(s.userId));
+      const timeOff = store.list('timeOff', (t) => t.status !== 'cancelled' && t.status !== 'denied' && t.endDate >= start && t.startDate <= end && (isMgr(actor) || t.status === 'approved') && seen(t.userId))
         .map((t) => (isMgr(actor) || t.userId === actor.id ? t : { id: t.id, userId: t.userId, startDate: t.startDate, endDate: t.endDate, status: t.status }));
       // Tentative events are the events team's until they're confirmed (or within two weeks: core/beo.js).
-      const events = store.list('events', (e) => e.date >= start && e.date <= end && e.status !== 'cancelled' && (isEvents(actor) || eventStatus(e, today()) !== 'tentative'))
+      const events = store.list('events', (e) => allows.events && e.date >= start && e.date <= end && e.status !== 'cancelled' && (isEvents(actor) || eventStatus(e, today()) !== 'tentative'))
         .map((e) => ({ id: e.id, name: e.name, date: e.date, start: e.start, end: e.end, room: e.room, guestCount: e.guestCount, status: eventStatus(e, today()), captainId: e.captainId }));
       const activeReq = store.list('requests', (r) => ['open', 'pending_approval'].includes(r.status));
       const pendingByShift = {};
@@ -1568,6 +1574,8 @@ export function createService(store, opts = {}) {
     ...rosterApi({ store, settings, fail, needMgr, today, putSettings, layouts }),
     // ----- the schedule's rooms and their positions: Settings → Rooms & positions (core/layout.js) -----
     ...layouts.api,
+    // ----- Settings → Roles & features: which parts of the app each role gets (core/role-features.js) -----
+    ...roleFeatureApi({ settings, putSettings, fail, needAdmin, plan: opts.planFeatures || null }),
 
     // ----- notifications -----
     'notifications.list': (actor) => {
@@ -1627,6 +1635,7 @@ export function createService(store, opts = {}) {
     call(actor, method, args = {}) {
       const fn = api[method];
       if (!fn) fail(404, `Unknown method ${method}`);
+      if (roleRefusal(actor, method, settings())) fail(403, ROLE_OFF); // Roles & features, like the plan's features
       return fn(actor, args || {});
     },
     settings,

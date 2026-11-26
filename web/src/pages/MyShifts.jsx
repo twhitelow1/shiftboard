@@ -16,6 +16,7 @@ import { CONSENT_TEXT } from '../../../core/consent.js';
 export default function MyShifts() {
   const t = useT();
   const { call, version, today, me, jobs, settings, employees, refresh, toast, has } = useApp();
+  const canAsk = has('trades') && has('tradeRequests'); // Roles & features: trading and picking up shifts
   const [data, setData] = useState(null);
   const [dialog, setDialog] = useState(null);
   const [startIn, setStartIn] = useState(null);
@@ -62,15 +63,15 @@ export default function MyShifts() {
         <div className="section">
           <div className="section-title"><h2>{t('myShifts.openShiftsYouCanPick')}</h2><span className="badge ok">{openShifts.length}</span></div>
           <div className="card list">
-            {openShifts.slice(0, 8).map((s) => <ShiftRow key={s.id} s={s} onClick={() => open(s)} right={<span className="badge ok">{t('myShifts.pickUp')}</span>} />)}
+            {openShifts.slice(0, 8).map((s) => <ShiftRow key={s.id} s={s} onClick={() => open(s)} right={canAsk && <span className="badge ok">{t('myShifts.pickUp')}</span>} />)}
           </div>
         </div>
       )}
 
       <div className="quick-actions section no-print">
-        <a className="btn" href="#/timeoff/new"><Icon name="sun" />{t('myShifts.requestTimeOff')}</a>
-        <a className="btn" href="#/swaps"><Icon name="swap" />{t('myShifts.tradeAShift')}</a>
-        <a className="btn" href="#/timeoff/availability"><Icon name="clock" />{t('myShifts.myAvailability')}</a>
+        {has('timeOff') && <a className="btn" href="#/timeoff/new"><Icon name="sun" />{t('myShifts.requestTimeOff')}</a>}
+        {canAsk && <a className="btn" href="#/swaps"><Icon name="swap" />{t('myShifts.tradeAShift')}</a>}
+        {has('timeOff') && <a className="btn" href="#/timeoff/availability"><Icon name="clock" />{t('myShifts.myAvailability')}</a>}
       </div>
 
       <div className="section">
@@ -87,7 +88,7 @@ export default function MyShifts() {
               <div className="card list">
                 {list.map((s) => <ShiftRow key={s.id} s={s} past={s.date < today} onClick={() => open(s)}
                   right={s.pending ? <span className="badge warn">{t('myShifts.swapPending')}</span> : !s.published ? <span className="badge" title={t('myShifts.notPostedToStaffYet')}>{t('myShifts.draft')}</span> : s.date < today ? <span className="small faint">{t('common.done')}</span>
-                    : <button className="btn sm" onClick={(e) => { e.stopPropagation(); open(s); }}><Icon name="swap" />{t('common.trade')}</button>} />)}
+                    : canAsk && <button className="btn sm" onClick={(e) => { e.stopPropagation(); open(s); }}><Icon name="swap" />{t('common.trade')}</button>} />)}
               </div>
             </div>
           );

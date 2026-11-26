@@ -42,6 +42,10 @@ Each role can do everything the roles below it can.
 
 Employees never see drafts, coworkers' contact info or pay rates, or client contact details on BEOs.
 
+**Roles & features** (Settings → Roles & features; Super Admins, and Admins for the roles below Admin): a grid of features × roles with a switch per cell: the schedule, My Shifts, calendar, trades, time off, events, Training, tips, the 86 List, forecast, venue, Team, announcements, reports, projected covers, coworkers' phone and email, plus "can trade" and "Supervisors can approve requests". The plan decides what's possible ("Not in your plan"), a Super Admin always has everything, and the defaults are exactly the rules above. The server refuses what a role doesn't include ("Your role doesn't include this") and `app.bootstrap` sends each person's features (plan ∩ role), so the web app and the phone app hide the rest. Code: `core/role-features.js`, `web/src/pages/RolesEditor.jsx`.
+
+**View as** (Super Admins, web app only): the eye button in the header previews the app exactly as one person sees it, or as a role (with positions and rooms picked, or a typical person in that role), computed by the server as them. It's read-only (every change, sign-out included, is refused), shows a bright banner the whole time, never shows the person's sign-in details, ends after 45 minutes, and every start and stop goes in the restaurant's audit log. "Preview" in Roles & features opens it with unsaved changes. Code: `core/view-as.js`, `server/view-as.js`, `web/src/pages/ViewAs.jsx`.
+
 ## Run it locally
 
 ```bash
