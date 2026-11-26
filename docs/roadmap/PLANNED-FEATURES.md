@@ -25,11 +25,11 @@ _Working name "ShiftBoard"; a new product name is still to be chosen (see Busine
 | **In PR #16:** Claude connector (MCP) for claude.ai / Claude Code: OAuth with two-step sign-in, 36 tools by role | built and tested; merge pending; first real connection after deploy |
 | **In PR #16:** Beta error tracking + "Report a problem", console Errors & reports, email alerts + daily digest | built and tested; merge pending |
 | **In PR #16:** Schedule PDF (like the wall sheet), Publish options (notify on/off, attach PDF), editable notification emails (EN/ES), all managers on duty | built and tested; merge pending |
+| **Ask ShiftBoard** (built-in Claude chat for staff and managers, EN/ES, web + phone app + /app): Claude Haiku 5.5, the connector's tools as the signed-in person, changes only on Confirm (audited); **usage metered and capped per restaurant** ($5/month default on Pro and Beta, console override, 80% warning, 50 messages/person/day, bring-your-own key); `server/ai/` for every AI feature | built and tested on its branch; needs `ANTHROPIC_API_KEY` in Vercel (docs/integrations/ASK-SHIFTBOARD.md) |
 
 ## Next
 | Feature | Notes |
 |---|---|
-| **Ask ShiftBoard** (built-in Claude chat for staff and managers, EN/ES) | Claude Haiku 5.5; Anthropic key in Vercel; **usage metered and capped per restaurant**, shown in Settings and the DubLow console; reuses the connector's tools and permissions |
 | Google Business Profile + Yelp reviews | pull reviews, match staff mentions, alert managers, **AI-drafted replies** (post to Google via API; Yelp: copy/paste, its API can't reply) |
 
 ## Planned: AI

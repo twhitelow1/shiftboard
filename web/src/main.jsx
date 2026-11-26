@@ -26,6 +26,7 @@ import { ViewAsButton, ViewAsBanner, ViewAsDialog, endView } from './pages/ViewA
 import { setTradesOn } from './pages/TradeHint.jsx';
 import ImpactReport from './pages/reports/Impact.jsx'; // Positive impact (the Reports hub registers it later)
 import Kudos from './pages/Kudos.jsx';
+import Assistant from './pages/Assistant.jsx'; // Ask ShiftBoard (#/ask)
 import { SignIn, ResetPassword, LinkSignIn } from './pages/SignIn.jsx';
 import { Welcome, ConsentGate } from './pages/Onboarding.jsx';
 import ConnectClaude from './pages/ConnectClaude.jsx'; // connecting Claude (OAuth sign-in and consent)
@@ -62,6 +63,7 @@ const NAV = [
   { key: '86', label: 'main.eightySix', icon: 'ban', feature: 'eightySix' },
   { key: 'swaps', label: 'main.swapsTrades', short: 'main.swaps', icon: 'swap', badge: 'swaps', feature: 'trades' },
   { key: 'announcements', label: 'announcements.title', icon: 'megaphone', feature: 'announcements' },
+  { key: 'ask', label: 'assistant.nav', icon: 'sparkle', feature: 'assistant' }, // Ask ShiftBoard (plan ∩ role)
   { key: 'trade-stats', label: 'tradeStats.title', icon: 'chart', mgr: true, hide: true }, // linked from Team and Swaps
   { key: 'events', label: 'main.eventsBeos', short: 'common.events', icon: 'glass', feature: 'events' },
   { key: 'timeoff', label: 'main.timeOff', icon: 'sun', badge: 'timeoff', feature: 'timeOff' },
@@ -79,7 +81,7 @@ const NAV = [
 ];
 
 // Shorter page titles for the phone's top bar, where the language switch and the bell sit too.
-const PHONE_TITLE = { swaps: 'main.phoneTitleSwaps', events: 'main.phoneTitleEvents', forecast: 'main.phoneTitleForecast', venue: 'main.phoneTitleVenue', team: 'main.phoneTitleTeam', 'trade-stats': 'tradeStats.phoneTitle' };
+const PHONE_TITLE = { swaps: 'main.phoneTitleSwaps', events: 'main.phoneTitleEvents', forecast: 'main.phoneTitleForecast', venue: 'main.phoneTitleVenue', team: 'main.phoneTitleTeam', 'trade-stats': 'tradeStats.phoneTitle', ask: 'assistant.phoneTitle' };
 
 // The address has no restaurant, or the restaurant's account is paused (server/platform/). Signed out or in.
 function NoticeCard({ title, help, icon = 'alert' }) {
@@ -281,7 +283,7 @@ function App() {
     forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue, training: Training, 86: EightySix, reports: Reports,
     account: Account, announcements: Announcements, 'trade-stats': TradeStats,
     forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue, training: Training, 86: EightySix,
-    account: Account, impact: ImpactReport, kudos: Kudos,
+    account: Account, impact: ImpactReport, kudos: Kudos, ask: Assistant,
   }[route] || Schedule;
 
   const signOut = async () => { await logout(); setBoot(null); setAuthed(false); };

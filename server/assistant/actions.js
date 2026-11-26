@@ -12,7 +12,7 @@ const TITLES = {
   request_time_off: ['Request time off', 'Pedir días libres'],
   set_availability: ['Change your availability', 'Cambiar tu disponibilidad'],
   offer_shift: ['Offer your shift', 'Ofrecer tu turno'],
-  pick_up_shift: ['Pick up a shift', 'Tomar un turno'],
+  pick_up_shift: ['Pick up a shift', 'Recoger un turno'],
   cancel_request: ['Cancel a request', 'Cancelar una solicitud'],
   approve_request: ['Approve a request', 'Aprobar una solicitud'],
   deny_request: ['Deny a request', 'Rechazar una solicitud'],
@@ -34,7 +34,7 @@ const VALUES = {
   out: ['86’d (out)', 'Se acabó (86)'], low: ['Running low', 'Queda poco'], giveaway: ['Give away', 'Ceder'], trade: ['Trade', 'Intercambiar'],
   tentative: ['Tentative', 'Tentativo'], confirmed: ['Confirmed', 'Confirmado'], cancelled: ['Cancelled', 'Cancelado'],
 };
-const OPEN = ['Open shift', 'Turno libre'];
+const OPEN = ['Open shift', 'Turno disponible'];
 const UNTIL_CLOSE = ['Until close', 'Hasta el cierre'];
 const WEEK_OF = ['Week of {date}', 'Semana del {date}'];
 const UNAVAILABLE = ['not available', 'no disponible'];

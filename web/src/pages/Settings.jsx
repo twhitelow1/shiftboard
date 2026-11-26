@@ -7,6 +7,7 @@ import TipPoolSettings from './TipPoolSettings.jsx';
 import { TextSettingsCard } from './PhoneCards.jsx';
 import { IntegrationsCard } from './IntegrationsSettings.jsx'; // ADP, Toast, Tripleseat, the text sender, the email From
 import ClaudeConnectorCard from './ClaudeConnector.jsx'; // the Claude connector (MCP)
+import { AssistantSettingsCard } from './Assistant.jsx'; // Ask ShiftBoard: on/off, staff, this month's AI use
 import { TrainingSettingsCard } from './TrainingShared.jsx';
 import EightySixSettings from './EightySixSettings.jsx';
 import RoomsPositions from './RoomsPositions.jsx';
@@ -123,6 +124,7 @@ export default function Settings({ parts = [] }) {
       <AnnouncementSettingsCard />
       <SeasonsCard />
       <IntegrationsCard />
+      <AssistantSettingsCard />
       <ClaudeConnectorCard />
       <ImpactSettingsCard />
 
