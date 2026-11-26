@@ -17,7 +17,8 @@
 //                   same thing reported twice on a list updates it instead of listing it twice. Only lists that suggest
 //                   menu items link new reports to the menu (for Training's "86'd today" badge); older links keep working.
 //                   { id, listId, name, key, menuItemId, status: 'out' | 'low', count, note, area, category,
-//                     reportedBy, reportedAt, outAt, lowAt, updatedBy, updatedAt }
+//                     reportedBy, reportedAt, outAt, lowAt, updatedBy, updatedAt, productId }
+//                   productId: the catalog's product (core/products.js), shared with Stock lists; never shown by the 86 screens.
 //                   photos: [{ id, w, h, by, at }] (up to 3, optional: the empty bottle, the shelf)
 //                   category: one of the restaurant's categories (Produce, Dairy… see DEFAULT_CATEGORIES), or ''.
 //   eightySixLog    items that came off a list, under the same id: the history managers read.
@@ -50,6 +51,7 @@ import { effectiveShift } from './forecast.js';
 import { scheduleAreas, uniqueAreas, findArea, cleanArea, sameArea } from './areas.js';
 import { checkPhoto } from './training.js';
 import { eightySixReportsApi } from './reports-86.js';
+import { productFor86 } from './products.js';
 
 export const KINDS = ['bar', 'kitchen', 'other'];
 export const MENU_MODES = ['drinks', 'food', 'all', 'none'];
@@ -472,7 +474,9 @@ export function eightySixApi({ store, now, settings, notify, fail }) {
       const match = !picked && typed ? menuMatch(typed, menu) : null;
       const linkable = (m) => !!m && (suggestsMenu(list) || !!onList(itemKey(m.id)));
       const linked = linkable(picked) ? picked : linkable(match) ? match : null;
-      const name = linked ? linked.name : typed || (picked ? picked.name : '');
+      // A product from the catalog (Stock lists' products, core/products.js): its name, unless something was typed.
+      const product = !linked && a.productId ? store.get('products', String(a.productId)) : null;
+      const name = linked ? linked.name : typed || (picked ? picked.name : product?.name || '');
       if (!name) fail(400, 'Say what’s out');
       const k = itemKey(linked?.id, name);
       const cur = onList(k);
@@ -480,8 +484,10 @@ export function eightySixApi({ store, now, settings, notify, fail }) {
       const count = status === 'out' ? null : cleanCount(a.count);
       const shown = linked ? linked.name : cur?.name || name; // a menu item keeps the menu's name; typed text its first spelling
       const category = 'category' in a ? cleanCategory(a.category) : cur?.category || remembered(shown)?.category || '';
-      const doc = { name: shown, menuItemId: linked?.id || null, status, count, note: text(a.note, 140), area: cleanItemArea(a.area), category };
       const at = nowIso();
+      // The catalog's product (found by name, or added for a manager to review): the same thing in Stock lists. Not for a dish.
+      const productId = linked ? null : productFor86(store, { productId: product?.id || cur?.productId || null, name: shown, category86: category, list, by: u.id, at })?.id || null;
+      const doc = { name: shown, menuItemId: linked?.id || null, status, count, note: text(a.note, 140), area: cleanItemArea(a.area), category, ...(productId ? { productId } : {}) };
       const nowOut = status === 'out' && cur?.status !== 'out';
       const nowLow = status === 'low' && cur?.status !== 'low';
       const saved = cur

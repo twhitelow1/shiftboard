@@ -1,4 +1,4 @@
-// The Import button on Team and Training → Menu (managers). The wizard (SmartImport.jsx, with its file readers)
+// The Import button on Team, Training → Menu and Stock → Products (managers). The wizard (SmartImport.jsx, with its file readers)
 // loads only when it's opened.
 import React, { Suspense, lazy, useState } from 'react';
 import { Icon } from '../ui.jsx';
@@ -11,7 +11,7 @@ export function SmartImportButton({ target, className = 'btn sm' }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button className={className} onClick={() => setOpen(true)}><Icon name="upload" />{t(target === 'menu' ? 'smartImport.importMenu' : 'smartImport.importTeam')}</button>
+      <button className={className} onClick={() => setOpen(true)}><Icon name="upload" />{t(target === 'menu' ? 'smartImport.importMenu' : target === 'products' ? 'smartImport.importProducts' : 'smartImport.importTeam')}</button>
       {open && <Suspense fallback={null}><SmartImportDialog target={target} onClose={() => setOpen(false)} /></Suspense>}
     </>
   );

@@ -31,7 +31,7 @@ import { roleOf, canManageUser, assignableRoles } from './roles.js';
 import { nameKey, legalNameOf } from './names.js';
 import { canonicalAllergen, DEFAULT_CATEGORIES } from './training.js';
 import {
-  FIELDS, MAX_ROWS, normalizeEmployee, normalizeMenuItem, groupRows, personLikeness, menuLikeness, POSSIBLE_AT,
+  FIELDS, MAX_ROWS, normalizeEmployee, normalizeMenuItem, normalizeProduct, productLikeness, groupRows, personLikeness, menuLikeness, POSSIBLE_AT,
   normEmail, phoneKey, idKey, itemKey, looseItemKey, isEmptyValue, sameValue, confidenceOf, headerKey, isSensitiveHeader, isMajorAllergen,
 } from './smart-import.js';
 
@@ -565,7 +565,75 @@ export function importApi({ store, api, fail, needMgr, now }) {
     return out;
   }
 
+  // ---------------------------------------------------------------- products (Stock lists' catalog, core/products.js)
+  // Matched by name with the catalog's own rules (core/smart-import.js productLikeness): the same name is the product;
+  // a size on the end, a plural, "&"/"and" or a typo is a "check" row. A category the catalog doesn't know is Other.
+  const products = () => store.list('products', (p) => p.status !== 'archived');
+  const PROD_GET = { name: (p) => p.name || '', category: (p) => p.category || '', unit: (p) => p.unit || '', size: (p) => p.size || '', par: (p) => p.pars?.[''] ?? null,
+    location: (p) => p.location || '', supplier: (p) => p.supplier || '', notes: (p) => p.notes || '' };
+  const prodSummary = (p) => ({ name: p.name, category: p.category || '', size: p.size || '', location: p.location || '' });
+  function productPreview(actor, args) {
+    const all = products();
+    return previewWith('products', actor, args, {
+      normalize: normalizeProduct,
+      all: () => all,
+      get: (id) => store.get('products', id),
+      linkKey: (d) => itemKey(d.name) || '',
+      summary: prodSummary,
+      getExisting: (p, f) => PROD_GET[f]?.(p),
+      incomingView: (d) => Object.fromEntries(Object.entries(d).map(([k, v]) => [k, show(v)])),
+      likeness: (d, p) => productLikeness(d.name, p.name),
+      exact(d, link) {
+        const k = itemKey(d.name);
+        if (!k) return { hits: [], by: null };
+        if (link?.recordId && !link.skip) { const p = store.get('products', link.recordId); if (p && p.status !== 'archived') return { hits: [p], by: 'decision' }; }
+        return { hits: all.filter((p) => itemKey(p.name) === k), by: 'name' };
+      },
+      finish(row, { data, target: p, keep, options }) {
+        row.linkKey = itemKey(data.name) || '';
+        if (!p && !data.name) row.problems.push({ code: 'noName' });
+        if (!p) { row.plan = { doc: data }; return; }
+        const blank = options.blankClears === true;
+        const present = new Set(row.present);
+        const patch = {};
+        for (const f of Object.keys(PROD_GET)) {
+          if (!(f in data) || keep.includes(f)) continue;
+          const val = data[f];
+          const cur = PROD_GET[f](p);
+          if (isEmptyValue(val)) {
+            if (blank && present.has(f) && !isEmptyValue(cur) && f !== 'name' && f !== 'category') { patch[f] = f === 'par' ? null : ''; row.changes.push({ field: f, before: show(cur), after: '' }); }
+            continue;
+          }
+          const same = f === 'name' ? itemKey(cur) === itemKey(val) || looseItemKey(cur) === looseItemKey(val) : f === 'par' ? Number(cur) === Number(val) && cur != null : clean(cur) === clean(val);
+          if (!same) { patch[f] = val; row.changes.push({ field: f, before: show(cur), after: show(val) }); }
+        }
+        row.plan = { patch };
+      },
+    });
+  }
+  const prodFields = (d, cur) => {
+    const out = {};
+    for (const f of ['name', 'category', 'unit', 'size', 'location', 'supplier', 'notes']) if (f in d) out[f] = d[f];
+    if ('par' in d) out.pars = { ...(cur?.pars || {}), '': d.par };
+    if (out.pars && out.pars[''] == null) delete out.pars[''];
+    return out;
+  };
+  function productApply(actor, args) {
+    const preview = productPreview(actor, args);
+    const result = applyWith('products', actor, args, preview, (row) => {
+      if (row.status === 'new') return api['products.add'](actor, { ...prodFields(row.plan.doc), force: true, source: 'import' }).product.id;
+      const cur = store.get('products', row.match.id);
+      return api['products.save'](actor, { id: cur.id, ...prodFields(row.plan.patch, cur) }).id;
+    });
+    const out = { ...result, counts: preview.counts };
+    audit(actor, 'products', out, args);
+    return out;
+  }
+
   return {
+    'products.importMapping': mappingMethod('products'),
+    'products.importPreview': (actor, a = {}) => { needMgr(actor); return publicView(productPreview(actor, a)); },
+    'products.importApply': (actor, a = {}) => { needMgr(actor); return productApply(actor, a); },
     'employees.importMapping': mappingMethod('employees'),
     'employees.importPreview': (actor, a = {}) => { needMgr(actor); return publicView(employeePreview(actor, a)); },
     'employees.importApply': (actor, a = {}) => { needMgr(actor); return employeeApply(actor, a); },

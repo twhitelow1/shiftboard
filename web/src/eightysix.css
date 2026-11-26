@@ -135,3 +135,6 @@ button.e86-item-main:hover { background: var(--surface-2); }
 .e86-cat-names { flex: 1; min-width: 0; gap: 6px; }
 .e86-cat-btns { display: flex; gap: 2px; flex: none; }
 .e86-menu-opt { padding: 10px 12px; border-radius: 10px; background: var(--surface-2); }
+
+/* a catalog product in the report form's results (Stock lists' products) */
+.e86-result-thumb { flex: none; width: 32px; height: 32px; border-radius: 8px; object-fit: cover; border: 1px solid var(--border); }

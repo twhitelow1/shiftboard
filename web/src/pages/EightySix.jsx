@@ -9,6 +9,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useApp, Icon, Modal, Field, Empty } from '../ui.jsx';
 import { nowDate, IS_DEMO, call as rpc } from '../api.js';
 import { photoFromFile } from './TrainingShared.jsx';
+import { ProductPhoto } from './Stock.jsx'; // the product catalog Stock lists share (core/products.js)
 import { sameArea } from '../../../core/areas.js';
 import { categoryLabel } from '../../../core/training.js';
 import { useT, fmtTime, stamp } from '../i18n/index.js';
@@ -271,8 +272,11 @@ function ItemRow({ it, list, onEdit, onClear, onPhoto }) {
  */
 function ReportDialog({ board, start, onClose, onDone }) {
   const t = useT();
-  const { call, toast } = useApp();
+  const { call, toast, has } = useApp();
   const editing = start.item || null;
+  // The product catalog (shared with Stock lists): typing finds products too, with their photos.
+  const [products, setProducts] = useState([]);
+  useEffect(() => { if (!has || has('stock')) call('products.list').then((r) => setProducts(r.products)).catch(() => {}); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const reportable = board.lists.filter((l) => l.canReport).sort(barFirst);
   const [listId, setListId] = useState(editing?.listId || (reportable.some((l) => l.id === start.listId) ? start.listId : reportable[0]?.id));
   const list = board.lists.find((l) => l.id === listId);
@@ -306,12 +310,14 @@ function ReportDialog({ board, start, onClose, onDone }) {
   const recent = (list?.recent || []).filter((r) => matches(r.name));
   const options = (list?.suggest || []).map((id) => ({ id, ...board.menu[id] }))
     .filter((m) => m.name && matches(`${m.name} ${m.nameEs} ${m.category}`));
+  const catalog = words.length ? products.filter((p) => matches(`${p.name} ${p.size}`) && !recent.some((r) => norm(r.name) === norm(p.name))).slice(0, 6) : [];
   const exactRecent = q.trim() ? recent.find((r) => norm(r.name) === norm(q)) : null;
   const exact = q.trim() && !exactRecent ? options.find((m) => norm(m.name) === norm(q) || (m.nameEs && norm(m.nameEs) === norm(q))) : null;
   const current = picked || (q.trim() ? { name: exactRecent?.name || q.trim(), menuItemId: exact?.id || null } : null);
   const existing = !editing && current && list?.items.find((i) => (current.menuItemId ? i.menuItemId === current.menuItemId : norm(i.name) === norm(current.name)));
   const pickMenu = (m) => { setPicked({ name: m.name, nameEs: m.nameEs, menuItemId: m.id }); setQ(''); };
   const pickName = (name) => { setPicked({ name, nameEs: '', menuItemId: null }); setQ(''); };
+  const pickProduct = (p) => { setPicked({ name: p.name, nameEs: '', menuItemId: null, productId: p.id }); setQ(''); };
   const pickTyped = () => { if (q.trim()) pickName(exactRecent?.name || q.trim()); };
   // The category: chosen here, else what this name was filed under last time (on any list).
   const filed = (name) => (list?.recent || []).find((r) => norm(r.name) === norm(name))?.category || (board.known || []).find((k) => norm(k.name) === norm(name))?.category || '';
@@ -322,7 +328,7 @@ function ReportDialog({ board, start, onClose, onDone }) {
     if (!current) { toast(t('eightySix.pickFirst'), 'bad'); input.current?.focus(); return; }
     setBusy(true);
     try {
-      const r = await call('eightySix.report', { listId, name: current.name, menuItemId: current.menuItemId || null, status, count: status === 'low' ? count : '', note, area,
+      const r = await call('eightySix.report', { listId, name: current.name, menuItemId: current.menuItemId || null, ...(current.productId ? { productId: current.productId } : {}), status, count: status === 'low' ? count : '', note, area,
         ...(cat || category ? { category } : {}) }); // left out: the server keeps what the name was filed under
       const nm = itemName(r.item, t.lang);
       // One photo per request, after the report is saved: a photo that fails never loses the report.
@@ -372,7 +378,7 @@ function ReportDialog({ board, start, onClose, onDone }) {
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (exact) pickMenu(exact); else pickTyped(); } }} />
           </label>
           <div className="help" id="e86-search-help">{t('eightySix.searchHelp')}</div>
-          {(recent.length > 0 || options.length > 0 || q.trim()) && (
+          {(recent.length > 0 || options.length > 0 || catalog.length > 0 || q.trim()) && (
             <div className="e86-results">
               {q.trim() && !exact && !exactRecent && <button type="button" className="e86-result typed" onClick={pickTyped}><Icon name="plus" size={16} /><span className="e86-result-name">{t('eightySix.useTyped', { text: q.trim() })}</span></button>}
               {recent.length > 0 && !q.trim() && <div className="tiny faint e86-results-h">{t('eightySix.reportedBefore')}</div>}
@@ -380,6 +386,13 @@ function ReportDialog({ board, start, onClose, onDone }) {
                 <button key={`r:${r.name}`} type="button" className="e86-result" onClick={() => pickName(r.name)}>
                   <span className="e86-result-name">{r.name}</span>
                   {r.category && <span className="tiny faint">{catName(categories, r.category, t.lang)}</span>}
+                </button>
+              ))}
+              {catalog.map((p) => (
+                <button key={`p:${p.id}`} type="button" className="e86-result" onClick={() => pickProduct(p)}>
+                  <ProductPhoto product={p} className="e86-result-thumb" />
+                  <span className="e86-result-name">{p.name}{p.size ? ` · ${p.size}` : ''}</span>
+                  <span className="tiny faint">{t('stock.fromCatalog')}</span>
                 </button>
               ))}
               {options.length > 0 && !q.trim() && <div className="tiny faint e86-results-h">{t('eightySix.fromMenu')}</div>}

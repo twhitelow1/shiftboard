@@ -22,6 +22,13 @@ const TITLES = {
   save_menu_item: ['Save a menu item', 'Guardar un platillo del menú'],
   import_menu_items: ['Import menu items', 'Importar platillos al menú'],
   import_employees: ['Import people to the team', 'Importar personas al equipo'],
+  create_stock_list: ['Create a stock list', 'Crear una lista de surtido'],
+  add_product: ['Add a product to the catalog', 'Agregar un producto al catálogo'],
+};
+// A label that means something else for one tool (a product's category isn't a menu section).
+const TOOL_LABELS = {
+  add_product: { category: ['Category', 'Categoría'], createNew: ['Add even if it looks like a duplicate', 'Agregar aunque parezca duplicado'] },
+  create_stock_list: { name: ['List', 'Lista'], template: ['Save as a template', 'Guardar como plantilla'] },
 };
 
 const LABELS = {
@@ -36,6 +43,13 @@ const LABELS = {
   description: ['Description', 'Descripción'], price: ['Price', 'Precio'], allergens: ['Allergens', 'Alérgenos'], dietary: ['Dietary', 'Dieta'], itemId: ['Item', 'Platillo'],
   createCategories: ['Create missing sections', 'Crear secciones que faltan'], createPositions: ['Create missing positions', 'Crear puestos que faltan'],
   sendInvitations: ['Send invitations now', 'Enviar invitaciones ahora'], createNew: ['Add as a separate item', 'Agregar como platillo aparte'],
+  products: ['Products', 'Productos'], due: ['Due', 'Para las'], unit: ['Unit', 'Unidad'], size: ['Size', 'Tamaño'], location: ['Kept in', 'Se guarda en'],
+  supplier: ['Supplier', 'Proveedor'],
+};
+const CATEGORY_VALUES = {
+  spirits: ['Spirits', 'Licores'], beer: ['Beer', 'Cerveza'], wine: ['Wine', 'Vino'], mixers: ['Mixers', 'Mezcladores'], garnish: ['Garnish', 'Guarniciones'],
+  glassware: ['Glassware', 'Cristalería'], smallwares: ['Smallwares', 'Utensilios'], paper: ['Paper & disposables', 'Papel y desechables'], cleaning: ['Cleaning', 'Limpieza'],
+  dry: ['Kitchen dry goods', 'Abarrotes de cocina'], other: ['Other', 'Otros'],
 };
 const VALUES = {
   out: ['86’d (out)', 'Se acabó (86)'], low: ['Running low', 'Queda poco'], giveaway: ['Give away', 'Ceder'], trade: ['Trade', 'Intercambiar'],
@@ -65,12 +79,15 @@ export function describeAction(tool, args = {}, lang = 'en', look = {}) {
   const details = [];
   for (const [k, v] of Object.entries(args)) {
     if (HIDDEN.has(k) || v === undefined || v === '') continue;
-    const label = LABELS[k] ? pick(LABELS[k], lang) : k;
+    const own = TOOL_LABELS[tool.name]?.[k];
+    const label = own ? pick(own, lang) : LABELS[k] ? pick(LABELS[k], lang) : k;
     let value;
     if (k === 'date' || k === 'startDate' || k === 'endDate') value = date(v);
     else if (k === 'week') {
       try { value = pick(WEEK_OF, lang).replace('{date}', prettyDate(resolveWeek(v, today, look.weekStartDow ?? 1), { lang })); } catch { value = clip(v); }
-    } else if (k === 'start') value = fmtTime(v, lang);
+    } else if (k === 'start' || k === 'due') value = fmtTime(v, lang);
+    else if (k === 'products' && Array.isArray(v)) value = clip(v.map((x) => `${x.qty ?? 1} × ${x.name}`).join(', '), 200); // a stock list's lines
+    else if (k === 'category' && tool.name === 'add_product' && CATEGORY_VALUES[v]) value = pick(CATEGORY_VALUES[v], lang);
     else if (k === 'end') value = time(v);
     else if (k === 'person' && v === null) value = pick(OPEN, lang);
     else if ((k === 'shiftId' || k === 'tradeForShiftId') && look.shift?.(v)) {

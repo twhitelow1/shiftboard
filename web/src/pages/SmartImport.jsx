@@ -27,7 +27,7 @@ function downloadTemplate(target) {
   const blob = new Blob([templateCsv(target)], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `shiftboard-${target === 'menu' ? 'menu' : 'team'}-template.csv`;
+  a.download = `shiftboard-${target === 'menu' ? 'menu' : target === 'products' ? 'products' : 'team'}-template.csv`;
   document.body.appendChild(a);
   a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
@@ -62,6 +62,12 @@ async function readFile(f, target) {
   }
   throw Object.assign(new Error('type'), { key: 'smartImport.unknownType' });
 }
+
+const TITLE = { menu: 'smartImport.titleMenu', employees: 'smartImport.titleEmployees', products: 'smartImport.titleProducts' };
+const SUB = { menu: 'smartImport.subMenu', employees: 'smartImport.subEmployees', products: 'smartImport.subProducts' };
+/** Text that isn't a table, for the product catalog: one product per line (bullets and counts dropped). */
+const productsFromText = (text) => String(text || '').split(/\r?\n/).map((l) => l.replace(/^\s*(?:[-*•·]|\d+[.)])\s*/, '').trim()).filter((l) => l && l.length <= 80)
+  .map((name, i) => ({ row: i + 1, values: { name }, present: ['name'] }));
 
 export default function SmartImportDialog({ target, onClose }) {
   const t = useT();
@@ -160,7 +166,7 @@ export default function SmartImportDialog({ target, onClose }) {
     } finally { setReading(''); }
   };
   const readSimple = async () => {
-    const recs = target === 'menu' ? menuFromText(text) : rosterFromText(text);
+    const recs = target === 'menu' ? menuFromText(text) : target === 'products' ? productsFromText(text) : rosterFromText(text);
     if (recs.length) setReadNote({ kind: 'info', text: t('smartImport.simpleFound', { count: recs.length }) });
     await toPreview(recs, 'simple');
   };
@@ -196,8 +202,8 @@ export default function SmartImportDialog({ target, onClose }) {
   );
 
   return (
-    <Modal wide title={t(target === 'menu' ? 'smartImport.titleMenu' : 'smartImport.titleEmployees')} sub={fileName || t(target === 'menu' ? 'smartImport.subMenu' : 'smartImport.subEmployees')} onClose={onClose} footer={footer}>
-      <ol className="si-steps" aria-label={t(target === 'menu' ? 'smartImport.titleMenu' : 'smartImport.titleEmployees')}>
+    <Modal wide title={t(TITLE[target])} sub={fileName || t(SUB[target])} onClose={onClose} footer={footer}>
+      <ol className="si-steps" aria-label={t(TITLE[target])}>
         {[['file', 'stepFile'], ['columns', 'stepColumns'], ['preview', 'stepPreview'], ['done', 'stepDone']].map(([k, label], i) => {
           const order = { file: 0, text: 0, columns: 1, preview: 2, done: 3 };
           return <li key={k} className={order[step] === i ? 'on' : order[step] > i ? 'past' : ''}>{t(`smartImport.${label}`)}</li>;
@@ -308,7 +314,7 @@ function PreviewStep({ target, preview, options, setOption, busy, filter, setFil
   return (
     <div className="col" style={{ gap: 12 }}>
       <div className="si-options">
-        {target === 'employees'
+        {target === 'products' ? null : target === 'employees'
           ? <label className="check small"><input type="checkbox" checked={options.createPositions} disabled={busy} onChange={(e) => setOption('createPositions', e.target.checked)} />{t('smartImport.optCreatePositions')}</label>
           : <label className="check small"><input type="checkbox" checked={options.createCategories} disabled={busy} onChange={(e) => setOption('createCategories', e.target.checked)} />{t('smartImport.optCreateCategories')}</label>}
         <label className="check small" title={t('smartImport.optBlankClearsHelp')}><input type="checkbox" checked={options.blankClears} disabled={busy} onChange={(e) => setOption('blankClears', e.target.checked)} />{t('smartImport.optBlankClears')}</label>
@@ -391,6 +397,7 @@ function RowCard({ target, row: r, busy, excluded, onToggle, decision, decide })
 const SUMMARY_FIELDS = {
   employees: ['name', 'legalName', 'email', 'phone', 'positions', 'role', 'employeeId', 'hireDate', 'birthday', 'active'],
   menu: ['name', 'category', 'description', 'price', 'allergens', 'dietary'],
+  products: ['name', 'category', 'size', 'location'],
 };
 
 /** A possible duplicate, an exact match with more than one, or rows of the file that disagree: side by side, and the choices. */

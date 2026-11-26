@@ -14,10 +14,12 @@ import { sendNotificationEmails } from './notify-email.js';
 import { mountSchedulePdf } from './schedule-pdf-routes.js';
 import { trainingRoutes } from './training-routes.js';
 import { eightySixRoutes } from './eighty-six-routes.js';
+import { stockRoutes } from './stock-routes.js';
 import { createExpoPush, pushNotifications } from './expo-push.js';
 import { uid } from '../core/store.js';
 import { createService, AppError } from '../core/service.js';
 import { seedDemo } from '../core/seed.js';
+import { seedStockDemo } from '../core/stock-seed.js';
 import { effectiveShift } from '../core/forecast.js';
 import { addDays } from '../core/time.js';
 import { langOf, isLang } from '../core/i18n.js';
@@ -122,6 +124,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     if (store.list('users').length) return; // another instance got there first
     if (env.SEED_DEMO === 'true') {
       seedDemo(store, { hashPassword, password: env.DEMO_PASSWORD || 'demo1234' });
+      seedStockDemo(store); // Stock lists: the catalog, templates, today's lists and staff-added products to review
       console.log('Seeded demo data. Sign in as moe@demo.shiftboard / demo1234');
       return;
     }
@@ -665,6 +668,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   trainingRoutes(app, { db, signedIn: (req) => whoIs(req) });
   // 86 List photos, for people who can see the item's list (cookie on the web, bearer token in the phone app).
   eightySixRoutes(app, { db, signedIn: (req) => whoIs(req) });
+  stockRoutes(app, { db, signedIn: (req) => whoIs(req) }); // product photos (Stock lists' catalog)
   // The apps' own crashes and "Report a problem", signed in or out (server/errors-routes.js).
   errorRoutes(app, { recorder: errors, userOf: async (req) => { await db.sync(); return whoIs(req); }, now });
   // The Claude connector (server/mcp/): /mcp, OAuth (/oauth/*, /.well-known/*), the consent screen and Connected apps.
