@@ -4,7 +4,8 @@
 //   Leaderboard   5-star mentions, all mentions by stars, reservation requests, kudos; tap a person for the
 //                 reviews and requests behind the numbers (confirm, reassign or dismiss each match); CSV export
 //   Needs review  matches the app didn't guess: two people with the name, or someone not on shift that day
-//   Reviews       every review in the period, any source, with the names marked and whether it was answered
+//   Reviews       every review in the period, any source, with the names marked and whether it was answered;
+//                 with Google & Yelp reviews in the plan, ReviewReplies.jsx's tab: "Needs a reply", AI drafts, replies
 //   Kudos         shout-outs a manager adds (Google, Yelp, in person, a card…) and review-site exports
 //   Names         also-known-as names per person, and the settings
 // headline({ call, t }): one line for the hub ("14 five-star mentions this season").
@@ -14,6 +15,7 @@ import { useT, prettyDate } from '../../i18n/index.js';
 import { PeriodPicker, periodArgs, ImpactItem, Stat, Trend, Stars, SourceBadge, Highlighted, ImpactSettingsCard } from '../ImpactShared.jsx';
 import { GuestImportDialog } from '../OpenTableSettings.jsx';
 import MyKudos from '../Kudos.jsx';
+import { ReviewsTab, ReplySettingsCard } from '../ReviewReplies.jsx'; // Google & Yelp: filters, "Needs a reply", AI drafts, posting to Google
 import '../../impact.css';
 
 const TABS = ['board', 'queue', 'reviews', 'kudos', 'names'];
@@ -61,7 +63,7 @@ function Report({ parts, call, version, today, has }) {
       {!data && !error && <div className="empty">{t('common.loading')}</div>}
       {data && tab === 'board' && <Board data={data} args={args} />}
       {tab === 'queue' && <Queue />}
-      {tab === 'reviews' && data && <Reviews args={args} />}
+      {tab === 'reviews' && data && (has('reviews') ? <ReviewsTab args={args} /> : <Reviews args={args} />)}
       {tab === 'kudos' && data && <Kudos args={args} />}
       {tab === 'names' && <Names />}
     </div>
@@ -336,6 +338,7 @@ function Names() {
         })}
       </div>
       <ImpactSettingsCard />
+      <ReplySettingsCard />
     </div>
   );
 }

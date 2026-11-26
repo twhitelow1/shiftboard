@@ -26,6 +26,10 @@ import { tripleseatConfig } from '../tripleseat.js';
 import { integration as tripleseatIntegration } from '../../core/tripleseat.js';
 import { opentableConfig } from '../opentable.js';
 import { integration as opentableIntegration } from '../../core/opentable.js';
+import { googleConfig } from '../google.js';
+import { integration as googleIntegration } from '../../core/google-reviews.js';
+import { yelpConfig } from '../yelp.js';
+import { integration as yelpIntegration } from '../../core/yelp-reviews.js';
 import { Registry } from './registry.js';
 import { TenantCache } from './tenant-cache.js';
 import { hostConfig, resolveHost, consoleAllowed, tenantAddress } from './hosts.js';
@@ -170,8 +174,8 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
    * share of the time. Starts at a different restaurant each hour, so the ones at the end aren't always the
    * ones left out, and skips a restaurant whose last cron run worked in the last 20 hours.
    */
-  async function cronAll({ feature, label, configured, lastCron, run }) {
-    const budget = Number(env.CRON_BUDGET_MS) || BUDGET_MS;
+  async function cronAll({ feature, label, configured, lastCron, run, share = 1 }) {
+    const budget = Math.floor((Number(env.CRON_BUDGET_MS) || BUDGET_MS) * share); // share: two syncs in one cron run split the time
     const started = Date.now();
     const snap = await registry.snapshot({ fresh: true });
     const list = snap.list.filter((t) => !isPaused(t.status) && t.resolved[feature]);
@@ -248,6 +252,22 @@ export function createPlatformApp({ conn, env = process.env, staticDir, mailerFo
   });
   cronRoute('/api/cron/opentable', opentableCronAll);
   app.locals.opentableCronAll = opentableCronAll;
+  // Google Business Profile and Yelp reviews (the plan's `reviews`), in one daily run: Google first, then Yelp.
+  const googleCronAll = () => cronAll({
+    feature: 'reviews', label: 'Google reviews', configured: (e) => googleConfig(e).configured, lastCron: (store) => googleIntegration(store).lastCron, share: 0.6,
+    run: (rt, budgetMs, t) => rt.app.locals.googleCron({ budgetMs, base: tenantAddress(t, hostCfg) || '' }),
+  });
+  const yelpCronAll = () => cronAll({
+    feature: 'reviews', label: 'Yelp reviews', configured: (e) => yelpConfig(e).configured, lastCron: (store) => yelpIntegration(store).lastCron, share: 0.35,
+    run: (rt, budgetMs, t) => rt.app.locals.yelpCron({ budgetMs, base: tenantAddress(t, hostCfg) || '' }),
+  });
+  const reviewsCronAll = async () => {
+    const google = await googleCronAll();
+    const yelp = await yelpCronAll();
+    return { tenants: [...google.tenants.map((x) => ({ ...x, sync: 'google' })), ...yelp.tenants.map((x) => ({ ...x, sync: 'yelp' }))], ms: google.ms + yelp.ms };
+  };
+  cronRoute('/api/cron/reviews', reviewsCronAll);
+  app.locals.reviewsCronAll = reviewsCronAll;
   /** Open the default restaurant (its schema, first account or demo data) before the first request. */
   app.locals.warmDefault = async () => {
     await ready();

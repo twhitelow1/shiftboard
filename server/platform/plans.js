@@ -22,6 +22,9 @@ export const FEATURES = [
   { key: 'tripleseat', label: 'Tripleseat (events)', hint: 'Events booked in Tripleseat flow into Events & BEOs: daily sync and webhook' },
   { key: 'opentable', label: 'OpenTable', hint: 'Reservations and reviews from OpenTable: exports today, API sync once OpenTable grants access' },
   { key: 'impact', label: 'Positive impact', hint: 'Staff named in 5-star reviews, guests asking for someone, kudos; reports by season' },
+  // One feature for Google Business Profile and Yelp: they share the reply workflow, the alerts and the AI drafts,
+  // and a restaurant buys "reviews", not a vendor. It builds on Positive impact (its Reviews tab), so it needs both.
+  { key: 'reviews', label: 'Google & Yelp reviews', hint: 'Google Business Profile and Yelp reviews pulled in daily, review alerts, replies (AI drafts, post to Google)' },
   { key: 'sms', label: 'Text messages', hint: 'Notifications by text (Twilio)' },
   { key: 'venue', label: 'Venue & floor plans', hint: 'Rooms, floor plans and server sections' },
   { key: 'multiLocation', label: 'Multiple locations', hint: 'Placeholder for a later phase; nothing uses it yet' },
@@ -44,7 +47,7 @@ export const PLANS = {
   },
   pro: {
     label: 'Pro', priceCents: 9900, interval: 'month', selfServe: true, stripePriceEnv: 'STRIPE_PRICE_PRO',
-    features: ['training', 'tips', 'eightySix', 'events', 'forecast', 'toast', 'adp', 'tripleseat', 'sms', 'venue', 'reports', 'announcements', 'mcp', 'opentable', 'impact'],
+    features: ['training', 'tips', 'eightySix', 'events', 'forecast', 'toast', 'adp', 'tripleseat', 'sms', 'venue', 'reports', 'announcements', 'mcp', 'opentable', 'impact', 'reviews'],
   },
   beta: {
     label: 'Beta (everything, free)', priceCents: 0, interval: 'month', selfServe: false, stripePriceEnv: null,
@@ -121,7 +124,7 @@ const NAMESPACE_FEATURE = {
 };
 const METHOD_FEATURE = { 'settings.laborRules': 'forecast' };
 // Methods that need more than one feature: each report needs Reports and its own feature.
-const PREFIX_FEATURES = [['reports.eightySix.', ['reports', 'eightySix']]];
+const PREFIX_FEATURES = [['reports.eightySix.', ['reports', 'eightySix']], ['reviews.', ['impact', 'reviews']]];
 
 /** Every feature an RPC method needs ([] when it's in every plan). */
 export function featuresForMethod(method) {
@@ -140,6 +143,9 @@ export const ROUTE_FEATURES = [
   ['/api/adp', 'adp'],
   ['/api/tripleseat', 'tripleseat'],
   ['/api/opentable', 'opentable'],
+  ['/api/google', 'reviews'],
+  ['/api/yelp', 'reviews'],
+  ['/api/reviews', 'reviews'],
   ['/api/training', 'training'],
   ['/api/eighty-six', 'eightySix'],
   ['/api/sms', 'sms'],

@@ -8,8 +8,8 @@ import { INTEGRATION_FIELDS, PLAIN_KEYS, cleanIntegrations, tenantEnv, parseFrom
 import { NOT_IN_PLAN } from './plans.js';
 
 /** The integrations in the order Settings shows them, and the plan feature each needs (email: every plan). */
-export const GROUPS = ['adp', 'toast', 'tripleseat', 'opentable', 'twilio', 'email'];
-export const GROUP_FEATURE = { adp: 'adp', toast: 'toast', tripleseat: 'tripleseat', opentable: 'opentable', twilio: 'sms', email: null };
+export const GROUPS = ['adp', 'toast', 'tripleseat', 'opentable', 'google', 'yelp', 'twilio', 'email'];
+export const GROUP_FEATURE = { adp: 'adp', toast: 'toast', tripleseat: 'tripleseat', opentable: 'opentable', google: 'reviews', yelp: 'reviews', twilio: 'sms', email: null };
 export const groupAllowed = (group, resolved) => !GROUP_FEATURE[group] || !resolved || resolved[GROUP_FEATURE[group]] !== false;
 /**
  * Sender identities DubLow manages, set only in the platform console: texts go out under DubLow Digital's
@@ -60,10 +60,12 @@ const NEEDS = {
   toast: (e) => ['TOAST_CLIENT_ID', 'TOAST_CLIENT_SECRET', 'TOAST_RESTAURANT_GUID'].filter((k) => !e[k]),
   tripleseat: (e) => (e.TRIPLESEAT_PUBLIC_KEY && e.TRIPLESEAT_SECRET_KEY ? [] : ['TRIPLESEAT_CLIENT_ID', 'TRIPLESEAT_CLIENT_SECRET'].filter((k) => !e[k])),
   opentable: (e) => ['OPENTABLE_CLIENT_ID', 'OPENTABLE_CLIENT_SECRET', 'OPENTABLE_RID'].filter((k) => !e[k]),
+  google: () => [], // connected with Google's consent screen (server/google-routes.js), not with settings
+  yelp: (e) => ['YELP_API_KEY', 'YELP_BUSINESS_ID'].filter((k) => !e[k]),
   twilio: (e) => (e.TWILIO_MESSAGING_SERVICE_SID || e.TWILIO_FROM_NUMBER ? [] : ['TWILIO_MESSAGING_SERVICE_SID']),
   email: (e) => (parseFrom(e.EMAIL_FROM).address ? [] : ['EMAIL_FROM_ADDRESS']),
 };
-const ACCOUNT = { twilio: (e) => !!(e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN), email: (e) => !!e.RESEND_API_KEY };
+const ACCOUNT = { twilio: (e) => !!(e.TWILIO_ACCOUNT_SID && e.TWILIO_AUTH_TOKEN), email: (e) => !!e.RESEND_API_KEY, google: (e) => !!(e.GOOGLE_CLIENT_ID && e.GOOGLE_CLIENT_SECRET) };
 
 /**
  * What a restaurant's admins see in Settings → Integrations, for the integrations in its plan.
@@ -91,7 +93,9 @@ export function restaurantView({ tenant, secretView = {}, env = process.env, mod
     const account = ACCOUNT[g] ? ACCOUNT[g](e) : true;
     const touched = fields.some((f) => f.set || f.value || f.fromEnv);
     return {
-      key: g, status: !account ? 'noAccount' : !missing.length ? 'connected' : touched ? 'partial' : 'notSetUp', missing, fields,
+      // Google: 'oauth' (ready to connect; the panel shows whether this restaurant connected, from its own store).
+      key: g, status: !account ? 'noAccount' : g === 'google' ? 'oauth' : !missing.length ? 'connected' : touched ? 'partial' : 'notSetUp', missing, fields,
+      ...(g === 'yelp' ? { platformKey: !!String(env.YELP_API_KEY || '').trim() } : {}), // DubLow's Yelp key covers restaurants without their own
       ...(g === 'email' && e.EMAIL_FROM ? { from: e.EMAIL_FROM } : {}), // what emails go out as (the platform's address, under the restaurant's name, until it has its own)
     };
   });

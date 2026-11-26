@@ -582,8 +582,11 @@ export function impactLinks({ store, api, fail, needAuth, needMgr, needAdmin, no
     return { rows, counts, dates: [...new Set(items.map((r) => r.date))].sort() };
   }
 
-  /** Save reviews (new and changed only) and match their names. meta: { origin: 'csv' | 'api', importId }. */
-  function applyReviews(list, { origin = 'csv', importId = null } = {}) {
+  /**
+   * Save reviews (new and changed only) and match their names. meta: { origin: 'csv' | 'api' | 'manual', importId,
+   * backfill } (backfill: a connector's first sync, so the onReview hook keeps its history quiet).
+   */
+  function applyReviews(list, { origin = 'csv', importId = null, backfill = false } = {}) {
     roster = null;
     // Cleaned here too, whoever calls (a connector, a sync, the import): scrubbed text, shortened names.
     const items = list.length ? cleanReviewItems(list, { source: REVIEW_SOURCES.includes(list[0]?.source) ? list[0].source : 'other', fail }) : [];
@@ -600,24 +603,25 @@ export function impactLinks({ store, api, fail, needAuth, needMgr, needAdmin, no
       if (!cur) fresh.push(saved);
     }
     const mentions = scanMany({ reviews: touched });
-    for (const r of fresh) reviewArrived(r);
+    for (const r of fresh) reviewArrived(r, { backfill });
     return { counts: plan.counts, mentions, from: plan.dates[0] || null, to: plan.dates.at(-1) || null };
   }
 
   /**
-   * The hook for a review that just arrived (any source): managers hear about a recent low rating, and
-   * anything registered in onReview (a later AI-reply drafter, a Slack alert…) gets the review and its matches.
+   * The hook for a review that just arrived (any source): managers hear about a recent low rating in an import
+   * (synced reviews alert through onReview instead: core/review-reply.js, with its own settings), and anything
+   * registered in onReview gets the review, its matches and whether it's a first sync's history.
    */
-  function reviewArrived(review) {
+  function reviewArrived(review, { backfill = false } = {}) {
     const mentions = store.list('impactMentions', (m) => m.sourceId === review.id && m.kind === 'review');
     const recent = review.date >= addDays(today(), -NOTIFY_WITHIN_DAYS);
-    if (recent && review.rating <= LOW_RATING && impactSettings(store).alertLow) {
+    if (review.origin !== 'api' && recent && review.rating <= LOW_RATING && impactSettings(store).alertLow) {
       const ids = store.list('users').filter((u) => u.active !== false && canManageSchedule(u)).map((u) => u.id);
       const src = review.source === 'opentable' ? 'OpenTable' : review.source[0].toUpperCase() + review.source.slice(1);
       const quote = review.text ? ` “${review.text.slice(0, 90)}${review.text.length > 90 ? '…' : ''}”` : '';
       notify(ids, { en: `New ${review.rating}-star review on ${src}.${quote}`, es: `Nueva reseña de ${review.rating} estrellas en ${src}.${quote}` }, '#/impact/reviews');
     }
-    for (const fn of onReview) { try { fn({ review, mentions, store }); } catch (e) { console.error('Review hook failed:', e.message); } }
+    for (const fn of onReview) { try { fn({ review, mentions, store, backfill }); } catch (e) { console.error('Review hook failed:', e.message); } }
   }
 
   /** What an import would find, without saving: counts, and the names it would match. */

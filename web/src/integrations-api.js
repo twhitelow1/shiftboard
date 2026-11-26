@@ -15,7 +15,7 @@ async function request(path, { method = 'GET', body } = {}) {
   return data.result;
 }
 
-const DEMO_GROUPS = ['adp', 'toast', 'tripleseat', 'opentable', 'twilio', 'email'];
+const DEMO_GROUPS = ['adp', 'toast', 'tripleseat', 'opentable', 'google', 'yelp', 'twilio', 'email'];
 
 /**
  * { mode: 'platform' | 'env' | 'demo', editable, encryption, envFallback,

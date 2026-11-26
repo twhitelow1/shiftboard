@@ -14,6 +14,7 @@ import SeasonsCard from './SeasonsSettings.jsx'; // the seasons reports count by
 import { AnnouncementSettingsCard } from './Announcements.jsx'; // texts per person per day, quiet hours
 import RolesEditor, { RolesCard } from './RolesEditor.jsx'; // Settings → Roles & features
 import { ImpactSettingsCard } from './ImpactShared.jsx'; // Positive impact: notifications, alerts, words that are never names
+import { ReplySettingsCard } from './ReviewReplies.jsx'; // Google & Yelp reviews: review alerts, the reply's tone, sign-off and contact
 import EmailTemplates from './EmailTemplates.jsx'; // Settings → Email notifications
 import { tx, useT, dowLong, dowShort , LANGUAGE_NAMES } from '../i18n/index.js';
 
@@ -125,6 +126,7 @@ export default function Settings({ parts = [] }) {
       <IntegrationsCard />
       <ClaudeConnectorCard />
       <ImpactSettingsCard />
+      <ReplySettingsCard />
 
       <div className="card card-pad col" style={{ gap: 12 }}>
         <h2>{t('settings.forecasting')}</h2>

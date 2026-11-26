@@ -28,6 +28,9 @@ import { billingPortal } from './billing.js';
 import { mountAdp } from './adp-routes.js';
 import { mountTripleseat } from './tripleseat-routes.js';
 import { mountOpenTable } from './opentable-routes.js';
+import { mountGoogle } from './google-routes.js';
+import { mountYelp } from './yelp-routes.js';
+import { mountReviewReplies } from './review-replies.js';
 import { mountIntegrations } from './integrations-routes.js';
 import { createAuth } from './auth.js';
 import { mountOnboarding } from './onboarding.js';
@@ -69,8 +72,9 @@ const sameString = (a, b) => {
  *   { id, slug, name, isDefault, status, plan, features: { training: true, … }, trialEndsAt, billing,
  *     consumeSupportGrant(token) }. Without it the app serves one restaurant with every feature, as it always has.
  * @param {Function} [opts.now]     clock in ms (tests)
+ * @param {object} [opts.reviewClients]  tests: { google({ refreshToken }), yelp(), ai() } for fake Google, Yelp and AI
  */
-export function createApp({ db, env = process.env, staticDir, mailer = createMailer(env), pusher, texter, expoPush = createExpoPush(env), tenant = null, now = () => Date.now() } = {}) {
+export function createApp({ db, env = process.env, staticDir, mailer = createMailer(env), pusher, texter, expoPush = createExpoPush(env), tenant = null, now = () => Date.now(), reviewClients = {} } = {}) {
   const PROD = env.NODE_ENV === 'production';
   const cookieOpts = { httpOnly: true, sameSite: 'lax', secure: PROD, maxAge: 1000 * 60 * 60 * 24 * 30 };
   let secret = null;
@@ -584,6 +588,14 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     db, env, userOf: (req) => userFromToken(db.store, req.cookies[COOKIE]), managed: !!tenant && !tenant.isDefault,
     onCommit: (changes, req) => { channels.afterCommit(changes, req); emailNotifications(changes, req); pushToPhones(changes); },
   });
+  // Google Business Profile and Yelp reviews (server/google-routes.js, server/yelp-routes.js), and answering
+  // reviews: AI drafts, posting to Google, the daily /api/cron/reviews (server/review-replies.js). Review alerts
+  // go out like any other notification.
+  const reviewCommit = (changes, req) => { channels.afterCommit(changes, req); emailNotifications(changes, req); pushToPhones(changes); };
+  const google = mountGoogle(app, { db, env, tenant, userOf: (req) => whoIs(req, req.cookies[COOKIE]), secret: () => secret, appUrl, onCommit: reviewCommit, now, secure: PROD,
+    ...(reviewClients.google ? { makeClient: reviewClients.google } : {}) });
+  mountYelp(app, { db, env, userOf: (req) => whoIs(req, req.cookies[COOKIE]), onCommit: reviewCommit, managed: !!tenant && !tenant.isDefault, ...(reviewClients.yelp ? { makeClient: reviewClients.yelp } : {}) });
+  mountReviewReplies(app, { db, env, tenant, userOf: (req) => whoIs(req, req.cookies[COOKIE]), now, onCommit: reviewCommit, google, ...(reviewClients.ai ? { aiImporter: reviewClients.ai } : {}) });
   // Settings → Integrations: the restaurant's admins set up ADP, Toast, Tripleseat, the text sender and the
   // email From themselves (server/integrations-routes.js); read-only from env on a single-restaurant install.
   mountIntegrations(app, { db, env, tenant, userOf: (req) => whoIs(req) });

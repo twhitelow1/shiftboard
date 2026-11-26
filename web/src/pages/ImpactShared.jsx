@@ -139,7 +139,7 @@ export function ImpactSettingsCard() {
       <h2>{t('impact.settingsTitle')}</h2>
       <div className="help">{t('impact.settingsIntro')}</div>
       <label className="check"><input type="checkbox" checked={s.notify} disabled={!isAdmin || busy} onChange={(e) => save({ notify: e.target.checked })} />{t('impact.notifyToggle')}</label>
-      <label className="check"><input type="checkbox" checked={s.alertLow} disabled={!isAdmin || busy} onChange={(e) => save({ alertLow: e.target.checked })} />{t('impact.alertLowToggle')}</label>
+      {!has('reviews') && <label className="check"><input type="checkbox" checked={s.alertLow} disabled={!isAdmin || busy} onChange={(e) => save({ alertLow: e.target.checked })} />{t('impact.alertLowToggle')}</label>}
       <Field label={t('impact.ignoreWords')} help={t('impact.ignoreWordsHelp')}>
         <div className="row wrap" style={{ gap: 8 }}>
           <input className="input" style={{ flex: '1 1 200px' }} value={words} disabled={!isAdmin} onChange={(e) => setWords(e.target.value)} placeholder={t('impact.ignoreWordsPlaceholder')} />

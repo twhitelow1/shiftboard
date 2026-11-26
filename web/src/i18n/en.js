@@ -9,6 +9,7 @@ import report from './en-report.js'; // Report a problem, and the screen when so
 import claude from './en-claude.js'; // the Claude connector: connecting, Connected apps, Settings → Claude connector
 import impact from './en-impact.js'; // Positive impact and OpenTable
 import print from './en-print.js'; // the schedule PDF, the Publish dialog, Settings → Email notifications
+import reviews, { integrations as reviewIntegrations } from './en-reviews.js'; // Google Business Profile, Yelp, answering reviews, review alerts
 const catalog = {
   lang: {
     change: 'Change language',
@@ -2292,6 +2293,8 @@ const catalog = {
   ...claude,
   ...impact,
   ...print,
+  ...reviews,
 };
+Object.assign(catalog.integrations, reviewIntegrations); // Settings → Integrations: the Google and Yelp cards
 
 export default catalog;

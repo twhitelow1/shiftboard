@@ -8,6 +8,7 @@ import report from './es-report.js'; // Reportar un problema, y la pantalla cuan
 import claude from './es-claude.js'; // el conector de Claude
 import impact from './es-impact.js'; // Impacto positivo y OpenTable
 import print from './es-print.js'; // el PDF del horario, Publicar, Configuración → Notificaciones por correo
+import reviews, { integrations as reviewIntegrations } from './es-reviews.js'; // Google Business Profile, Yelp, answering reviews, review alerts
 const catalog = {
   lang: {
     change: 'Cambiar idioma',
@@ -2291,6 +2292,8 @@ const catalog = {
   ...claude,
   ...impact,
   ...print,
+  ...reviews,
 };
+Object.assign(catalog.integrations, reviewIntegrations); // Settings → Integrations: the Google and Yelp cards
 
 export default catalog;

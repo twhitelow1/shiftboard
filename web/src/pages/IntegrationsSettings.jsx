@@ -11,13 +11,14 @@ import { AdpPanel } from './AdpSettings.jsx';
 import { ToastPanel } from './ToastSettings.jsx';
 import { TripleseatPanel } from './TripleseatSettings.jsx';
 import { OpenTablePanel } from './OpenTableSettings.jsx';
+import { GooglePanel, YelpPanel } from './ReviewsSettings.jsx';
 import { normalizePhone } from '../../../core/notify-prefs.js';
 import '../labor.css';
 import { useT, translateError } from '../i18n/index.js';
 
 // Settings most restaurants never need: under "More options".
 const ADVANCED = new Set(['TOAST_API_HOST', 'ADP_MANAGER_AOID', 'TRIPLESEAT_SITE_ID', 'TRIPLESEAT_API_HOST', 'TRIPLESEAT_PUBLIC_KEY', 'TRIPLESEAT_SECRET_KEY', 'EMAIL_REPLY_TO', 'OPENTABLE_API_HOST', 'OPENTABLE_TOKEN_URL']);
-const STATUS_BADGE = { connected: 'ok', partial: 'warn', notSetUp: '', noAccount: 'warn', demo: '' };
+const STATUS_BADGE = { connected: 'ok', partial: 'warn', notSetUp: '', noAccount: 'warn', demo: '', oauth: 'brand' };
 
 /** The restaurant's integration settings; reloads when the app's version changes. */
 export function useIntegrations() {
@@ -32,7 +33,8 @@ export function IntegrationsCard() {
   const t = useT();
   const { has } = useApp();
   const { data, setData, error } = useIntegrations();
-  const show = (key) => key !== 'tripleseat' || !has || has('events'); // Tripleseat feeds Events & BEOs
+  // Tripleseat feeds Events & BEOs; Google and Yelp reviews land in Positive impact.
+  const show = (key) => (key === 'tripleseat' ? !has || has('events') : ['google', 'yelp'].includes(key) ? !has || has('impact') : true);
   return (
     <div className="card card-pad col" style={{ gap: 12 }}>
       <h2>{t('toastSettings.integrations')}</h2>
@@ -67,11 +69,13 @@ function IntegrationPanel({ group, data, onSaved }) {
       </summary>
       {open && (
         <div className="col" style={{ gap: 12, paddingTop: 10 }}>
-          {group.status !== 'demo' && <ConnectionForm group={group} data={data} onSaved={onSaved} />}
+          {group.status !== 'demo' && group.key !== 'google' && <ConnectionForm group={group} data={data} onSaved={onSaved} />}
           {group.key === 'adp' && <AdpPanel embedded connect={connect} />}
           {group.key === 'toast' && <ToastPanel embedded connect={connect} />}
           {group.key === 'tripleseat' && <TripleseatPanel embedded connect={connect} />}
           {group.key === 'opentable' && <OpenTablePanel embedded connect={connect} />}
+          {group.key === 'google' && <GooglePanel />}
+          {group.key === 'yelp' && <YelpPanel editable={data.editable && data.encryption} onSaved={onSaved} />}
           {group.status === 'demo' && ['twilio', 'email'].includes(group.key) && <div className="help">{t('integrations.demo')}</div>}
           {group.key === 'twilio' && group.status !== 'demo' && <TextTest group={group} />}
           {group.key === 'email' && <EmailTest group={group} />}
