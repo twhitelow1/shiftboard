@@ -22,6 +22,7 @@ const productOut = (p) => ({ id: p.id, name: p.name, category: p.category, ...(p
 
 const PRODUCT = {
   name: z.string().min(1).max(80).describe('The product, as people say it, e.g. "Harbor Light Silver Rum 1L" or "cocktail napkins"'),
+  aliases: z.array(z.string().max(40)).max(10).optional().describe('What people also call it, e.g. ["Titos", "house vodka"]'),
   category: z.enum(['spirits', 'beer', 'wine', 'mixers', 'garnish', 'glassware', 'smallwares', 'paper', 'cleaning', 'dry', 'other']).optional()
     .describe('spirits, beer, wine, mixers, garnish, glassware, smallwares, paper (and disposables), cleaning, dry (kitchen dry goods) or other'),
   unit: z.string().max(20).optional().describe('How it\'s counted: bottle, case, sleeve, box, each, lb, bag, keg, can, gallon, roll, rack'),

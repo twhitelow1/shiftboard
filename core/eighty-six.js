@@ -51,7 +51,7 @@ import { effectiveShift } from './forecast.js';
 import { scheduleAreas, uniqueAreas, findArea, cleanArea, sameArea } from './areas.js';
 import { checkPhoto } from './training.js';
 import { eightySixReportsApi } from './reports-86.js';
-import { productFor86 } from './products.js';
+import { productFor86, buyersFor } from './products.js';
 
 export const KINDS = ['bar', 'kitchen', 'other'];
 export const MENU_MODES = ['drinks', 'food', 'all', 'none'];
@@ -497,6 +497,19 @@ export function eightySixApi({ store, now, settings, notify, fail }) {
       if ('category' in a) remember(shown, category);
       const announce = list.notify !== false && (nowOut || (status === 'low' && !cur && !!list.notifyLow));
       return { item: itemView(saved, menu, u), updated: !!cur, notified: announce ? tell(list, saved, u) : 0 };
+    },
+    // The shopping list (Reports → 86 List): the buyer marks something ordered (or not after all). Received is
+    // eightySix.clear (back in stock). Managers, and the list's buyers (core/products.js buyersFor).
+    'eightySix.markOrdered': (actor, { id, ordered = true } = {}) => {
+      needAuth(actor);
+      ready();
+      const u = fresh(actor);
+      const it = id ? store.get('eightySixItems', id) : null;
+      const list = it ? store.get('eightySixLists', it.listId) : null;
+      if (!it || !list || !canSee(u, list)) fail(404, 'That item isn’t on the list anymore');
+      if (!isMgr(u) && !buyersFor(store, list).includes(u.id)) fail(403, 'Managers only');
+      const saved = store.update('eightySixItems', it.id, ordered ? { orderedAt: nowIso(), orderedBy: u.id } : { orderedAt: null, orderedBy: null });
+      return { ok: true, id: saved.id, orderedAt: saved.orderedAt || null };
     },
     // Back in stock: off the list and into the history. eightySix.restore undoes it.
     'eightySix.clear': (actor, { id } = {}) => {

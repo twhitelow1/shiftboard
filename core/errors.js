@@ -27,6 +27,7 @@ export const ERRORS_ES = {
   'Pick products from the catalog': 'Elige productos del catálogo',
   'Pick someone on the team': 'Elige a alguien del equipo',
   'Pick two different products': 'Elige dos productos distintos',
+  'Pick a position or a room': 'Elige un puesto o un salón',
   'Pick who the list is for': 'Elige para quién es la lista',
   'Say how many you brought (less than asked)': 'Di cuántos trajiste (menos de lo pedido)',
   'Templates aren’t assigned. Make a list from it.': 'Las plantillas no se asignan. Haz una lista con ella.',

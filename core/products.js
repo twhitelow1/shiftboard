@@ -4,7 +4,7 @@
 // name the catalog doesn't have yet adds it (for a manager to review, like anything staff add).
 //
 // Collections
-//   products       { id, name, key (looseItemKey), category, unit, size, pars: { [area or '']: n }, location, supplier,
+//   products       { id, name, key (looseItemKey), aliases: [what people also call it: "Tito's", "house vodka"], category, unit, size, pars: { [area or '']: n }, location, supplier,
 //                    notes, photos: [{ id, w, h, by, at }] (up to 3), status: 'active' | 'archived', review: 'new' | 'ok',
 //                    source: 'app' | 'eightySix' | 'import' | 'migration', eightySixListId (the 86 list it's reported on),
 //                    addedBy (user id, null from the migration), addedAt, updatedBy, updatedAt, reviewedBy, reviewedAt,
@@ -25,6 +25,7 @@
 //     Training menu item (a dish, not a supply). Their reports keep working as before, just without a product.
 //   - an 86 report's history is never changed otherwise: names, times, categories and photos stay as they were.
 import { uid } from './store.js';
+import { sameArea } from './areas.js';
 import { productLikeness, productLooseKey, itemKey as foldKey, editDistance, typoBudget } from './smart-import.js';
 
 export const MIGRATION = 'products-from-86';
@@ -73,11 +74,29 @@ const text = (v, max) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, ma
 export const productKey = (name) => productLooseKey(name) || foldKey(name);
 export const cleanUnit = (v) => { const s = text(v, 20).toLowerCase(); return UNIT_IDS.has(s) ? s : text(v, 20); };
 
+/** What people also call a product: up to 10, 40 letters each, never its own name twice. "a, b" works too. */
+export function cleanAliases(v, name = '') {
+  const list = (Array.isArray(v) ? v : String(v ?? '').split(/[,;\n]/)).map((x) => text(x, 40)).filter(Boolean);
+  const seen = new Set([foldKey(name)]);
+  return list.filter((x) => { const k = foldKey(x); if (!k || seen.has(k)) return false; seen.add(k); return true; }).slice(0, 10);
+}
+/** The words a product is found by, folded (accents, case and punctuation don't matter): its name, aliases, size, place. */
+export const searchText = (p) => [p.name, ...(p.aliases || []), p.size, p.location].join(' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ');
+/** Does a product match what's typed? Every word, or the whole thing without spaces ("titos" finds "Tito's"). */
+export function productMatches(p, q, extra = '') {
+  const fold = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  const words = fold(q).split(' ').filter(Boolean);
+  if (!words.length) return true;
+  const hay = `${searchText(p)} ${fold(extra)}`;
+  return words.every((w) => hay.includes(w)) || hay.replace(/ /g, '').includes(words.join(''));
+}
 /** Likely matches for a name among the catalog's active products, best first: [{ product, score, confidence, reasons }]. */
 export function matchesFor(store, name, { exclude = null, limit = 5, min = POSSIBLE } = {}) {
   const out = [];
   for (const p of store.list('products', (x) => x.status !== 'archived' && x.id !== exclude)) {
-    const r = productLikeness(name, p.name);
+    // Its name or anything it's also called ("titos" is "Tito's Handmade Vodka" when that's an alias).
+    let r = productLikeness(name, p.name);
+    for (const alias of p.aliases || []) { const x = productLikeness(name, alias); if (x.score > r.score) r = { ...x, reasons: [...x.reasons, 'alias'] }; }
     if (r.score >= min) out.push({ product: p, ...r });
   }
   return out.sort((a, b) => b.score - a.score || a.product.name.localeCompare(b.product.name)).slice(0, limit);
@@ -107,7 +126,7 @@ export function categoryFrom86(cat86, name, bar) {
 export function newProduct(fields, { by = null, at, review = 'ok', source = 'app' }) {
   const name = text(fields.name, 80);
   return {
-    id: uid('prd'), name, key: productKey(name), category: fields.category || 'other', unit: cleanUnit(fields.unit), size: text(fields.size, 30),
+    id: uid('prd'), name, key: productKey(name), aliases: cleanAliases(fields.aliases, name), category: fields.category || 'other', unit: cleanUnit(fields.unit), size: text(fields.size, 30),
     pars: fields.pars || {}, location: text(fields.location, 80), supplier: text(fields.supplier, 80), notes: text(fields.notes, 300), photos: [],
     status: 'active', review, source, eightySixListId: fields.eightySixListId || null, addedBy: by, addedAt: at, updatedBy: by, updatedAt: at,
   };
@@ -190,4 +209,19 @@ export function ensureCatalog(store, at = new Date().toISOString()) {
     for (const [col, id] of g.ids) { store.update(col, id, { productId: product.id }); linked++; }
   }
   return store.insert('migrations', { id: MIGRATION, at, created, linked, skipped: skipped.sort(), menuItems: [...new Set(menuLinked)].length });
+}
+
+/**
+ * Who buys for an 86 list (stockConfig 'buyers'): the people set for it, else the managers of its area (managers and
+ * admins who work a position in that room), else every manager and admin. They're told when a list reports something
+ * out or short, and they work the 86 report's shopping list (Ordered, then Received).
+ */
+export function buyersFor(store, list) {
+  if (!list) return [];
+  const set = store.get('stockConfig', 'buyers')?.lists?.[list.id];
+  const active = (u) => u && u.active !== false;
+  if (Array.isArray(set) && set.length) return set.filter((id) => active(store.get('users', id)));
+  const mgrs = store.list('users', (u) => active(u) && ['manager', 'admin'].includes(u.role));
+  const area = list.area ? mgrs.filter((u) => (u.jobCodes || []).some((j) => (j.areas || []).some((a) => sameArea(a, list.area)))) : [];
+  return (area.length ? area : mgrs).map((u) => u.id);
 }

@@ -1,4 +1,6 @@
-// Stock lists: a manager (by default supervisors and up) makes a list of products to bring up or restock ("Friday bar
+// Stock lists. Anyone on shift (a bartender) builds a quick list from the product library (search, tap, how many) and
+// sends it to the barbacks on duty, who check it off on their phones; the sender watches it and hears when it's done.
+// Supervisors and up also make scheduled lists and templates: a manager makes a list of products to bring up or restock ("Friday bar
 // restock", "Patio open"), assigns it to a person, a position on a date (every Barback on Friday) or whoever is on
 // shift in a room that day, with a due time, and the person works it on their phone: each line with its photo, how
 // many, where it's kept, and Got it / Short (how many they brought) / Out. "Out" reports it to the 86 List in one tap
@@ -11,14 +13,17 @@
 // products" queue (approve, edit, merge into another, archive). Managers keep the catalog in Stock → Products.
 //
 // Plan feature `stock` (every plan). Role features (core/role-features.js):
-//   stock        work the lists assigned to you, add products (everyone)
-//   stockManage  create, assign and template lists (supervisors and up by default); with manager and up: the catalog
-//   stockOwnLists  employees: make a list for themselves (off by default)
+//   stock        look products up, send quick lists to the people on duty, work the lists sent to you, add products
+//   stockManage  scheduled lists (a person, a date), templates (supervisors and up by default); with manager and up: the
+//                catalog (edit, merge, archive, the new-product queue, buyers)
+// Out or short from a list goes to the 86 List and to that list's buyer (stockConfig 'buyers': per 86 list, default the
+// managers of its area), and onto the 86 report's shopping list, where the buyer marks it Ordered, then Received.
 //
 // Collections
 //   stockLists  { id, kind: 'list' | 'template', name, notes, lines: [line], date ('' or YYYY-MM-DD), due ('' or HH:MM),
-//                 assign: null | { type: 'person', userId } | { type: 'position', jobCodeId } | { type: 'room', room },
-//                 personal (an employee's own list), templateId, eightySixListId, status: 'open' | 'in_progress' | 'done',
+//                 assign: null | { type: 'person', userId } | { type: 'position', jobCodeId, room?, now? } | { type: 'room', room, now? }
+//                 (now: whoever is on shift at this moment, else on the schedule that day),
+//                 quick (sent by anyone to the people on duty now), templateId, eightySixListId, status: 'open' | 'in_progress' | 'done',
 //                 createdBy, createdAt, updatedAt, assignedBy, assignedAt, startedAt, doneAt, doneBy, toldDone,
 //                 log: [{ at, by, what, lineId?, state?, brought?, to? }] }
 //   line        { id, productId, qty, note, state: null | 'got' | 'short' | 'out', brought, by, at,
@@ -31,10 +36,11 @@ import { scheduleAreas, uniqueAreas, sameArea } from './areas.js';
 import { checkPhoto } from './training.js';
 import { canReportList, canSeeList } from './eighty-six.js';
 import {
-  productCategories, DEFAULT_CATEGORIES, UNITS, unitName, matchesFor, newProduct, productKey, cleanUnit, ensureCatalog,
+  buyersFor, productCategories, DEFAULT_CATEGORIES, UNITS, unitName, matchesFor, newProduct, productKey, cleanUnit, ensureCatalog, cleanAliases,
   PHOTOS_PER_PRODUCT, MAX_CATEGORIES,
 } from './products.js';
 
+export { buyersFor };
 export const STATES = ['got', 'short', 'out'];
 export const MAX_LINES = 150;
 const HISTORY_DAYS = 30;
@@ -48,11 +54,15 @@ export const TEXT = {
     assigned: (name, due) => `New stock list for you: ${name}${due ? ` (due ${due})` : ''}`,
     done: (name, who, short, out) => `${name} is done (${who})${short || out ? `: ${[short && `${short} short`, out && `${out} out`].filter(Boolean).join(', ')}` : ', everything brought'}`,
     out: (name, product, who) => `${name}: ${who} says we’re out of ${product}`,
+    needs: (who, n, where) => `${who} needs ${n} item${n === 1 ? '' : 's'}${where ? ` from the ${where}` : ''}`,
+    buy: (product, status, list, who) => `To order: ${product} is ${status === 'out' ? 'out' : 'running low'} on ${list} (${who})`,
   },
   es: {
     assigned: (name, due) => `Tienes una nueva lista de surtido: ${name}${due ? ` (para las ${due})` : ''}`,
     done: (name, who, short, out) => `${name} está lista (${who})${short || out ? `: ${[short && `${short} incompleto${short === 1 ? '' : 's'}`, out && `${out} sin existencia`].filter(Boolean).join(', ')}` : ', se trajo todo'}`,
     out: (name, product, who) => `${name}: ${who} dice que no hay ${product}`,
+    needs: (who, n, where) => `${who} necesita ${n} artículo${n === 1 ? '' : 's'}${where ? ` de ${where}` : ''}`,
+    buy: (product, status, list, who) => `Para pedir: ${status === 'out' ? 'no hay' : 'queda poco de'} ${product} en ${list} (${who})`,
   },
 };
 
@@ -63,8 +73,11 @@ const fold = (v) => String(v ?? '').toLowerCase().normalize('NFD').replace(/[̀-
 export const canManageLists = (u, settings) => !!u && (roleOf(u) === 'super_admin' || roleAllows(u, settings).stockManage === true);
 /** May this person edit, merge and archive products? Managers and up whose role has stockManage. */
 export const canManageCatalog = (u, settings) => !!u && atLeast(u, 'manager') && canManageLists(u, settings);
-/** May an employee make a list for themselves? */
-export const canOwnLists = (u, settings) => canManageLists(u, settings) || (!!u && roleOf(u) === 'employee' && roleAllows(u, settings).stockOwnLists === true);
+/** May this person send a quick list to the people on duty? Everyone with Stock lists (the RPC's role feature). */
+export const canQuick = (u, settings) => !!u && roleAllows(u, settings).stock !== false;
+// Barback positions: the default for a quick list.
+const BARBACK = /bar\s*back|barback|ayudante de barra/i;
+
 
 /** A product photo document, if the caller may see it (anyone signed in: the catalog is the whole team's). */
 export function productPhotoFor(store, actor, id) {
@@ -105,7 +118,7 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
   function productView(p, viewer, { mgr = canManageCatalog(viewer, settings()) } = {}) {
     if (!p) return null;
     return {
-      id: p.id, name: p.name, category: p.category || 'other', unit: p.unit || '', size: p.size || '', pars: p.pars || {}, location: p.location || '',
+      id: p.id, name: p.name, aliases: p.aliases || [], category: p.category || 'other', unit: p.unit || '', size: p.size || '', pars: p.pars || {}, location: p.location || '',
       supplier: p.supplier || '', notes: p.notes || '', status: p.status || 'active', review: p.review || 'ok', source: p.source || 'app',
       eightySixListId: p.eightySixListId || null, addedBy: p.addedBy ? { id: p.addedBy, name: nameOf(p.addedBy) } : null, addedAt: p.addedAt || null,
       updatedAt: p.updatedAt || null, mergedInto: p.mergedInto || null,
@@ -125,6 +138,7 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
     if (!name) fail(400, 'Give the product a name');
     return {
       name, key: productKey(name),
+      aliases: 'aliases' in a ? cleanAliases(a.aliases, name) : cur?.aliases || [],
       category: 'category' in a ? cleanCategory(a.category) : cur?.category || 'other',
       unit: 'unit' in a ? cleanUnit(a.unit) : cur?.unit || '',
       size: 'size' in a ? text(a.size, 30) : cur?.size || '',
@@ -139,35 +153,46 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
   // ---------- who a list is for ----------
   const jobOf = (id) => (id ? store.get('jobCodes', id) : null);
   /** The people a list is assigned to, now. */
+  const minutesNow = () => { const n = now(); return n.getHours() * 60 + n.getMinutes(); };
+  /** Is a shift of today on right now (started, not over; an open-ended one runs to the end of the day)? */
+  function onNow(s) {
+    const [h, m] = String(s.start || '00:00').split(':').map(Number);
+    const start = h * 60 + m;
+    let end = 24 * 60;
+    if (s.end) { const [eh, em] = s.end.split(':').map(Number); end = eh * 60 + em; if (end <= start) end += 24 * 60; }
+    const t = minutesNow();
+    return t >= start - 30 && t < end; // half an hour early counts: they're coming in
+  }
   function assignees(l) {
     const a = l.assign;
-    if (!a) return l.personal ? [l.createdBy] : [];
+    if (!a) return [];
     if (a.type === 'person') return a.userId ? [a.userId] : [];
     const day = l.date || today();
-    const shifts = store.list('shifts', (s) => s.published && s.userId && s.date === day);
     const active = (id) => store.get('users', id)?.active !== false;
-    if (a.type === 'position') {
-      const on = [...new Set(shifts.filter((s) => s.jobCodeId === a.jobCodeId).map((s) => s.userId))].filter(active);
-      if (on.length) return on;
-      // Nobody scheduled in that position that day: everyone who works it.
-      return store.list('users', (u) => u.active !== false && (u.jobCodes || []).some((j) => j.jobCodeId === a.jobCodeId)).map((u) => u.id);
-    }
-    if (a.type === 'room') return [...new Set(shifts.filter((s) => sameArea(s.area, a.room)).map((s) => s.userId))].filter(active);
+    const fits = (s) => (a.type === 'position' ? s.jobCodeId === a.jobCodeId && (!a.room || sameArea(s.area, a.room)) : sameArea(s.area, a.room));
+    const shifts = store.list('shifts', (s) => s.published && s.userId && s.date === day && fits(s));
+    const ids = (list) => [...new Set(list.map((s) => s.userId))].filter(active);
+    // On duty now (a quick list, sent today), else everyone on the schedule that day.
+    const now_ = a.now && day === today() ? ids(shifts.filter(onNow)) : [];
+    if (now_.length) return now_;
+    if (shifts.length) return ids(shifts);
+    // Nobody scheduled in that position that day: everyone who works it (not for a room).
+    if (a.type === 'position') return store.list('users', (u) => u.active !== false && (u.jobCodes || []).some((j) => j.jobCodeId === a.jobCodeId)).map((u) => u.id);
     return [];
   }
   const assignedTo = (l, u) => assignees(l).includes(u.id);
   const canWork = (l, u) => l.kind === 'list' && (assignedTo(l, u) || l.createdBy === u.id || canManageLists(u, settings()));
-  const canEditList = (l, u) => canManageLists(u, settings()) || (l.personal && l.createdBy === u.id);
+  const canEditList = (l, u) => canManageLists(u, settings()) || (l.quick && l.createdBy === u.id);
   const canSee = (l, u) => (l.kind === 'template' ? canManageLists(u, settings()) : canWork(l, u));
   function visibleList(u, id) {
     const l = id ? store.get('stockLists', String(id)) : null;
     if (!l || !canSee(l, u)) fail(404, 'List not found');
     return l;
   }
-  function cleanAssign(a, { personal, actor }) {
-    if (personal) return null; // an employee's own list is theirs
-    if (!a || typeof a !== 'object' || !a.type) return null;
+  function cleanAssign(a, { quick, actor }) {
+    if (!a || typeof a !== 'object' || !a.type) { if (quick) fail(400, 'Pick who the list is for'); return null; }
     if (a.type === 'person') {
+      if (quick) fail(400, 'Pick a position or a room');
       const u = a.userId ? store.get('users', String(a.userId)) : null;
       if (!u || u.active === false) fail(400, 'Pick someone on the team');
       return { type: 'person', userId: u.id };
@@ -175,12 +200,13 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
     if (a.type === 'position') {
       const j = jobOf(a.jobCodeId);
       if (!j || j.archived) fail(400, 'Pick a position');
-      return { type: 'position', jobCodeId: j.id };
+      const room = a.room ? areas().find((r) => sameArea(r, a.room)) || '' : '';
+      return { type: 'position', jobCodeId: j.id, ...(room ? { room } : {}), ...(quick || a.now ? { now: true } : {}) };
     }
     if (a.type === 'room') {
       const room = areas().find((r) => sameArea(r, a.room)) || '';
       if (!room) fail(400, 'Pick a room');
-      return { type: 'room', room };
+      return { type: 'room', room, ...(quick || a.now ? { now: true } : {}) };
     }
     if (a.type === 'me') return { type: 'person', userId: actor.id };
     fail(400, 'Pick who the list is for');
@@ -189,7 +215,7 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
   const assignWords = (a) => {
     if (!a) return '';
     if (a.type === 'person') return nameOf(a.userId);
-    if (a.type === 'position') return jobOf(a.jobCodeId)?.name || '';
+    if (a.type === 'position') return `${jobOf(a.jobCodeId)?.name || ''}${a.room ? ` · ${a.room}` : ''}`;
     return a.room || '';
   };
 
@@ -232,8 +258,8 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
   function summary(l, u) {
     const ids = l.kind === 'list' ? assignees(l) : [];
     return {
-      id: l.id, kind: l.kind, name: l.name, notes: l.notes || '', date: l.date || '', due: l.due || '', status: l.status || 'open', personal: !!l.personal,
-      assign: l.assign || null, assignLabel: assignWords(l.assign) || (l.personal ? nameOf(l.createdBy) : ''),
+      id: l.id, kind: l.kind, name: l.name, notes: l.notes || '', date: l.date || '', due: l.due || '', status: l.status || 'open', quick: !!l.quick,
+      assign: l.assign || null, assignLabel: assignWords(l.assign),
       assignees: ids.map((id) => ({ id, name: nameOf(id) })), mine: ids.includes(u.id),
       counts: counts(l), createdBy: { id: l.createdBy, name: nameOf(l.createdBy) }, createdAt: l.createdAt, updatedAt: l.updatedAt,
       startedAt: l.startedAt || null, doneAt: l.doneAt || null, doneBy: l.doneBy ? { id: l.doneBy, name: nameOf(l.doneBy) } : null,
@@ -283,6 +309,16 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
     notify(ids, (lang) => (TEXT[lang] || TEXT.en).assigned(l.name, l.due ? fmtTime(l.due, lang) : ''), `#/stock/${l.id}`);
     return ids.length;
   }
+  /** "Lou needs 6 items from the liquor room": the place when every product is kept in the same one. */
+  function tellQuick(l, actor) {
+    const ids = assignees(l).filter((id) => id !== actor.id);
+    if (!ids.length) return 0;
+    const places = [...new Set(l.lines.map((x) => store.get('products', x.productId)?.location || ''))];
+    const where = places.length === 1 && places[0] ? places[0].split(',')[0].trim().toLowerCase() : '';
+    const n = l.lines.length;
+    notify(ids, (lang) => (TEXT[lang] || TEXT.en).needs(actor.name, n, where), `#/stock/${l.id}`);
+    return ids.length;
+  }
   const managersOf = (l, actor) => [...new Set([l.createdBy, l.assignedBy].filter((id) => id && id !== actor.id))];
 
   const api_ = {
@@ -296,7 +332,7 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
       const all = store.list('products', (p) => p.status !== 'archived' || (archived && mgr)).sort((a, b) => a.name.localeCompare(b.name));
       return {
         products: all.map((p) => productView(p, u, { mgr })), categories: cats().map(({ id, name, nameEs }) => ({ id, name, nameEs })),
-        units: UNITS, areas: areas(), canManage: mgr, canManageLists: canManageLists(u, settings()), canOwnLists: canOwnLists(u, settings()),
+        units: UNITS, areas: areas(), canManage: mgr, canManageLists: canManageLists(u, settings()), canQuick: canQuick(u, settings()),
         newCount: mgr ? all.filter((p) => p.review === 'new' && p.status !== 'archived').length : 0,
       };
     },
@@ -467,16 +503,16 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
         out = lists().filter((l) => l.kind === 'list' && l.status === 'done' && (l.doneAt || '') >= from && (mgr || canWork(l, u)));
         out.sort((a, b) => String(b.doneAt).localeCompare(String(a.doneAt)));
       } else if (scope === 'all') out = mgr ? lists().filter((l) => l.kind === 'list' && l.status !== 'done') : [];
-      else out = lists().filter((l) => l.kind === 'list' && l.status !== 'done' && (assignedTo(l, u) || (l.personal && l.createdBy === u.id)));
+      else out = lists().filter((l) => l.kind === 'list' && l.status !== 'done' && (assignedTo(l, u) || l.createdBy === u.id));
       if (scope !== 'history') out.sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999') || (a.due || '99').localeCompare(b.due || '99') || a.name.localeCompare(b.name));
-      return { lists: out.map((l) => summary(l, u)), canManage: mgr, canOwn: canOwnLists(u, settings()), today: today() };
+      return { lists: out.map((l) => summary(l, u)), canManage: mgr, canQuick: canQuick(u, settings()), today: today() };
     },
     // My lists for today (My Shifts' card): assigned to me, dated today or not dated, not done.
     'stock.mine.list': (actor) => {
       needAuth(actor);
       const u = fresh(actor);
       const d = today();
-      return { lists: lists().filter((l) => l.kind === 'list' && l.status !== 'done' && (!l.date || l.date <= d) && (assignedTo(l, u) || (l.personal && l.createdBy === u.id)))
+      return { lists: lists().filter((l) => l.kind === 'list' && l.status !== 'done' && (!l.date || l.date <= d) && (assignedTo(l, u) || l.createdBy === u.id))
         .map((l) => summary(l, u)) };
     },
     'stock.list.get': (actor, { id } = {}) => {
@@ -486,16 +522,22 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
       return fullView(visibleList(u, id), u);
     },
     // Who and where a list can go to: people, positions, rooms, the 86 lists.
+    // quick: the default for a quick list: the barback position, in the room the sender is working in today.
     'stock.options.get': (actor) => {
       needAuth(actor);
       const u = fresh(actor);
       const mgr = canManageLists(u, settings());
+      const jobs = store.list('jobCodes', (j) => !j.archived).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      const mine = store.list('shifts', (s) => s.published && s.userId === u.id && s.date === today()).sort((a, b) => Number(onNow(b)) - Number(onNow(a)));
+      const room = mine[0]?.area ? areas().find((r) => sameArea(r, mine[0].area)) || '' : '';
+      const bbk = jobs.find((j) => BARBACK.test(j.name)) || null;
       return {
-        people: mgr ? store.list('users', (x) => x.active !== false).sort((a, b) => a.name.localeCompare(b.name)).map((x) => ({ id: x.id, name: x.name })) : [{ id: u.id, name: u.name }],
-        positions: mgr ? store.list('jobCodes', (j) => !j.archived).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((j) => ({ id: j.id, name: j.name })) : [],
-        rooms: mgr ? areas() : [],
+        people: mgr ? store.list('users', (x) => x.active !== false).sort((a, b) => a.name.localeCompare(b.name)).map((x) => ({ id: x.id, name: x.name })) : [],
+        positions: jobs.map((j) => ({ id: j.id, name: j.name })),
+        rooms: areas(),
+        quick: { jobCodeId: bbk?.id || '', room },
         eightySixLists: planHas('eightySix') ? store.list('eightySixLists', (l) => canSeeList(store, u, l)).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((l) => ({ id: l.id, name: l.name, nameEs: l.nameEs || '' })) : [],
-        canManage: mgr, canOwn: canOwnLists(u, settings()), today: today(),
+        canManage: mgr, canQuick: canQuick(u, settings()), today: today(),
       };
     },
     // Create or change a list or a template. Employees with "own lists" make lists for themselves only.
@@ -505,19 +547,21 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
       const u = fresh(actor);
       const mgr = canManageLists(u, settings());
       const cur = a.id ? visibleList(u, a.id) : null;
-      if (cur ? !canEditList(cur, u) : !canOwnLists(u, settings())) fail(403, 'Supervisors and managers only');
+      if (cur ? !canEditList(cur, u) : !canQuick(u, settings())) fail(403, 'Supervisors and managers only');
       const kind = cur?.kind || (a.kind === 'template' ? 'template' : 'list');
       if (kind === 'template' && !mgr) fail(403, 'Supervisors and managers only');
       const name = text(a.name ?? cur?.name, 60);
       if (!name) fail(400, 'Give the list a name');
-      const personal = cur ? !!cur.personal : !mgr;
-      const date = kind === 'template' ? '' : 'date' in a ? String(a.date || '') : cur?.date || '';
+      // A quick list: sent today to the people on duty. Staff send only these; anyone can (a.quick).
+      const quick = kind === 'list' && (cur ? !!cur.quick : !mgr || a.quick === true);
+      const date = kind === 'template' ? '' : quick ? today() : 'date' in a ? String(a.date || '') : cur?.date || '';
       if (date && !DATE.test(date)) fail(400, 'Pick a date');
       const due = kind === 'template' ? '' : 'due' in a ? String(a.due || '') : cur?.due || '';
       if (due && !TIME.test(due)) fail(400, 'Pick a time like 17:00');
       const lines = cleanLines(a.lines, cur?.lines || []);
       if (!lines.length) fail(400, 'Add at least one product');
-      const assign = kind === 'template' ? null : 'assign' in a ? cleanAssign(a.assign, { personal, actor: u }) : cur?.assign || null;
+      if (quick && !cur && !a.assign) fail(400, 'Pick who the list is for');
+      const assign = kind === 'template' ? null : 'assign' in a ? cleanAssign(a.assign, { quick, actor: u }) : cur?.assign || null;
       const at = nowIso();
       const doc = {
         name, notes: text(a.notes ?? cur?.notes, 300), lines, date, due, assign,
@@ -531,10 +575,10 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
           ...(cur.kind === 'list' && cur.status === 'done' && !allDone ? { status: 'in_progress', doneAt: null, doneBy: null } : {}),
           log: logEntry(cur, { by: u.id, what: changedTo ? 'reassigned' : 'edited', ...(changedTo ? { to: assignWords(assign) } : {}) }) });
       } else {
-        out = store.insert('stockLists', { id: uid('stk'), kind, ...doc, personal: kind === 'list' && personal, templateId: a.templateId && store.get('stockLists', a.templateId)?.kind === 'template' ? a.templateId : null,
+        out = store.insert('stockLists', { id: uid('stk'), kind, ...doc, quick, templateId: a.templateId && store.get('stockLists', a.templateId)?.kind === 'template' ? a.templateId : null,
           status: 'open', createdBy: u.id, createdAt: at, ...(assign ? { assignedBy: u.id, assignedAt: at } : {}), log: [{ at, by: u.id, what: 'created' }] });
       }
-      const told = out.kind === 'list' && (!cur || changedTo) ? tellAssigned(out, u) : 0;
+      const told = out.kind === 'list' && (!cur || changedTo) ? (out.quick ? tellQuick(out, u) : tellAssigned(out, u)) : 0;
       return { ...fullView(out, u), notified: told };
     },
     // A list from a template: its products and quantities, for a date, a person or position or room, a due time.
@@ -624,7 +668,29 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
       const at = nowIso();
       const lines = l.lines.map((x) => (x.id === line.id ? { ...x, reported86: { itemId: r.item.id, listId: target.id, status: st, at } } : x));
       store.update('stockLists', l.id, { lines, log: logEntry(l, { by: u.id, what: 'reported86', lineId, state: st, to: target.name }) });
-      return { ...fullView(store.get('stockLists', l.id), u), eightySix: { listId: target.id, listName: target.name, status: st, notified: r.notified } };
+      // The buyer for that list hears about it (it's on the 86 report's shopping list now).
+      const buyers = buyersFor(store, target).filter((x) => x !== u.id);
+      if (buyers.length) notify(buyers, (lang) => (TEXT[lang] || TEXT.en).buy(p?.name || '', st, lang === 'es' && target.nameEs ? target.nameEs : target.name, u.name), '#/reports/86');
+      return { ...fullView(store.get('stockLists', l.id), u), eightySix: { listId: target.id, listName: target.name, status: st, notified: r.notified, buyers: buyers.length } };
+    },
+    // Settings → Products → Buyers: who orders for each 86 list (empty: the managers of its area).
+    'products.buyers.get': (actor) => {
+      needCatalog(actor);
+      const cfg = store.get('stockConfig', 'buyers')?.lists || {};
+      return {
+        lists: store.list('eightySixLists').sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((l) => ({ id: l.id, name: l.name, nameEs: l.nameEs || '',
+          buyers: (cfg[l.id] || []), defaults: Array.isArray(cfg[l.id]) && cfg[l.id].length ? [] : buyersFor(store, l) })),
+        people: store.list('users', (x) => x.active !== false && atLeast(x, 'supervisor')).sort((a, b) => a.name.localeCompare(b.name)).map((x) => ({ id: x.id, name: x.name })),
+      };
+    },
+    'products.saveBuyers': (actor, { listId, userIds } = {}) => {
+      needCatalog(actor);
+      if (!store.get('eightySixLists', listId)) fail(404, 'List not found');
+      const ids = [...new Set((Array.isArray(userIds) ? userIds : []).map(String))].filter((id) => store.get('users', id)).slice(0, 20);
+      const cur = store.get('stockConfig', 'buyers');
+      const lists_ = { ...(cur?.lists || {}), [listId]: ids };
+      if (cur) store.update('stockConfig', 'buyers', { lists: lists_, updatedAt: nowIso() }); else store.insert('stockConfig', { id: 'buyers', lists: lists_, updatedAt: nowIso() });
+      return api_['products.buyers.get'](actor);
     },
   };
   return api_;

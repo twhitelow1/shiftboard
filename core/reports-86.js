@@ -275,6 +275,25 @@ export function eightySixReportsApi({ store, now, settings, fail, ready, lists, 
   }
   const statsFor = (rows, from, to, limit) => eightySixStats(rows, { from, to, categoryOf: catOf, nameOf, limit });
 
+  /**
+   * For the shopping list: the catalog's product (photo, supplier, where it's kept) and how often it was short or out
+   * in the last 90 days (86 reports and stock lists), and whether it was ordered. Only for reports linked to a product
+   * or marked ordered, so a restaurant that never used the catalog sees exactly what it saw before.
+   */
+  function purchase(it) {
+    const out = {};
+    const p = it.productId ? store.get('products', it.productId) : null;
+    if (p) {
+      const from = new Date(now().getTime() - 90 * 86400000).toISOString();
+      const reports = [...store.list('eightySixItems', (x) => x.productId === p.id), ...store.list('eightySixLog', (x) => x.productId === p.id)]
+        .filter((x) => (x.reportedAt || '') >= from).length;
+      const lines = store.list('stockLists', (l) => l.kind === 'list').reduce((n, l) => n + l.lines.filter((x) => x.productId === p.id && (x.state === 'short' || x.state === 'out') && (x.at || '') >= from).length, 0);
+      out.product = { id: p.id, name: p.name, photos: (p.photos || []).map((ph) => ({ id: ph.id })), supplier: p.supplier || '', location: p.location || '', unit: p.unit || '', size: p.size || '', category: p.category || '' };
+      out.shortOut = reports + lines;
+    }
+    if (it.orderedAt) { out.orderedAt = it.orderedAt; out.orderedBy = it.orderedBy ? { id: it.orderedBy, name: nameOf(it.orderedBy) } : null; }
+    return out;
+  }
   return {
     // Tab 1, Missing now: everything out or low on every list (hidden lists too), with how long, who and photos.
     'reports.eightySix.missing.get': (actor, { listId = '' } = {}) => {
@@ -288,7 +307,7 @@ export function eightySixReportsApi({ store, now, settings, fail, ready, lists, 
       const rows = items.map((it) => {
         const l = byId[it.listId];
         const since = sinceOf(it);
-        return { ...itemView(it, menu, u), category: catOf(it), listName: l.name, listNameEs: l.nameEs || '', listKind: l.kind, since, minutes: minutesBetween(since, at) };
+        return { ...itemView(it, menu, u), category: catOf(it), listName: l.name, listNameEs: l.nameEs || '', listKind: l.kind, since, minutes: minutesBetween(since, at), ...purchase(it) };
       }).sort((a, b) => (a.status === b.status ? 0 : a.status === 'out' ? -1 : 1) || String(a.since).localeCompare(String(b.since)));
       return {
         now: at,

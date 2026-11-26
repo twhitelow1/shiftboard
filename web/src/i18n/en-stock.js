@@ -4,11 +4,9 @@
 // to those namespaces. Product, list and people's names are the restaurant's and never translated.
 export const roles = {
   f_stock: 'Stock lists',
-  h_stock: 'Work the stock lists assigned to them, and add products to the catalog (a manager reviews them).',
-  f_stockManage: 'Create and assign stock lists',
-  h_stockManage: 'Make lists and templates, assign them to people, positions or rooms. Managers and up with this also edit, merge and archive products.',
-  f_stockOwnLists: 'Can make their own stock lists',
-  h_stockOwnLists: 'A list just for themselves (nobody else is assigned).',
+  h_stock: 'Look products up, send a quick list to the barbacks on duty, check off the lists sent to them, and add products (a manager reviews them).',
+  f_stockManage: 'Schedule stock lists and templates',
+  h_stockManage: 'Lists for a person or a day ahead, and templates. Managers and up with this also run the product library: edit, merge, archive, buyers.',
 };
 export const claude = {
   can_stock: 'Read your stock lists and add products to the catalog (only after showing you any likely duplicates)',
@@ -214,6 +212,9 @@ export default {
     reviewEmpty: 'Nothing waiting. Nice.',
     maybeSame: 'Maybe the same as:',
     forYouToday: 'Stock lists for you',
+    backToSettings: 'Settings',
+    settingsHelp: 'The catalog Stock lists and the 86 List share: photos, where each product is kept, par levels, new products staff added, merging duplicates and importing an order guide.',
+    settingsOpen: 'Open products',
     fromCatalog: 'From the products',
   },
 };

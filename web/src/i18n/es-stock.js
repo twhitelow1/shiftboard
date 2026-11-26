@@ -3,11 +3,9 @@
 // en-stock.js. Los nombres de productos, listas y personas son del restaurante y no se traducen.
 export const roles = {
   f_stock: 'Listas de surtido',
-  h_stock: 'Trabajar las listas de surtido que les asignan y agregar productos al catálogo (un gerente los revisa).',
-  f_stockManage: 'Crear y asignar listas de surtido',
-  h_stockManage: 'Hacer listas y plantillas, y asignarlas a personas, puestos o salones. Los gerentes y más arriba con esto también editan, unen y archivan productos.',
-  f_stockOwnLists: 'Puede hacer sus propias listas de surtido',
-  h_stockOwnLists: 'Una lista solo para sí (no se asigna a nadie más).',
+  h_stock: 'Buscar productos, mandar una lista rápida a los ayudantes de barra en turno, marcar las listas que les mandan y agregar productos (un gerente los revisa).',
+  f_stockManage: 'Programar listas de surtido y plantillas',
+  h_stockManage: 'Listas para una persona o para otro día, y plantillas. Los gerentes y más arriba con esto también manejan la biblioteca de productos: editar, unir, archivar, compradores.',
 };
 export const claude = {
   can_stock: 'Leer tus listas de surtido y agregar productos al catálogo (solo después de mostrarte los posibles duplicados)',
@@ -213,6 +211,9 @@ export default {
     reviewEmpty: 'No hay nada pendiente.',
     maybeSame: 'Quizá es el mismo que:',
     forYouToday: 'Listas de surtido para ti',
+    backToSettings: 'Configuración',
+    settingsHelp: 'El catálogo que comparten las listas de surtido y la Lista 86: fotos, dónde se guarda cada producto, niveles par, productos nuevos que agregó el equipo, unir duplicados e importar una guía de pedidos.',
+    settingsOpen: 'Abrir productos',
     fromCatalog: 'De los productos',
   },
 };

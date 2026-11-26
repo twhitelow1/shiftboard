@@ -60,14 +60,13 @@ export const ROLE_FEATURES = [
   // turns that on in Settings → Feedback box, so their cell isn't here; Concern / report goes to Admins by default.
   { key: 'feedback', group: 'feature', plan: 'feedback', cells: ALL(true) },
   { key: 'feedbackInbox', group: 'feature', plan: 'feedback', cells: MGR(true) },
-  // Stock lists (core/stock.js): everyone works the lists assigned to them and adds products; supervisors and up
-  // create, assign and template lists (with manager and up: the product catalog). Employees can be allowed their own lists.
-  // stockManage and stockOwnLists are checked inside core/stock.js, not per RPC, so turning them off never refuses a method.
+  // Stock lists (core/stock.js): everyone looks products up, sends quick lists to the people on duty, works the lists
+  // sent to them and adds products; supervisors and up schedule lists and make templates (with manager and up: the
+  // product catalog). stockManage is checked inside core/stock.js, not per RPC, so turning it off never refuses a method.
   { key: 'stock', group: 'feature', plan: 'stock', cells: ALL(true) },
   { key: 'stockManage', group: 'feature', plan: 'stock', cells: { employee: false, supervisor: true, manager: true, admin: 'on' } },
   { key: 'coworkerContacts', group: 'feature', plan: null, cells: { employee: false, supervisor: true, manager: 'on', admin: 'on' } },
   { key: 'tradeRequests', group: 'capability', plan: null, cells: ALL(true) },
-  { key: 'stockOwnLists', group: 'capability', plan: 'stock', cells: { employee: false, supervisor: null, manager: null, admin: null } },
   { key: 'approve', group: 'capability', plan: null, cells: { employee: null, supervisor: true, manager: 'on', admin: 'on' }, setting: 'supervisorsCanApprove' },
 ];
 export const ROLE_FEATURE_KEYS = ROLE_FEATURES.map((f) => f.key);

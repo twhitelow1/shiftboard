@@ -863,3 +863,31 @@ export function StockCard({ className = '' }) {
     </div>
   );
 }
+
+// ---------- Settings → Products ----------
+/** Settings → Products: the same catalog page as Stock → Products, for managers who look for it in Settings. */
+export function ProductsAdmin() {
+  const t = useT();
+  const { call, version } = useApp();
+  const [cat, setCat] = useState(null);
+  useEffect(() => { call('products.list').then(setCat).catch(() => {}); }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className="stk">
+      <a className="stk-back small" href="#/settings"><Icon name="left" size={14} />{t('stock.backToSettings')}</a>
+      {cat ? <Products cat={cat} /> : <div className="empty">{t('common.loading')}</div>}
+    </div>
+  );
+}
+/** The card in Settings that opens it. */
+export function ProductsCard() {
+  const t = useT();
+  const { has } = useApp();
+  if (has && !has('stock')) return null;
+  return (
+    <div className="card card-pad col" style={{ gap: 8 }}>
+      <h2>{t('stock.productsTitle')}</h2>
+      <div className="help">{t('stock.settingsHelp')}</div>
+      <div className="row wrap" style={{ gap: 8 }}><a className="btn sm" href="#/settings/products"><Icon name="box" />{t('stock.settingsOpen')}</a></div>
+    </div>
+  );
+}

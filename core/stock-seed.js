@@ -84,7 +84,7 @@ export function seedStockDemo(store, { now = new Date() } = {}) {
   const line = (key, qty, extra = {}) => ({ id: uid('sln'), productId: ids[key], qty, note: '', state: null, brought: null, by: null, at: null, reported86: null, ...extra });
   const bar = store.get('eightySixLists', 'e86_bar') ? 'e86_bar' : null;
   const tpl = (id, name, notes, lines) => store.insert('stockLists', {
-    id, kind: 'template', name, notes, lines, date: '', due: '', assign: null, personal: false, templateId: null, eightySixListId: bar,
+    id, kind: 'template', name, notes, lines, date: '', due: '', assign: null, quick: false, templateId: null, eightySixListId: bar,
     status: 'open', createdBy: mgr, createdAt: at(60 * 24 * 14), updatedAt: at(60 * 24 * 14), log: [{ at: at(60 * 24 * 14), by: mgr, what: 'created' }],
   });
   tpl('stk_demo_nightly', 'Nightly bar restock', 'Rabbit Hole bar. Fill the wells, then the back bar.',
@@ -103,14 +103,14 @@ export function seedStockDemo(store, { now = new Date() } = {}) {
   ];
   store.insert('stockLists', {
     id: 'stk_demo_today', kind: 'list', name: 'Bar restock before service', notes: 'Rabbit Hole bar. Ask Mak if the well is short.', lines: fri, date: d, due: '16:30',
-    assign: arthur ? { type: 'person', userId: arthur } : { type: 'position', jobCodeId: 'job_bbk' }, personal: false, templateId: 'stk_demo_nightly', eightySixListId: bar,
+    assign: arthur ? { type: 'person', userId: arthur } : { type: 'position', jobCodeId: 'job_bbk' }, quick: false, templateId: 'stk_demo_nightly', eightySixListId: bar,
     status: 'in_progress', createdBy: mgr, createdAt: at(120), updatedAt: at(15), assignedBy: mgr, assignedAt: at(120), startedAt: started,
     log: [{ at: at(120), by: mgr, what: 'created' }, ...fri.filter((x) => x.state).map((x) => ({ at: x.at, by: arthur, what: 'mark', lineId: x.id, state: x.state, ...(x.state === 'short' ? { brought: x.brought } : {}) }))],
   });
   // Every barback on today's schedule: the patio, not started.
   store.insert('stockLists', {
     id: 'stk_demo_patio_today', kind: 'list', name: 'Patio open', notes: '', lines: [line('cups', 2), line('straws', 1), line('napkins', 2), line('sanitizer', 1)], date: d, due: '17:00',
-    assign: { type: 'position', jobCodeId: 'job_bbk' }, personal: false, templateId: 'stk_demo_patio', eightySixListId: bar,
+    assign: { type: 'position', jobCodeId: 'job_bbk' }, quick: false, templateId: 'stk_demo_patio', eightySixListId: bar,
     status: 'open', createdBy: mgr, createdAt: at(90), updatedAt: at(90), assignedBy: mgr, assignedAt: at(90), log: [{ at: at(90), by: mgr, what: 'created' }],
   });
   // Yesterday's, done: one short.
@@ -119,7 +119,7 @@ export function seedStockDemo(store, { now = new Date() } = {}) {
     .map((x, i) => ({ ...x, state: i === 3 ? 'short' : 'got', brought: i === 3 ? 0.5 : x.qty, by: luciano, at: at(60 * 24 - i * 3) }));
   store.insert('stockLists', {
     id: 'stk_demo_done', kind: 'list', name: 'Nightly bar restock', notes: '', lines: y, date: todayStr(new Date(now.getTime() - 86400000)), due: '16:30',
-    assign: { type: 'person', userId: luciano }, personal: false, templateId: 'stk_demo_nightly', eightySixListId: bar,
+    assign: { type: 'person', userId: luciano }, quick: false, templateId: 'stk_demo_nightly', eightySixListId: bar,
     status: 'done', createdBy: mgr, createdAt: at(60 * 26), updatedAt: at(60 * 24 - 12), assignedBy: mgr, assignedAt: at(60 * 26), startedAt: at(60 * 24),
     doneAt: at(60 * 24 - 12), doneBy: luciano, toldDone: at(60 * 24 - 12), log: [{ at: at(60 * 26), by: mgr, what: 'created' }],
   });

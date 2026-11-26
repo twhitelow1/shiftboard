@@ -13,7 +13,7 @@ import { createService } from '../core/service.js';
 import { seedDemo } from '../core/seed.js';
 import { seedStockDemo } from '../core/stock-seed.js';
 import { productLikeness } from '../core/smart-import.js';
-import { ensureCatalog, MIGRATION, categoryFrom86 } from '../core/products.js';
+import { ensureCatalog, MIGRATION, categoryFrom86, productMatches } from '../core/products.js';
 import { TEXT } from '../core/stock.js';
 import { translateError } from '../core/errors.js';
 import { ROLE_OFF, featuresForMethod } from '../core/role-features.js';
@@ -256,26 +256,71 @@ test('lists: from a template, to a person, a position or a room’s shift; Got i
   assert.equal(store.get('stockLists', byRoom.id), null);
 });
 
-test('who makes lists: supervisors and up by default; employees work theirs, or make their own when allowed', () => {
+test('a quick list from a bartender: search, tap, how many, sent to the barbacks on duty in their room; they check it off; the sender hears', () => {
+  const { store, svc, who, call } = demo({ stock: true });
+  // Today: a bartender and two barbacks on now in the Rabbit Hole, a barback on later, one in another room, one off.
+  const lou = who('Mak'), b1 = who('Arthur'), b2 = who('Luciano'), later = who('Hans'), elsewhere = who('Wilder');
+  for (const s of store.list('shifts', (x) => x.date === TODAY)) store.remove('shifts', s.id);
+  const shift = (u, job, area, start, end) => store.insert('shifts', { id: `shf_q_${u.id}`, userId: u.id, jobCodeId: job, area, date: TODAY, start, end, published: true });
+  shift(lou, 'job_bar', 'Rabbit Hole', '11:00', '19:00');
+  shift(b1, 'job_bbk', 'Rabbit Hole', '11:30', '18:00');
+  shift(b2, 'job_bbk', 'Rabbit Hole', '10:00', '16:00');
+  shift(later, 'job_bbk', 'Rabbit Hole', '17:00', '23:00');
+  shift(elsewhere, 'job_bbk', 'Restaurant', '11:00', '19:00');
+  // The default: barbacks, in the room Lou is working.
+  const opts = call(lou, 'stock.options.get');
+  assert.deepEqual(opts.quick, { jobCodeId: 'job_bbk', room: 'Rabbit Hole' });
+  assert.equal(opts.canQuick, true);
+  assert.equal(opts.people.length, 0, 'staff send to who is on duty, not to a person');
+  // Search the library (aliases too), tap, how many.
+  const cat = call(lou, 'products.list').products;
+  const rum = cat.find((p) => p.name === 'Harbor Light Silver Rum');
+  const gin = cat.find((p) => p.name === 'Juniper Row Gin');
+  const before = store.list('notifications').length;
+  const l = call(lou, 'stock.save', { name: 'Well', lines: [{ productId: rum.id, qty: 3 }, { productId: gin.id, qty: 2, note: 'the 750s' }], assign: { type: 'position', ...opts.quick } });
+  assert.equal(l.quick, true);
+  assert.equal(l.date, TODAY);
+  assert.deepEqual(l.assignees.map((x) => x.name).sort(), ['Arthur', 'Luciano'], 'on duty now, in that room');
+  const told = store.list('notifications').slice(before);
+  assert.deepEqual(told.map((n) => n.userId).sort(), [b1.id, b2.id].sort());
+  assert.equal(told[0].i18n.en, 'Mak needs 2 items from the liquor room');
+  assert.equal(told[0].i18n.es, 'Mak necesita 2 artículos de liquor room');
+  // Staff can't schedule for a person, make templates, or see everyone's lists.
+  refused(() => call(lou, 'stock.save', { name: 'x', lines: [{ productId: rum.id, qty: 1 }], assign: { type: 'person', userId: b1.id } }), 400, 'Pick a position or a room');
+  refused(() => call(lou, 'stock.save', { name: 'x', lines: [{ productId: rum.id, qty: 1 }] }), 400, 'Pick who the list is for');
+  refused(() => call(lou, 'stock.save', { kind: 'template', name: 'T', lines: [{ productId: rum.id, qty: 1 }] }), 403, 'Supervisors and managers only');
+  assert.equal(call(lou, 'stock.lists.list', { scope: 'all' }).lists.length, 0);
+  assert.ok(call(lou, 'stock.lists.list').lists.some((x) => x.id === l.id), 'the sender sees it in My lists');
+  refused(() => call(elsewhere, 'stock.list.get', { id: l.id }), 404, 'List not found');
+  // A barback checks it off; the sender sees progress live and hears when it's done.
+  call(b1, 'stock.mark', { id: l.id, lineId: l.lines[0].id, state: 'got' });
+  assert.equal(call(lou, 'stock.list.get', { id: l.id }).counts.done, 1);
+  const n = store.list('notifications').length;
+  call(b2, 'stock.mark', { id: l.id, lineId: l.lines[1].id, state: 'got' });
+  const done = store.list('notifications').slice(n);
+  assert.deepEqual(done.map((x) => x.userId), [lou.id]);
+  assert.equal(done[0].i18n.en, 'Well is done (Luciano), everything brought');
+  // The sender can delete their own; nobody else on staff can.
+  refused(() => call(b1, 'stock.delete', { id: l.id }), 403, 'Supervisors and managers only');
+  call(lou, 'stock.delete', { id: l.id });
+  // Nobody on now: the barbacks on today's schedule there.
+  const n2 = svc.call(store.get('users', lou.id), 'stock.save', { name: 'Later', lines: [{ productId: rum.id, qty: 1 }], assign: { type: 'room', room: 'Moon Rabbit' } });
+  assert.deepEqual(n2.assignees, [], 'nobody in that room today');
+});
+
+test('roles: supervisors and up schedule lists and templates; Stock lists off means no stock at all', () => {
   const { who, call, role } = demo({ stock: true });
   const emp = who('Arthur');
-  const owner = { id: 'x' };
-  void owner;
   const mgr = who('Moe');
-  const p = call(mgr, 'products.list').products[0];
-  refused(() => call(emp, 'stock.save', { name: 'Mine', lines: [{ productId: p.id, qty: 1 }] }), 403, 'Supervisors and managers only');
-  assert.equal(call(emp, 'stock.lists.list', { scope: 'all' }).lists.length, 0);
-  // Roles & features: "Can make their own stock lists" for employees.
-  call(mgr, 'roleFeatures.save', { roleFeatures: { employee: { stockOwnLists: true } } });
-  const mine = call(emp, 'stock.save', { name: 'My side work', lines: [{ productId: p.id, qty: 1 }], assign: { type: 'person', userId: who('Luciano').id } });
-  assert.equal(mine.personal, true);
-  assert.deepEqual(mine.assignees.map((x) => x.id), [emp.id], 'their own list is theirs, whoever they name');
-  refused(() => call(emp, 'stock.save', { kind: 'template', name: 'T', lines: [{ productId: p.id, qty: 1 }] }), 403);
-  // Supervisors lose list-making when an admin turns it off; managers keep the catalog only with it on.
   const sup = role('supervisor');
-  assert.ok(call(sup, 'stock.save', { name: 'Sup list', lines: [{ productId: p.id, qty: 1 }] }).id);
+  const p = call(mgr, 'products.list').products[0];
+  assert.ok(call(sup, 'stock.save', { name: 'Sup list', date: '2026-09-29', lines: [{ productId: p.id, qty: 1 }], assign: { type: 'person', userId: emp.id } }).id);
   call(mgr, 'roleFeatures.save', { roleFeatures: { supervisor: { stockManage: false }, manager: { stockManage: false } } });
-  refused(() => call(sup, 'stock.save', { name: 'Again', lines: [{ productId: p.id, qty: 1 }] }), 403, 'Supervisors and managers only');
+  // Without it a supervisor is like staff: quick lists only.
+  const q = call(sup, 'stock.save', { name: 'Again', date: '2026-10-01', lines: [{ productId: p.id, qty: 1 }], assign: { type: 'position', jobCodeId: 'job_bbk' } });
+  assert.equal(q.quick, true);
+  assert.equal(q.date, TODAY, 'a quick list is for today');
+  refused(() => call(sup, 'stock.save', { kind: 'template', name: 'T', lines: [{ productId: p.id, qty: 1 }] }), 403, 'Supervisors and managers only');
   refused(() => call(role('manager'), 'products.review.list'), 403, 'Managers only');
   assert.ok(call(mgr, 'products.review.list'), 'Admins always');
   // Stock lists off for employees: every stock RPC answers "Your role doesn't include this".
@@ -284,6 +329,61 @@ test('who makes lists: supervisors and up by default; employees work theirs, or 
   refused(() => call(emp, 'products.add', { name: 'Anything' }), 403, ROLE_OFF);
   assert.equal(call(emp, 'app.bootstrap').features.stock, false);
   assert.equal(call(sup, 'app.bootstrap').features.stock, true);
+});
+
+test('the library: aliases ("titos", "Tito’s", "vodka") find a product; accents, case and punctuation don’t matter', () => {
+  const { who, call } = demo({ stock: true });
+  const mgr = who('Moe');
+  const v = call(mgr, 'products.add', { name: 'Tito’s Handmade Vodka', category: 'spirits', location: 'Liquor room, shelf 1', aliases: 'Titos, house vodka, Tito’s Handmade Vodka, titos' }).product;
+  assert.deepEqual(v.aliases, ['Titos', 'house vodka'], 'its own name and repeats dropped');
+  for (const q of ['titos', 'Tito’s', 'TITO S', 'house vodka', 'vodka', 'liquor room', 'tito vodka']) assert.ok(productMatches(v, q), q);
+  assert.ok(!productMatches(v, 'gin'));
+  assert.ok(productMatches({ name: 'Crème de cassis', aliases: [] }, 'creme de cassis'));
+  // Duplicate checks see aliases: adding "Titos" suggests it.
+  const r = call(who('Arthur'), 'products.add', { name: 'Titos' });
+  assert.ok(r.duplicates.some((d) => d.id === v.id && d.reasons.includes('alias')), JSON.stringify(r.duplicates.map((d) => [d.name, d.reasons])));
+  // Staff see the detail: photos, where it's kept, aliases.
+  const d = call(who('Arthur'), 'products.get', { id: v.id }).product;
+  assert.deepEqual([d.location, d.aliases], ['Liquor room, shelf 1', ['Titos', 'house vodka']]);
+  // The import takes aliases too? Managers change them.
+  assert.deepEqual(call(mgr, 'products.save', { id: v.id, aliases: ['TV'] }).aliases, ['TV']);
+});
+
+test('out reaches the buyer and the shopping list: ordered, then received (back in stock)', () => {
+  const { store, who, call } = demo({ stock: true });
+  const mgr = who('Moe');
+  const kelly = who('Kelly');
+  const barback = who('Arthur');
+  // Kelly buys for the Bar.
+  const b = call(mgr, 'products.saveBuyers', { listId: 'e86_bar', userIds: [kelly.id] });
+  assert.deepEqual(b.lists.find((l) => l.id === 'e86_bar').buyers, [kelly.id]);
+  assert.ok(b.lists.find((l) => l.id === 'e86_kitchen').defaults.length > 0, 'other lists: the managers of their area');
+  refused(() => call(barback, 'products.saveBuyers', { listId: 'e86_bar', userIds: [] }), 403, 'Managers only');
+  const l = call(barback, 'stock.list.get', { id: 'stk_demo_today' });
+  const line = l.lines.find((x) => !x.state && x.name === 'Club soda');
+  call(barback, 'stock.mark', { id: l.id, lineId: line.id, state: 'out' });
+  const n = store.list('notifications').length;
+  const r = call(barback, 'stock.reportEightySix', { id: l.id, lineId: line.id, status: 'out' });
+  assert.equal(r.eightySix.buyers, 1);
+  const toBuyer = store.list('notifications').slice(n).filter((x) => x.userId === kelly.id);
+  assert.equal(toBuyer.length, 1);
+  assert.equal(toBuyer[0].i18n.en, 'To order: Club soda is out on Bar (Arthur)');
+  assert.equal(toBuyer[0].i18n.es, 'Para pedir: no hay Club soda en Bar (Arthur)');
+  assert.equal(toBuyer[0].link, '#/reports/86');
+  // On the shopping list (Reports → 86 List → Missing now) with its photo, supplier and how often it ran short or out.
+  const miss = call(mgr, 'reports.eightySix.missing.get').items.find((i) => i.id === r.lines.find((x) => x.id === line.id).reported86.itemId);
+  assert.equal(miss.product.name, 'Club soda');
+  assert.equal(miss.product.supplier, 'Valley Distributing');
+  assert.equal(miss.product.photos.length, 1);
+  assert.ok(miss.shortOut >= 2, 'the 86 report and the list’s out');
+  // Ordered (the buyer, or a manager), then Received: off the 86 List.
+  refused(() => call(barback, 'eightySix.markOrdered', { id: miss.id }), 403, 'Managers only');
+  call(kelly, 'eightySix.markOrdered', { id: miss.id });
+  const again = call(mgr, 'reports.eightySix.missing.get').items.find((i) => i.id === miss.id);
+  assert.equal(again.orderedBy.name, 'Kelly');
+  call(kelly, 'eightySix.clear', { id: miss.id });
+  assert.ok(!call(mgr, 'reports.eightySix.missing.get').items.some((i) => i.id === miss.id), 'received: back in stock');
+  assert.equal(store.get('eightySixLog', miss.id).clearedHow, 'back');
 });
 
 test('plan: Stock lists is in every plan; off for a restaurant, its RPCs and routes say so', async () => {
@@ -416,7 +516,9 @@ test('the 86 migration: products from past 86 names where it’s clean, reports 
   const people = [users.find((u) => u.role === 'employee'), users.find((u) => u.role === 'manager'), users.find((u) => u.role === 'admin')];
   const reads = [['eightySix.board.get', {}], ['eightySix.summary', {}], ['eightySix.history.get', { days: 365 }], ['reports.eightySix.history.get', { days: 365 }],
     ['reports.eightySix.trends.get', {}], ['reports.eightySix.missing.get', {}]];
-  const answers = () => people.map((u) => reads.map(([m, a]) => { try { return JSON.stringify(svc.call(u, m, a)); } catch (e) { return `E${e.status}`; } }));
+  // Missing now adds each linked report's product (photo, supplier, how often) for the shopping list: nothing else changes.
+  const strip = (m, r) => (m === 'reports.eightySix.missing.get' && r ? { ...r, items: r.items.map(({ product: _p, shortOut: _s, ...i }) => i) } : r);
+  const answers = () => people.map((u) => reads.map(([m, a]) => { try { return JSON.stringify(strip(m, svc.call(u, m, a))); } catch (e) { return `E${e.status}`; } }));
   const before = answers();
   const logBefore = store.list('eightySixLog').length;
 
