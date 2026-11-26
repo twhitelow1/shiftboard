@@ -280,7 +280,7 @@ const TWILIO_ENV = { TWILIO_ACCOUNT_SID: 'ACtest', TWILIO_AUTH_TOKEN: 'test-auth
 const PUSH_ENV = { VAPID_PUBLIC_KEY: 'test-public-key', VAPID_PRIVATE_KEY: 'test-private-key', VAPID_SUBJECT: 'mailto:owner@example.com' };
 const KEYS = { p256dh: `B${'A'.repeat(86)}`, auth: 'A'.repeat(22) };
 
-async function startServer({ twilio = fakeTwilio(), tenant = null, env = {} } = {}) {
+async function startServer({ twilio = fakeTwilio(), tenant = null, env = {}, expoPush } = {}) {
   const conn = await openPglite();
   const db = new DocDb(conn);
   const resend = fakeResend();
@@ -291,6 +291,7 @@ async function startServer({ twilio = fakeTwilio(), tenant = null, env = {} } = 
     mailer: createMailer({ RESEND_API_KEY: 're_test', EMAIL_FROM: 'Schedule <schedule@rabbits.co>' }, { fetchImpl: resend.fetchImpl }),
     texter: createTexter(fullEnv, { fetchImpl: twilio.fetchImpl }),
     pusher: createPusher(fullEnv, { send: push.send }),
+    ...(expoPush ? { expoPush } : {}),
   });
   await app.locals.ready();
   const server = app.listen(0, '127.0.0.1');
@@ -438,4 +439,27 @@ test('server: plan gating (announcements; texts need the plan’s text messages 
     assert.equal(s.sms.reach, 0);
     assert.ok(s.sms.skipped.notSetUp > 0);
   } finally { await noTexts.close(); }
+});
+
+test('server: the phone app gets it as a push that opens the announcement (once, not also as a plain notification)', async () => {
+  const sent = [];
+  const expoPush = {
+    enabled: true,
+    send: async (messages) => { sent.push(...messages); return { tickets: messages.map((m, i) => ({ id: `tk${sent.length}-${i}`, token: m.to })), unregistered: [] }; },
+    receipts: async () => ({ checked: [], unregistered: [] }),
+  };
+  const S = await startServer({ expoPush });
+  try {
+    const tori = await S.client('tori@demo.shiftboard');
+    assert.equal((await tori.post('/api/rpc/devices.register', { token: 'ExponentPushToken[tori-phone]', platform: 'ios' })).status, 200);
+    await tori.rpc('account.preferences', { language: 'es' });
+    const kelly = await S.client('kelly@demo.shiftboard');
+    const r = await kelly.rpc('announcements.send', draft({ titleEs: 'Junta del personal', bodyEs: 'El lunes a las 3 pm.', audience: { kind: 'people', userIds: ['usr_tori'] } }));
+    await S.settled();
+    assert.equal(sent.length, 1, JSON.stringify(sent));
+    assert.deepEqual([sent[0].to, sent[0].title, sent[0].body, sent[0].data.link], ['ExponentPushToken[tori-phone]', 'Our Restaurant', 'Junta del personal: El lunes a las 3 pm.', `#/announcements/${r.body.result.id}`]);
+    assert.equal(S.db.store.list('pushTickets').length, 1, 'its receipt is checked later, like every push');
+    const row = (await kelly.rpc('announcements.get', { id: r.body.result.id })).body.result.manage.rows[0];
+    assert.equal(row.push.s, 'sent');
+  } finally { await S.close(); }
 });

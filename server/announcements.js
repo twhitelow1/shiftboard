@@ -20,7 +20,7 @@
 // same delivery: claiming happens under the database's write lock.
 import crypto from 'node:crypto';
 import { createService } from '../core/service.js';
-import { releaseDue, claimWork, applyResults, hasWork, pushContent, smsText, inLanguage } from '../core/announcements.js';
+import { releaseDue, claimWork, applyResults, hasWork, pushContent, smsText, inLanguage, noteText } from '../core/announcements.js';
 import { smsAllowed, applyTextReply } from '../core/notify-prefs.js';
 import { announcementEmail, deliverable } from './email.js';
 import { UNSUBSCRIBED } from './sms.js';
@@ -129,7 +129,7 @@ export function mountAnnouncements(app, { db, env, mailer, channels, expoPush, b
         if (expoPush.enabled) {
           const u = db.store.get('users', j.userId);
           for (const d of db.store.list('deviceTokens', (x) => x.userId === j.userId && (x.v || 0) === (u?.sessionVersion || 0))) {
-            appMsgs.push({ userId: j.userId, message: { to: d.token, ...content, sound: 'default', priority: 'high', channelId: 'default', data: { link: route, announcementId: work.id } } });
+            appMsgs.push({ userId: j.userId, message: { to: d.token, title: restaurant, body: noteText(inLanguage(work.ann, j.lang)), sound: 'default', priority: 'high', channelId: 'default', data: { link: route, announcementId: work.id } } });
           }
         }
       }

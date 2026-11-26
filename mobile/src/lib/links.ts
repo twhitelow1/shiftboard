@@ -47,6 +47,10 @@ export function routeForLink(link: string | undefined, has: (f: Feature) => bool
     case 'tips':
       if (!has('tips')) break;
       return a && DATE.test(a) ? { pathname: '/tips', params: { week: a } } : '/tips';
+    case 'announcements':
+      // '#/announcements/<id>': an announcement from management (its push and its notification).
+      if (!has('announcements') || !a) break;
+      return { pathname: '/announcement/[id]', params: { id: a } };
     default:
       break;
   }
