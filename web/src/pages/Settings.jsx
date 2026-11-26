@@ -18,6 +18,7 @@ import { ImpactSettingsCard } from './ImpactShared.jsx'; // Positive impact: not
 import { ReplySettingsCard } from './ReviewReplies.jsx'; // Google & Yelp reviews: review alerts, the reply's tone, sign-off and contact
 import EmailTemplates from './EmailTemplates.jsx'; // Settings → Email notifications
 import FeedbackSettings, { FeedbackSettingsCard } from './FeedbackSettings.jsx'; // Settings → Feedback box
+import { ProductsAdmin, ProductsCard } from './Stock.jsx'; // Settings → Products: the catalog Stock lists and the 86 List share
 import { tx, useT, dowLong, dowShort , LANGUAGE_NAMES } from '../i18n/index.js';
 
 export default function Settings({ parts = [] }) {
@@ -48,8 +49,10 @@ export default function Settings({ parts = [] }) {
         <button className="btn" disabled={busy || pw.length < 10} onClick={() => run(() => call('employees.changePassword', { password: pw }), t('settings.passwordChanged')).then(() => setPw(''))}>{t('settings.change')}</button></div>
     </div>
   );
-  // Managers run the schedule's rooms and positions; the rest of Settings is for admins.
-  if (!isAdmin) return <div style={{ maxWidth: 820 }} className="col">{isMgr && rooms}{passwordCard}</div>;
+  // #/settings/products: the product catalog (managers and up, like Stock → Products).
+  if (parts[1] === 'products' && isMgr) return <ProductsAdmin />;
+  // Managers run the schedule's rooms and positions, and the products; the rest of Settings is for admins.
+  if (!isAdmin) return <div style={{ maxWidth: 820 }} className="col">{isMgr && rooms}{isMgr && <ProductsCard />}{passwordCard}</div>;
   if (parts[1] === 'roles') return <RolesEditor />; // #/settings/roles (it saves on its own, like Rooms & positions)
   if (parts[1] === 'emails') return <EmailTemplates />; // #/settings/emails
   if (parts[1] === 'feedback') return <FeedbackSettings />; // #/settings/feedback
@@ -126,6 +129,7 @@ export default function Settings({ parts = [] }) {
       <TextSettingsCard />
       <AnnouncementSettingsCard />
       <FeedbackSettingsCard />
+      <ProductsCard />
       <SeasonsCard />
       <IntegrationsCard />
       <AssistantSettingsCard />

@@ -18,6 +18,7 @@ import Settings from './pages/Settings.jsx';
 import Venue from './pages/Venue.jsx';
 import Training from './pages/Training.jsx';
 import EightySix from './pages/EightySix.jsx';
+import Stock, { Library } from './pages/Stock.jsx'; // Stock lists and the product catalog (#/stock, #/stock/products)
 import Reports from './pages/Reports.jsx';
 import Account from './pages/Security.jsx';
 import Announcements from './pages/Announcements.jsx';
@@ -63,6 +64,8 @@ const NAV = [
   { key: 'calendar', label: 'main.calendar', icon: 'calendar', feature: 'calendar' },
   { key: 'my', label: 'main.myShifts', icon: 'user', feature: 'myShifts' },
   { key: '86', label: 'main.eightySix', icon: 'ban', feature: 'eightySix' },
+  { key: 'stock', label: 'stock.nav', icon: 'box', feature: 'stock' }, // Stock lists: everyone (core/stock.js)
+  { key: 'products', label: 'stock.libraryNav', icon: 'search', feature: 'stock' }, // the product library: look anything up
   { key: 'swaps', label: 'main.swapsTrades', short: 'main.swaps', icon: 'swap', badge: 'swaps', feature: 'trades' },
   { key: 'announcements', label: 'announcements.title', icon: 'megaphone', feature: 'announcements' },
   { key: 'ask', label: 'assistant.nav', icon: 'sparkle', feature: 'assistant' }, // Ask ShiftBoard (plan ∩ role)
@@ -87,7 +90,7 @@ const NAV = [
 ];
 
 // Shorter page titles for the phone's top bar, where the language switch and the bell sit too.
-const PHONE_TITLE = { swaps: 'main.phoneTitleSwaps', events: 'main.phoneTitleEvents', forecast: 'main.phoneTitleForecast', venue: 'main.phoneTitleVenue', team: 'main.phoneTitleTeam', 'trade-stats': 'tradeStats.phoneTitle', ask: 'assistant.phoneTitle', feedback: 'feedback.phoneTitle', 'feedback-inbox': 'feedback.inboxPhoneTitle' };
+const PHONE_TITLE = { swaps: 'main.phoneTitleSwaps', events: 'main.phoneTitleEvents', forecast: 'main.phoneTitleForecast', venue: 'main.phoneTitleVenue', team: 'main.phoneTitleTeam', 'trade-stats': 'tradeStats.phoneTitle', ask: 'assistant.phoneTitle', stock: 'stock.phoneTitle', feedback: 'feedback.phoneTitle', 'feedback-inbox': 'feedback.inboxPhoneTitle' };
 
 // The address has no restaurant, or the restaurant's account is paused (server/platform/). Signed out or in.
 function NoticeCard({ title, help, icon = 'alert' }) {
@@ -289,7 +292,7 @@ function App() {
     forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue, training: Training, 86: EightySix, reports: Reports,
     account: Account, announcements: Announcements, 'trade-stats': TradeStats,
     forecast: Forecast, team: Team, timeoff: TimeOff, settings: Settings, venue: Venue, training: Training, 86: EightySix,
-    account: Account, impact: ImpactReport, kudos: Kudos, ask: Assistant, feedback: Feedback, 'feedback-inbox': FeedbackInbox,
+    account: Account, impact: ImpactReport, kudos: Kudos, ask: Assistant, feedback: Feedback, 'feedback-inbox': FeedbackInbox, stock: Stock, products: Library,
   }[route] || Schedule;
 
   const signOut = async () => { await logout(); setBoot(null); setAuthed(false); };

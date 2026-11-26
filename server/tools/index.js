@@ -14,11 +14,12 @@ import training from './training.js';
 import events from './events.js';
 import team from './team.js';
 import importTools from './import.js';
+import stock from './stock.js';
 
 // The Feedback box (core/feedback.js) has no tools, on purpose: people write to it anonymously, and its entries and
 // replies stay inside ShiftBoard's own screens. Neither the Claude connector nor Ask ShiftBoard reads, sends or
 // summarizes them (no AI processing of entries in this version). Don't add feedback tools without a privacy review.
-const FEATURE_TOOLS = [me, schedule, requests, eightySix, training, events, team, importTools];
+const FEATURE_TOOLS = [me, schedule, requests, eightySix, stock, training, events, team, importTools];
 
 export const TOOLS = Object.freeze(FEATURE_TOOLS.flat());
 

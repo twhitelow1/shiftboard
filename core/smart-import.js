@@ -29,7 +29,7 @@ import { canonicalAllergen, MAJOR_ALLERGENS, DIETARY_TAGS } from './training.js'
 import { normalizePhone } from './notify-prefs.js';
 
 export { parseCsv };
-export const TARGETS = ['employees', 'menu'];
+export const TARGETS = ['employees', 'menu', 'products']; // products: Stock lists' catalog (core/products.js)
 export const MAX_ROWS = 1000; // per import
 export const MAX_FILE_BYTES = 5 * 1024 * 1024; // read in the browser
 export const MAX_AI_CHARS = 40_000; // all of a document sent to the AI reader
@@ -81,6 +81,17 @@ export const FIELDS = {
     F('descriptionEs', ['spanish description', 'description es', 'description spanish', 'descripcion en espanol', 'descripcion es']),
     F('eightySixed', ['86', '86d', '86 d', 'eighty six', 'eighty sixed', 'sold out', 'out of stock', 'agotado']),
     F('available', ['available', 'in stock', 'availability', 'disponible', 'active', 'status', 'estado']),
+  ],
+  // The product catalog Stock lists and the 86 List share (core/products.js): an order guide or inventory sheet.
+  products: [
+    F('name', ['product', 'name', 'item', 'item name', 'product name', 'description', 'producto', 'nombre', 'articulo', 'artículo', 'insumo']),
+    F('category', ['category', 'type', 'group', 'class', 'categoria', 'tipo', 'grupo']),
+    F('unit', ['unit', 'uom', 'unit of measure', 'pack', 'count by', 'unidad', 'presentacion']),
+    F('size', ['size', 'volume', 'pack size', 'bottle size', 'tamano', 'tamaño', 'volumen']),
+    F('par', ['par', 'par level', 'on hand', 'stock level', 'nivel par', 'par minimo']),
+    F('location', ['location', 'storage', 'stored', 'shelf', 'where', 'storage location', 'ubicacion', 'ubicación', 'almacen', 'almacén']),
+    F('supplier', ['supplier', 'vendor', 'distributor', 'proveedor', 'distribuidor']),
+    F('notes', ['notes', 'note', 'comments', 'notas', 'comentarios']),
   ],
 };
 export const fieldKeys = (target) => FIELDS[target].map((f) => f.key);
@@ -562,6 +573,32 @@ export function normalizeMenuItem(values = {}) {
   if ('eightySixed' in values || 'available' in values) data.eightySixed = out86 != null ? out86 : avail != null ? !avail : null;
   return { data, issues };
 }
+/** A product row (Stock lists' catalog): its name, category (a catalog id when the words say one), unit, size, par… */
+const PRODUCT_CATEGORY_WORDS = [
+  ['spirits', /spirit|liquor|licor|vodka|gin\b|rum\b|ron\b|tequila|mezcal|whisk|bourbon|scotch|brandy|cognac|liqueur/],
+  ['beer', /beer|cerveza|lager|ipa\b|ale\b|keg|draft|cider|seltzer/], ['wine', /wine|vino|champagne|prosecco|cava|ros[eé]/],
+  ['mixers', /mixer|soda|juice|jugo|syrup|jarabe|tonic|refresco/], ['garnish', /garnish|produce|fruit|fruta|guarnici/],
+  ['glassware', /glass|cristal|vaso|copa/], ['smallwares', /smallware|utensil|tool|bar tool/], ['paper', /paper|papel|disposable|desechable|to go|napkin|servillet/],
+  ['cleaning', /clean|limpieza|chemical|quimic|sanit/], ['dry', /dry|abarrote|pantry|kitchen/],
+];
+export function normalizeProduct(values = {}) {
+  const issues = [];
+  const data = {};
+  const name = titleCaseIfShouting(clean(values.name)).slice(0, 80);
+  if (name) data.name = name;
+  if ('category' in values) {
+    const k = valueKey(values.category);
+    const hit = k ? PRODUCT_CATEGORY_WORDS.find(([, re]) => re.test(k)) : null;
+    data.category = hit ? hit[0] : k ? 'other' : '';
+    if (k && !hit) issues.push({ code: 'categoryOther', params: { name: clean(values.category) } });
+  }
+  for (const f of ['unit', 'size', 'location', 'supplier', 'notes']) if (f in values) data[f] = clean(values[f]).slice(0, f === 'notes' ? 300 : 80);
+  if ('par' in values && clean(values.par)) {
+    const n = Number(clean(values.par).replace(',', '.'));
+    if (Number.isFinite(n) && n >= 0 && n <= 9999) data.par = n; else issues.push({ code: 'badPar', params: { value: clean(values.par) } });
+  }
+  return { data, issues };
+}
 const titleCaseIfShouting = (s) => (s.length > 3 && s === s.toUpperCase() && /[A-Z]/.test(s) ? titleCase(s) : s);
 
 // ---------------------------------------------------------------- likeness
@@ -699,6 +736,41 @@ export function menuLikeness(d, it) {
   return score ? { score, confidence: confidenceOf(score), reasons } : { score: 0, reasons: [] };
 }
 
+/**
+ * An incoming product (Stock lists' catalog, core/products.js) against an existing one, by name: the menu's rules
+ * without sections. exact 100 · a size on the end, plural or "&"/"and" 85 ("Bacardi Superior 1L" is "Bacardi
+ * Superior") · a typo 70 (same first letter, ≤ 15% of 5+ letters). Never another first letter or another word
+ * ("Bacardi Gold" isn't "Bacardi Superior", "Diet Coke" isn't "Coke"). A size on both that differs isn't the same.
+ * @returns { score, confidence, reasons }
+ */
+// A product's size on the end ("1L", "750 ml", "(black)"): unlike a menu item's, "glass" or "bottle" is the product itself.
+const PRODUCT_SIZE_TAIL = /\s*(\((?:[^)]*)\)|\[[^\]]*\]|[-–—,]?\s*\$?\d+(?:[.,]\d+)?\s*(?:oz|fl oz|ml|cl|l|lt|ltr|lb|lbs|g|kg|gal|qt|in|inch|"|pc|pcs|piece|pieces|ct|count|pk|pack|onzas)?\.?)\s*$/i;
+/** A product's name with what doesn't make it another product taken off: a size on the end, plurals, "&". */
+export function productLooseKey(s) {
+  let t = fold(s).replace(/&/g, ' and ').replace(/\+/g, ' and ');
+  for (let i = 0; i < 3 && PRODUCT_SIZE_TAIL.test(t); i++) t = t.replace(PRODUCT_SIZE_TAIL, '');
+  return t.replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter((w) => w && !['the', 'el', 'la', 'los', 'las'].includes(w)).map(singular).join('');
+}
+export function productLikeness(name, other) {
+  const sizeOf = (s) => (fold(s).match(/(\d+(?:[.,]\d+)?)\s*(oz|ml|cl|l|lb|g|kg|ct|pc|pcs)\.?\s*$/) || []).slice(1).join('');
+  if (!itemKey(name) || !itemKey(other)) return { score: 0, reasons: [] };
+  if (itemKey(name) === itemKey(other)) return { score: 100, confidence: 'high', reasons: ['sameName'] };
+  const sa = sizeOf(name), sb = sizeOf(other);
+  if (sa && sb && sa !== sb) return { score: 0, reasons: [] }; // a liter and a 750 ml are two products
+  const la = productLooseKey(name), lb = productLooseKey(other);
+  if (la && la === lb) {
+    const sized = (s) => PRODUCT_SIZE_TAIL.test(fold(s));
+    const amp = (s) => /&|\+/.test(s), and = (s) => /\b(and|y)\b/.test(fold(s));
+    const reason = sized(name) || sized(other) ? 'sizeOrPrice' : amp(name) !== amp(other) || and(name) !== and(other) ? 'andSign' : 'plural';
+    return { score: 85, confidence: 'high', reasons: [reason] };
+  }
+  if (la && lb && la[0] === lb[0]) {
+    const budget = Math.min(typoBudget(la), typoBudget(lb));
+    if (budget && editDistance(la, lb, budget) <= budget) return { score: 70, confidence: 'medium', reasons: ['typo'] };
+  }
+  return { score: 0, reasons: [] };
+}
+
 // ---------------------------------------------------------------- duplicates inside the file
 
 /** The keys that make two rows of a roster the same person (any one in common, and none that disagree). */
@@ -749,7 +821,7 @@ export function groupRows(normalized, target) {
 }
 /** Two values of one field the same? Names by their folded spelling, emails and phones as they compare, the rest as written. */
 export function sameField(target, f, a, b) {
-  if (f === 'name' || f === 'category' || f === 'nameEs' || f === 'legalFirstName' || f === 'legalLastName') return target === 'menu' ? itemKey(a) === itemKey(b) : nameKey(a) === nameKey(b);
+  if (f === 'name' || f === 'category' || f === 'nameEs' || f === 'legalFirstName' || f === 'legalLastName') return target !== 'employees' ? itemKey(a) === itemKey(b) : nameKey(a) === nameKey(b);
   if (f === 'email') return normEmail(a) === normEmail(b);
   if (f === 'phone') return phoneKey(a) === phoneKey(b) && (!!phoneKey(a) || clean(a) === clean(b));
   if (f === 'employeeId') return idKey(a) === idKey(b);
@@ -779,6 +851,11 @@ const TEMPLATES = {
     ['Name', 'Category', 'Description', 'Ingredients', 'Allergens', 'Dietary', 'Price', 'Selling notes', 'Recipe', 'Prep notes', 'Spanish name', 'Spanish description', 'Available'],
     ['Charred Carrots', 'Starters', 'Honey-glazed carrots with whipped feta', 'carrots, honey, feta, pistachio', 'milk, tree nuts', 'vegetarian, gluten-free', '11', 'Great to share; pairs with the rosé', '', 'Roast carrots ahead; glaze to order', 'Zanahorias asadas', 'Zanahorias glaseadas con miel y feta batido', 'Yes'],
     ['Garden Spritz', 'Cocktails', 'Elderflower, cucumber and soda', 'elderflower liqueur, cucumber, soda', '', 'vegan', '12', '', '1. Build over ice\n2. Top with soda', '', '', '', 'Yes'],
+  ],
+  products: [
+    ['Name', 'Category', 'Unit', 'Size', 'Par', 'Location', 'Supplier', 'Notes'],
+    ['Silver rum', 'Spirits', 'bottle', '1 L', '6', 'Liquor room, shelf 2', 'Sample Beverage Co.', ''],
+    ['Cocktail napkins', 'Paper', 'sleeve', '', '4', 'Dry storage, shelf 4', '', 'Black ones for the bar'],
   ],
 };
 const csvCell = (s) => (/[",\n]/.test(String(s)) ? `"${String(s).replace(/"/g, '""')}"` : String(s));

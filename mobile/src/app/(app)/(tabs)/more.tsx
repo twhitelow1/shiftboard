@@ -1,4 +1,4 @@
-// More: Ask ShiftBoard (the built-in assistant), the floor tools (leads and managers), the 86 List, the Feedback box (and its
+// More: Ask ShiftBoard (the built-in assistant), the floor tools (leads and managers), Stock lists, the 86 List, the Feedback box (and its
 // inbox for readers), my tips, events, availability and time off (when
 // Training has the tab), profile, language, notifications, calendar, the full website, the restaurants this phone
 // uses (switch, add another), privacy and help, delete my account, sign out. Rows for features the restaurant's
@@ -96,12 +96,13 @@ export default function More() {
         </Card>
       ) : null}
 
-      {isLead || has('eightySix') ? (
+      {isLead || has('eightySix') || has('stock') ? (
         <Card pad={false} style={{ overflow: 'hidden' }}>
           {isLead ? (
             <ListRow icon="users" title={t('more.floor')} sub={t('more.floorHelp')} onPress={() => router.push('/floor')}
               right={approvals ? <Badge tone="warn" text={String(approvals)} /> : null} />
           ) : null}
+          {has('stock') ? <ListRow icon="cards" title={t('stock.title')} sub={t('stock.menuHelp')} onPress={() => router.push('/stock')} /> : null}
           {has('eightySix') ? (
             <ListRow icon="ban" title={t('more.eightySix')} sub={t('more.eightySixHelp')} onPress={() => router.push('/eighty-six')}
               right={out86 ? <Badge tone="bad" text={String(out86)} /> : null} />

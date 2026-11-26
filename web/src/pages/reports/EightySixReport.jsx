@@ -12,6 +12,7 @@ import { useApp, Icon, Modal, Empty } from '../../ui.jsx';
 import { useT, prettyDate, stamp, dowShort, dowLong } from '../../i18n/index.js';
 import { nowDate } from '../../api.js';
 import { Thumbs, PhotoViewer, listName, ago, duration } from '../EightySix.jsx';
+import { ProductPhoto } from '../Stock.jsx'; // the catalog's photo on the purchase list
 import { groupMissing, shoppingList, missingCsv, historyCsv, REPEAT_MIN } from '../../../../core/reports-86.js';
 import { seasonById } from '../../../../core/seasons.js';
 import { todayStr } from '../../../../core/time.js';
@@ -109,7 +110,7 @@ function Missing() {
           {g.items.map((it) => <MissingItem key={it.id} it={it} by={by} data={data} onPhoto={(start) => setViewer({ item: it, start })} />)}
         </section>
       ))}
-      {shop && <ShoppingList items={items} categories={data.categories} onClose={() => setShop(false)} />}
+      {shop && <ShoppingList items={items} categories={data.categories} onClose={() => setShop(false)} onChanged={() => setTick((n) => n + 1)} />}
       {viewer && <PhotoViewer item={viewer.item} start={viewer.start} onClose={() => setViewer(null)} onRemoved={() => { setViewer(null); setTick((n) => n + 1); }} />}
     </>
   );
@@ -143,10 +144,16 @@ function MissingItem({ it, by, data, onPhoto }) {
 }
 
 /** The shopping list: what to order, by category. Copy it, share it (phones), print it. */
-function ShoppingList({ items, categories, onClose }) {
+function ShoppingList({ items, categories, onClose, onChanged }) {
   const t = useT();
-  const { toast, settings } = useApp();
+  const { toast, settings, call, viewAs } = useApp();
   const [withLow, setWithLow] = useState(true);
+  const [busy, setBusy] = useState('');
+  // Ordered (the buyer placed the order) and Received (back in stock: off the 86 List).
+  const act = async (method, args, msg) => {
+    setBusy(args.id);
+    try { await call(method, args); toast(msg); onChanged?.(); } catch (e) { toast(e.message, 'bad'); } finally { setBusy(''); }
+  };
   const chosen = withLow ? items : items.filter((i) => i.status === 'out');
   const text = shoppingList(chosen, { categories, lang: t.lang, date: prettyDate(todayStr(nowDate())), place: settings?.restaurantName || '' });
   useEffect(() => () => document.body.classList.remove('print-shop'), []);
@@ -185,6 +192,26 @@ function ShoppingList({ items, categories, onClose }) {
       )}>
       <div className="help">{t('reports.e86.shoppingHelp')}</div>
       <label className="check"><input type="checkbox" checked={withLow} onChange={(e) => setWithLow(e.target.checked)} />{t('reports.e86.includeLow')}</label>
+      <div className="rp-buy" role="list" aria-label={t('stock.buyListTitle')}>
+        {chosen.map((i) => (
+          <div key={i.id} className="rp-buy-row" role="listitem">
+            {i.product ? <ProductPhoto product={i.product} className="rp-buy-photo" alt="" /> : <span className={`e86-pill ${i.status}`}>{i.status === 'out' ? t('eightySix.pillOut') : t('eightySix.pillLow')}</span>}
+            <div className="rp-buy-text">
+              <b>{i.name}</b>
+              <span className="small muted">{[i.status === 'out' ? t('eightySix.pillOut') : t('eightySix.pillLow'), i.product?.supplier, listName({ name: i.listName, nameEs: i.listNameEs }, t.lang)].filter(Boolean).join(' · ')}</span>
+              {i.shortOut > 0 && <span className="tiny faint">{t('stock.shortOutTimes', { count: i.shortOut })}</span>}
+              {i.orderedAt && <span className="badge ok rp-buy-badge">{t('stock.orderedBy', { name: i.orderedBy?.name || '', when: stamp(i.orderedAt) })}</span>}
+            </div>
+            {!viewAs && (
+              <div className="rp-buy-btns">
+                <button type="button" className="btn sm" disabled={busy === i.id} onClick={() => act('eightySix.markOrdered', { id: i.id, ordered: !i.orderedAt }, i.orderedAt ? t('stock.notOrdered') : t('stock.markedOrdered', { name: i.name }))}>
+                  {i.orderedAt ? t('stock.undoOrdered') : t('stock.ordered')}</button>
+                <button type="button" className="btn sm ok" disabled={busy === i.id} onClick={() => act('eightySix.clear', { id: i.id }, t('stock.received', { name: i.name }))}><Icon name="check" />{t('stock.receivedBtn')}</button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
       <pre className="rp-shop-text" tabIndex={0} aria-label={t('reports.e86.shoppingTitle')}>{text}</pre>
       {createPortal(<div className="rp-print-sheet"><pre>{text}</pre></div>, document.body)}
     </Modal>

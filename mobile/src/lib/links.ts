@@ -55,6 +55,11 @@ export function routeForLink(link: string | undefined, has: (f: Feature) => bool
       // '#/feedback/mine': a reply or a status change on my signed entry (core/feedback.js).
       if (!has('feedback')) break;
       return { pathname: '/feedback', params: { tab: a === 'mine' ? 'mine' : a === 'board' ? 'board' : 'write' } };
+    case 'stock':
+      // '#/stock/<list id>': a list assigned to me, an out on one I made, or one that's done (core/stock.js).
+      if (!has('stock')) break;
+      if (a === 'products') return { pathname: '/stock', params: { tab: 'products' } };
+      return a && a !== 'new' && a !== 'edit' ? { pathname: '/stock-list', params: { id: a } } : '/stock';
     case 'feedback-inbox':
       if (!has('feedbackInbox')) break;
       return '/feedback-inbox';

@@ -85,7 +85,7 @@ const migrations = (S) => [
  * all documents in memory, so photos there would grow memory and cold starts with the photo library.
  * The cache keeps the rest of each document; routes read the bytes on demand with DocDb.lazyData.
  */
-export const LAZY_DATA = ['menuPhotos', 'eightySixPhotos', 'profilePhotos'];
+export const LAZY_DATA = ['menuPhotos', 'eightySixPhotos', 'profilePhotos', 'productPhotos'];
 const LAZY_SQL = `ARRAY[${LAZY_DATA.map((c) => `'${c}'`).join(',')}]::text[]`;
 /**
  * Collections whose rows keep the day they were written, not the time (updated_at at midnight): the Feedback box
