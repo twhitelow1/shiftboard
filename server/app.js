@@ -29,6 +29,7 @@ import { mountIntegrations } from './integrations-routes.js';
 import { createAuth } from './auth.js';
 import { mountOnboarding } from './onboarding.js';
 import { publicRoutes } from './public-routes.js';
+import { mountMcp } from './mcp/index.js';
 import { migrateConsents, emailConsentOf, legalLinks, CONSENT_MIGRATION, CONSENT_TEXT, CONSENT_VERSION } from '../core/consent.js';
 
 const COOKIE = 'sb_session';
@@ -551,6 +552,13 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   trainingRoutes(app, { db, signedIn: (req) => userFromToken(db.store, sessionToken(req)) });
   // 86 List photos, for people who can see the item's list (cookie on the web, bearer token in the phone app).
   eightySixRoutes(app, { db, signedIn: (req) => userFromToken(db.store, sessionToken(req)) });
+  // The Claude connector (server/mcp/): /mcp, OAuth (/oauth/*, /.well-known/*), the consent screen and Connected apps.
+  // Its tools call the same RPCs as the app (server/tools/), and what they change notifies people the same way.
+  mountMcp(app, {
+    db, env, tenant, now, has, paused, secret: () => secret, session, sessionToken, ready,
+    serviceOpts: (req) => ({ hashPassword, channels: channels.info, request: { ip: req.ip, userAgent: req.get('user-agent') || null }, legal }),
+    onCommit: (changes, req) => { channels.afterCommit(changes, req); emailNotifications(changes, req); pushToPhones(changes); },
+  });
 
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 

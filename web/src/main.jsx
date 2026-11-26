@@ -21,6 +21,7 @@ import EightySix from './pages/EightySix.jsx';
 import Account from './pages/Security.jsx';
 import { SignIn, ResetPassword, LinkSignIn } from './pages/SignIn.jsx';
 import { Welcome, ConsentGate } from './pages/Onboarding.jsx';
+import ConnectClaude from './pages/ConnectClaude.jsx'; // connecting Claude (OAuth sign-in and consent)
 import { AuthCard, SignInBrand, BrandMark, DEFAULT_NAME } from './pages/AuthCard.jsx';
 import { t as tr, useT, I18nCtx, setCurrentLang, resolveLang, saveDeviceLang, deviceLang, unsavedDeviceLang, clearUnsaved, isLang, prettyDate, stamp, fmtTime } from './i18n/index.js';
 import LanguageSwitch from './LanguageSwitch.jsx';
@@ -228,6 +229,7 @@ function App() {
   }
   if (parts[0]?.startsWith('reset')) return signedOut(<ResetPassword token={hashParams.get('token') || ''} onDone={() => signedInNow()} />);
   if (parts[0]?.startsWith('link')) return signedOut(<LinkSignIn token={hashParams.get('token') || ''} onDone={() => signedInNow()} />);
+  if (parts[0]?.startsWith('authorize')) return signedOut(<ConnectClaude r={hashParams.get('r') || ''} />); // from /oauth/authorize
   if (authed === false) return signedOut(<SignIn emailEnabled={config.email} onDone={() => { setAuthed(true); refresh(); }} />);
   if (!ctx) return <div className="empty" style={{ paddingTop: 120 }}>{t('common.loading')}</div>;
   // Signed in without having agreed to the terms (people from before consent records): the consent screen, once.

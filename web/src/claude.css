@@ -1,0 +1,22 @@
+/* The Claude connector: the connect screen, Connected apps and Settings → Claude connector. Phone first (360px). */
+.claude-intro { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; background: var(--brand-soft); color: var(--text); font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+.claude-intro svg { flex: none; color: var(--brand); margin-top: 1px; }
+.claude-head { display: flex; gap: 12px; align-items: flex-start; }
+.claude-mark { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: #d97757; color: #fff; }
+.claude-head .small { overflow-wrap: anywhere; }
+.claude-can { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.claude-can li { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+.claude-can li svg { flex: none; margin-top: 2px; color: var(--ok); }
+.claude-can li.off { color: var(--text-3); }
+.claude-can li.off svg { color: var(--text-3); }
+.claude-tag { display: inline-block; margin-left: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-3); white-space: nowrap; }
+.claude-tag.write { color: var(--warn); }
+.claude-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.claude-actions .btn { justify-content: center; }
+
+.claude-url { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.claude-url .input { flex: 1; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+.claude-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 1.45; }
+.claude-code { display: block; padding: 8px 10px; border-radius: 8px; background: var(--surface-3); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; overflow-wrap: anywhere; word-break: break-all; }
+.claude-conn { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.claude-conn .grow { flex: 1 1 180px; min-width: 0; }
