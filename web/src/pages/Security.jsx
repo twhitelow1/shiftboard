@@ -1,4 +1,4 @@
-// My settings (#/account): my profile (photo, name, mobile number) and Sign-in & security (password, the
+// My settings (#/account): my profile (photo, name, legal name for payroll, mobile number) and Sign-in & security (password, the
 // authenticator app, passkeys, recovery codes). The routes are in server/auth.js; the demo shows a sample.
 import React, { useEffect, useState } from 'react';
 import { useApp, Icon, useAction } from '../ui.jsx';
@@ -7,6 +7,7 @@ import { securityInfo, totpSetup, totpConfirm, addPasskey, renamePasskey, remove
 import { useT, stampDay } from '../i18n/index.js';
 import { normalizePhone } from '../../../core/notify-prefs.js';
 import { PhotoPicker } from './ProfilePhoto.jsx';
+import { LegalNameFields } from './LegalName.jsx';
 import { TotpSetup, RecoveryCodesView } from './TwoStep.jsx';
 import { rememberDemoPhoto } from '../photo.js';
 import '../auth.css';
@@ -26,6 +27,7 @@ function ProfileCard() {
   const [run, busy] = useAction();
   const [name, setName] = useState(me.name || '');
   const [phone, setPhone] = useState(me.phone || '');
+  const [legal, setLegal] = useState({ legalFirstName: me.legalFirstName || '', legalLastName: me.legalLastName || '' }); // mine to correct
   const badPhone = phone.trim() && !normalizePhone(phone);
   const savePhoto = async (dataUrl) => {
     const r = await run(() => call('profile.setPhoto', { dataUrl }), t('security.photoSaved'));
@@ -35,8 +37,9 @@ function ProfileCard() {
     <div className="card card-pad col section" style={{ gap: 12 }}>
       <h2>{t('security.myProfile')}</h2>
       <PhotoPicker user={me} busy={busy} onSave={savePhoto} onRemove={() => run(() => call('profile.removePhoto'), t('security.photoRemoved'))} />
-      <form className="col" style={{ gap: 10 }} onSubmit={(e) => { e.preventDefault(); run(() => call('profile.update', { name, phone }), t('common.saved')).then((r) => r && setPhone(r.phone)); }}>
+      <form className="col" style={{ gap: 10 }} onSubmit={(e) => { e.preventDefault(); run(() => call('profile.update', { name, phone, ...legal }), t('common.saved')).then((r) => r && setPhone(r.phone)); }}>
         <label className="field"><span>{t('common.name')}</span><input className="input" value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" /></label>
+        <LegalNameFields value={legal} onChange={setLegal} help={t('legalName.mineHelp')} own />
         <label className="field"><span>{t('security.mobilePhone')}</span>
           <input className="input" type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(303) 555-0142" />
           <div className="help">{badPhone ? t('security.phoneLooksWrong') : t('security.phoneHelp')}</div>

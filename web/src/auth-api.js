@@ -68,7 +68,7 @@ export const onboarding = {
   },
   regenerate: () => send('/api/onboarding/recovery/regenerate', {}),
   saved: () => send('/api/onboarding/recovery/ack', { saved: true }),
-  profile: (name, phone) => send('/api/onboarding/profile', { name, phone }),
+  profile: (name, phone, legal = {}) => send('/api/onboarding/profile', { name, phone, ...legal }), // legal: { legalFirstName, legalLastName }
   photo: (dataUrl) => send('/api/onboarding/photo', dataUrl ? { dataUrl } : { remove: true }),
   complete: (payload) => send('/api/onboarding/complete', payload),
 };

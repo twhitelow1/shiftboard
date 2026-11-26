@@ -1,7 +1,7 @@
 // The welcome wizard (#/welcome?token=…, from the invitation email; server/onboarding.js), one step per
 // screen with progress dots:
 //   1. password   2. secure your account (a passkey or an authenticator app, then 10 recovery codes)
-//   3. profile (name, mobile number, photo)   4. consent   → done → My Shifts
+//   3. profile (the name they go by, legal name, mobile number, photo)   4. consent   → done → My Shifts
 // Progress is kept on the server, so a reload picks up where it was. #/welcome?preview=1 (admins in the demo)
 // walks through the same screens with sample data and no server calls, for screenshots.
 //
@@ -18,6 +18,7 @@ import { consentBoxes, initialChoices, canSubmit, consentPayload } from '../cons
 import { AuthCard } from './AuthCard.jsx';
 import { ChooseFactor, TotpSetup, RecoveryCodesView } from './TwoStep.jsx';
 import { PhotoPicker } from './ProfilePhoto.jsx';
+import { LegalNameFields } from './LegalName.jsx';
 
 const STEPS = ['password', 'secure', 'profile', 'consent'];
 const lang2 = (l) => (l === 'es' ? 'es' : 'en');
@@ -232,6 +233,7 @@ function ProfileStep({ info, top, title, preview, busy, err, run, onSaved }) {
   const t = useT();
   const [name, setName] = useState(info.profile?.name || info.name || '');
   const [phone, setPhone] = useState(info.profile?.phone || '');
+  const [legal, setLegal] = useState({ legalFirstName: info.profile?.legalFirstName || '', legalLastName: info.profile?.legalLastName || '' }); // optional, for payroll
   const [photoId, setPhotoId] = useState(info.profile?.photoId || null);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [localSrc, setLocalSrc] = useState(''); // what was just picked (not signed in yet: /api/photos can't serve it)
@@ -250,7 +252,7 @@ function ProfileStep({ info, top, title, preview, busy, err, run, onSaved }) {
   const submit = (e) => {
     e.preventDefault();
     run(async () => {
-      const s = preview ? { ...info, profile: { name, phone, photoId } } : await onboarding.profile(name, phone);
+      const s = preview ? { ...info, profile: { name, phone, photoId, ...legal } } : await onboarding.profile(name, phone, legal);
       onSaved({ profile: { ...(s.profile || {}), name, phone: s.profile?.phone ?? phone, photoId } });
     });
   };
@@ -258,7 +260,9 @@ function ProfileStep({ info, top, title, preview, busy, err, run, onSaved }) {
   return (
     <AuthCard wide top={top} onSubmit={submit}>
       {title(t('welcome.profileTitle'), t('welcome.profileHelp'))}
-      <label className="field"><span>{t('common.name')}</span><input className="input" value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" /></label>
+      <label className="field"><span>{t('legalName.goBy')}</span><input className="input" value={name} onChange={(e) => setName(e.target.value)} required autoComplete="nickname" />
+        <div className="help">{t('legalName.goByHelp')}</div></label>
+      <LegalNameFields value={legal} onChange={setLegal} label={t('legalName.asOnPayroll')} help={t('legalName.welcomeHelp')} own />
       <label className="field"><span>{t('welcome.mobileOptional')}</span>
         <input className="input" type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(303) 555-0142" />
         <div className="help">{badPhone ? translateError('Enter your mobile number, like (303) 555-0123') : t('welcome.mobileHelp')}</div>
