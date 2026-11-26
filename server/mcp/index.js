@@ -280,6 +280,8 @@ export function mountMcp(app, d) {
         if (!u || u.active === false || (u.sessionVersion || 0) !== (g.v || 0)) return fail('The person signed out since');
         const done = G.activate(s, g, { refreshHash: T.sha256(refresh), refreshExpiresAt: iso(now() + T.REFRESH_TTL_DAYS * 86400_000), at });
         audit(s, u.id, 'claude.connected', { client: g.clientName, scope: g.scope.join(' ') });
+        // Claude registers a new client each time someone connects, so a reconnect replaces their earlier Claude connection.
+        for (const old of G.replacedBy(s, done)) { G.revoke(s, old, 'replaced by a new connection', at); audit(s, u.id, 'claude.revoked', { client: old.clientName, reason: 'replaced' }); }
         return { grant: done };
       }, { write: true });
       if (out.error) return oauthError(res, 400, 'invalid_grant', out.error);

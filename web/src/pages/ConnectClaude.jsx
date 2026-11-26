@@ -6,7 +6,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../ui.jsx';
 import { call, logout, getConfig, IS_DEMO } from '../api.js';
 import { authRequest, decide } from '../mcp-api.js';
-import { useT } from '../i18n/index.js';
+import { useT, useI18n, unsavedDeviceLang } from '../i18n/index.js';
 import { AuthCard } from './AuthCard.jsx';
 import { SignIn } from './SignIn.jsx';
 import { ConsentGate } from './Onboarding.jsx';
@@ -14,6 +14,7 @@ import '../claude.css';
 
 export default function ConnectClaude({ r }) {
   const t = useT();
+  const { lang, setLang } = useI18n();
   const [info, setInfo] = useState(null);
   const [err, setErr] = useState(null); // { code, message }
   const [me, setMe] = useState(null); // for the terms screen
@@ -26,12 +27,14 @@ export default function ConnectClaude({ r }) {
     try {
       const i = await authRequest(r);
       setInfo(i); setErr(null);
+      // Signed in: their own language, unless they just picked one on this screen.
+      if (i.person?.fresh && i.person.language && i.person.language !== lang && !unsavedDeviceLang()) setLang(i.person.language);
       if (i.person?.fresh && i.person.needsTerms) {
         const [b, c] = await Promise.all([call('app.bootstrap'), getConfig()]);
         setMe(b.me); setLegal(c?.legal || null);
       }
     } catch (e) { setErr({ code: e.code || 'expired', message: e.message }); }
-  }, [r]);
+  }, [r]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!IS_DEMO) load(); }, [load]);
 
   if (IS_DEMO) return <AuthCard><div className="alert info"><Icon name="sparkle" size={16} />{t('claude.demo')}</div></AuthCard>;

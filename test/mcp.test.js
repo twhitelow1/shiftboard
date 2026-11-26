@@ -311,6 +311,11 @@ test('connections end with the person’s sessionVersion (password change), deac
     assert.equal(list.body.result.connections.length, 1);
     assert.equal(list.body.result.connections[0].name, 'Claude');
     assert.ok(list.body.result.connections[0].connectedAt && list.body.result.connections[0].lastUsedAt);
+    // Connecting Claude again replaces the earlier connection (Claude registers a new client each time).
+    const again = await connect(b, 'alexd@demo.shiftboard', { skipSignIn: true });
+    assert.equal((await b.get('/api/mcp/connections')).body.result.connections.length, 1);
+    assert.equal((await rpc(b, c.tokens.access_token, 'tools/list')).status, 401, 'the old one ended');
+    Object.assign(c, again);
     // A password change signs out everywhere, Claude included.
     assert.equal((await b.post('/api/rpc/employees.changePassword', { password: 'a-brand-new-passphrase' })).status, 200);
     const gone = await rpc(b, c.tokens.access_token, 'tools/list');
@@ -428,7 +433,7 @@ test('scopes: read-only connections list no write tools and can’t change anyth
     assert.equal(app.db.store.list('timeOff', (x) => x.startDate === '2099-02-02').length, 0);
     const ro2 = await connect(b, 'alexd@demo.shiftboard', { scope: 'shiftboard.read', skipSignIn: true });
     assert.equal(ro2.tokens.scope, 'shiftboard.read', 'asked for read-only at authorize');
-    assert.equal((await refresh(b, ro.client, ro.tokens.refresh_token, { scope: 'shiftboard.write' })).body.error, 'invalid_scope', 'refresh can’t widen');
+    assert.equal((await refresh(b, ro2.client, ro2.tokens.refresh_token, { scope: 'shiftboard.write' })).body.error, 'invalid_scope', 'refresh can’t widen');
 
     const admin = browser({ base: app.base });
     await signIn((p, body) => admin.post(p, body), 'moe@demo.shiftboard');

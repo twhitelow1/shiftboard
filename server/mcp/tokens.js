@@ -120,7 +120,7 @@ export function checkRegistration(body) {
 
 /** Sign a client's metadata into its client_id (and make its secret, for a confidential client). */
 export function issueClient(keys, metadata, nowSec) {
-  const body = b64u(JSON.stringify({ v: 1, r: metadata.redirect_uris, n: metadata.client_name || '', m: metadata.token_endpoint_auth_method, i: nowSec }));
+  const body = b64u(JSON.stringify({ v: 1, r: metadata.redirect_uris, n: metadata.client_name || '', m: metadata.token_endpoint_auth_method, i: nowSec, j: crypto.randomBytes(6).toString('base64url') }));
   const clientId = `sbc1.${body}.${b64u(keys.mac('client', body)).slice(0, 43)}`;
   const secret = metadata.token_endpoint_auth_method === 'none' ? null : clientSecretFor(keys, clientId);
   return { clientId, secret };

@@ -195,7 +195,7 @@ function ConsentLogLink() {
   if (!isAdmin) return null;
   return (
     <div className="col" style={{ gap: 4 }}>
-      <div><a className="btn sm" href="/api/consents.csv" download><Icon name="download" />{t('consent.downloadLog')}</a></div>
+      <div><a className="btn sm" href="/api/consents.csv" download style={{ whiteSpace: 'normal', height: 'auto', minHeight: 32, maxWidth: '100%' }}><Icon name="download" />{t('consent.downloadLog')}</a></div>
       <div className="help">{t('consent.logHelp')}</div>
     </div>
   );

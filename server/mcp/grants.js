@@ -68,6 +68,13 @@ export function revoke(store, grant, reason, at) {
   return store.update(GRANTS, grant.id, { status: 'revoked', revokedAt: at, revokedReason: reason, refreshHash: null, codeHash: grant.codeHash || null });
 }
 
+/**
+ * Earlier connections a new one replaces: the same person's other working connections through Claude's hosted callback
+ * (claude.ai, Desktop and the phone apps share one connection). Local apps (Claude Code on several computers) stay.
+ */
+export const replacedBy = (store, grant) => (grant.clientKind !== 'claude' ? [] : store.list(GRANTS, (g) => g.id !== grant.id && g.userId === grant.userId
+  && g.status === 'active' && g.clientKind === 'claude' && g.redirectUri === grant.redirectUri));
+
 /** Drop what nobody can use anymore: codes never exchanged, and connections revoked or expired over a week ago. */
 export function prune(store, nowMs) {
   const hourAgo = new Date(nowMs - 3600_000).toISOString();
