@@ -21,16 +21,18 @@ _Working name "ShiftBoard"; a new product name is still to be chosen (see Busine
 | Claude connector (MCP) for claude.ai / Claude Code: OAuth with two-step sign-in, 36 tools by role | #16 | first real Claude connection still to do |
 | Beta error tracking + "Report a problem", console Errors & reports, email alerts + daily digest | #16 | live Nov 26 |
 | Schedule PDF (like the wall sheet), Publish options (notify on/off, attach PDF), editable notification emails (EN/ES), all managers on duty | #16 | live Nov 26 |
+| **Ask ShiftBoard** (built-in Claude chat for staff and managers, EN/ES, web + phone app + /app): Claude Haiku 5.5, the connector's tools as the signed-in person, changes only on Confirm (audited); **usage metered and capped per restaurant** ($5/month default on Pro and Beta, console override, 80% warning, 50 messages/person/day, bring-your-own key); `server/ai/` for every AI feature | #18 | live Nov 26 |
+| Google Business Profile + Yelp reviews: daily sync, staff mentions, review alerts (all / ≤3★ / off), replies posted to Google, **AI-drafted replies** (via `server/ai/`; Yelp: copy and open Yelp, its API can't reply) | #18 | live Nov 26 |
+| Day list sorting: who's on by room, position, start time or name (web day view, new desktop Day view, phone app schedule and Today on the floor); desktop grid By position | #18 | live Nov 26 |
+| Phone app matches the website's Branding: brand, nav and background colors, light/dark, logo, room-colored banners (website day view and grid too), sign-in backdrop, live refresh | #18 | live Nov 26 |
 
 ## Building
 | Feature | Notes |
 |---|---|
-| **Ask ShiftBoard** (built-in Claude chat for staff and managers, EN/ES, web + phone app + /app): Claude Haiku 5.5, the connector's tools as the signed-in person, changes only on Confirm (audited); **usage metered and capped per restaurant** ($5/month default on Pro and Beta, console override, 80% warning, 50 messages/person/day, bring-your-own key); `server/ai/` for every AI feature | built and tested; in the next PR |
-| Google Business Profile + Yelp reviews: daily sync, staff mentions, review alerts (all / ≤3★ / off), replies posted to Google, **AI-drafted replies** (via `server/ai/`; Yelp: copy and open Yelp, its API can't reply) | built and tested; in the next PR |
+| Admins can make themselves Super Admin (re-auth, audited, others alerted), with a Super-Admin-only switch to turn it off | building |
+| Floor plan: import from Toast / a picture or PDF (AI) / CSV, Toast-style editor (shapes, bar seats, walls, sections), export + "set this up in Toast" helper | building |
 | Full BEO import: every non-money detail (timeline, menus, dietary, bar, setup, rentals/AV, vendors, notes), shown only where the BEO has it; re-import shows what changed; AI reading for non-Tripleseat BEOs | building |
 | Smart import for employees and menu items: CSV / PDF / DOCX, field matching, preview with changes, AI reading for unstructured files; connector tools to import menus and employees from Claude | building |
-| Day list sorting: who's on by room, position, start time or name (web day view, new desktop Day view, phone app schedule and Today on the floor); desktop grid By position | built and tested; in the next PR |
-| Phone app matches the website's Branding: brand, nav and background colors, light/dark, logo, room-colored banners (website day view and grid too), sign-in backdrop, live refresh | built and tested; in the next PR |
 | Employee sync from other platforms | later (after the import) |
 
 ## Next
