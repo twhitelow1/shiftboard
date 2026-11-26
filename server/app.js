@@ -41,6 +41,7 @@ import { migrateConsents, emailConsentOf, legalLinks, CONSENT_MIGRATION, CONSENT
 import { roleAllows, cleanDraft, ROLE_ROUTES, ROLE_OFF } from '../core/role-features.js';
 import { createViewAs } from './view-as.js';
 import { mountAssistant } from './assistant/index.js';
+import { mountBeoAi } from './beo-ai-routes.js';
 
 const COOKIE = 'sb_session';
 // Not allowed while DubLow staff are signed in as the owner for support ("Sign in as owner"): the owner's
@@ -610,6 +611,9 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     serviceOpts: (req) => ({ hashPassword, channels: channels.info, request: { ip: req.ip, userAgent: req.get('user-agent') || null }, legal, announce: announcer.info, planFeatures: planFeatures() }),
     onCommit: (changes, req) => { channels.afterCommit(changes, req); emailNotifications(changes, req); pushToPhones(changes); },
   });
+
+  // "Read it with AI" for a BEO that isn't Tripleseat's layout (server/beo-ai-routes.js): metered like every AI call.
+  mountBeoAi(app, { db, env, tenant, now, has, userOf: (req) => whoIs(req), aiClient });
 
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 

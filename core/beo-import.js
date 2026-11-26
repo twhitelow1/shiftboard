@@ -16,6 +16,9 @@
 //
 // Input items: { page, str, x, y, w, h, bold?, italic? } in points; x/y = left/top of the text, h = font size.
 import { SERVICE_STYLES } from './beo.js';
+import { fingerprint, sectionKeyFor, kindFor, SECTION_KEYS, SECTION_KINDS, MIRRORED_FIELDS, LABEL_KEYS } from './beo-sections.js';
+
+export { fingerprint };
 
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 const pad = (n) => String(n).padStart(2, '0');
@@ -41,8 +44,10 @@ export function isFinancial(text) {
   return MONEY.test(s) || FINANCIAL.test(s) || CARD_DIGITS.test(s) || CARD_LAST4.test(s);
 }
 /** A name with its price taken off: "Winter Spritz $14" → "Winter Spritz". */
+// A price and what it's per ("$28 pp", "$14 each", "$40 / per guest", "$9++").
+const PRICE_PER = /[-–]?\$\s?\d[\d,]*(?:\.\d+)?(?:\s*\+\+)?(?:\s*(?:\/\s*)?(?:pp|p\/p|per\s+(?:person|guest|piece|pc|hour|hr|dozen|platter|gallon)|each|ea\.?)(?![a-z]))?/gi;
 export function stripMoney(text) {
-  return tidy(String(text || '').replace(MONEY_ALL, ' ').replace(/\(\s*\)/g, ' ')).replace(/\s*[-–/]\s*$/, '').trim();
+  return tidy(String(text || '').replace(PRICE_PER, ' ').replace(MONEY_ALL, ' ').replace(/\(\s*\)/g, ' ')).replace(/\s*[-–/]\s*$/, '').trim();
 }
 /** A name with its price at the end ("Winter Spritz $14"): the name stays, the price goes. */
 const PRICE_TAG = /^[A-Za-z0-9“"'][^$]*\$\s?\d[\d,]*(?:\.\d+)?\s*$/;
@@ -233,7 +238,7 @@ function sectionsOf(lines) {
   for (let i = 0; i < lines.length; i++) {
     const h = headingOf(lines[i], lines[i + 1]);
     if (h) {
-      cur = { ...h, lines: [] };
+      cur = { ...h, heading: lines[i].text, lines: [] };
       out.push(cur);
       if (h.label && h.key !== 'other') cur.lines.push({ ...lines[i], label: true });
       continue;
@@ -609,6 +614,50 @@ function parseTimeline(lines, actX, eventStart) {
   return rows;
 }
 
+// ---------- nothing lost: lines no part of the reader carried ----------
+// Words that are the BEO's structure (headings, column names, labels), not what it says.
+const STRUCTURE = new Set(('qty quantity price total totals discount rental rentals food beverage beverages banquet event order summary setup set details notes ' +
+  'dietary restrictions counts contact information host vendor floorplans floorplan layout special instructions date day type min account email phone ' +
+  'menu heading xxx invoice updated support needs guests time areas location sales manager and the for with').split(' '));
+const words = (s) => (String(s).toLowerCase().match(/[a-zÀ-ɏ][a-zÀ-ɏ'’]{2,}/g) || []).filter((w) => !STRUCTURE.has(w));
+function valueWords(v, out = new Set()) {
+  if (typeof v === 'string') for (const w of words(v)) out.add(w);
+  else if (Array.isArray(v)) v.forEach((x) => valueWords(x, out));
+  else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) if (k !== 'warnings') valueWords(x, out);
+  return out;
+}
+/** A line whose words aren't (mostly) somewhere in what was read. */
+const isLost = (text, seen) => { const w = words(text); return w.length > 0 && w.filter((x) => seen.has(x)).length / w.length < 0.75; };
+const BILLING = /^\d+(?:st|nd|rd|th)\s+hour\b/i; // the bar billed by the hour
+const ARRIVAL_LABEL = /^arrival notes?(?:\s+for(?:\s+the)?\s+host(?:\s+team)?)?\s*[:\-–]?$/i;
+const SKIP_PARTS = new Set(['summary', 'totals', 'end', 'timeline']); // money, signatures, and the run of show (XX:XX rows are blanks)
+
+/** Lines of the BEO's sections that nothing else carried, by heading: [{ key, title, items }]. Money stays out. */
+function leftovers(parts, event, sections) {
+  const seen = valueWords({ ...event, sections });
+  const out = [];
+  for (const part of parts) {
+    if (SKIP_PARTS.has(part.key)) continue;
+    const kept = [];
+    let prev = null, money = false;
+    for (const l of part.lines) {
+      if (l.label || l.items.every((i) => HEAD_WORDS.test(i.str) || MONEYISH.test(i.str))) continue;
+      const t = tidy(l.items.filter((i) => !MONEYISH.test(i.str) && !(/^\d{1,5}$/.test(i.str) && i.x < LEFT)).map((i) => i.str).join(' '));
+      // A line that goes on from a money line ("…once the minimum" / "is met") is money too.
+      const goesOn = prev && prev.page === l.page && l.y - prev.y <= 16 && (CONT_START.test(t) || CONT_END.test(prev.t) || opens(prev.t));
+      money = (money && goesOn) || moneyLine(t) || BILLING.test(t);
+      prev = { page: l.page, y: l.y, t };
+      if (!t || money || PLACEHOLDER.test(t) || BULLET_ONLY.test(t) || ARRIVAL_LABEL.test(t)) continue;
+      if (isLost(t, seen)) { kept.push(PRICE_TAG.test(t) ? stripMoney(t) : t); for (const w of words(t)) seen.add(w); }
+    }
+    if (!kept.length) continue;
+    const title = part.label || part.heading || '';
+    const key = sectionKeyFor(title);
+    out.push({ key: ['list', 'text'].includes(kindFor(key)) && key !== 'notes' ? key : 'other', title, items: kept });
+  }
+  return out;
+}
+
 // ---------- one BEO ----------
 const bodySize = (lines) => {
   const hs = lines.flatMap((l) => l.items.map((i) => i.h)).filter(Boolean).sort((a, b) => a - b);
@@ -653,8 +702,8 @@ function parseEvent(pages) {
   const notes = (ls, o = {}) => freeText(ls, { margin, ...o });
 
   // Sections, in order; any of them can be missing.
-  const sections = sectionsOf(sumAt >= 0 ? lines.slice(sumAt) : lines.slice(headEnd));
-  const of = (key) => sections.filter((s) => s.key === key);
+  const parts = sectionsOf(sumAt >= 0 ? lines.slice(sumAt) : lines.slice(headEnd));
+  const of = (key) => parts.filter((s) => s.key === key);
   const linesOf = (key) => of(key).flatMap((s) => s.lines);
 
   // EVENT SUMMARY: the row on the BEO's date is the event; other rows (a tasting…) are kept as other dates.
@@ -667,17 +716,22 @@ function parseEvent(pages) {
   const drinks = parseBeverage(entriesOf(linesOf('beverage')));
   const rental = parseRental(entriesOf(linesOf('rental')));
   const av = notes(linesOf('av').filter((l) => !l.items.every((i) => HEAD_WORDS.test(i.str))).map((l) => ({ ...l, text: tidy(l.items.filter((i) => !MONEYISH.test(i.str) && !(/^\d{1,5}$/.test(i.str) && i.x < LEFT)).map((i) => i.str).join(' ')) })).filter((l) => l.text));
-  const others = of('other').flatMap((s) => {
-    const body = notes(s.lines.filter((l) => !l.items.every((i) => HEAD_WORDS.test(i.str))).map((l) => ({ ...l, text: tidy(l.items.filter((i) => !MONEYISH.test(i.str) && !(/^\d{1,5}$/.test(i.str) && i.x < LEFT)).map((i) => i.str).join(' ')) })).filter((l) => l.text));
-    return body.length ? [`${s.label}:`, ...body] : [];
-  });
+  const otherBodies = of('other').map((s) => ({
+    label: s.label,
+    body: notes(s.lines.filter((l) => !l.items.every((i) => HEAD_WORDS.test(i.str))).map((l) => ({ ...l, text: tidy(l.items.filter((i) => !MONEYISH.test(i.str) && !(/^\d{1,5}$/.test(i.str) && i.x < LEFT)).map((i) => i.str).join(' ')) })).filter((l) => l.text)),
+  })).filter((o) => o.body.length);
+  const others = otherBodies.flatMap((o) => [`${o.label}:`, ...o.body]);
   const timelineSec = of('timeline')[0];
   const timeline = timelineSec ? parseTimeline(timelineSec.lines, timelineSec.act, main.start || '') : [];
   const fbFromTotals = money(linesOf('totals').find((l) => /^f&b minimum/i.test(l.text))?.text);
 
+  const setupBody = notes(linesOf('setup'), { skip: [/^set[- ]?up (?:notes|details):?$/i] });
+  const contactBody = notes(linesOf('contacts'));
+  const guaranteed = lines.map((l) => l.text.match(/\bguarantee(?:d)?(?:\s+(?:guest\s+)?count|\s+guests?)?\s*[:#-]?\s*(\d{1,5})\b/i)).find(Boolean);
+
   const event = {
-    name, date, start: main.start || '', end: main.end || '', guestCount: main.guestCount || 0, type: main.type || '',
-    areas: main.areas || '', serviceStyle: serviceStyleFrom([...food.groups, main.type]) || (!food.menu.length && drinks.beverage.package ? 'cocktail' : ''),
+    name, date, start: main.start || '', end: main.end || '', guestCount: main.guestCount || 0, ...(guaranteed ? { guaranteed: Number(guaranteed[1]) } : {}), type: main.type || '',
+    areas: main.areas || '', ...(main.location ? { location: main.location } : {}), serviceStyle: serviceStyleFrom([...food.groups, main.type]) || (!food.menu.length && drinks.beverage.package ? 'cocktail' : ''),
     invoiceNumber: invoice, beoUpdatedAt,
     ...fields,
     fbMinimum: main.fbMinimum || fbFromTotals || 0,
@@ -686,13 +740,36 @@ function parseEvent(pages) {
     timeline,
     dietaryNotes: notes(linesOf('dietary')).join('\n'),
     arrivalNotes: rental.arrivalNotes,
-    contactNotes: notes(linesOf('contacts')).join('\n'),
-    setupNotes: [...rental.rentalNotes, ...notes(linesOf('setup'), { skip: [/^set[- ]?up (?:notes|details):?$/i] }), ...others].join('\n'),
+    contactNotes: contactBody.join('\n'),
+    setupNotes: [...rental.rentalNotes, ...setupBody, ...others].join('\n'),
     specialInstructions: notes(linesOf('special')).join('\n'),
     avNotes: av.join('\n'),
     otherDates,
     pages: [pages[0].page, pages[pages.length - 1].page],
   };
+  // The same text as sections (core/beo-sections.js): rentals, setup and other headings each on their own, the host
+  // and the vendors apart (vendors' names are for staff too; phone numbers and emails aren't).
+  const headingOfKey = (key) => of(key)[0]?.heading || '';
+  const sections = [];
+  const push = (key, title, items, from) => { if (items.length) sections.push({ key, title: tidy(title), kind: kindFor(key), items, ...(from ? { from } : {}) }); };
+  push('rentals', headingOfKey('rental'), rental.rentalNotes, ['setupNotes']);
+  push('setup', headingOfKey('setup'), setupBody, ['setupNotes']);
+  for (const o of otherBodies) {
+    const key = sectionKeyFor(o.label);
+    push(['list', 'text'].includes(kindFor(key)) && key !== 'other' ? key : 'other', o.label, o.body, ['setupNotes']);
+  }
+  const host = [], vendors = [];
+  let side = host;
+  for (const p of contactBody) {
+    if (/\bvendor\b.*\bcontact/i.test(p) && p.length <= 60) { side = vendors; continue; }
+    if (/^(?:contact information|(?:host|event)\b.*\bcontact details)/i.test(p) && p.length <= 60) { side = host; continue; }
+    side.push(p.replace(/^[•◦▪●○*–-]\s*/, ''));
+  }
+  push('contacts', '', host.filter(Boolean).map((value) => ({ value })), ['contactNotes']);
+  push('vendors', '', vendors.filter(Boolean), ['contactNotes']);
+  // Anything the BEO says that none of the above carried: kept under its own heading, so nothing is lost.
+  for (const left of leftovers(parts, event, sections)) push(left.key, left.title, left.items);
+  event.sections = sections;
   const expected = pages.find((p) => p.footer)?.footer.m;
   if (!event.name) warnings.push({ code: 'noName' });
   if (!event.date) warnings.push({ code: 'noDate' });
@@ -712,6 +789,32 @@ function parseEvent(pages) {
  */
 export function parseBeos(items) {
   return splitPages(readPages(items)).map(parseEvent);
+}
+
+/**
+ * The PDF's text, line by line in reading order with the page breaks marked: what "Read it with AI" sends when a
+ * BEO isn't laid out the way this reader knows. Lines that are only money (a price column) are left out here already.
+ */
+export function beoText(items, max = 60000) {
+  const out = [];
+  for (const pg of readPages(items)) {
+    out.push(`--- page ${pg.page} ---`);
+    for (const l of pg.lines) {
+      const t = tidy(l.cells.map((c) => c.text).filter((x) => !MONEYISH.test(x)).join('  |  '));
+      if (t) out.push(t);
+    }
+  }
+  return out.join('\n').slice(0, max);
+}
+
+/** What the preview warns about on a BEO read some other way (the AI): the same codes parseBeos gives. */
+export function beoWarnings(e) {
+  const w = [];
+  if (!e.name) w.push({ code: 'noName' });
+  if (!e.date) w.push({ code: 'noDate' });
+  if (!e.start) w.push({ code: 'noTime' });
+  if (!e.guestCount) w.push({ code: 'noGuests' });
+  return w;
 }
 
 // ---------- rooms ----------
@@ -738,7 +841,7 @@ export function matchRooms(areas, rooms = [], names = []) {
 
 // ---------- what gets imported ----------
 /** Fields the BEO owns: a re-import updates them. Staffing, captain, status, attire, comments and shifts stay as managers left them. */
-export const BEO_FIELDS = ['name', 'date', 'start', 'end', 'room', 'roomId', 'areas', 'guestCount', 'type', 'serviceStyle',
+export const BEO_FIELDS = ['name', 'date', 'start', 'end', 'room', 'roomId', 'areas', 'location', 'guestCount', 'guaranteed', 'type', 'serviceStyle',
   'client', 'contactName', 'contactEmail', 'contactPhone', 'contactNotes', 'salesManager', 'eventManager', 'fbMinimum',
   'menu', 'beverage', 'specialDrinks', 'timeline', 'dietaryNotes', 'arrivalNotes', 'setupNotes', 'specialInstructions', 'avNotes', 'otherDates'];
 /** Staff on the event hear about these changing. */
@@ -747,7 +850,7 @@ export const KEY_FIELDS = ['date', 'start', 'end', 'room', 'guestCount'];
 /** A parsed BEO with the room picked in the preview → the payload for events.importBeos. */
 export function beoToEvent(parsed, { roomId = null, room = '', date } = {}) {
   const out = {};
-  for (const f of [...BEO_FIELDS, 'invoiceNumber', 'beoUpdatedAt']) if (f in parsed) out[f] = parsed[f];
+  for (const f of [...BEO_FIELDS, 'invoiceNumber', 'beoUpdatedAt', 'tripleseatId', 'sections']) if (f in parsed) out[f] = parsed[f];
   out.roomId = roomId || null;
   out.room = room || '';
   if (date) out.date = date;
@@ -778,7 +881,9 @@ export function cleanBeoEvent(raw = {}) {
     roomId: r.roomId ? text(r.roomId, 60) : null,
     room: name(r.room, 120),
     areas: name(r.areas, 200),
+    location: name(r.location, 120),
     guestCount: intIn(r.guestCount, 100000),
+    guaranteed: intIn(r.guaranteed, 100000),
     type: name(r.type, 60),
     serviceStyle: SERVICE_STYLES[r.serviceStyle] ? r.serviceStyle : '',
     client: name(r.client, 120),
@@ -808,28 +913,69 @@ export function cleanBeoEvent(raw = {}) {
     otherDates: list(r.otherDates, 10).map((o) => ({ date: dateOk(o?.date), start: timeOk(o?.start), end: timeOk(o?.end), areas: name(o?.areas, 200), guestCount: intIn(o?.guestCount, 100000), type: name(o?.type, 60) })).filter((o) => o.date),
     invoiceNumber: /^[A-Za-z0-9-]{1,30}$/.test(String(r.invoiceNumber || '')) ? String(r.invoiceNumber) : '',
     beoUpdatedAt: /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2})?$/.test(String(r.beoUpdatedAt || '')) ? String(r.beoUpdatedAt) : '',
+    tripleseatId: /^[A-Za-z0-9_-]{1,40}$/.test(String(r.tripleseatId || '')) ? String(r.tripleseatId) : '',
+    sections: cleanSections(r.sections),
   };
+}
+
+/** One line of a section's text: money lines go, a price at the end of a name comes off, card digits never. */
+const line = (v, max) => {
+  const t = String(v ?? '').replace(/\s+/g, ' ').trim();
+  if (!t || moneyLine(t) || /^\d+(?:st|nd|rd|th)\s+hour\b/i.test(t)) return '';
+  return noCards(PRICE_TAG.test(t) ? stripMoney(t) : t, max);
+};
+/** Several lines (a key-value's value, a drink's recipe): each one cleaned. */
+const block = (v, max) => String(v ?? '').split('\n').map((l) => line(l, max)).filter(Boolean).join('\n').slice(0, max);
+const SECTION_ITEM = {
+  timeline: (x) => { const t = line(x?.text ?? x?.item, 300); return timeOk(x?.time) && t ? { time: timeOk(x.time), ...(timeOk(x?.end) ? { end: timeOk(x.end) } : {}), text: t } : null; },
+  menu: (m) => {
+    const out = { course: name(m?.course, 80), item: line(m?.item, 200), notes: block(String(m?.notes ?? '').replace(/ · /g, '\n'), 800).replace(/\n/g, ' · ') };
+    if (intIn(m?.qty, 100000)) out.qty = intIn(m.qty, 100000);
+    const diet = list(m?.dietary, 10).map((d) => text(d, 30)).filter(Boolean);
+    if (diet.length) out.dietary = diet;
+    return out.item || out.notes ? out : null;
+  },
+  list: (x) => line(typeof x === 'string' ? x : x?.text ?? x?.value, 600) || null,
+  text: (x) => line(typeof x === 'string' ? x : x?.text ?? x?.value, 1200) || null,
+  keyvalue: (x) => {
+    if (typeof x === 'string') { const v = line(x, 600); return v ? { value: v } : null; }
+    const label = isFinancial(x?.label) ? null : name(x?.label, 80);
+    const value = block(x?.value, 1000);
+    if (label === null || !value) return null;
+    return { ...(label ? { label } : {}), ...(LABEL_KEYS.includes(x?.labelKey) ? { labelKey: x.labelKey } : {}), value };
+  },
+};
+/**
+ * A BEO's sections, cleaned like every other field (core/beo-sections.js has the model): known keys and kinds only,
+ * bounded, money lines and card digits out, a section about money (TOTALS, PAYMENT…) left out whole.
+ */
+export function cleanSections(raw) {
+  return list(raw, 40).map((s) => {
+    if (!s || typeof s !== 'object') return null;
+    const key = SECTION_KEYS.includes(s.key) ? s.key : 'other';
+    const kind = SECTION_KINDS.includes(s.kind) ? s.kind : kindFor(key);
+    const title = name(s.title, 80);
+    if (isFinancial(s.title) || /^(?:totals?|payments?|billing|invoice|pricing)$/i.test(title)) return null;
+    const items = list(s.items, 120).map(SECTION_ITEM[kind]).filter(Boolean);
+    if (!items.length) return null;
+    const from = list(s.from, 2).filter((f) => MIRRORED_FIELDS.includes(f));
+    return { key, title, kind, items, ...(from.length ? { from } : {}) };
+  }).filter(Boolean);
 }
 
 // ---------- re-imports ----------
 const isEmpty = (v) => v == null || v === '' || v === 0 || (Array.isArray(v) && !v.length) || (typeof v === 'object' && !Array.isArray(v) && Object.values(v).every(isEmpty));
-/** A short fingerprint of a value, to tell later whether someone changed it in ShiftBoard. */
-export function fingerprint(v) {
-  const s = JSON.stringify(v ?? null);
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
-  return h.toString(36);
-}
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null) || (isEmpty(a) && isEmpty(b));
 
 /**
  * What importing a cleaned BEO does to an event (null when it's new). The BEO's value wins when it has
  * one. When the BEO leaves a field blank, a value someone typed in ShiftBoard stays, and a value the
- * last import wrote is cleared. → { doc, changes: [fields], keyChanges: [date/start/end/room/guestCount] }.
+ * last import wrote is cleared. The BEO's sections (beoSections) are replaced. → { doc, changes: [fields, 'sections'],
+ * keyChanges: [date/start/end/room/guestCount] }.
  */
 // An event synced from Tripleseat keeps Tripleseat's booking: a BEO PDF of it adds the menu, drinks, timeline
 // and notes, and the next sync stays the source of the name, date, times, guests and room (core/tripleseat.js).
-export const TRIPLESEAT_OWNS = ['name', 'date', 'start', 'end', 'guestCount', 'status', 'room', 'roomId'];
+export const TRIPLESEAT_OWNS = ['name', 'date', 'start', 'end', 'guestCount', 'guaranteed', 'status', 'room', 'roomId'];
 
 export function mergeBeo(existing, b) {
   const prints = existing?.beoPrints || {};
@@ -848,8 +994,10 @@ export function mergeBeo(existing, b) {
     if (existing && isEmpty(next) && !isEmpty(cur) && prints[f] !== fingerprint(cur)) next = cur; // typed in ShiftBoard: kept
     doc[f] = next;
   }
+  // The BEO's own sections (core/beo-sections.js) are the BEO's: each import replaces them, section by section.
+  doc.beoSections = Array.isArray(b.sections) ? b.sections : [];
   doc.beoPrints = Object.fromEntries(BEO_FIELDS.filter((f) => f !== 'roomId').map((f) => [f, fingerprint(doc[f])]));
-  const changes = existing ? BEO_FIELDS.filter((f) => !same(doc[f], existing[f])) : [];
+  const changes = existing ? [...BEO_FIELDS.filter((f) => !same(doc[f], existing[f])), ...(same(doc.beoSections, existing.beoSections) ? [] : ['sections'])] : [];
   const keyChanges = changes.filter((f) => KEY_FIELDS.includes(f) || f === 'roomId').map((f) => (f === 'roomId' ? 'room' : f));
   return { doc, changes, keyChanges: [...new Set(keyChanges)] };
 }

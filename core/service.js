@@ -5,6 +5,8 @@ import { addDays, dow, weekStart, range, overlaps, shiftSpan, todayStr, prettyDa
 import { forecastDay, effectiveShift, hoursOf, activeAt, recommend } from './forecast.js';
 import { suggestStaffing, eventStatus } from './beo.js';
 import { cleanBeoEvent, mergeBeo } from './beo-import.js';
+import { matchEvent, dedupeBeos, importKey } from './beo-match.js';
+import { sectionsFound, sectionChanges, sectionsForStaff, editedFields, redactContacts, hasContact } from './beo-sections.js';
 import { laborMethods } from './labor-api.js';
 import { adpMethods } from './adp-api.js';
 import { calibrationMethods } from './calibrate.js';
@@ -1305,7 +1307,18 @@ export function createService(store, opts = {}) {
       const v = eventView(e, actor);
       // The client and their contact details, the F&B minimum and revenue: managers and the events team only.
       if (!isEvents(actor)) for (const k of ['estRevenue', 'deposit', 'fbMinimum', 'client', 'contactName', 'contactPhone', 'contactEmail', 'contactNotes']) delete v[k];
+      // The BEO's own sections (core/beo-sections.js): staff get them without the client contact section and without
+      // phone numbers or emails (vendors' too); beoEdited says which mirrored fields a manager changed since.
+      if (e.beoSections?.length) {
+        v.beoEdited = editedFields(e);
+        if (!isEvents(actor)) v.beoSections = sectionsForStaff(e.beoSections);
+      } else delete v.beoSections;
+      if (!isEvents(actor)) {
+        for (const k of ['setupNotes', 'avNotes', 'arrivalNotes', 'specialInstructions', 'dietaryNotes']) if (hasContact(v[k])) v[k] = redactContacts(v[k]);
+        if (hasContact(v.beverage?.notes)) v.beverage = { ...v.beverage, notes: redactContacts(v.beverage.notes) };
+      }
       delete v.beoPrints;
+      delete v.importKeys;
       v.comments = store.list('eventComments', (c) => c.eventId === id).sort((a, b) => a.at.localeCompare(b.at)).map((c) => ({ ...c, userName: nameOf(c.userId) }));
       return v;
     },
@@ -1335,39 +1348,85 @@ export function createService(store, opts = {}) {
       }
       return eventView(e, actor);
     },
-    // BEOs from a PDF (core/beo-import.js reads it in the browser; cleanBeoEvent cleans it again here, so no
-    // prices, deposits or card digits get in). One event per BEO, found by invoice number, else name and date,
-    // so importing a newer PDF updates the event instead of adding another. The BEO owns the booking, menu and
-    // notes; staffing, captain, status, attire, comments and shifts stay as managers left them. Staff on the
-    // event hear when its date, time, room or guest count changes. dryRun: what would happen to each one
-    // (new, update, same, older than the copy here, invalid), without saving.
+    // BEOs from a PDF (core/beo-import.js reads it in the browser, or the AI reads one that isn't Tripleseat's;
+    // cleanBeoEvent cleans it again here, so no prices, deposits or card digits get in). One event per BEO. Duplicates
+    // (core/beo-match.js): the same BEO twice in the list is one (the newest); a BEO whose Tripleseat id, invoice
+    // number or earlier import matches an event updates that event; one that only looks like an event here (same
+    // day, similar name, time, room) is a possible duplicate, and nothing is saved until the manager decides for
+    // each one (event.decision: { action: 'update', id } | { action: 'new' } | { action: 'skip' }). The BEO owns the
+    // booking, menu, notes and its sections; staffing, captain, status, attire, comments and shifts stay as managers
+    // left them; Tripleseat's booking fields stay Tripleseat's. Staff on the event hear when its date, time, room or
+    // guest count changes. dryRun: what would happen to each one, without saving: new, update, same, older,
+    // duplicate (decide), skipped, merged (a copy in the same file), invalid.
     'events.importBeos': (actor, { events: list, dryRun = false, status = 'confirmed' } = {}) => {
       needEvents(actor);
       if (!Array.isArray(list) || !list.length) fail(400, 'Pick at least one event to import');
       if (list.length > 60) fail(400, 'Import at most 60 events at a time');
-      const key = (n) => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase();
-      const out = [], notes = [];
-      const run = () => list.forEach((raw, index) => {
-        const b = cleanBeoEvent(raw);
-        if (!b.name || !b.date) {
-          if (dryRun) return out.push({ index, status: 'invalid' });
-          fail(400, !b.name ? 'Event name is required' : 'Event date is required');
-        }
+      const decisionOf = (raw) => {
+        const d = raw?.decision;
+        if (!d || typeof d !== 'object') return null;
+        if (d.action === 'update' && typeof d.id === 'string' && d.id) return { action: 'update', id: d.id };
+        return d.action === 'new' || d.action === 'skip' ? { action: d.action } : null;
+      };
+      const cleaned = list.map((raw, index) => ({ ...cleanBeoEvent(raw), index, decision: decisionOf(raw) }));
+      // The same BEO twice in this list: the newest one counts, the others are "merged" into it.
+      const kept = dedupeBeos(cleaned);
+      const out = [];
+      for (const b of kept) for (const m of b.merged || []) out[m.index] = { index: m.index, status: 'merged', into: b.index };
+      const events = store.list('events');
+      const pub = (e) => ({ id: e.id, name: e.name, date: e.date, start: e.start || '', end: e.end || '', room: e.room || '', guestCount: e.guestCount || 0, source: e.source || '', status: eventStatus(e, today()), staffing: (e.staffing || []).length, invoiceNumber: e.invoiceNumber || '' });
+      // First what each one would do (nothing saved), so a possible duplicate nobody decided on stops the whole import.
+      const plans = kept.map((b) => {
+        const { index, decision } = b;
+        if (!b.name || !b.date) return { index, b, status: 'invalid' };
         if (b.roomId) {
           const room = store.get('rooms', b.roomId);
           if (!room) fail(400, 'That room is gone. Pick another one.');
           b.room = room.name;
         }
-        const cur = (b.invoiceNumber && store.list('events', (e) => e.invoiceNumber === b.invoiceNumber)[0])
-          || store.list('events', (e) => e.date === b.date && key(e.name) === key(b.name) && !(e.invoiceNumber && b.invoiceNumber))[0] || null;
-        const { doc, changes, keyChanges } = mergeBeo(cur, b);
+        const m = matchEvent(b, events);
+        let cur = null, match = null, candidates = [];
+        if (m.event) { cur = m.event; match = { how: m.how }; }
+        else if (m.candidates.length) {
+          candidates = m.candidates.map((c) => ({ ...pub(c.event), score: c.score, confidence: c.confidence, reasons: c.reasons }));
+          if (!decision) return { index, b, status: 'duplicate', candidates };
+        }
+        if (decision?.action === 'skip') return { index, b, status: 'skipped', candidates, match, cur };
+        if (!m.event && decision?.action === 'update') {
+          cur = store.get('events', decision.id);
+          if (!cur) fail(400, 'That event is gone. Pick another one.');
+          match = { how: 'chosen' };
+        }
+        if (!m.event && decision?.action !== 'update') cur = null; // new (decided, or nothing like it here)
+        return { index, b, cur, match, candidates, decided: decision?.action || null };
+      });
+      if (!dryRun && plans.some((p) => p.status === 'duplicate')) fail(400, 'Decide what to do with each possible duplicate first');
+      if (!dryRun && plans.some((p) => p.status === 'invalid')) fail(400, !plans.find((p) => p.status === 'invalid').b.name ? 'Event name is required' : 'Event date is required');
+      const notes = [];
+      const run = () => plans.forEach((p) => {
+        const { index, b } = p;
+        const found = sectionsFound(b);
+        if (p.status === 'invalid') { out[index] = { index, status: 'invalid' }; return; }
+        if (p.status) { out[index] = { index, status: p.status, name: b.name, ...(p.candidates?.length ? { candidates: p.candidates } : {}), sections: found }; return; }
+        const { cur } = p;
+        const { sections: _s, decision: _d, index: _i, merged, tripleseatId: _t, ...beo } = b;
+        const { doc, changes, keyChanges } = mergeBeo(cur, { ...beo, sections: b.sections });
         const older = !!(cur?.beoUpdatedAt && b.beoUpdatedAt && b.beoUpdatedAt < cur.beoUpdatedAt);
-        const row = { index, status: !cur ? 'new' : older ? 'older' : changes.length ? 'update' : 'same', id: cur?.id || null, name: cur?.name || b.name,
-          room: cur?.room || '', roomId: cur?.roomId || null, beoUpdatedAt: cur?.beoUpdatedAt || '', changes, staffing: (cur?.staffing || []).length };
-        out.push(row);
+        const row = {
+          index, status: !cur ? 'new' : older ? 'older' : changes.length ? 'update' : 'same', id: cur?.id || null, name: cur?.name || b.name,
+          room: cur?.room || '', roomId: cur?.roomId || null, beoUpdatedAt: cur?.beoUpdatedAt || '', changes, staffing: (cur?.staffing || []).length,
+          match: p.match, ...(p.candidates.length ? { candidates: p.candidates } : {}), ...(p.decided ? { decided: p.decided } : {}),
+          sections: found, sectionChanges: cur ? sectionChanges(cur, { ...cur, ...doc }) : [], ...(merged ? { merged } : {}),
+        };
+        out[index] = row;
         if (dryRun) return;
         const at = now().toISOString();
-        const stamp = { invoiceNumber: b.invoiceNumber || cur?.invoiceNumber || '', source: cur?.source === 'tripleseat' ? 'tripleseat' : 'beo-pdf', beoUpdatedAt: b.beoUpdatedAt || cur?.beoUpdatedAt || '', importedAt: at, updatedAt: at, updatedBy: actor.id };
+        const key = importKey(b);
+        const importKeys = [...new Set([...(cur?.importKeys || []), ...(key ? [key] : [])])].slice(-20);
+        const stamp = { invoiceNumber: b.invoiceNumber || cur?.invoiceNumber || '', source: cur?.source === 'tripleseat' ? 'tripleseat' : 'beo-pdf', beoUpdatedAt: b.beoUpdatedAt || cur?.beoUpdatedAt || '', importedAt: at, updatedAt: at, updatedBy: actor.id, importKeys };
+        // The same BEO again: nothing to write (unless it brings an invoice number or a key the event didn't have).
+        if (cur && row.status === 'same' && stamp.invoiceNumber === (cur.invoiceNumber || '') && stamp.beoUpdatedAt === (cur.beoUpdatedAt || '')
+          && importKeys.length === (cur.importKeys || []).length && cur.beoPrints) return;
         if (cur) {
           store.update('events', cur.id, { ...doc, ...stamp });
           const staff = store.list('shifts', (s) => s.eventId === cur.id && s.userId && s.published).map((s) => s.userId);
@@ -1380,7 +1439,7 @@ export function createService(store, opts = {}) {
       });
       if (dryRun) run(); else store.transaction(run);
       for (const [ids, text, link] of notes) notify([...new Set(ids)].filter((id) => id && id !== actor.id), text, link);
-      return { events: out };
+      return { events: out.filter(Boolean) };
     },
     'events.delete': (actor, { id }) => {
       needEvents(actor);
