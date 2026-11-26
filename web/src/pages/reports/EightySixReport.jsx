@@ -269,7 +269,7 @@ function History() {
             <div className="card-head"><h3>{t('reports.e86.mostTitle')}</h3></div>
             <div className="table-wrap">
               <table className="table rp-table">
-                <thead><tr><th>{t('reports.e86.colItem')}</th><th className="num">{t('reports.e86.colOut')}</th><th className="num">{t('reports.e86.colLow')}</th><th>{t('reports.e86.colAvgOut')}</th><th>{t('reports.e86.colTotalOut')}</th></tr></thead>
+                <thead><tr><th>{t('reports.e86.colItem')}</th><th className="num">{t('reports.e86.colOut')}</th><th className="num">{t('reports.e86.colLow')}</th><th>{t('reports.e86.colAvgOut')}</th><th className="rp-wide">{t('reports.e86.colTotalOut')}</th></tr></thead>
                 <tbody>
                   {top.map((x) => (
                     <tr key={x.key}>
@@ -277,7 +277,7 @@ function History() {
                       <td className="num">{x.outs}</td>
                       <td className="num">{x.lows}</td>
                       <td>{x.backs ? dur(t, x.avgOutMinutes) : '—'}</td>
-                      <td>{x.backs ? dur(t, x.outMinutes) : '—'}</td>
+                      <td className="rp-wide">{x.backs ? dur(t, x.outMinutes) : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
