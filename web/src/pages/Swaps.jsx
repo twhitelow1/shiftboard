@@ -12,7 +12,8 @@ const STATUS = {
 };
 // Notes the app itself writes on a request (core/service.js), shown in the reader's language.
 const SYSTEM_NOTES = { 'Auto-approved': 'swaps.noteAutoApproved', 'Shift was given to someone else': 'swaps.noteGivenToSomeoneElse',
-  'the shift was changed by a manager': 'swaps.noteChangedByManager', 'the shift was removed': 'swaps.noteShiftRemoved', 'the event was removed': 'swaps.noteEventRemoved' };
+  'the shift was changed by a manager': 'swaps.noteChangedByManager', 'the shift was removed': 'swaps.noteShiftRemoved', 'the event was removed': 'swaps.noteEventRemoved',
+  'the schedule was pulled back for changes': 'swaps.noteSchedulePulledBack' };
 
 export default function Swaps() {
   const t = useT();

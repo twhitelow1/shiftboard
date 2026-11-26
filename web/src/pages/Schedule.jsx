@@ -11,6 +11,7 @@ import SectionPeople from './SectionPeople.jsx';
 import { RoomDialog } from './RoomsPositions.jsx';
 import TradeHint, { canTrade } from './TradeHint.jsx';
 import { EightySixBanner } from './EightySix.jsx';
+import UnpublishWeek from './UnpublishWeek.jsx';
 import { IS_DEMO } from '../api.js';
 import { useT, dowShort, fmtTime, monthShort, prettyDate, num , getLang } from '../i18n/index.js';
 
@@ -201,6 +202,7 @@ export default function Schedule() {
         {isMgr && <>
           <button className="btn sm desktop-only" onClick={() => setDialog({ shift: { date: selDay, start: '16:00' } })}><Icon name="plus" />{t('schedule.addShift')}</button>
           <button className={`btn sm ${drafts ? 'primary' : ''}`} onClick={publish} disabled={!drafts || busy}><Icon name="send" />{drafts ? t('schedule.publishCount', { count: drafts }) : t('schedule.published')}</button>
+          <UnpublishWeek ws={ws} shifts={shifts} rooms={banners} room={dept} />
         </>}
       </div>
       <div className="toolbar" style={{ marginTop: -6 }}>
