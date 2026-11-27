@@ -35,6 +35,7 @@ import { todayStr, fmtTime } from './time.js';
 import { scheduleAreas, uniqueAreas, sameArea } from './areas.js';
 import { checkPhoto } from './training.js';
 import { canReportList, canSeeList, nameKey, categoriesOf as categories86 } from './eighty-six.js';
+import { savedListsApi, ensureSavedLists } from './stock-saved.js';
 import {
   buyersFor, productCategories, DEFAULT_CATEGORIES, UNITS, unitName, matchesFor, newProduct, productKey, cleanUnit, ensureCatalog, cleanAliases,
   PHOTOS_PER_PRODUCT, MAX_CATEGORIES,
@@ -93,11 +94,14 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
   const needAuth = (a) => { if (!a) fail(401, 'Please sign in'); };
   const fresh = (a) => store.get('users', a.id) || a;
   const nameOf = (id) => (id ? store.get('users', id)?.name || '' : '');
-  const lists = () => store.list('stockLists');
+  const lists = () => store.list('stockLists', (l) => l.kind !== 'migrated');
   const needLists = (a) => { needAuth(a); if (!canManageLists(fresh(a), settings())) fail(403, 'Supervisors and managers only'); };
   const needCatalog = (a) => { needAuth(a); if (!canManageCatalog(fresh(a), settings())) fail(403, 'Managers only'); };
   const areas = () => { const st = settings(); const own = uniqueAreas(st.areas || []); return own.length ? own : scheduleAreas(st); };
-  const ready = () => ensureCatalog(store, nowIso());
+  const ready = () => { ensureCatalog(store, nowIso()); ensureSavedLists(store, { at: nowIso(), areas: areas() }); };
+  // A list made from a saved list's run may go to one person (the one who ran it, or someone they pick); a quick list
+  // sent from the Lists screen goes to the people on duty only. Set only while a run creates its list.
+  let runAssign = false;
 
   // ---------- products ----------
   const cats = () => productCategories(store);
@@ -192,7 +196,7 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
   function cleanAssign(a, { quick, actor }) {
     if (!a || typeof a !== 'object' || !a.type) { if (quick) fail(400, 'Pick who the list is for'); return null; }
     if (a.type === 'person') {
-      if (quick) fail(400, 'Pick a position or a room');
+      if (quick && !runAssign) fail(400, 'Pick a position or a room');
       const u = a.userId ? store.get('users', String(a.userId)) : null;
       if (!u || u.active === false) fail(400, 'Pick someone on the team');
       return { type: 'person', userId: u.id };
@@ -319,6 +323,25 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
     notify(ids, (lang) => (TEXT[lang] || TEXT.en).needs(actor.name, n, where), `#/stock/${l.id}`);
     return ids.length;
   }
+  /**
+   * Report a product out (or running low) on the 86 List through eightySix.report, so its own rules apply (who may
+   * report, who's told), and tell the buyer for that list. l: the stock list or saved list it came from (its 86 list).
+   */
+  function report86(actor, u, p, l, { status, listId, count = '' } = {}) {
+    if (!planHas('eightySix') || roleAllows(u, settings()).eightySix === false) fail(403, 'The 86 List isn’t on for you');
+    const target = listId ? store.get('eightySixLists', String(listId)) : list86For(p, l, u);
+    if (!target) fail(400, 'There’s no 86 list you can report on');
+    const st = status === 'low' ? 'low' : 'out';
+    // The 86 category: what the name was filed under before, else the catalog's category in 86 words.
+    const TO86 = { spirits: 'liquor', beer: 'liquor', wine: 'liquor', mixers: 'dry', garnish: 'produce', glassware: 'glassware', smallwares: 'glassware', paper: 'paper', cleaning: 'cleaning', dry: 'dry', other: 'other' };
+    const filed = store.get('eightySixNames', nameKey(p?.name || ''))?.category;
+    const cat86 = !filed && categories86(store).some((c) => c.id === TO86[p?.category]) ? { category: TO86[p.category] } : {};
+    const r = api['eightySix.report'](actor, { listId: target.id, name: p?.name || '', productId: p?.id, ...cat86, status: st, count: st === 'low' ? count : '', note: '' });
+    // The buyer for that list hears about it (it's on the 86 report's shopping list now).
+    const buyers = buyersFor(store, target).filter((x) => x !== u.id);
+    if (buyers.length) notify(buyers, (lang) => (TEXT[lang] || TEXT.en).buy(p?.name || '', st, lang === 'es' && target.nameEs ? target.nameEs : target.name, u.name), '#/reports/86');
+    return { r, target, st, buyers };
+  }
   const managersOf = (l, actor) => [...new Set([l.createdBy, l.assignedBy].filter((id) => id && id !== actor.id))];
 
   const api_ = {
@@ -341,7 +364,7 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
       ready();
       const u = fresh(actor);
       const p = visibleProduct(id);
-      const inLists = lists().filter((l) => l.lines.some((x) => x.productId === p.id)).length;
+      const inLists = [...lists(), ...saved.all()].filter((l) => l.lines.some((x) => x.productId === p.id)).length;
       const in86 = store.list('eightySixItems', (x) => x.productId === p.id).length + store.list('eightySixLog', (x) => x.productId === p.id).length;
       return { product: productView(p, u), usage: { lists: inLists, eightySix: in86 }, matches: canManageCatalog(u, settings()) ? matchesFor(store, p.name, { exclude: p.id }).map(matchView(u)) : [] };
     },
@@ -416,6 +439,17 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
           lines.push({ ...x, productId: keep.id });
         }
         store.update('stockLists', l.id, { lines });
+      }
+      // Saved lists: one line per product (the pars add up).
+      for (const l of saved.all()) {
+        if (!l.lines.some((x) => x.productId === gone.id)) continue;
+        const goneLines = l.lines.filter((x) => x.productId === gone.id);
+        moved.lines += goneLines.length;
+        const extra = goneLines.reduce((n, x) => n + x.par, 0);
+        const hasKeep = l.lines.some((x) => x.productId === keep.id);
+        const lines = l.lines.filter((x) => x.productId !== gone.id || (!hasKeep && x === goneLines[0]))
+          .map((x) => (x.productId === keep.id ? { ...x, par: Math.round((x.par + extra) * 100) / 100 } : x.productId === gone.id ? { ...x, productId: keep.id, par: Math.round(extra * 100) / 100 } : x));
+        store.update('stockParLists', l.id, { lines });
       }
       for (const col of ['eightySixItems', 'eightySixLog']) {
         for (const r of store.list(col, (x) => x.productId === gone.id)) { store.update(col, r.id, { productId: keep.id }); moved.eightySix++; }
@@ -497,7 +531,11 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
       const u = fresh(actor);
       const mgr = canManageLists(u, settings());
       let out = [];
-      if (scope === 'templates') out = mgr ? lists().filter((l) => l.kind === 'template') : [];
+      // Templates are saved lists now (core/stock-saved.js): the room and position ones, shaped like the old templates.
+      if (scope === 'templates') {
+        const tpls = mgr ? saved.all().filter((l) => l.scope.type !== 'personal' && saved.access(l, u)).sort((a, b) => a.name.localeCompare(b.name)) : [];
+        return { lists: tpls.map((l) => saved.asTemplate(l, u)), canManage: mgr, canQuick: canQuick(u, settings()), today: today() };
+      }
       else if (scope === 'history') {
         const from = new Date(now().getTime() - Math.min(365, Math.max(1, Number(days) || HISTORY_DAYS)) * 86400000).toISOString();
         out = lists().filter((l) => l.kind === 'list' && l.status === 'done' && (l.doneAt || '') >= from && (mgr || canWork(l, u)));
@@ -519,6 +557,14 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
       needAuth(actor);
       ready();
       const u = fresh(actor);
+      // A template (a saved list now), the way the old template read: its products, each par as how many.
+      const sl = id && !store.get('stockLists', String(id)) ? store.get('stockParLists', String(id)) : null;
+      if (sl && canManageLists(u, settings()) && saved.access(sl, u)) {
+        const lang = langOf(u);
+        const full = saved.fullView(sl, u);
+        return { ...saved.asTemplate(sl, u), eightySixListId: sl.eightySixListId || null, canWork: false, canEdit: full.canEdit, canManage: true, log: [],
+          lines: sl.lines.map((x) => ({ ...lineView({ id: x.id, productId: x.productId, qty: x.par, note: x.note }, sl, u, lang) })) };
+      }
       return fullView(visibleList(u, id), u);
     },
     // Who and where a list can go to: people, positions, rooms, the 86 lists.
@@ -550,6 +596,12 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
       if (cur ? !canEditList(cur, u) : !canQuick(u, settings())) fail(403, 'Supervisors and managers only');
       const kind = cur?.kind || (a.kind === 'template' ? 'template' : 'list');
       if (kind === 'template' && !mgr) fail(403, 'Supervisors and managers only');
+      // A new template is a saved list for every room now, its quantities the pars (core/stock-saved.js).
+      if (kind === 'template' && !cur) {
+        const sl = api_['stock.saved.save'](actor, { name: a.name, notes: a.notes, scope: { type: 'room', room: '' }, eightySixListId: a.eightySixListId,
+          lines: (Array.isArray(a.lines) ? a.lines : []).map((x) => ({ productId: x?.productId, par: x?.qty ?? 1, note: x?.note })) });
+        return { ...sl, kind: 'template', notified: 0 };
+      }
       const name = text(a.name ?? cur?.name, 60);
       if (!name) fail(400, 'Give the list a name');
       // A quick list: sent today to the people on duty. Staff send only these; anyone can (a.quick).
@@ -575,18 +627,22 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
           ...(cur.kind === 'list' && cur.status === 'done' && !allDone ? { status: 'in_progress', doneAt: null, doneBy: null } : {}),
           log: logEntry(cur, { by: u.id, what: changedTo ? 'reassigned' : 'edited', ...(changedTo ? { to: assignWords(assign) } : {}) }) });
       } else {
-        out = store.insert('stockLists', { id: uid('stk'), kind, ...doc, quick, templateId: a.templateId && store.get('stockLists', a.templateId)?.kind === 'template' ? a.templateId : null,
+        out = store.insert('stockLists', { id: uid('stk'), kind, ...doc, quick, templateId: a.templateId && saved.byIdOrTemplate(a.templateId) ? saved.byIdOrTemplate(a.templateId).id : null,
           status: 'open', createdBy: u.id, createdAt: at, ...(assign ? { assignedBy: u.id, assignedAt: at } : {}), log: [{ at, by: u.id, what: 'created' }] });
       }
       const told = out.kind === 'list' && (!cur || changedTo) ? (out.quick ? tellQuick(out, u) : tellAssigned(out, u)) : 0;
       return { ...fullView(out, u), notified: told };
     },
     // A list from a template: its products and quantities, for a date, a person or position or room, a due time.
+    // An alias now: templates are saved lists (core/stock-saved.js). templateId: the saved list, or the old template it
+    // came from. Each line's par is how many (lines with a par of 0 are left off).
     'stock.fromTemplate': (actor, { templateId, name, date, due, assign, notes } = {}) => {
       needLists(actor);
-      const tpl = templateId ? store.get('stockLists', String(templateId)) : null;
-      if (!tpl || tpl.kind !== 'template') fail(404, 'Template not found');
-      const lines = tpl.lines.filter((x) => store.get('products', x.productId)?.status !== 'archived').map((x) => ({ productId: x.productId, qty: x.qty, note: x.note }));
+      ready();
+      const u = fresh(actor);
+      const tpl = saved.byIdOrTemplate(templateId);
+      if (!tpl || !saved.access(tpl, u)) fail(404, 'Template not found');
+      const lines = tpl.lines.filter((x) => x.par > 0 && store.get('products', x.productId)?.status !== 'archived').map((x) => ({ productId: x.productId, qty: x.par, note: x.note }));
       return api_['stock.save'](actor, { kind: 'list', name: text(name, 60) || tpl.name, date: date ?? today(), due: due ?? '', assign, notes: notes ?? tpl.notes, lines, templateId: tpl.id, eightySixListId: tpl.eightySixListId });
     },
     // Save a list's products and quantities as a template.
@@ -659,22 +715,11 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
       if (!canWork(l, u)) fail(403, 'This list isn’t assigned to you');
       const line = l.lines.find((x) => x.id === lineId);
       if (!line) fail(404, 'That product isn’t on the list');
-      if (!planHas('eightySix') || roleAllows(u, settings()).eightySix === false) fail(403, 'The 86 List isn’t on for you');
       const p = store.get('products', line.productId);
-      const target = listId ? store.get('eightySixLists', String(listId)) : list86For(p, l, u);
-      if (!target) fail(400, 'There’s no 86 list you can report on');
-      const st = status === 'low' ? 'low' : 'out';
-      // The 86 category: what the name was filed under before, else the catalog's category in 86 words.
-      const TO86 = { spirits: 'liquor', beer: 'liquor', wine: 'liquor', mixers: 'dry', garnish: 'produce', glassware: 'glassware', smallwares: 'glassware', paper: 'paper', cleaning: 'cleaning', dry: 'dry', other: 'other' };
-      const filed = store.get('eightySixNames', nameKey(p?.name || ''))?.category;
-      const cat86 = !filed && categories86(store).some((c) => c.id === TO86[p?.category]) ? { category: TO86[p.category] } : {};
-      const r = api['eightySix.report'](actor, { listId: target.id, name: p?.name || '', productId: p?.id, ...cat86, status: st, count: st === 'low' ? (count ?? line.brought ?? '') : '', note: '' });
+      const { r, target, st, buyers } = report86(actor, u, p, l, { status, listId, count: count ?? line.brought ?? '' });
       const at = nowIso();
       const lines = l.lines.map((x) => (x.id === line.id ? { ...x, reported86: { itemId: r.item.id, listId: target.id, status: st, at } } : x));
       store.update('stockLists', l.id, { lines, log: logEntry(l, { by: u.id, what: 'reported86', lineId, state: st, to: target.name }) });
-      // The buyer for that list hears about it (it's on the 86 report's shopping list now).
-      const buyers = buyersFor(store, target).filter((x) => x !== u.id);
-      if (buyers.length) notify(buyers, (lang) => (TEXT[lang] || TEXT.en).buy(p?.name || '', st, lang === 'es' && target.nameEs ? target.nameEs : target.name, u.name), '#/reports/86');
       return { ...fullView(store.get('stockLists', l.id), u), eightySix: { listId: target.id, listName: target.name, status: st, notified: r.notified, buyers: buyers.length } };
     },
     // Settings → Products → Buyers: who orders for each 86 list (empty: the managers of its area).
@@ -697,5 +742,11 @@ export function stockApi({ store, now, settings, notify, fail, api, planHas = ()
       return api_['products.buyers.get'](actor);
     },
   };
+  // Saved lists (par lists), and the run-down that makes a quick list from one (core/stock-saved.js).
+  const saved = savedListsApi({ store, now, settings, notify, fail, langOf, s: {
+    api: api_, fullView, report86, areas, onNow, nameOf, fresh, ready, canManageLists, canQuick,
+    setRunAssign: (v) => { runAssign = !!v; },
+  } });
+  Object.assign(api_, saved.api);
   return api_;
 }

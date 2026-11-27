@@ -10,6 +10,7 @@ import { photoFromFile } from './TrainingShared.jsx';
 import { SmartImportButton } from './SmartImportButton.jsx';
 import { useT, fmtTime, prettyDate, stamp } from '../i18n/index.js';
 import { productMatches } from '../../../core/products.js';
+import StockSaved from './StockSaved.jsx';
 import '../stock.css';
 
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -22,8 +23,11 @@ const listName86 = (l, lang) => (lang === 'es' && l?.nameEs ? l.nameEs : l?.name
 const TILE_COLORS = { spirits: '#0e7490', beer: '#ca8a04', wine: '#be185d', mixers: '#0369a1', garnish: '#65a30d', glassware: '#475569', smallwares: '#57534e', paper: '#0f766e', cleaning: '#0891b2', dry: '#c2410c' };
 /** A placeholder tile for a product without a photo: its initials on its category's color (an SVG data URL). */
 export function productTile(name, category) {
-  const words = String(name || '?').trim().split(/\s+/).filter(Boolean);
-  const ini = (words.length > 1 ? words[0][0] + words[1][0] : (words[0] || '?').slice(0, 2)).toUpperCase().replace(/[<&>"]/g, '');
+  // By characters, not UTF-16 units: a name that starts with an emoji ("🍋 Lemons", common in 86 reports) once split
+  // the emoji in half, and encodeURIComponent threw on the half, taking the whole products list down with it.
+  const words = String(name || '?').trim().split(/\s+/).filter(Boolean).map((w) => Array.from(w));
+  const ini = ((words.length > 1 ? words[0][0] + words[1][0] : (words[0] || ['?']).slice(0, 2).join('')).toUpperCase().replace(/[<&>"']/g, '') || '?')
+    .replace(/[\uD800-\uDFFF]/g, (c, i, s) => (/[\uD800-\uDBFF][\uDC00-\uDFFF]/.test(s.slice(i - 1, i + 1)) || /[\uD800-\uDBFF][\uDC00-\uDFFF]/.test(s.slice(i, i + 2)) ? c : ''));
   const bg = TILE_COLORS[category] || '#64748b';
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><rect width="96" height="96" fill="${bg}"/><text x="48" y="60" text-anchor="middle" font-family="sans-serif" font-size="36" font-weight="700" fill="#fff">${ini}</text></svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
@@ -54,14 +58,16 @@ export default function Stock({ parts = [] }) {
   const { call, version } = useApp();
   useEffect(() => { call('products.list').then(setCat).catch(() => {}); }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
   const inProducts = sub === 'products';
+  const inSaved = sub === 'saved';
   return (
     <div className="stk">
       <div className="tabs" role="tablist">
-        <button role="tab" aria-selected={!inProducts} className={!inProducts ? 'on' : ''} onClick={() => go('')}><Icon name="check" size={16} />{t('stock.tabLists')}</button>
+        <button role="tab" aria-selected={!inProducts && !inSaved} className={!inProducts && !inSaved ? 'on' : ''} onClick={() => go('')}><Icon name="check" size={16} />{t('stock.tabLists')}</button>
+        <button role="tab" aria-selected={inSaved} className={inSaved ? 'on' : ''} onClick={() => go('saved')}><Icon name="layers" size={16} />{t('stockSaved.tab')}</button>
         <button role="tab" aria-selected={inProducts} className={inProducts ? 'on' : ''} onClick={() => go('products')}><Icon name="box" size={16} />{t('stock.tabProducts')}
           {cat?.newCount > 0 && <span className="count">{cat.newCount}</span>}</button>
       </div>
-      {inProducts ? (parts[2] === 'review' && cat?.canManage ? <ReviewQueue /> : <Products cat={cat} />)
+      {inSaved ? <StockSaved parts={parts} /> : inProducts ? (parts[2] === 'review' && cat?.canManage ? <ReviewQueue /> : <Products cat={cat} />)
         : sub === 'new' ? <Builder template={parts[2] === 'template'} quick={parts[2] === 'quick'} />
           : sub === 'edit' ? <Builder id={parts[2]} />
             : sub ? <ListView id={sub} has86={!has || has('eightySix')} /> : <Lists />}
@@ -125,7 +131,8 @@ function Lists() {
     return () => { live = false; if (timer) clearInterval(timer); };
   }, [scope, version]); // eslint-disable-line react-hooks/exhaustive-deps
   const mgr = data?.canManage;
-  const scopes = [['mine', t('stock.scopeMine')], ...(mgr ? [['all', t('stock.scopeAll')], ['templates', t('stock.scopeTemplates')]] : []), ['history', t('stock.scopeHistory')]];
+  // Templates are saved lists now (the Saved lists tab, pages/StockSaved.jsx).
+  const scopes = [['mine', t('stock.scopeMine')], ...(mgr ? [['all', t('stock.scopeAll')]] : []), ['history', t('stock.scopeHistory')]];
   return (
     <>
       <div className="stk-head">
@@ -136,9 +143,7 @@ function Lists() {
         {(mgr || data?.canQuick) && (
           <div className="stk-head-btns">
             <button className="btn primary" onClick={() => go('new/quick')}><Icon name="send" />{t('stock.quickList')}</button>
-            {mgr && (scope === 'templates'
-              ? <button className="btn" onClick={() => go('new/template')}><Icon name="plus" />{t('stock.newTemplate')}</button>
-              : <button className="btn" onClick={() => go('new')}><Icon name="calendar" />{t('stock.newList')}</button>)}
+            {mgr && <button className="btn" onClick={() => go('new')}><Icon name="calendar" />{t('stock.newList')}</button>}
           </div>
         )}
       </div>

@@ -14,31 +14,34 @@ import { ListCard } from '@/components/StockParts';
 import { Badge, Button, Card, Chips, Empty, Field, Loading, Tabs, Txt, useColors } from '@/components/ui';
 import { useI18n } from '@/i18n';
 import { useErrorText, useRpc } from '@/lib/hooks';
-import { catName, productMatches, type Catalog, type StockLists } from '@/lib/stock';
+import { catName, productMatches, type Catalog, type SavedSummary, type StockLists } from '@/lib/stock';
 
-type Tab = 'mine' | 'all' | 'history' | 'products';
+type Tab = 'mine' | 'saved' | 'all' | 'history' | 'products';
 
 export default function StockScreen() {
   const { t } = useI18n();
   const params = useLocalSearchParams<{ tab?: string }>();
-  const [tab, setTab] = useState<Tab>(params.tab === 'products' ? 'products' : 'mine');
-  const scope = tab === 'products' ? 'mine' : tab;
-  const lists = useRpc<StockLists>('stock.lists.list', { scope }, [], tab !== 'products');
+  const [tab, setTab] = useState<Tab>(params.tab === 'products' ? 'products' : params.tab === 'saved' ? 'saved' : 'mine');
+  const scope = tab === 'products' || tab === 'saved' ? 'mine' : tab;
+  const lists = useRpc<StockLists>('stock.lists.list', { scope }, [], tab !== 'products' && tab !== 'saved');
+  // Saved lists (par lists): mine, my rooms' and positions', shared with me; today's first. Kept on the phone too.
+  const saved = useRpc<{ lists: SavedSummary[]; canCreate: boolean }>('stock.saved.list', {}, [], tab === 'saved', { cache: 'savedLists' });
   // The library is kept on the phone: it opens at once, and works offline with what was last seen.
   const catalog = useRpc<Catalog>('products.list', {}, [], tab === 'products', { cache: 'products' });
   const errorText = useErrorText();
   const canManage = lists.data?.canManage || catalog.data?.canManageLists;
   const tabs: { value: Tab; label: string }[] = [
-    { value: 'mine', label: t('stock.mine') }, ...(canManage ? [{ value: 'all' as Tab, label: t('stock.allOpen') }] : []),
+    { value: 'mine', label: t('stock.mine') }, { value: 'saved', label: t('stockSaved.tab') }, ...(canManage ? [{ value: 'all' as Tab, label: t('stock.allOpen') }] : []),
     { value: 'history', label: t('stock.history') }, { value: 'products', label: t('stock.products') },
   ];
-  const cur = tab === 'products' ? catalog : lists;
+  const cur = tab === 'products' ? catalog : tab === 'saved' ? saved : lists;
   return (
     <Screen title={t('stock.title')} back bottomInset onRefresh={cur.reload}>
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
       {!cur.data && !cur.error ? <Loading label={t('common.loading')} /> : null}
       {cur.error && !cur.data ? <Empty icon="alert" title={errorText(cur.error)}><Button title={t('common.retry')} onPress={cur.reload} /></Empty> : null}
-      {tab !== 'products' && lists.data ? <ListsView data={lists.data} tab={tab} /> : null}
+      {tab !== 'products' && tab !== 'saved' && lists.data ? <ListsView data={lists.data} tab={tab} /> : null}
+      {tab === 'saved' && saved.data ? <SavedView lists={saved.data.lists} /> : null}
       {tab === 'products' && catalog.data ? <Library cat={catalog.data} /> : null}
     </Screen>
   );
@@ -57,13 +60,49 @@ function ListsView({ data, tab }: { data: StockLists; tab: Tab }) {
   );
 }
 
+/** Saved lists: each with its room or positions, who made it, its last run, and a big "Run it". */
+function SavedView({ lists }: { lists: SavedSummary[] }) {
+  const { t, tn, stamp } = useI18n();
+  const c = useColors();
+  const groups: [string, string][] = [['mine', t('stockSaved.mine')], ['forMe', t('stockSaved.forMe')], ['all', t('stockSaved.allOthers')]];
+  return (
+    <>
+      <Txt v="small" tone="muted">{t('stockSaved.intro')}</Txt>
+      {!lists.length ? <Card><Empty icon="cards" title={t('stockSaved.none')} /></Card> : null}
+      {groups.map(([k, label]) => {
+        const ls = lists.filter((l) => l.section === k);
+        if (!ls.length) return null;
+        return (
+          <View key={k} style={{ gap: 10 }}>
+            <Txt v="small" tone="muted" bold>{label}</Txt>
+            {ls.map((l) => (
+              <View key={l.id} style={[styles.saved, { borderColor: c.border, backgroundColor: c.surface }]}>
+                <Pressable onPress={() => router.push({ pathname: '/saved-list', params: { id: l.id } })} accessibilityRole="button" accessibilityLabel={l.name} style={{ gap: 4 }}>
+                  <View style={styles.row}>
+                    <Txt v="h3" style={{ flexShrink: 1 }}>{l.name}</Txt>
+                    {l.today ? <Badge tone="brand" text={t('stockSaved.today')} /> : null}
+                    {l.openRequests ? <Badge tone="warn" text={tn('stockSaved.nRequests', l.openRequests)} /> : null}
+                  </View>
+                  <Txt v="small" tone="muted">{[l.scopeLabel, !l.mine && l.owner ? t('stockSaved.byOwner', { name: l.owner.name }) : '', tn('stockSaved.nLines', l.lines)].filter(Boolean).join(' · ')}</Txt>
+                  {l.lastRun ? <Txt v="tiny" tone="faint">{t('stockSaved.lastRun', { name: l.lastRun.by.name, when: stamp(l.lastRun.at), count: l.lastRun.needs })}</Txt> : null}
+                </Pressable>
+                <Button kind="primary" icon="check" title={t('stockSaved.runIt')} onPress={() => router.push({ pathname: '/stock-run', params: { id: l.id } })} block />
+              </View>
+            ))}
+          </View>
+        );
+      })}
+    </>
+  );
+}
+
 function Library({ cat }: { cat: Catalog }) {
   const { t, lang } = useI18n();
   const c = useColors();
   const [q, setQ] = useState('');
   const [only, setOnly] = useState<string[]>([]);
   const used = new Set(cat.products.map((p) => p.category));
-  const shown = cat.products.filter((p) => (!only.length || only.includes(p.category)) && productMatches(p, q, catName(cat.categories, p.category, lang))).slice(0, 120);
+  const shown = cat.products.filter((p) => (!only.length || only.includes(p.category)) && productMatches(p, q, catName(cat.categories, p.category, lang)));
   return (
     <>
       <Field label={t('stock.search')} value={q} onChangeText={setQ} placeholder={t('stock.searchPh')} autoCorrect={false} returnKeyType="search" />
@@ -89,6 +128,8 @@ function Library({ cat }: { cat: Catalog }) {
 
 const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  saved: { borderWidth: 1, borderRadius: 16, padding: 14, gap: 10 },
+  row: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
   tile: { width: '47.5%', flexGrow: 1, borderWidth: 1, borderRadius: 14, overflow: 'hidden' },
   tilePhoto: { width: '100%', height: 130, borderRadius: 0 },
   loc: { flexDirection: 'row', alignItems: 'center', gap: 4 },
