@@ -65,34 +65,38 @@ const NAV = [
   { key: 'schedule', label: 'main.schedule', icon: 'grid', feature: 'schedule' },
   { key: 'calendar', label: 'main.calendar', icon: 'calendar', feature: 'calendar' },
   { key: 'my', label: 'main.myShifts', icon: 'user', feature: 'myShifts' },
-  { key: '86', label: 'main.eightySix', icon: 'ban', feature: 'eightySix' },
-  { key: 'stock', label: 'stock.nav', icon: 'box', feature: 'stock' }, // Stock lists: everyone (core/stock.js)
-  { key: 'products', label: 'stock.libraryNav', icon: 'search', feature: 'stock' }, // the product library: look anything up
+  { key: '86', group: 'floor', label: 'main.eightySix', icon: 'ban', feature: 'eightySix' },
+  { key: 'stock', group: 'floor', label: 'stock.nav', icon: 'box', feature: 'stock' }, // Stock lists: everyone (core/stock.js)
+  { key: 'products', side: false, label: 'stock.libraryNav', icon: 'search', feature: 'stock' }, // the product library: look anything up
   { key: 'swaps', label: 'main.swapsTrades', short: 'main.swaps', icon: 'swap', badge: 'swaps', feature: 'trades' },
-  { key: 'announcements', label: 'announcements.title', icon: 'megaphone', feature: 'announcements' },
-  { key: 'ask', label: 'assistant.nav', icon: 'sparkle', feature: 'assistant' }, // Ask ShiftBoard (plan ∩ role)
+  { key: 'announcements', group: 'floor', label: 'announcements.title', icon: 'megaphone', feature: 'announcements' },
+  { key: 'ask', group: 'people', label: 'assistant.nav', icon: 'sparkle', feature: 'assistant' }, // Ask ShiftBoard (plan ∩ role)
   { key: 'trade-stats', label: 'tradeStats.title', icon: 'chart', mgr: true, hide: true }, // linked from Team and Swaps
-  { key: 'schedule-log', label: 'scheduleLog.title', icon: 'clock', mgr: true, feature: 'schedule' }, // every schedule change (core/schedule-log.js)
+  { key: 'schedule-log', group: 'manage', label: 'scheduleLog.title', icon: 'clock', mgr: true, feature: 'schedule' }, // every schedule change (core/schedule-log.js)
   { key: 'my-changes', label: 'scheduleLog.mineTitle', icon: 'clock', hide: true }, // what changed for me (linked from My Shifts)
   { key: 'who-works-where', label: 'whoWorks.title', icon: 'users', mgr: true, hide: true }, // positions × rooms (from Rooms & positions)
   { key: 'events', label: 'main.eventsBeos', short: 'common.events', icon: 'glass', feature: 'events' },
   { key: 'timeoff', label: 'main.timeOff', icon: 'sun', badge: 'timeoff', feature: 'timeOff' },
-  { key: 'tips', label: 'main.tips', icon: 'dollar', feature: 'tips' },
-  { key: 'training', label: 'main.training', icon: 'book', feature: 'training' },
-  { key: 'forecast', label: 'main.forecastLabor', icon: 'chart', mgr: true, feature: 'forecast' },
-  { key: 'reports', label: 'reports.nav', icon: 'report', mgr: true, feature: 'reports' }, // managers and up (core/reports.js)
+  { key: 'tips', group: 'floor', label: 'main.tips', icon: 'dollar', feature: 'tips' },
+  { key: 'training', group: 'floor', label: 'main.training', icon: 'book', feature: 'training' },
+  { key: 'forecast', group: 'manage', label: 'main.forecastLabor', icon: 'chart', mgr: true, feature: 'forecast' },
+  { key: 'reports', group: 'manage', label: 'reports.nav', icon: 'report', mgr: true, feature: 'reports' }, // managers and up (core/reports.js)
   { key: 'impact', label: 'main.impact', icon: 'star', mgr: true, feature: 'impact', hide: true }, // a card in Reports
-  { key: 'kudos', label: 'main.myKudos', icon: 'sparkle', feature: 'impact' },
+  { key: 'kudos', group: 'people', label: 'main.myKudos', icon: 'sparkle', feature: 'impact' },
   // Feedback box (core/feedback.js): everyone writes; the inbox for the people who read it (bootstrap's feedbackInbox
   // is the role feature ∩ who reads: managers and up, supervisors when an admin allows it).
-  { key: 'feedback', label: 'feedback.nav', icon: 'message', feature: 'feedback' },
-  { key: 'feedback-inbox', label: 'feedback.inboxNav', icon: 'inbox', feature: 'feedbackInbox' },
-  { key: 'venue', label: 'main.venueFloorPlans', short: 'main.venue', icon: 'map', mgr: true, feature: 'venue' },
-  { key: 'team', label: 'main.teamJobCodes', icon: 'users', mgr: true, feature: 'team' },
+  { key: 'feedback', group: 'people', label: 'feedback.nav', icon: 'message', feature: 'feedback' },
+  { key: 'feedback-inbox', group: 'people', label: 'feedback.inboxNav', icon: 'inbox', feature: 'feedbackInbox' },
+  { key: 'venue', group: 'manage', label: 'main.venueFloorPlans', short: 'main.venue', icon: 'map', mgr: true, feature: 'venue' },
+  { key: 'team', group: 'manage', label: 'main.teamJobCodes', icon: 'users', mgr: true, feature: 'team' },
   // Managers get Settings for Rooms & positions (the schedule's layout); the rest of it is admins'.
-  { key: 'settings', label: 'main.settings', icon: 'settings', mgr: true },
-  { key: 'account', label: 'security.mySettings', icon: 'lock' }, // My settings: profile, Sign-in & security
+  { key: 'settings', group: 'manage', label: 'main.settings', icon: 'settings', mgr: true },
+  { key: 'account', side: false, label: 'security.mySettings', icon: 'lock' }, // My settings: profile, Sign-in & security
 ];
+
+// The sidebar's sections: the everyday pages first, then the rest under headings that fold (remembered per browser).
+const NAV_GROUPS = ['', 'floor', 'people', 'manage'];
+const readClosed = () => { try { return JSON.parse(localStorage.getItem('sb.navClosed') || '{}'); } catch { return {}; } };
 
 // Shorter page titles for the phone's top bar, where the language switch and the bell sit too.
 const PHONE_TITLE = { swaps: 'main.phoneTitleSwaps', events: 'main.phoneTitleEvents', forecast: 'main.phoneTitleForecast', venue: 'main.phoneTitleVenue', team: 'main.phoneTitleTeam', 'trade-stats': 'tradeStats.phoneTitle', ask: 'assistant.phoneTitle', stock: 'stock.phoneTitle', feedback: 'feedback.phoneTitle', 'feedback-inbox': 'feedback.inboxPhoneTitle' };
@@ -174,6 +178,8 @@ function Notifications({ onClose, viewing }) {
 }
 
 function App() {
+  const [navClosed, setNavClosed] = useState(readClosed); // the sidebar's folded sections
+  const toggleGroup = (g) => setNavClosed((c) => { const next = { ...c, [g]: !c[g] }; try { localStorage.setItem('sb.navClosed', JSON.stringify(next)); } catch { /* private mode */ } return next; });
   const [boot, setBoot] = useState(null);
   const [authed, setAuthed] = useState(IS_DEMO ? true : null);
   const [version, setVersion] = useState(0);
@@ -330,12 +336,24 @@ function App() {
               ? <div style={{ minWidth: 0 }}><div className="brand-name">{ctx.settings.restaurantName}</div><div className="brand-sub">{t('main.shiftboard')}</div></div>
               : <div style={{ minWidth: 0 }}><div className="brand-name">{t('main.shiftboard')}</div><div className="brand-sub">{ctx.settings.restaurantName}</div></div>}
           </div>
-          {nav.map((n) => (
-            <button key={n.key} className={`nav-item ${route === n.key ? 'active' : ''}`} onClick={() => go(n.key)}>
-              <Icon name={n.icon} />{t(n.label)}
-              {n.badge && badges[n.badge] > 0 && <span className="count">{badges[n.badge]}</span>}
-            </button>
-          ))}
+          <div className="sidebar-scroll">
+            {NAV_GROUPS.map((g) => {
+              const items = nav.filter((n) => n.side !== false && (n.group || '') === g); // Products is a tab in Stock lists; My settings is the name at the bottom
+              if (!items.length) return null;
+              const open = !g || !navClosed[g] || items.some((n) => n.key === route);
+              return (
+                <div key={g || 'main'}>
+                  {g && <button className="nav-section" aria-expanded={open} onClick={() => toggleGroup(g)}>{t(`main.navGroup_${g}`)}<Icon name={open ? 'down' : 'right'} size={14} /></button>}
+                  {open && items.map((n) => (
+                    <button key={n.key} className={`nav-item ${route === n.key ? 'active' : ''}`} onClick={() => go(n.key)}>
+                      <Icon name={n.icon} />{t(n.label)}
+                      {n.badge && badges[n.badge] > 0 && <span className="count">{badges[n.badge]}</span>}
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
           <div className="sidebar-foot">
             <div className="row" style={{ padding: '4px 8px 10px', cursor: 'pointer' }} onClick={() => go('account')} title={t('security.mySettings')}>
               <Avatar user={ctx.me} />

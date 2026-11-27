@@ -58,6 +58,9 @@ const catalog = {
     untilCloseShort: 'CL',
   },
   main: {
+    navGroup_floor: 'Floor',
+    navGroup_people: 'People',
+    navGroup_manage: 'Manage',
     schedule: 'Schedule',
     calendar: 'Calendar',
     myShifts: 'My Shifts',

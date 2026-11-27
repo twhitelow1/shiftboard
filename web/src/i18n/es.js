@@ -57,6 +57,9 @@ const catalog = {
     untilCloseShort: 'cierre',
   },
   main: {
+    navGroup_floor: 'Piso',
+    navGroup_people: 'Equipo',
+    navGroup_manage: 'Administrar',
     schedule: 'Horario',
     calendar: 'Calendario',
     myShifts: 'Mis turnos',
