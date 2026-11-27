@@ -10,6 +10,7 @@ import { PROGRAMMING_ERRORS_ES } from './programming-errors.js';
 
 const ROLES_ES = { 'Super Admin': 'superadministrador', Admin: 'administrador', Manager: 'gerente', Supervisor: 'supervisor', Employee: 'empleado' };
 const roleEs = (r) => ROLES_ES[r] || r;
+const WEEKDAY_ES = { Sundays: 'domingos', Mondays: 'lunes', Tuesdays: 'martes', Wednesdays: 'miércoles', Thursdays: 'jueves', Fridays: 'viernes', Saturdays: 'sábados' };
 const TIP_LABELS_ES = { 'Card tips': 'Propinas con tarjeta', 'Cash tips': 'Propinas en efectivo', Sales: 'Ventas' };
 const tipLabelEs = (l) => TIP_LABELS_ES[l] || (/^(.+) sales$/.test(l) ? `Ventas de ${l.replace(/ sales$/, '')}` : l.replace(/: sales$/, ': ventas'));
 
@@ -567,6 +568,10 @@ export const ERRORS_ES = {
 export const ERROR_PATTERNS_ES = [
   [/^Request failed \((\d+)\)$/, (m) => `La solicitud falló (${m[1]})`],
   [/^Unknown method (.+)$/, (m) => `Método desconocido: ${m[1]}`],
+  // Scheduling over a blocked day (core/schedule-conflicts.js)
+  [/^(.+) has a standing request off on (\w+)\. Schedule anyway\?$/, (m) => `${m[1]} tiene un descanso fijo los ${WEEKDAY_ES[m[2]] || m[2]}. ¿Programar de todos modos?`],
+  [/^(.+) is unavailable on (\w+)\. Schedule anyway\?$/, (m) => `${m[1]} no está disponible los ${WEEKDAY_ES[m[2]] || m[2]}. ¿Programar de todos modos?`],
+  [/^(.+) has approved time off on (\d{4}-\d{2}-\d{2})\. Schedule anyway\?$/, (m) => `${m[1]} tiene días libres aprobados el ${m[2]}. ¿Programar de todos modos?`],
   [/^Pick at least one room for (.+)$/, (m) => `Elige al menos un salón para ${m[1]}`],
   [/^You can’t give someone the (.+) role$/, (m) => `No puedes darle a nadie el rol de ${roleEs(m[1])}`],
   [/^Only a higher role can edit an? (.+)$/, (m) => `Solo alguien con un rol más alto puede editar a un ${roleEs(m[1])}`],

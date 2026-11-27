@@ -166,6 +166,8 @@ const es: Messages = {
     youreOff: 'Tienes el día libre',
     openShift: 'Turno disponible',
     off: 'Libres: {names}',
+    conflict: 'Conflicto',
+    conflictLabel: 'Programado sobre su disponibilidad o un día libre pedido',
     prevWeek: 'Semana anterior',
     nextWeek: 'Semana siguiente',
     covers: '~{count} cubiertos',

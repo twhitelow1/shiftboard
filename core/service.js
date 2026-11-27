@@ -53,6 +53,7 @@ import { programmingApi } from './programming.js';
 import { calendarImportApi } from './calendar-import.js';
 import { quickShiftApi, dayOffId } from './quick-shift.js';
 import { shiftPasteApi } from './shift-paste.js';
+import { scheduleConflicts } from './schedule-conflicts.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -275,6 +276,8 @@ export function createService(store, opts = {}) {
   };
   /** Conflicts in words (the warnings managers and staff see), in the reader's language. */
   const conflictsFor = (userId, shift, ignoreIds = [], lang = 'en') => conflictList(userId, shift, ignoreIds).map((c) => conflictText(c, lang));
+  // Blocked days (unavailable, standing request off, approved time off): confirm to schedule over them, told on publish (core/schedule-conflicts.js).
+  const conflicts = scheduleConflicts({ store, fail, needMgr, now, notify, say, desc });
 
   function visibleShift(actor, s) {
     return isMgr(actor) || s.published;
@@ -296,6 +299,12 @@ export function createService(store, opts = {}) {
     validateShiftInput(a);
     const doc = cleanShift(a);
     if (doc.area) doc.area = rememberAreas([doc.area]).canon(doc.area);
+    const was = a.id ? store.get('shifts', a.id) : null;
+    if (a.id && !was) fail(404, 'Shift not found');
+    // A new shift (or a new person or day) on a blocked day: 409 unless overrideConflict (core/schedule-conflicts.js).
+    const over = conflicts.guard(actor, a, doc, was);
+    Object.assign(doc, over.set);
+    if (over.log) logExtra = { ...logExtra, conflictOverride: over.log };
     // Scheduling someone outside their positions (the shift editor's "Show everyone") gives them
     // the position in this room, so they're listed in the section from now on.
     if (a.listPerson && doc.userId) {
@@ -313,12 +322,14 @@ export function createService(store, opts = {}) {
       if (cur.published) {
         if (cur.userId && cur.userId !== doc.userId) notify([cur.userId], say('removedFrom', desc(cur)), '#/my');
         if (doc.userId) notify([doc.userId], cur.userId === doc.userId ? say('shiftChanged', desc(upd)) : say('addedTo', desc(upd)), '#/my');
+        if (over.log) conflicts.onPublish(actor, [upd], true); // already posted: they hear it was over their request now
       }
       return { shift: upd, warnings: doc.userId ? conflictsFor(doc.userId, upd, [], L(actor)) : [] };
     }
     const s = store.insert('shifts', { id: uid('shf'), ...doc, published: !!a.published, createdAt: now().toISOString(), createdBy: actor.id });
     slog(actor, createAction, { shift: s, extra: { published: !!s.published, ...logExtra } });
     if (s.published && s.userId) notify([s.userId], say('newShift', desc(s)), '#/my');
+    if (s.published && over.log) conflicts.onPublish(actor, [s], true);
     return { shift: s, warnings: s.userId ? conflictsFor(s.userId, s, [], L(actor)) : [] };
   }
 
@@ -1125,7 +1136,8 @@ export function createService(store, opts = {}) {
       const told = eventId ? new Set() : unpublish.republished({ start, end, published: drafts, args: { notify: tell } });
       const { notified } = scheduleNotice({ notify, users, say, day, store }, { shifts: drafts, start, end, eventId, notify: tell, attach, skip: told });
       if (drafts.length) slog(actor, 'week.publish', { kind: 'week', date: start || drafts[0].date, weekStart: start || null, affected: drafts.map((s) => s.userId), extra: { count: drafts.length, end: end || null, eventId: eventId || null, silent: !tell } });
-      return { published: drafts.length, notified, silent: !tell };
+      const overTold = conflicts.onPublish(actor, drafts, tell); // scheduled over a blocked day: told once (core/schedule-conflicts.js)
+      return { published: drafts.length, notified, silent: !tell, ...(overTold ? { conflictsNotified: overTold } : {}) };
     },
     'shifts.eligible': (actor, { shiftId }) => {
       needAuth(actor);
@@ -1915,6 +1927,7 @@ export function createService(store, opts = {}) {
   // Quick shifts from a schedule cell: shifts.move (same id, logged as a move) and days off (core/quick-shift.js). New RPCs only.
   Object.assign(api, quickShiftApi({ store, api, fail, needAuth, needMgr, isMgr, now, slog, saveShift, roleAllows, settings }));
   Object.assign(api, shiftPasteApi({ store, fail, needMgr, saveShift, conflictList, canManageUser, settings })); // copy & paste a shift (core/shift-paste.js)
+  Object.assign(api, conflicts.methods); // schedule.conflicts: blocked days and shifts over them (core/schedule-conflicts.js). New RPC only.
   // Stock lists and the product catalog the 86 List shares (core/stock.js, core/products.js). Out → 86 goes through eightySix.report.
   Object.assign(api, stockApi({ store, now, settings, notify, fail, api, langOf: L, planHas: (k) => !opts.planFeatures || opts.planFeatures[k] !== false }));
   // Positive impact (impact.*: review mentions, reservation requests, kudos) and OpenTable (opentable.*): core/impact.js, core/opentable.js.

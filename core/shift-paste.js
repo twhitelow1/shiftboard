@@ -11,7 +11,8 @@
 //   { done: false, needs: { position, occupied, off }, skipped } and the web app asks, then sends again with:
 //     givePosition: true   the person gets the position in that room (like the shift editor's "will get position")
 //     replaceId / add      per target: replace that shift, or add another next to it
-//     confirmOff: true     paste anyway on a day off, approved time off or a day they're unavailable
+//     confirmOff: true     paste anyway on a day off, approved time off or a day they're unavailable (a blocked day's
+//                          shift is marked conflictOverride and logged like any override: core/schedule-conflicts.js)
 //   Done: { done: true, items: [{ userId, date, status: 'created' | 'replaced', shift, before?, warnings }], created, replaced }
 //   Each one is logged in the schedule log as 'shift.paste' (or 'shift.pasteReplace') "pasted from <person>'s <day> shift".
 // New RPC only: no existing answer changes. Managers only (needMgr), like shifts.save.
@@ -95,7 +96,7 @@ export function shiftPasteApi({ store, fail, needMgr, saveShift, conflictList, c
           const r = saveShift(actor, { ...p.doc, id: p.replaceId }, { editAction: 'shift.pasteReplace', logExtra: { pastedFrom } });
           items.push({ userId: p.userId, date: p.date, status: 'replaced', shift: r.shift, before, warnings: r.warnings });
         } else {
-          const r = saveShift(actor, { ...p.doc, published: false, listPerson: !!p.give }, { createAction: 'shift.paste', logExtra: { pastedFrom } });
+          const r = saveShift(actor, { ...p.doc, published: false, listPerson: !!p.give, overrideConflict: !!a.confirmOff }, { createAction: 'shift.paste', logExtra: { pastedFrom } });
           items.push({ userId: p.userId, date: p.date, status: 'created', shift: r.shift, warnings: r.warnings, gavePosition: !!p.give });
         }
       }

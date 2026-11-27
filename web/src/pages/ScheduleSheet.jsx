@@ -6,6 +6,7 @@ import { dow, parseDate } from '../../../core/time.js';
 import { bannerColor, textOn } from '../../../core/areas.js';
 import { useT, prettyDate , dowLong } from '../i18n/index.js';
 import '../quick-shift.css';
+import { BlockedLabel, WindowNote, ConflictMark } from './ScheduleConflicts.jsx'; // blocked days (managers)
 
 // The schedule drawn like the house spreadsheet (and its PDF): a colored banner per area, a
 // header row per position with the day names, names in capitals, yellow OFF cells, the dates and
@@ -31,7 +32,7 @@ export function sheetTime(s) {
 export const plural = (n) => (/man$/i.test(n) ? n.replace(/man$/i, 'men') : /(s|x|ch|sh)$/i.test(n) ? `${n}es` : /[^aeiou]y$/i.test(n) ? `${n.slice(0, -1)}ies` : `${n}s`);
 const usDate = (d) => { const x = parseDate(d); return `${x.getUTCMonth() + 1}/${x.getUTCDate()}/${x.getUTCFullYear()}`; };
 
-export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onOpen, onSaved, onEditSection, onArrange, className = '', programming = null, daysOff = [], onUndoDayOff, paste = null }) {
+export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onOpen, onSaved, onEditSection, onArrange, className = '', programming = null, daysOff = [], onUndoDayOff, paste = null, conflicts = null, onPerson }) {
   const t = useT();
   const { isMgr, me, settings, people, today } = useApp();
   const [editNote, setEditNote] = useState(null); // { kind, date, text }
@@ -69,7 +70,7 @@ export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onO
               {i > 0 && ' / '}
               <span data-shift-id={s.id} className={`sh-shift ${s.published ? '' : 'draft'} ${s.userId === me.id ? 'mine' : ''} ${s.userId && offPrimary(s, peopleById[s.userId], jobsById[s.jobCodeId]) ? 'elsewhere' : ''}`} title={[!s.published && t('scheduleSheet.draftNotPostedYet'), canTrade(s, me, today) && t('schedule.yourShiftTapToTrade'), ...(data.warnings?.[s.id] || []), s.notes].filter(Boolean).join('\n')}
                 onClick={(e) => { e.stopPropagation(); onOpen(s); }}>
-                {sheetTime(s)}{s.tag ? ` ${s.tag}` : ''}{data.warnings?.[s.id] && <sup className="sh-warn">!</sup>}{s.pending && <sup>⇄</sup>}
+                {sheetTime(s)}{s.tag ? ` ${s.tag}` : ''}{data.warnings?.[s.id] && <sup className="sh-warn">!</sup>}{s.pending && <sup>⇄</sup>}<ConflictMark info={conflicts?.shift(s.id)} />
               </span>
               {pc && s.userId && paste.copyButton(s, shifts.length - 1 - i)}
             </React.Fragment>
@@ -85,11 +86,13 @@ export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onO
           {onUndoDayOff && <button type="button" className="dayoff-undo no-print" onClick={(e) => { e.stopPropagation(); onUndoDayOff(user.id, date); }}>{t('quickShift.undo')}</button>}{pasteBtn}</td>
       );
     }
+    const cx = conflicts?.cell(user.id, date); // blocked: unavailable, standing request off, approved time off (ScheduleConflicts.jsx)
+    if (cx?.block) return <td key={date} {...p} className={`cx-blocked ${add ? 'can-add' : ''} ${sel}`} onClick={add}><BlockedLabel block={cx.block} />{pasteBtn}</td>;
     const to = timeOffOn(user.id, date);
     if (to) return <td key={date} {...p} className={`off ${add ? 'can-add' : ''} ${sel}`} onClick={add} title={to.reason || ''}>{to.status === 'approved' ? t('scheduleSheet.requestOff') : t('scheduleSheet.reqPending')}{pasteBtn}</td>;
     const other = workingElsewhere(user.id, date);
     if (other) return <td key={date} {...p} className={`elsewhere ${add ? 'can-add' : ''} ${sel}`} onClick={add} title={`${t('scheduleSheet.workingTime', { time: sheetTime(other) })}${other.area ? ` · ${other.area}` : ''}`}>{pasteBtn}</td>;
-    return <td key={date} {...p} className={`off ${add ? 'can-add' : ''} ${sel}`} onClick={add}>{t('scheduleSheet.off')}{pasteBtn}</td>;
+    return <td key={date} {...p} className={`off ${add ? 'can-add' : ''} ${sel}`} onClick={add}>{t('scheduleSheet.off')}{cx?.window && <WindowNote w={cx.window} />}{pasteBtn}</td>;
   };
 
   return (
@@ -114,7 +117,7 @@ export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onO
                       {sec.sheetLabel || plural(sec.label)}{onEditSection && sec.job && <span className="sh-edit-ic no-print" aria-hidden="true"><Icon name="users" size={12} /></span>}</td>{days.map((d) => <td key={d}>{dayName(dow(d))}</td>)}</tr>
                     {sec.rows.map(({ user, shifts }) => (
                       <tr key={user.id} className={user.id === me.id ? 'me' : ''}>
-                        <td className="sh-name" title={user.sheetName ? user.name : undefined}>{user.sheetName || user.name}</td>
+                        <td className="sh-name" title={user.sheetName ? user.name : undefined}>{onPerson ? <button type="button" className="pp-name" onClick={() => onPerson(user.id)} title={t('personPanel.open', { name: user.name })}>{user.sheetName || user.name}</button> : user.sheetName || user.name}</td>
                         {days.map((d) => Cell({ date: d, sec, user, list: shifts.filter((s) => s.date === d) }))}
                       </tr>
                     ))}

@@ -280,7 +280,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   const sendError = (res, e, label) => {
     const status = e instanceof AppError ? e.status : 500;
     if (status === 500) console.error(label, e);
-    res.status(status).json({ error: status === 500 ? 'Something went wrong' : e.message });
+    // A blocked day (core/schedule-conflicts.js): the 409 says which, so the app can ask and send overrideConflict.
+    res.status(status).json({ error: status === 500 ? 'Something went wrong' : e.message, ...(status === 409 && e.conflict ? { conflict: e.conflict } : {}) });
   };
 
   // ---------- app ----------

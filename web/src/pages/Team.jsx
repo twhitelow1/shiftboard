@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useApp, Icon, Avatar, Modal, Field, useAction, JobDot, Empty } from '../ui.jsx';
 import { AvailabilitySummary } from './AvailabilityEditor.jsx'; // their week, editable with its history (logged)
 import { ApprovesFor } from './ApprovalScope.jsx'; // which positions they approve trades and time off for
@@ -27,7 +27,7 @@ export function signInStatus(e) {
   return { label: t('team.notInvited'), cls: 'warn' };
 }
 
-export default function Team() {
+export default function Team({ parts = [] }) {
   const t = useT();
   const { employees, jobCodes, jobs, me, emailEnabled, refresh, toast } = useApp();
   const [tab, setTab] = useState('people');
@@ -39,6 +39,11 @@ export default function Team() {
   const [showInactive, setShowInactive] = useState(false);
   const [adding, setAdding] = useState(false);
   const [run, busy] = useAction();
+  // #/team/<id> (the schedule's person panel → Full Team profile) opens that person.
+  useEffect(() => {
+    const e = parts[1] && employees.find((x) => x.id === parts[1]);
+    if (e) { setEdit(e); history.replaceState(null, '', '#/team'); }
+  }, [parts[1]]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const list = employees.filter((e) => (showInactive || e.active !== false) && nameMatches(e, q)
     && (!job || e.jobCodes?.some((j) => j.jobCodeId === job)) && (!role || roleOf(e) === role));

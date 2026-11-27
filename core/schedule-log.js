@@ -70,6 +70,7 @@ const T = {
     'timeOff.standing': (a, p, d) => `${a} added a standing request off for ${p}: ${d}`,
     'availability.change': (a, p, n) => `${a} changed ${p} availability (${n} days)`, 'note.save': (a, d) => `${a} changed the note for ${d}`, 'mod.set': (a, d) => `${a} changed the manager on duty for ${d}`,
     'event.shifts': (a, n, e) => `${a} made ${n} shifts for the event ${e}`, 'layout.move': (a, n) => `${a} moved ${n} shifts to another section`, 'rooms.change': (a, p) => `${a} changed where ${p} works`,
+    over: { standing: ' (scheduled over a standing request off)', unavailable: ' (scheduled over their availability: unavailable that day)', timeOff: ' (scheduled over approved time off)' },
     types: { swap: 'trade', drop: 'give away', pickup: 'pick up' }, statuses: { approved: 'approved', pending: 'pending' }, their2: 'their', someone: 'Someone', fields: { date: 'date', start: 'time', end: 'end', jobCodeId: 'position', area: 'room', userId: 'person', tag: 'tag', notes: 'note', rooms: 'rooms', status: 'status' }, none: 'none',
   },
   es: {
@@ -88,6 +89,7 @@ const T = {
     'timeOff.standing': (a, p, d) => `${a} agregó un descanso fijo ${p}: ${d}`,
     'availability.change': (a, p, n) => `${a} cambió la disponibilidad ${p} (${n} días)`, 'note.save': (a, d) => `${a} cambió la nota del ${d}`, 'mod.set': (a, d) => `${a} cambió al gerente en turno del ${d}`,
     'event.shifts': (a, n, e) => `${a} creó ${n} turnos para el evento ${e}`, 'layout.move': (a, n) => `${a} pasó ${n} turnos a otra sección`, 'rooms.change': (a, p) => `${a} cambió dónde trabaja ${p}`,
+    over: { standing: ' (programado sobre un descanso fijo)', unavailable: ' (programado aunque no está disponible ese día)', timeOff: ' (programado sobre días libres aprobados)' },
     types: { swap: 'intercambiar', drop: 'ceder', pickup: 'recoger' }, statuses: { approved: 'aprobados', pending: 'pendientes' }, their2: 'sus', someone: 'Alguien', fields: { date: 'fecha', start: 'hora', end: 'fin', jobCodeId: 'puesto', area: 'salón', userId: 'persona', tag: 'etiqueta', notes: 'nota', rooms: 'salones', status: 'estado' }, none: 'nada',
   },
 };
@@ -97,6 +99,12 @@ const T = {
  * names: { person(id) → name, job(id) → name, event(id) → name }.
  */
 export function sentence(e, lang = 'en', names = {}) {
+  const text = baseSentence(e, lang, names);
+  const over = e.details?.conflictOverride; // scheduled over a blocked day, confirmed (core/schedule-conflicts.js)
+  return over ? `${text}${(T[lang === 'es' ? 'es' : 'en'].over[over] || '')}` : text;
+}
+
+function baseSentence(e, lang = 'en', names = {}) {
   const t = T[lang === 'es' ? 'es' : 'en'];
   const d = e.details || {};
   const raw = e.action.slice(PREFIX.length);

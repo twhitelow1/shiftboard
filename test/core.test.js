@@ -40,7 +40,10 @@ test('employees cannot see drafts or manage shifts', () => {
 test('conflicts: time off, double booking, not qualified', () => {
   const { svc, u, ids } = setup();
   // Victor has approved time off Sunday
-  const r = svc.call(u('Moe'), 'shifts.save', { date: '2026-10-04', start: '16:00', jobCodeId: ids.jobId.SRV, userId: ids.userId.Victor });
+  // A blocked day asks first (409, core/schedule-conflicts.js); confirmed, it saves with the warning as before.
+  const asked = { date: '2026-10-04', start: '16:00', jobCodeId: ids.jobId.SRV, userId: ids.userId.Victor };
+  assert.throws(() => svc.call(u('Moe'), 'shifts.save', asked), (e) => e.status === 409 && e.conflict.kind === 'timeOff');
+  const r = svc.call(u('Moe'), 'shifts.save', { ...asked, overrideConflict: true });
   assert.ok(r.warnings.includes('Approved time off'));
   const r2 = svc.call(u('Moe'), 'shifts.save', { date: '2026-09-30', start: '18:00', jobCodeId: ids.jobId.BAR, userId: ids.userId.Victor });
   assert.ok(r2.warnings.some((w) => w.startsWith('Overlaps')));

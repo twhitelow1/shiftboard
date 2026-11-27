@@ -44,7 +44,7 @@ function getDemo() {
 }
 
 export class ApiError extends Error {
-  constructor(status, message) { super(message); this.status = status; }
+  constructor(status, message, conflict = null) { super(message); this.status = status; if (conflict) this.conflict = conflict; }
 }
 
 export async function call(method, args = {}) {
@@ -59,7 +59,7 @@ export async function call(method, args = {}) {
       // Clone to mimic a network boundary (no shared references into the store).
       return JSON.parse(JSON.stringify(out ?? null));
     } catch (e) {
-      throw new ApiError(e.status || 500, translateError(e.message)); // the demo has no server to translate it
+      throw new ApiError(e.status || 500, translateError(e.message), e.conflict); // the demo has no server to translate it
     }
   }
   const started = Date.now();
@@ -71,7 +71,7 @@ export async function call(method, args = {}) {
   }).catch((e) => { noteRpc(method, 0, Date.now() - started); throw e; });
   noteRpc(method, res.status, Date.now() - started); // for Report a problem: the name and status only
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, body.error || translateError(`Request failed (${res.status})`));
+  if (!res.ok) throw new ApiError(res.status, body.error || translateError(`Request failed (${res.status})`), body.conflict);
   return body.result;
 }
 

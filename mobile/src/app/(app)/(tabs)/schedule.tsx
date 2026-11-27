@@ -27,7 +27,7 @@ export default function Schedule() {
   const { t, tn, date, time, num, stamp, lang } = useI18n();
   const c = useColors();
   const params = useLocalSearchParams<{ date?: string }>();
-  const { me, today, settings, jobs, people, has, offlineSince, boot } = useApp();
+  const { me, today, settings, jobs, people, has, offlineSince, boot, isMgr } = useApp();
   const shiftTime = useShiftTime();
   const [ws, setWs] = useState(() => weekStart(params.date || today, settings.weekStartDow));
   const days = range(ws, 7);
@@ -50,6 +50,9 @@ export default function Schedule() {
   // What's on each day (regular programming, events replacing it, and with staffing pars: scheduled vs par).
   const progQ = useRpc<ProgDays>('programming.days.list', { start: ws, end: addDays(ws, 6) }, [ws], true, { cache: `programming-${ws}` });
   const progDay = progQ.data?.days.find((d) => d.date === day);
+  // Managers: shifts scheduled over a blocked day (unavailable, standing request off, time off) get a red Conflict badge, read only (core/schedule-conflicts.js).
+  const conflictsQ = useRpc<{ shifts: { id: string }[] }>('schedule.conflicts', { start: ws, end: addDays(ws, 6) }, [ws], isMgr);
+  const conflictIds = useMemo(() => new Set((conflictsQ.data?.shifts || []).map((x) => x.id)), [conflictsQ.data]);
   const covers = useMemo(() => Object.fromEntries((coversQ.data?.days || []).filter((d) => d.totalCovers > 0).map((d) => [d.date, d.totalCovers])), [coversQ.data]);
   const weekShifts = useMemo(() => (data?.shifts || []).filter((s) => s.published && (mine === 'all' || s.userId === me.id)), [data, mine, me.id]);
   const shifts = useMemo(() => weekShifts.filter((s) => s.date === day), [weekShifts, day]);
@@ -153,13 +156,14 @@ export default function Schedule() {
                   const sub = (list.mode === 'room' ? [s.area, s.tag] : list.mode === 'position' ? [room, s.tag] : [job.name, room, s.tag]).filter(Boolean).join(' · ');
                   return (
                     <Pressable key={s.id} onPress={() => open(s)} accessibilityRole="button"
-                      accessibilityLabel={`${s.userId ? people[s.userId]?.name || '' : t('schedule.openShift')}, ${shiftTime(s)}`}
+                      accessibilityLabel={`${s.userId ? people[s.userId]?.name || '' : t('schedule.openShift')}, ${shiftTime(s)}${conflictIds.has(s.id) ? `, ${t('schedule.conflictLabel')}` : ''}`}
                       style={({ pressed }) => [styles.shift, { borderColor: c.border, backgroundColor: pressed ? c.surface2 : isMe ? c.brandSoft : 'transparent', borderLeftColor: jobs[s.jobCodeId]?.color || c.border }]}>
                       <View style={{ flex: 1, gap: 2 }}>
                         <Txt style={{ fontWeight: '700' }} lines={1}>{s.userId ? people[s.userId]?.name || '—' : t('schedule.openShift')}{isMe ? ` (${t('schedule.you')})` : ''}</Txt>
                         {sub ? <Txt v="small" tone="muted">{sub}</Txt> : null}
                       </View>
                       <Txt style={{ fontWeight: '700' }}>{shiftTime(s)}</Txt>
+                      {conflictIds.has(s.id) ? <Badge tone="bad" text={t('schedule.conflict')} /> : null}
                       {s.pending ? <Badge tone="warn" text={t('myShifts.pending')} /> : canTrade(s, me.id, today) ? <Badge tone="brand" text={t('myShifts.trade')} /> : !s.userId ? <Badge tone="ok" text={t('myShifts.pickUp')} /> : null}
                     </Pressable>
                   );
