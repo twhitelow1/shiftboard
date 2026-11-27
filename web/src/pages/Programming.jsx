@@ -200,13 +200,13 @@ const cleanPars = (pars) => pars.filter((p) => p.jobCodeId).map((p) => ({ jobCod
 function ItemDialog({ item, data, onClose }) {
   const t = useT();
   const { call, toast } = useApp();
-  const [x, setX] = useState(() => ({ ...item, when: item.season ? 'season' : item.from || item.to ? 'range' : 'always' }));
+  const [x, setX] = useState(() => ({ ...item, when: item.season ? 'season' : 'always' })); // start and end dates are always shown; a season narrows it further
   const [run, busy] = useAction();
   const set = (k) => (e) => setX({ ...x, [k]: e.target.value });
   const toggle = (k, v) => setX({ ...x, [k]: x[k].includes(v) ? x[k].filter((y) => y !== v) : [...x[k], v] });
   const save = async () => {
     const body = { ...(x.id ? { id: x.id } : {}), name: x.name, rooms: x.rooms, days: x.days, start: x.start, end: x.end, color: x.color, notes: x.notes, dayNote: x.dayNote,
-      season: x.when === 'season' ? x.season : '', from: x.when === 'range' ? x.from : '', to: x.when === 'range' ? x.to : '',
+      season: x.when === 'season' ? x.season : '', from: x.from || '', to: x.to || '',
       repeat: x.repeat, nth: Number(x.nth), anchor: x.repeat === 'biweekly' ? x.anchor || x.from : '', active: x.active !== false,
       ...(data.canPars ? { pars: cleanPars(x.pars) } : {}) };
     const r = await run(() => call('programming.save', body), t('programming.saved'));
@@ -249,16 +249,15 @@ function ItemDialog({ item, data, onClose }) {
             <select className="input" value={x.when} onChange={set('when')}>
               <option value="always">{t('programming.allYear')}</option>
               <option value="season">{t('programming.aSeason')}</option>
-              <option value="range">{t('programming.dateRange')}</option>
             </select>
           </Field>
           {x.when === 'season' && <Field label={t('programming.season')}>
             <select className="input" value={x.season} onChange={set('season')}><option value="">—</option>{data.seasons.map((s) => <option key={s.key} value={s.key}>{s.label || t(`programming.season_${s.key}`)}</option>)}</select>
           </Field>}
-          {x.when === 'range' && <div className="row" style={{ gap: 6 }}>
-            <Field label={t('programming.from')}><input className="input" type="date" value={x.from} onChange={set('from')} /></Field>
-            <Field label={t('programming.to')}><input className="input" type="date" value={x.to} onChange={set('to')} /></Field>
-          </div>}
+        </div>
+        <div className="grid2">
+          <Field label={t('programming.startDate')}><input className="input" type="date" value={x.from || ''} onChange={set('from')} /></Field>
+          <Field label={t('programming.endDate')} help={t('programming.endDateHelp')}><input className="input" type="date" value={x.to || ''} min={x.from || undefined} onChange={set('to')} /></Field>
         </div>
         <div className="grid2">
           <Field label={t('programming.repeat')}>
