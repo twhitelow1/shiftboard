@@ -22,6 +22,7 @@ import availability, { roles as availabilityRoles, schedule as availabilitySched
 import calendarImport from './en-calendar.js'; // import from a calendar page (pages/CalendarImport.jsx)
 import programming, { roles as programmingRoles, claude as programmingClaude } from './en-programming.js'; // regular programming and staffing pars
 import quickShift, { scheduleLog as quickShiftLog } from './en-quickshift.js'; // the shift dialog's quick mode: copy a time, move a shift, day off
+import shiftPaste from './en-shiftpaste.js'; // copy & paste a shift on the schedule
 const catalog = {
   lang: {
     change: 'Change language',
@@ -2325,6 +2326,7 @@ const catalog = {
   ...programming,
   ...calendarImport,
   ...quickShift,
+  ...shiftPaste,
 };
 Object.assign(catalog.integrations, reviewIntegrations); // Settings → Integrations: the Google and Yelp cards
 Object.assign(catalog.roles, feedbackRoles); // Settings → Roles & features: the Feedback box's two rows

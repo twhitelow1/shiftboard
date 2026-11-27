@@ -52,6 +52,7 @@ import { useCustomRoles } from './roles.js';
 import { programmingApi } from './programming.js';
 import { calendarImportApi } from './calendar-import.js';
 import { quickShiftApi, dayOffId } from './quick-shift.js';
+import { shiftPasteApi } from './shift-paste.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -290,7 +291,7 @@ export function createService(store, opts = {}) {
   }
 
   /** shifts.save's work; shifts.move (core/quick-shift.js) logs its edit as 'shift.move'. */
-  function saveShift(actor, a, { editAction = 'shift.edit' } = {}) {
+  function saveShift(actor, a, { editAction = 'shift.edit', createAction = 'shift.create', logExtra = {} } = {}) {
     needMgr(actor);
     validateShiftInput(a);
     const doc = cleanShift(a);
@@ -308,7 +309,7 @@ export function createService(store, opts = {}) {
       if (cur.userId !== doc.userId || cur.date !== doc.date || cur.start !== doc.start) cancelRequestsForShift(a.id, 'reasonChanged');
       const upd = store.update('shifts', a.id, doc);
       const changed = shiftChanges(cur, upd);
-      if (changed.length) slog(actor, editAction, { shift: upd, affected: [cur.userId], changes: changed, extra: { before: { date: cur.date, start: cur.start, end: cur.end || null, jobCodeId: cur.jobCodeId, area: cur.area || '', userId: cur.userId || null }, published: !!cur.published } });
+      if (changed.length) slog(actor, editAction, { shift: upd, affected: [cur.userId], changes: changed, extra: { before: { date: cur.date, start: cur.start, end: cur.end || null, jobCodeId: cur.jobCodeId, area: cur.area || '', userId: cur.userId || null }, published: !!cur.published, ...logExtra } });
       if (cur.published) {
         if (cur.userId && cur.userId !== doc.userId) notify([cur.userId], say('removedFrom', desc(cur)), '#/my');
         if (doc.userId) notify([doc.userId], cur.userId === doc.userId ? say('shiftChanged', desc(upd)) : say('addedTo', desc(upd)), '#/my');
@@ -316,7 +317,7 @@ export function createService(store, opts = {}) {
       return { shift: upd, warnings: doc.userId ? conflictsFor(doc.userId, upd, [], L(actor)) : [] };
     }
     const s = store.insert('shifts', { id: uid('shf'), ...doc, published: !!a.published, createdAt: now().toISOString(), createdBy: actor.id });
-    slog(actor, 'shift.create', { shift: s, extra: { published: !!s.published } });
+    slog(actor, createAction, { shift: s, extra: { published: !!s.published, ...logExtra } });
     if (s.published && s.userId) notify([s.userId], say('newShift', desc(s)), '#/my');
     return { shift: s, warnings: s.userId ? conflictsFor(s.userId, s, [], L(actor)) : [] };
   }
@@ -1913,6 +1914,7 @@ export function createService(store, opts = {}) {
   Object.assign(api, calendarImportApi({ store, settings, fail, needAuth, now, layouts, api, langOf: L, logVia }));
   // Quick shifts from a schedule cell: shifts.move (same id, logged as a move) and days off (core/quick-shift.js). New RPCs only.
   Object.assign(api, quickShiftApi({ store, api, fail, needAuth, needMgr, isMgr, now, slog, saveShift, roleAllows, settings }));
+  Object.assign(api, shiftPasteApi({ store, fail, needMgr, saveShift, conflictList, canManageUser, settings })); // copy & paste a shift (core/shift-paste.js)
   // Stock lists and the product catalog the 86 List shares (core/stock.js, core/products.js). Out → 86 goes through eightySix.report.
   Object.assign(api, stockApi({ store, now, settings, notify, fail, api, langOf: L, planHas: (k) => !opts.planFeatures || opts.planFeatures[k] !== false }));
   // Positive impact (impact.*: review mentions, reservation requests, kudos) and OpenTable (opentable.*): core/impact.js, core/opentable.js.

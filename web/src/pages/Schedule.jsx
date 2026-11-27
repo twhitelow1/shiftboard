@@ -6,6 +6,7 @@ import { sameArea, bannerColor, textOn } from '../../../core/areas.js';
 import { buildSections, shiftChoices, offPrimary } from '../../../core/layout.js';
 import { dayList, daySort, positionSections } from '../../../core/day-list.js';
 import ShiftDialog from './ShiftDialog.jsx';
+import { useShiftPaste } from './ShiftPaste.jsx'; // copy & paste a shift (managers)
 import ImportDialog from './ImportDialog.jsx';
 import ScheduleSheet from './ScheduleSheet.jsx';
 import SectionPeople from './SectionPeople.jsx';
@@ -112,8 +113,12 @@ export default function Schedule() {
   const [strayOpen, setStrayOpen] = useState(false);
   // A shift or a cell that belongs to one person and one day opens in quick mode (ShiftDialog.jsx): only the time,
   // tag and notes change there. The toolbar's Add shift (no cell) opens the full form.
-  const openDialog = (shift, startIn) => setDialog({ shift, startIn, warnings: data?.warnings?.[shift.id], quick: isMgr && !!shift.userId });
-  const addAt = (date, jobCodeId, userId, area = '') => isMgr && setDialog({ shift: { date, jobCodeId, userId, area, start: '16:00' }, quick: !!userId });
+  // target: the cell it came from, for "Paste copied shift" (core/shift-paste.js): its person and day, and the row's position and room if it has one.
+  const openDialog = (shift, startIn) => setDialog({ shift, startIn, warnings: data?.warnings?.[shift.id], quick: isMgr && !!shift.userId,
+    target: shift.userId ? { userId: shift.userId, date: shift.date, jobCodeId: shift.jobCodeId, area: shift.area || '' } : null });
+  const addAt = (date, jobCodeId, userId, area = '', target) => isMgr && setDialog({ shift: { date, jobCodeId, userId, area, start: '16:00' }, quick: !!userId,
+    target: userId ? target || { userId, date, ...(jobCodeId ? { jobCodeId, area } : {}) } : null });
+  const paste = useShiftPaste({ enabled: isMgr }); // Copy, Paste, Ctrl/Cmd+C and V, Shift+click or drag across cells
   const dayOffOn = (userId, date) => userId && daysOff.find((d) => d.userId === userId && d.date === date);
   const undoDayOff = async (userId, date) => { const r = await run(() => call('schedule.dayOff.clear', { userId, date }), t('quickShift.dayOffCleared')); if (r) load(); };
   const closeDialog = (changed) => { setDialog(null); if (changed) load(); };
@@ -173,11 +178,13 @@ export default function Schedule() {
   const isClosed = (d) => settings.closedDays.includes(dow(d));
   const fcDay = (d) => fc?.days?.find((x) => x.date === d);
 
-  const ShiftChip = ({ s, showJob, room }) => {
+  // Plain functions (not components), so the cells keep their focus and selection across renders.
+  const shiftChip = ({ s, showJob, room }) => {
     const j = jobs[s.jobCodeId];
     const w = data?.warnings?.[s.id];
     return (
-      <button className={`shift ${s.published ? '' : 'draft'} ${!s.userId ? 'open' : ''} ${s.userId === me.id ? 'mine' : ''} ${s.userId && offPrimary(s, people[s.userId], j) ? 'elsewhere' : ''}`} style={{ '--jc': j?.color || '#888' }}
+      <div className="chip-wrap" key={s.id}>
+      <button data-shift-id={s.id} className={`shift ${s.published ? '' : 'draft'} ${!s.userId ? 'open' : ''} ${s.userId === me.id ? 'mine' : ''} ${s.userId && offPrimary(s, people[s.userId], j) ? 'elsewhere' : ''}`} style={{ '--jc': j?.color || '#888' }}
         onClick={(e) => { e.stopPropagation(); openDialog(s); }} title={[...(w || []), canTrade(s, me, today) && t('schedule.yourShiftTapToTrade')].filter(Boolean).join('\n')}>
         <span className="t">{shiftTime(s)}</span>
         {s.tag && <span className="tag">{s.tag}</span>}
@@ -185,21 +192,28 @@ export default function Schedule() {
         {s.pending && <span className="pend" title={t('schedule.swapPending')}>⇄</span>}
         {(showJob || room || !s.userId) && <div className="sub">{[!s.userId && t('common.open'), showJob && `${j?.name || ''}${s.area ? ` · ${s.area}` : ''}`, room].filter(Boolean).join(' · ')}</div>}
       </button>
+      {s.userId && paste.copyButton(s)}
+      </div>
     );
   };
 
-  const Cell = ({ date, userId, list, jobCodeId, area, roomOf }) => {
+  const cell = ({ date, userId, list, jobCodeId, area, roomOf, rowKey }) => {
     const to = userId && timeOffOn(userId, date);
     const off = dayOffOn(userId, date);
     const closed = isClosed(date);
     const canAdd = isMgr && !closed;
+    const sorted = [...list].sort((a, b) => a.start.localeCompare(b.start));
+    // The row's own position and room (by room, by position); by employee there's none: the paste decides (core/shift-paste.js).
+    const target = userId && canAdd ? { userId, date, ...(jobCodeId ? { jobCodeId, area: area ?? '' } : {}) } : null;
+    const pc = rowKey ? paste.cell('grid', rowKey, days.indexOf(date), target, sorted) : null;
     return (
-      <td className={`cell ${date === today ? 'today' : ''} ${closed && !list.length ? 'closed' : ''} ${canAdd ? 'can-add' : ''}`} onClick={() => {
+      <td key={date} {...(pc?.props || {})} className={`cell ${date === today ? 'today' : ''} ${closed && !list.length ? 'closed' : ''} ${canAdd ? 'can-add' : ''} ${pc?.selected ? 'psel' : ''}`} onClick={() => {
         if (!canAdd) return;
         const entry = jobCodeId ? null : people[userId]?.jobCodes?.find((x) => x.primary) || people[userId]?.jobCodes?.[0];
-        addAt(date, jobCodeId || entry?.jobCodeId, userId, area ?? entry?.areas?.[0] ?? '');
+        addAt(date, jobCodeId || entry?.jobCodeId, userId, area ?? entry?.areas?.[0] ?? '', target);
       }}>
-        {list.sort((a, b) => a.start.localeCompare(b.start)).map((s) => <ShiftChip key={s.id} s={s} showJob={groupBy === 'emp'} room={roomOf?.[s.id]} />)}
+        {sorted.map((s) => shiftChip({ s, showJob: groupBy === 'emp', room: roomOf?.[s.id] }))}
+        {pc?.pasteButton(!list.length)}
         {!list.length && off && <span className="dayoff" title={t('quickShift.cellTitle')}>{t('quickShift.cell')}
           {isMgr && <button type="button" className="dayoff-undo no-print" disabled={busy} onClick={(e) => { e.stopPropagation(); undoDayOff(userId, date); }}>{t('quickShift.undo')}</button>}</span>}
         {!list.length && !off && to && <span className="reqoff" title={to.reason || ''}>{to.status === 'approved' ? t('schedule.requestOff') : t('schedule.reqPending')}</span>}
@@ -251,6 +265,7 @@ export default function Schedule() {
         <button className="btn sm ghost" onClick={() => setPdfOpen(true)} title={t('schedulePdf.buttonTitle')}><Icon name="download" />{t('schedulePdf.button')}</button>
       </div>
 
+      {paste.pill}
       {fc && isMgr && (
         <div className="row wrap small desktop-only no-print" style={{ marginBottom: 10, gap: 14 }}>
           <span className="muted">{t('schedule.weekForecastLine', { covers: <b className="num">{num(fc.totals.covers)}</b>, sales: <b className="num">{money(fc.totals.sales)}</b> })}</span>
@@ -271,7 +286,7 @@ export default function Schedule() {
           {/* Like the house PDF. Print always uses this layout. */}
           <ScheduleSheet className={view === 'sheet' ? 'sheet-print' : 'sheet-print print-only'} sections={sheetSections} days={days} data={data} fc={fc} ws={ws} programming={prog.byDate}
             onAdd={addAt} onOpen={openDialog} onSaved={load} daysOff={daysOff} onUndoDayOff={isMgr ? undoDayOff : undefined} onEditSection={isMgr ? (sec) => setEditSection(allSections.find((x) => x.key === sec.key) || sec) : undefined}
-            onArrange={isMgr ? setArrange : undefined} />
+            onArrange={isMgr ? setArrange : undefined} paste={view === 'sheet' ? paste : null} />
 
           {/* Desktop grid */}
           {view !== 'sheet' && view !== 'day' && <div className="sched-wrap desktop-only no-print">
@@ -297,6 +312,7 @@ export default function Schedule() {
                 </tr>
               </thead>
               <tbody>
+                {paste.begin('grid')}
                 {sections.map((sec, i) => (
                   <React.Fragment key={sec.key}>
                     {/* Area banner when the area changes, like the house sheet (RESTAURANT, RABBIT HOLE…). */}
@@ -323,15 +339,15 @@ export default function Schedule() {
                               </div>
                             </div>
                           </td>
-                          {days.map((d) => <Cell key={d} date={d} userId={user.id} jobCodeId={sec.job?.id} area={sec.job ? rowArea ?? sec.area : undefined} list={us.filter((s) => s.date === d)}
-                            roomOf={sec.rooms?.length > 1 ? sec.roomOf : undefined} />)}
+                          {days.map((d) => cell({ date: d, userId: user.id, jobCodeId: sec.job?.id, area: sec.job ? rowArea ?? sec.area : undefined, list: us.filter((s) => s.date === d),
+                            roomOf: sec.rooms?.length > 1 ? sec.roomOf : undefined, rowKey: `${sec.key}|${user.id}` }))}
                         </tr>
                       );
                     })}
                     {sec.open.length > 0 && (
                       <tr>
                         <td className="namecol"><div className="emp"><span className="avatar sm" style={{ background: 'var(--surface-3)', color: 'var(--text-3)' }}>+</span><div className="emp-name faint">{t('schedule.openShifts')}</div></div></td>
-                        {days.map((d) => <Cell key={d} date={d} jobCodeId={sec.job?.id} area={sec.area} list={sec.open.filter((s) => s.date === d)} roomOf={sec.rooms?.length > 1 ? sec.roomOf : undefined} />)}
+                        {days.map((d) => cell({ date: d, jobCodeId: sec.job?.id, area: sec.area, list: sec.open.filter((s) => s.date === d), roomOf: sec.rooms?.length > 1 ? sec.roomOf : undefined }))}
                       </tr>
                     )}
                     {isMgr && groupBy === 'job' && sec.job && sec.banner && <ParRow banner={sec.banner} jobCodeId={sec.job.id} days={days} byDate={prog.byDate} />}
@@ -372,7 +388,10 @@ export default function Schedule() {
       {editSection && <SectionPeople section={editSection} ws={ws} sections={allSections} onClose={(changed) => { setEditSection(null); if (changed) load(); }} />}
 
       {dialog && <ShiftDialog shift={dialog.shift} startIn={dialog.startIn} warnings={dialog.warnings} events={data?.events || []} onClose={closeDialog}
-        quick={dialog.quick} weekShifts={shifts} daysOff={daysOff} />}
+        quick={dialog.quick} weekShifts={shifts} daysOff={daysOff}
+        clip={paste.clip} onCopy={isMgr ? paste.copy : undefined}
+        onPaste={paste.clip && dialog.target ? () => { const tg = dialog.target; setDialog(null); paste.pasteInto([tg]); } : undefined} />}
+      {paste.overlays}
       {importOpen && <ImportDialog ws={ws} onClose={(changed) => { setImportOpen(false); if (changed) load(); }} />}
       {clearOpen && <ClearWeekDialog ws={ws} data={data} onClose={(changed) => { setClearOpen(false); if (changed) load(); }} />}
       {publishOpen && <PublishDialog ws={ws} label={weekLabel(ws)} drafts={drafts} onClose={(changed) => { setPublishOpen(false); if (changed) reloadAll(); }} />}
