@@ -811,6 +811,7 @@ const en = {
     pickType: 'Import it as:',
     review: 'Review & import',
     reviewWeb: 'Opens on the website, at the preview.',
+    needsFileWeb: 'To review and import this one, attach the file on the website.',
     importNow: 'Import now',
     attachAgain: 'Attach the file again to do that (files aren’t kept).',
     st: { proposed: 'Waiting for you', running: 'Working on it…', done: 'Done', failed: 'Didn’t work', cancelled: 'Cancelled', expired: 'Expired: ask again' },

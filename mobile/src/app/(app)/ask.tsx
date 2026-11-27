@@ -256,7 +256,7 @@ function ImportCard({ card, busy, onPick, onImportNow, onReview }: { card: AskIm
   const { t } = useI18n();
   const c = useColors();
   const reading = card.status === 'reading';
-  const canReview = !!card.wizard && ['ready', 'empty', 'failed'].includes(card.status);
+  const canReview = !!card.wizard && !card.needsFile && ['ready', 'empty', 'failed'].includes(card.status); // a file the website must read itself can't come from the phone
   return (
     <Card style={[styles.action, { borderColor: card.status === 'done' ? c.ok : c.brand }]}>
       <View style={styles.actionHead}>
@@ -290,6 +290,7 @@ function ImportCard({ card, busy, onPick, onImportNow, onReview }: { card: AskIm
         </View>
       ) : null}
       {canReview ? <Txt v="tiny" tone="faint">{t('ask.reviewWeb')}</Txt> : null}
+      {card.needsFile && card.status !== 'done' ? <Txt v="tiny" tone="faint">{t('ask.needsFileWeb')}</Txt> : null}
     </Card>
   );
 }

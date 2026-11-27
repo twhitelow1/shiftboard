@@ -20,8 +20,9 @@
 // Smart-import targets (core/smart-import.js TARGETS: employees, menu, products, and any added later) register
 // themselves below from their FIELDS and their <target>.importPreview / importApply RPCs, so a new smart-import target
 // shows up here without code. A target with its own reader overrides it with registerImportTarget (same id).
-// Hook for the availability sheet: once it's in core/smart-import.js TARGETS it's listed here; give it a detect()
-// and parse() for its colour-coded XLSX with registerImportTarget({ id: 'availability', ... }) next to its reader.
+// The availability sheet (core/availability.js) is one of them: its hints are below, and since its colour-coded
+// workbook is read by its own wizard steps, "Review & import" hands that wizard the file itself (needsFile) and
+// "Import now" isn't offered for it.
 import { canManageSchedule, canManageEvents } from '../../core/roles.js';
 import {
   TARGETS, FIELDS, findHeaderRow, autoMap, rowsToRecords, menuFromText, menuFromLabeledText, rosterFromText, looksTabular, textRows, MAX_ROWS,
@@ -66,7 +67,7 @@ export function countsLine(c, lang) {
 
 // ---------------------------------------------------------------- smart import (menu, employees, products, …)
 
-const ROLE_FEATURE = { menu: 'training', employees: 'team', products: 'stock' };
+const ROLE_FEATURE = { menu: 'training', employees: 'team', products: 'stock', availability: 'team' };
 const PLAN_FEATURE = { menu: 'training', products: 'stock' };
 const SMART = {
   menu: {
@@ -96,6 +97,17 @@ const SMART = {
     distinct: ['unit', 'size', 'par', 'location', 'supplier'],
     options: {},
   },
+  availability: {
+    label: { en: 'Availability', es: 'Disponibilidad' }, phrase: { en: 'an availability sheet', es: 'una hoja de disponibilidad' },
+    noun: [['person', 'people'], ['persona', 'personas']], order: 25,
+    about: 'each person\'s weekly availability: one row per person and a column per weekday (a sheet, or a colour-coded workbook with a tab per week)',
+    sheet: ['availability', 'avail', 'disponibilidad', 'house'],
+    words: ['availability', 'available', 'unavailable', 'disponible', 'disponibilidad'],
+    hint: ['availability', 'avail', 'disponibilidad'],
+    distinct: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun', 'maxHours', 'maxDays', 'requestedOn'],
+    options: {}, importNow: false, needsFile: true,
+    reviewNote: { en: 'Cell colours and the workbook’s tabs are read in Review & import.', es: 'Los colores de las celdas y las pestañas del libro se leen en Revisar e importar.' },
+  },
 };
 const GENERIC = new Set(['name', 'category', 'notes', 'available', 'active']);
 
@@ -111,8 +123,9 @@ function bestTable(doc, target, hints) {
     const cols = autoMap(s.rows[h], target, { samples: s.rows.slice(h + 1, h + 20) });
     const sure = cols.filter((c) => c.field && (c.confidence === 'exact' || c.confidence === 'likely'));
     const hits = new Set(sure.map((c) => c.field).filter((f) => distinct.includes(f))).size;
-    const named = cols.some((c) => ['name', 'firstName', 'lastName'].includes(c.field));
+    const named = sure.some((c) => ['name', 'firstName', 'lastName'].includes(c.field)); // a named column, not a guess
     let score = Math.min(95, hits * 22 + (named ? 15 : 0));
+    if (!named) score = Math.min(score, 45); // no name column: not this target's file (a schedule grid has day columns too)
     if (hits && hints.sheet && wordHits(s.name, hints.sheet)) score += 12;
     if (s.rows.length - h < 2) score -= 20;
     if (!best || score > best.score) best = { index: i, sheet: s, header: h, score, rows: s.rows };
@@ -124,7 +137,7 @@ function smartTarget(id) {
   const h = SMART[id] || { label: { en: id[0].toUpperCase() + id.slice(1), es: id }, noun: [['row', 'rows'], ['fila', 'filas']], order: 60, about: `${id} records`, options: {} };
   const roleKey = ROLE_FEATURE[id] || 'team';
   return {
-    id, order: h.order, label: h.label, ...(h.phrase ? { phrase: h.phrase } : {}), about: h.about, wizard: 'smartImport', importNow: true, kind: 'smart',
+    id, order: h.order, label: h.label, ...(h.phrase ? { phrase: h.phrase } : {}), about: h.about, wizard: 'smartImport', importNow: h.importNow !== false, needsFile: !!h.needsFile, kind: 'smart',
     allowed: (user, has) => canManageSchedule(user) && (!PLAN_FEATURE[id] || has(PLAN_FEATURE[id])) && has(roleKey),
     detect(doc, { hint = '' } = {}) {
       const t = bestTable(doc, id, h);
@@ -182,6 +195,7 @@ function smartTarget(id) {
       const extra = [
         p.newCategories?.length ? L(x.lang, `new sections: ${p.newCategories.slice(0, 5).join(', ')}`, `secciones nuevas: ${p.newCategories.slice(0, 5).join(', ')}`) : '',
         p.newPositions?.length ? L(x.lang, `positions not in ShiftBoard yet: ${p.newPositions.slice(0, 5).join(', ')}`, `puestos que aún no están en ShiftBoard: ${p.newPositions.slice(0, 5).join(', ')}`) : '',
+        h.reviewNote ? h.reviewNote[x.lang === 'es' ? 'es' : 'en'] : '',
       ].filter(Boolean);
       return {
         counts: { new: c.new || 0, update: c.update || 0, unchanged: c.unchanged || 0, check: c.check || 0, problem: c.problem || 0, skip: c.skip || 0, total: n },
@@ -328,7 +342,7 @@ registerImportTarget({
   detect(doc, { hint = '' } = {}) {
     const s = scheduleOf(doc);
     let score = 0;
-    if (s?.shifts >= 4) score = s.p.mode === 'csv' ? 80 : Math.min(92, 60 + s.shifts);
+    if (s?.shifts >= 4) score = s.p.mode === 'csv' ? 80 : Math.min(92, 70 + s.shifts);
     if (wordHits(`${hint} ${doc.name.replace(/[_.-]+/g, ' ')}`, ['schedule', 'horario', 'shifts', 'turnos', 'week'])) score += score ? 8 : 20;
     return Math.min(100, score);
   },

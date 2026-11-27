@@ -810,6 +810,7 @@ const es: Messages = {
     pickType: 'Impórtalo como:',
     review: 'Revisar e importar',
     reviewWeb: 'Se abre en el sitio web, en la vista previa.',
+    needsFileWeb: 'Para revisar e importar este, adjunta el archivo en el sitio web.',
     importNow: 'Importar ahora',
     attachAgain: 'Adjunta el archivo de nuevo para hacer eso (los archivos no se guardan).',
     st: { proposed: 'Esperando tu respuesta', running: 'Haciéndolo…', done: 'Listo', failed: 'No funcionó', cancelled: 'Cancelado', expired: 'Venció: vuelve a pedirlo' },

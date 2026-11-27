@@ -98,7 +98,7 @@ export function mountAssistantImports(app, d) {
       choices: allowed.filter((x) => x.id !== imp.target).map((x) => ({ id: x.id, label: labelOf(x, lang) })),
       ...(imp.status === 'reading' ? { progress: { part: imp.part || 0, parts: imp.parts || 0 } } : {}),
       ...(p ? { summary: { line: p.line, details: p.details || [], counts: p.counts } } : {}),
-      wizard: may ? t.wizard : null,
+      wizard: may ? t.wizard : null, ...(may && t.needsFile ? { needsFile: true } : {}),
       canImportNow: !!(may && t.importNow && p && imp.status === 'ready' && !p.checks && !p.problems && p.toImport > 0),
       ...(p && (p.checks || p.problems) ? { needsReview: true } : {}),
       ...(imp.lowConfidence ? { lowConfidence: imp.lowConfidence } : {}),
@@ -223,7 +223,7 @@ export function mountAssistantImports(app, d) {
     const t = imp && importTarget(imp.target);
     if (!imp || !t) return res.status(404).json({ error: 'Not found' });
     if (!t.allowed(s.user, d.hasFor(s.user))) return res.status(403).json({ error: L(d.langFor(s.user), 'Only managers can import this.', 'Solo los gerentes pueden importar esto.') });
-    res.set('Cache-Control', 'no-store').json({ result: { id: imp.id, target: t.id, wizard: t.wizard, fileName: imp.name, kind: imp.kind, source: imp.source || 'file', status: imp.status, payload: imp.payload || {} } });
+    res.set('Cache-Control', 'no-store').json({ result: { id: imp.id, target: t.id, wizard: t.wizard, needsFile: !!t.needsFile, fileName: imp.name, kind: imp.kind, source: imp.source || 'file', status: imp.status, payload: imp.payload || {} } });
   });
 
   // ---------- Import now: a confirm card (only when nothing needs the manager's decision) ----------

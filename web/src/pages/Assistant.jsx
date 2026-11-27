@@ -144,7 +144,10 @@ export default function Assistant() {
       const local = files.current.get(card.id);
       const payload = x.payload || {};
       let data;
-      if (x.wizard === 'smartImport') data = { records: payload.records || [], lowConfidence: payload.lowConfidence || [], fileName: x.fileName, source: x.source };
+      if (x.wizard === 'smartImport' && x.needsFile) { // its own steps read the file (the availability workbook's colours)
+        if (!local?.file) throw new Error(t('assistant.attachAgain'));
+        data = { file: local.file, fileName: x.fileName };
+      } else if (x.wizard === 'smartImport') data = { records: payload.records || [], lowConfidence: payload.lowConfidence || [], fileName: x.fileName, source: x.source };
       else if (x.wizard === 'beo') data = { events: payload.events || [], fileName: x.fileName };
       else if (x.wizard === 'floor') data = { read: payload.read || null, incoming: payload.incoming || null, picture: local?.picture || null, roomName: payload.incoming?.rooms?.[0]?.name || '' };
       else if (x.wizard === 'schedule' || x.wizard === 'guests') {

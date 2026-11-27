@@ -56,6 +56,7 @@ export interface AskImport {
   summary?: { line: string; details: string[] };
   wizard: string | null;
   canImportNow: boolean;
+  needsFile?: boolean;
   needsReview?: boolean;
   lowConfidence?: number;
   notes: string[];

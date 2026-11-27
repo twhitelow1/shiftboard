@@ -93,6 +93,7 @@ const LABELED_MENU = ['Small Plates', 'Blistered Shishito Basket', 'Menu Price: 
   'Large Plates', 'Cider Brined Chop', 'Menu Price: $34.00', 'Description: Pork chop, apples, mustard jus.', 'Allergens: Mustard', 'Friendliness: GF Possible'];
 const ROSTER_CSV = 'Name,Email,Phone,Position,Hire Date\nWren Castellano,wren.c@invented.test,(303) 555-0141,Server,2026-03-02\nOrrin Paley,orrin.p@invented.test,(303) 555-0142,Bartender,2026-04-11\n';
 const PRODUCT_CSV = 'Product,Category,Unit,Size,Par,Supplier\nInvented Agave Reposado,Spirits,bottle,750 ml,4,Mesa Imports\nInvented Pilsner Keg,Beer,keg,1/2 bbl,2,Front Range Dist\nCocktail Napkins,Paper,case,,1,Paper Co\n';
+const AVAIL_ROWS = [['Name', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], ['Wren Castellano', 'Any', 'Any', 'After 4p', 'Off', 'Any', 'Any', 'Off'], ['Orrin Paley', 'Off', 'Any', 'Any', 'Any', 'Before 3p', 'Off', 'Any']];
 const SCHEDULE_TSV = 'SERVERS\tMONDAY\tTUESDAY\tWEDNESDAY\tTHURSDAY\tFRIDAY\tSATURDAY\tSUNDAY\nWREN C\tOFF\t4PM\t4PM\tOFF\t4:30PM\t3:30PM\tOFF\nORRIN P\t4PM\tOFF\t5PM\t5PM\tOFF\t4PM\t11AM\n';
 const BEO_TEXT = `BANQUET EVENT ORDER
 Event: Invented Lantern Society Dinner
@@ -108,7 +109,9 @@ const meterReset = () => A.db.run((s) => { for (const d of s.list(METER)) s.remo
 // ---------- the registry itself ----------
 test('the registry: every target registered once, with detect/parse/preview/permission; a new one plugs in', () => {
   const ids = importTargets().map((t) => t.id);
-  for (const id of ['menu', 'employees', 'products', 'beo', 'floor', 'schedule', 'opentable', 'reviews']) assert.ok(ids.includes(id), id);
+  for (const id of ['menu', 'employees', 'products', 'availability', 'beo', 'floor', 'schedule', 'opentable', 'reviews']) assert.ok(ids.includes(id), id);
+  assert.equal(importTarget('availability').importNow, false, 'its colour-coded workbook is read by its own wizard');
+  assert.equal(importTarget('availability').needsFile, true);
   for (const t of importTargets()) for (const k of ['detect', 'parse', 'preview', 'allowed']) assert.equal(typeof t[k], 'function', `${t.id}.${k}`);
   assert.equal(new Set(ids).size, ids.length);
   registerImportTarget({ id: 'zz_test', order: 999, label: { en: 'Test', es: 'Prueba' }, allowed: () => false, detect: () => 0, parse: async () => ({ done: true, payload: {} }), preview: async () => ({ counts: {} }) });
@@ -142,6 +145,7 @@ test('classification from local signals: each kind, no AI call when the signals 
     [file('roster.csv', { text: ROSTER_CSV }), 'employees'],
     [file('order-guide.csv', { text: PRODUCT_CSV }), 'products'],
     [file('week.tsv', { text: SCHEDULE_TSV }), 'schedule'],
+    [file('avail.xlsx', { data: xlsx([{ name: 'Availability', rows: AVAIL_ROWS }]) }), 'availability'],
     [file('beo.pdf', { items: beoItems() }), 'beo'],
     [file('reservations.csv', { text: await (await import('node:fs/promises')).readFile(new URL('./fixtures/opentable-reservations.csv', import.meta.url), 'utf8') }), 'opentable'],
     [file('google-reviews.csv', { text: await (await import('node:fs/promises')).readFile(new URL('./fixtures/google-reviews.csv', import.meta.url), 'utf8') }), 'reviews'],
@@ -176,6 +180,17 @@ test('unsure (a picture): a short AI classification call, then the target’s re
   const purposes = Object.keys(A.db.store.get(METER, `month:${monthOf(Date.now())}`).purposes);
   assert.ok(purposes.includes('import_classify') && purposes.includes('import_floor'), purposes.join());
   assert.match(r.card.summary.line, /Floor plan: 2 tables, 6 seats/);
+});
+
+test('the availability sheet (once it’s a smart-import target): found, previewed, Review & import only', async () => {
+  const mgr = await as('manager');
+  const r = await mgr.attach(file('avail.xlsx', { data: xlsx([{ name: 'Availability', rows: AVAIL_ROWS }]) }));
+  assert.equal(r.card.target, 'availability');
+  assert.equal(r.card.wizard, 'smartImport');
+  assert.equal(r.card.needsFile, true, 'the wizard reads the file itself (colours, tabs)');
+  assert.equal(r.card.canImportNow, false);
+  assert.match(r.card.summary.line, /^Availability: 2 people/);
+  assert.equal((await mgr.post(`/api/assistant/imports/${r.card.id}/propose`, { conversationId: r.result.conversationId })).status, 409);
 });
 
 test('the manager’s pick overrides the guess (the same file read again as another kind)', async () => {
