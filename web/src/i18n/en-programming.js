@@ -42,6 +42,7 @@ export default {
     log_override: '{by} changed {name} on {date}',
     log_overrideCleared: '{by} put {name} back to normal on {date}',
     log_eventPars: '{by} set the pars for {name}',
+    log_calendarImport: '{by} imported programming from a calendar page',
     log_fillGaps: { one: '{by} made {count} open shift for the gaps', other: '{by} made {count} open shifts for the gaps' },
     season_winter: 'Winter',
     season_summer: 'Summer',

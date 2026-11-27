@@ -3,6 +3,8 @@ import { useApp, Icon, Modal, Field, useAction, Empty } from '../ui.jsx';
 import { useT, fmtTime, dowShort, dowLong, prettyDate, stamp } from '../i18n/index.js';
 import { addDays } from '../../../core/time.js';
 import '../programming.css';
+import { CalendarImportDialog } from './CalendarImport.jsx'; // Import from a calendar page
+import { IS_DEMO } from '../api.js';
 
 // Settings → Programming (#/settings/programming): what normally runs each weekday in each room, with staffing pars,
 // one-off changes for a date, overlap warnings and recent changes (core/programming.js). Managers and up edit it
@@ -33,6 +35,7 @@ export default function Programming() {
   const [data, setData] = useState(null);
   const [edit, setEdit] = useState(null);
   const [override, setOverride] = useState(null);
+  const [calendar, setCalendar] = useState(false);
   const load = () => call('programming.list').then(setData);
   useEffect(() => { load(); }, [version]);
   if (!data) return <div className="empty">{t('common.loading')}</div>;
@@ -48,6 +51,7 @@ export default function Programming() {
       <div className="row wrap" style={{ gap: 8 }}>
         <a className="btn sm ghost" href="#/settings"><Icon name="left" />{t('main.settings')}</a>
         <span className="spacer" />
+        {data.canEdit && !IS_DEMO && <button className="btn sm" onClick={() => setCalendar(true)}><Icon name="download" />{t('calImport.button')}</button>}
         {data.canEdit && <button className="btn sm" onClick={() => setOverride({ date: addDays(today, 1), id: data.items[0]?.id || 'all', action: 'cancel', reason: '', start: '', end: '', pars: [] })}><Icon name="edit" />{t('programming.oneOff')}</button>}
         {data.canEdit && <button className="btn sm primary" onClick={() => setEdit({ ...EMPTY, color: data.colors[data.items.length % data.colors.length] })}><Icon name="plus" />{t('programming.add')}</button>}
       </div>
@@ -121,6 +125,7 @@ export default function Programming() {
       )}
 
       {edit && <ItemDialog item={edit} data={data} onClose={(c) => { setEdit(null); if (c) load(); }} />}
+      {calendar && <CalendarImportDialog onClose={(c) => { setCalendar(false); if (c) load(); }} />}
       {override && <OverrideDialog init={override} data={data} onClose={(c) => { setOverride(null); if (c) load(); }} />}
     </div>
   );

@@ -26,6 +26,7 @@ const TITLES = {
   add_product: ['Add a product to the catalog', 'Agregar un producto al catálogo'],
   set_programming: ['Set regular programming', 'Guardar la programación regular'],
   override_programming_for_date: ['Change programming for one date', 'Cambiar la programación de un día'],
+  import_programming_from_calendar: ['Import programming from a calendar page', 'Importar programación de una página de calendario'],
   run_stock_list: ['Save a stock count', 'Guardar un conteo de surtido'],
   share_stock_list: ['Share a stock list', 'Compartir una lista de surtido'],
 };
@@ -35,6 +36,7 @@ const TOOL_LABELS = {
   create_stock_list: { name: ['List', 'Lista'], template: ['Save as a template', 'Guardar como plantilla'] },
   set_programming: { rooms: ['Rooms', 'Salones'], wholeVenue: ['Whole venue', 'Todo el lugar'], pars: ['Staffing pars', 'Personal par'], color: ['Color', 'Color'] },
   override_programming_for_date: { programming: ['Programming', 'Programación'], action: ['Change', 'Cambio'], pars: ['Staffing pars', 'Personal par'] },
+  import_programming_from_calendar: { url: ['Page', 'Página'], include: ['Import', 'Importar'], exclude: ['Leave out', 'Omitir'], rooms: ['Rooms', 'Salones'], changes: ['Changed', 'Cambios'] },
   run_stock_list: { list: ['List', 'Lista'], position: ['Send to', 'Enviar a'], person: ['Send to', 'Enviar a'], out: ['Report out (86)', 'Reportar agotado (86)'] },
   share_stock_list: { list: ['List', 'Lista'], person: ['Share with', 'Compartir con'], position: ['Share with', 'Compartir con'], role: ['Share with', 'Compartir con'],
     room: ['Share with', 'Compartir con'], can: ['They can', 'Pueden'] },
@@ -77,12 +79,14 @@ const PROGRAMMING_ACTIONS = { cancel: ['Cancel that day', 'Cancelar ese día'], 
   clear: ['Back to the regular programming', 'Volver a la programación regular'] };
 const OPEN = ['Open shift', 'Turno disponible'];
 const UNTIL_CLOSE = ['Until close', 'Hasta el cierre'];
+const KEEPS = ['keeps running', 'sigue'];
 const WEEK_OF = ['Week of {date}', 'Semana del {date}'];
 const UNAVAILABLE = ['not available', 'no disponible'];
 const YES_NO = [['Yes', 'Sí'], ['No', 'No']];
 const DECIDED = { update: ['update', 'actualizar'], skip: ['skip', 'omitir'], new: ['new', 'nuevo'] };
 const DAY_INDEX = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
-const HIDDEN = new Set(['confirm']);
+const HIDDEN = new Set(['confirm', 'importId']);
+const suggestionName = (k) => String(k).replace(/^[ro]\d+:/, '').replace(/\|\d{4}-\d{2}-\d{2}$/, '').replace(/^tribe:\d+$/, '…');
 
 const pick = (pair, lang) => pair[lang === 'es' ? 1 : 0];
 const clip = (s, n = 80) => { const t = String(s ?? '').replace(/\s+/g, ' ').trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
@@ -121,6 +125,9 @@ export function describeAction(tool, args = {}, lang = 'en', look = {}) {
       const idx = (d) => (typeof d === 'number' ? d : Object.entries(DAY_INDEX).find(([n]) => n.startsWith(String(d).toLowerCase().slice(0, 3)))?.[1]);
       value = v.map((d) => (idx(d) != null ? dayName(idx(d), 'short', lang) : clip(d, 12))).join(', ');
     } else if (k === 'pars' && Array.isArray(v)) value = clip(v.map((x) => `${x.position} ${x.count}${x.start ? ` (${fmtTime(x.start, lang)})` : ''}`).join(', '), 200);
+    else if ((k === 'include' || k === 'exclude') && Array.isArray(v) && tool.name === 'import_programming_from_calendar') value = clip(`${v.length}: ${(look.calendarNames?.(v) || v.map(suggestionName)).slice(0, 6).join(', ')}${v.length > 6 ? '…' : ''}`, 200);
+    else if (k === 'rooms' && Array.isArray(v) && tool.name === 'import_programming_from_calendar') value = clip(v.map((r) => `${(look.calendarNames?.([r.key]) || [suggestionName(r.key)])[0]}: ${r.wholeVenue ? '*' : r.room}`).join(', '), 200);
+    else if (k === 'changes' && Array.isArray(v) && tool.name === 'import_programming_from_calendar') value = clip(v.map((c) => `${c.name || (look.calendarNames?.([c.key]) || [suggestionName(c.key)])[0]}${c.startDate || c.endDate !== undefined ? ` (${c.startDate ? prettyDate(c.startDate, { lang }) : '…'} – ${c.endDate ? prettyDate(c.endDate, { lang }) : pick(KEEPS, lang)})` : ''}`).join(', '), 200);
     else if (k === 'action' && PROGRAMMING_ACTIONS[v]) value = pick(PROGRAMMING_ACTIONS[v], lang);
     else if (k === 'days' && Array.isArray(v)) {
       value = v.map((d) => `${dayName(DAY_INDEX[d.day] ?? 0, 'short', lang)}: ${d.available === false ? pick(UNAVAILABLE, lang) : d.from || d.to ? `${fmtTime(d.from || '00:00', lang)}–${d.to ? fmtTime(d.to, lang) : '…'}` : '✓'}`).join(', ');

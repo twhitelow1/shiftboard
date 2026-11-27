@@ -14,7 +14,7 @@ import { Screen } from '@/components/Screen';
 import { Icon } from '@/components/Icon';
 import { Badge, Button, Card, ListRow, Notice, Txt, useColors, useToast } from '@/components/ui';
 import { useI18n, type MsgKey } from '@/i18n';
-import { askAttachAll, askClear, askConversation, askDecide, askProposeImport, askSend, askStatus, type AskAction, type AskFilePayload, type AskImport, type AskMessage, type AskStatus } from '@/lib/assistant';
+import { askAttachAll, askClear, askConversation, askDecide, askProposeImport, askSend, askStatus, type AskAction, type AskCalendar, type AskFilePayload, type AskImport, type AskMessage, type AskStatus } from '@/lib/assistant';
 import { attachPhoto, attachWebFile, canAttachFiles, type Attached } from '@/lib/attach';
 import { confirm } from '@/lib/confirm';
 import { useErrorText } from '@/lib/hooks';
@@ -114,6 +114,11 @@ export default function Ask() {
     WebBrowser.openBrowserAsync(url).catch(() => toast(t('ask.failed'), 'bad'));
   };
 
+  const reviewCalendar = (card: AskCalendar) => {
+    if (!server || !chatId) return;
+    WebBrowser.openBrowserAsync(`${server}/#/ask/calendar/${encodeURIComponent(card.id)}/${encodeURIComponent(chatId)}`).catch(() => toast(t('ask.failed'), 'bad'));
+  };
+
   const decide = async (msg: AskMessage, action: AskAction, decision: 'confirm' | 'cancel') => {
     const mark = (a: Partial<AskAction>) => setMessages((list) => list.map((m) => (m.id !== msg.id ? m : { ...m, actions: (m.actions || []).map((x) => (x.id === action.id ? { ...x, ...a } : x)) })));
     if (!chatId) return;
@@ -194,6 +199,7 @@ export default function Ask() {
                 </View>
               ) : null}
               {m.import ? <ImportCard card={m.import} busy={busy} onPick={(id) => retarget(m, m.import!, id)} onImportNow={() => importNow(m.import!)} onReview={() => review(m.import!)} /> : null}
+              {m.calendar ? <CalendarCard card={m.calendar} onReview={() => reviewCalendar(m.calendar!)} /> : null}
               {(m.actions || []).map((a) => (
                 <Card key={a.id} style={[styles.action, a.status === 'proposed' && { borderColor: c.brand }]}>
                   <View style={styles.actionHead}>
@@ -294,6 +300,41 @@ function ImportCard({ card, busy, onPick, onImportNow, onReview }: { card: AskIm
       ) : null}
       {canReview ? <Txt v="tiny" tone="faint">{t('ask.reviewWeb')}</Txt> : null}
       {card.needsFile && card.status !== 'done' ? <Txt v="tiny" tone="faint">{t('ask.needsFileWeb')}</Txt> : null}
+    </Card>
+  );
+}
+
+/** A calendar page's suggestions, read-only: the boxes and room pickers are on the website (Review on the web). */
+function CalendarCard({ card, onReview }: { card: AskCalendar; onReview: () => void }) {
+  const { t, tn, date, time } = useI18n();
+  const c = useColors();
+  const host = (() => { try { return new URL(card.url).host; } catch { return card.url; } })();
+  const day = (d: number) => date(`2024-01-${String(7 + d).padStart(2, '0')}`, 'weekday'); // 2024-01-07 was a Sunday
+  return (
+    <Card style={[styles.action, { borderColor: card.status === 'done' ? c.ok : c.brand }]}>
+      <View style={styles.actionHead}>
+        <Icon name="calendar" size={16} color={c.brand} />
+        <Txt bold style={{ flexShrink: 1 }}>{t('ask.cal.title')}</Txt>
+        {card.status === 'done' ? <Badge tone="ok" text={t('ask.st.done')} /> : null}
+      </View>
+      <Txt v="small" tone="muted">{tn('ask.cal.found', card.events, { host })}</Txt>
+      {card.status === 'done' ? (card.result ? <Txt v="small">{card.result}</Txt> : null) : (
+        <>
+          <Txt v="small" bold>{tn('ask.cal.recurring', card.recurring.length)}</Txt>
+          {card.recurring.map((r) => (
+            <View key={r.key} style={{ gap: 2, opacity: r.include ? 1 : 0.6 }}>
+              <Txt v="small" bold>{r.name}{r.duplicate ? ` · ${t('ask.cal.duplicate')}` : ''}</Txt>
+              <Txt v="tiny" tone="muted">{r.days.map(day).join(', ')} · {time(r.start)}{r.end ? `–${time(r.end)}` : ''} · {r.room === '*' ? t('ask.cal.wholeVenue') : r.room || t('ask.cal.noRoom')} · {tn('ask.cal.matched', r.count)}</Txt>
+              <Txt v="tiny" tone="faint">{date(r.from, 'dayMonth')} – {r.to ? date(r.to, 'dayMonth') : t('ask.cal.keepsRunning')}</Txt>
+            </View>
+          ))}
+          <Txt v="small" bold>{tn('ask.cal.oneOffs', card.oneOffs)}</Txt>
+          {card.oneOffList.slice(0, 6).map((o, i) => <Txt key={i} v="tiny" tone="muted">{date(o.date, 'short')}{o.start ? ` ${time(o.start)}` : ''} · {o.name}{o.room ? ` · ${o.room}` : ''}{o.duplicate ? ` · ${t('ask.cal.duplicate')}` : ''}</Txt>)}
+          {card.unmatched ? <Txt v="small" tone="warn">{tn('ask.cal.needsRoom', card.unmatched)}</Txt> : null}
+          <Button title={t('ask.cal.review')} icon="external" onPress={onReview} />
+          <Txt v="tiny" tone="faint">{t('ask.cal.reviewWeb')}</Txt>
+        </>
+      )}
     </Card>
   );
 }

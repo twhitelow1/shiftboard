@@ -26,6 +26,7 @@ export default {
     failed: 'No se pudo conectar con Pregúntale a ShiftBoard. Revisa tu conexión e inténtalo de nuevo.',
     looking: 'Buscando…',
     tool_whoami: 'Revisando quién eres…',
+    tool_read_events_calendar: 'Leyendo la página del calendario…',
     tool_get_my_shifts: 'Revisando tus turnos…',
     tool_get_schedule: 'Revisando el horario…',
     tool_get_open_shifts: 'Revisando turnos disponibles…',

@@ -50,6 +50,7 @@ import { scheduleLogger, scheduleLogApi, shiftChanges } from './schedule-log.js'
 import { timeOffQueue, cleanRequestedAt, SOURCES as TIME_OFF_SOURCES } from './time-off.js';
 import { useCustomRoles } from './roles.js';
 import { programmingApi } from './programming.js';
+import { calendarImportApi } from './calendar-import.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -1903,6 +1904,8 @@ export function createService(store, opts = {}) {
   Object.assign(api, importApi({ store, api, fail, needMgr, now, settings, availability, slog }));
   // Regular programming and staffing pars: programming.* (core/programming.js). New RPCs only: no existing answer changes.
   Object.assign(api, programmingApi({ store, settings, fail, needAuth, needMgr, isMgr, now, today, layouts, langOf: L, homeRoom: (job) => layouts.homeRoom(job) }));
+  // Import from a calendar page: programming.calendar.* (core/calendar-import.js; the page is read by server/calendar/).
+  Object.assign(api, calendarImportApi({ store, settings, fail, needAuth, now, layouts, api, langOf: L, logVia }));
   // Stock lists and the product catalog the 86 List shares (core/stock.js, core/products.js). Out → 86 goes through eightySix.report.
   Object.assign(api, stockApi({ store, now, settings, notify, fail, api, langOf: L, planHas: (k) => !opts.planFeatures || opts.planFeatures[k] !== false }));
   // Positive impact (impact.*: review mentions, reservation requests, kudos) and OpenTable (opentable.*): core/impact.js, core/opentable.js.

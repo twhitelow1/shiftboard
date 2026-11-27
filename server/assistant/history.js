@@ -40,7 +40,7 @@ export function chatView(c) {
 /** One message as the apps show it: a file it carried (its name only) and an import card (server/assistant/imports.js). */
 export const messageView = (m) => ({
   id: m.id, role: m.role, text: m.text, at: m.at, ...(m.notice ? { notice: m.notice } : {}),
-  ...(m.file ? { file: m.file } : {}), ...(m.import ? { import: m.import } : {}),
+  ...(m.file ? { file: m.file } : {}), ...(m.import ? { import: m.import } : {}), ...(m.calendar ? { calendar: m.calendar } : {}),
   ...(m.actions?.length ? { actions: m.actions.map(actionView) } : {}),
 });
 export const actionView = (a) => ({ id: a.id, tool: a.tool, title: a.title, details: a.details || [], status: a.status, ...(a.result ? { result: a.result } : {}), ...(a.expiresAt ? { expiresAt: a.expiresAt } : {}) });
@@ -66,12 +66,12 @@ export function addUserMessage(store, { userId, chatId, text, at, file = null })
 }
 
 /** Add the assistant's reply: text, and the changes it proposes (each { tool, args, title, details }), or a notice. */
-export function addReply(store, { userId, chatId, text, actions = [], notice = null, at }) {
+export function addReply(store, { userId, chatId, text, actions = [], notice = null, at, calendar = null }) {
   const chat = chatOf(store, userId, chatId);
   if (!chat) return null;
   const expiresAt = new Date(Date.parse(at) + ACTION_MINUTES * 60_000).toISOString();
   const message = {
-    id: uid('acm'), role: 'assistant', text: String(text || ''), at, ...(notice ? { notice } : {}),
+    id: uid('acm'), role: 'assistant', text: String(text || ''), at, ...(notice ? { notice } : {}), ...(calendar ? { calendar } : {}),
     ...(actions.length ? { actions: actions.map((a) => ({ id: uid('act'), tool: a.tool, args: a.args, title: a.title, details: a.details || [], status: 'proposed', expiresAt })) } : {}),
   };
   store.update(CHATS, chat.id, { updatedAt: at, messages: [...chat.messages, message].slice(-KEEP_MESSAGES) });
@@ -142,6 +142,7 @@ export function contextOf(chat) {
     if (m.notice) continue;
     let text = m.text;
     if (m.file) text = `${text ? `${text}\n\n` : ''}[Attached a file: ${m.file.name}]`;
+    if (m.calendar) text += `\n\n[Calendar card: ${m.calendar.url}: ${m.calendar.recurring.length} recurring, ${m.calendar.oneOffs} one-off (importId ${m.calendar.id})${m.calendar.result ? `: ${m.calendar.result}` : ''}]`;
     if (m.import?.summary?.line) text += `\n\n[Import card: ${m.import.summary.line}${m.import.result ? `: ${m.import.result}` : ''}]`;
     if (m.actions?.length) text += `\n\n${m.actions.map((a) => `[Proposed in the app: ${a.title}${a.details?.length ? ` (${a.details.map(([k, v]) => `${k}: ${v}`).join(', ')})` : ''}: ${STATUS_NOTE[a.status] || a.status}${a.result ? `: ${a.result}` : ''}]`).join('\n')}`;
     if (!text.trim()) continue;

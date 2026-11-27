@@ -102,6 +102,7 @@ export const ERRORS_ES = {
   'Admins only': 'Solo para administradores',
   'Managers and supervisors only': 'Solo para gerentes y supervisores',
   'Events team or managers only': 'Solo para el equipo de eventos o los gerentes',
+  'That calendar read is gone. Read the page again.': 'Esa lectura del calendario ya no está. Vuelve a leer la página.', // core/calendar-import.js
   'Something went wrong': 'Algo salió mal',
   'Not found': 'No se encontró',
   'Invalid JSON': 'JSON no válido',

@@ -19,6 +19,7 @@ import floor from './en-floor.js'; // the floor plan editor's palette, sections,
 import feedback, { roles as feedbackRoles } from './en-feedback.js'; // the Feedback box: writing, My feedback, the inbox, Settings → Feedback box
 import stock, { roles as stockRoles, claude as stockClaude, smartImport as stockImport } from './en-stock.js';
 import availability, { roles as availabilityRoles, schedule as availabilitySchedule, smartImport as availabilityImport } from './en-availability.js'; // availability, Approves for, time off requests, the schedule log, Who works where, custom roles // Stock lists and the product catalog
+import calendarImport from './en-calendar.js'; // import from a calendar page (pages/CalendarImport.jsx)
 import programming, { roles as programmingRoles, claude as programmingClaude } from './en-programming.js'; // regular programming and staffing pars
 const catalog = {
   lang: {
@@ -2321,6 +2322,7 @@ const catalog = {
   ...stock,
   ...availability,
   ...programming,
+  ...calendarImport,
 };
 Object.assign(catalog.integrations, reviewIntegrations); // Settings → Integrations: the Google and Yelp cards
 Object.assign(catalog.roles, feedbackRoles); // Settings → Roles & features: the Feedback box's two rows
