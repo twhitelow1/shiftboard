@@ -222,11 +222,12 @@ export default function Schedule() {
         {sorted.map((s) => shiftChip({ s, showJob: groupBy === 'emp', room: roomOf?.[s.id] }))}
         {pc?.pasteButton(!list.length)}
         {!list.length && off && <span className="dayoff" title={t('quickShift.cellTitle')}>{t('quickShift.cell')}
-          {isMgr && <button type="button" className="dayoff-undo no-print" disabled={busy} onClick={(e) => { e.stopPropagation(); undoDayOff(userId, date); }}>{t('quickShift.undo')}</button>}</span>}
+          {canAdd && <button type="button" className="dayoff-undo no-print" disabled={busy} onClick={(e) => { e.stopPropagation(); e.currentTarget.closest('td')?.click(); }}>{t('quickShift.addShift')}</button>}</span>}
         {!list.length && !off && cxc?.block && <BlockedLabel block={cxc.block} />}
         {!list.length && !off && !cxc?.block && cxc?.window && <WindowNote w={cxc.window} />}
         {!list.length && !off && !cxc?.block && to && <span className="reqoff" title={to.reason || ''}>{to.status === 'approved' ? t('schedule.requestOff') : t('schedule.reqPending')}</span>}
-        {!list.length && !off && !to && !cxc && !closed && userId && <span className="off">{isMgr ? '' : t('schedule.off')}</span>}
+        {!list.length && !off && !to && !cxc?.block && !closed && userId && <span className="dayoff">{t('quickShift.cell')}
+          {canAdd && <button type="button" className="dayoff-undo no-print" onClick={(e) => { e.stopPropagation(); e.currentTarget.closest('td')?.click(); }}>{t('quickShift.addShift')}</button>}</span>}
       </td>
     );
   };

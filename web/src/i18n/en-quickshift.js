@@ -25,6 +25,7 @@ export default {
     dayOffCleared: 'Day off removed',
     cell: 'DAY OFF',
     cellTitle: 'Marked off on purpose by a manager',
+    addShift: 'Add shift',
     undo: 'Undo',
   },
 };
