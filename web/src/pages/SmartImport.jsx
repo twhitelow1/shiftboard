@@ -6,6 +6,8 @@
 //   3. Check    <target>.importPreview: new / update (before → after) / unchanged / possible duplicates to decide /
 //               problems; options; per-row include. Nothing is saved until Import.
 //   4. Done     <target>.importApply: counts, invitations (people), failures. Importing the same file again changes nothing.
+// Ask ShiftBoard opens it pre-loaded (initial: { records, fileName, source, lowConfidence }) at the preview, with what
+// it read carried over; fields the AI wasn't sure of are highlighted.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp, Icon, Modal } from '../ui.jsx';
 import { IS_DEMO } from '../api.js';
@@ -83,7 +85,7 @@ const SUB = { menu: 'smartImport.subMenu', employees: 'smartImport.subEmployees'
 const productsFromText = (text) => String(text || '').split(/\r?\n/).map((l) => l.replace(/^\s*(?:[-*•·]|\d+[.)])\s*/, '').trim()).filter((l) => l && l.length <= 80)
   .map((name, i) => ({ row: i + 1, values: { name }, present: ['name'] }));
 
-export default function SmartImportDialog({ target, onClose }) {
+export default function SmartImportDialog({ target, onClose, initial = null }) {
   const t = useT();
   const { call, toast, refresh } = useApp();
   const [step, setStep] = useState('file'); // file | text | tabs | columns | legend | preview | done
@@ -118,6 +120,25 @@ export default function SmartImportDialog({ target, onClose }) {
   const seq = useRef(0);
 
   useEffect(() => { call(`${target}.importMapping`, {}).then((m) => { setRemembered(m.columns || {}); if (m.colors) setColorMap({ ...DEFAULT_HOUSE_COLORS, ...m.colors }); }).catch(() => setRemembered({})); }, [target]);
+  // From Ask ShiftBoard: the file itself, read here with this wizard's own steps (the availability workbook's colours)…
+  const startedFrom = useRef(null);
+  useEffect(() => {
+    if (!initial?.file || remembered === null || startedFrom.current === initial) return;
+    startedFrom.current = initial;
+    pick(initial.file);
+  }, [initial, remembered]); // eslint-disable-line react-hooks/exhaustive-deps
+  // …or: straight to the preview with what it read (row number → fields the AI wasn't sure of).
+  const low = useMemo(() => {
+    const m = new Map();
+    (initial?.records || []).forEach((r, i) => { const f = initial.lowConfidence?.[i]; if (f?.length) m.set(r.row, f); });
+    return m;
+  }, [initial]);
+  useEffect(() => {
+    if (!initial?.records?.length) return;
+    setFileName(initial.fileName || '');
+    if (low.size) setReadNote({ kind: 'warn', text: t('smartImport.aiUnsure', { count: low.size }) });
+    toPreview(initial.records, initial.source === 'ai' ? 'ai' : initial.source === 'simple' ? 'simple' : 'file');
+  }, [initial]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fail = (e) => setReadNote({ kind: 'bad', text: e?.key ? t(e.key) : t('smartImport.couldntRead', { error: translateError(e?.message || '') }) });
 
@@ -351,7 +372,7 @@ export default function SmartImportDialog({ target, onClose }) {
       {step === 'preview' && preview && target === 'availability' && noColors && <div className="alert info" style={{ marginBottom: 8 }}><Icon name="alert" size={16} /><div>{t('smartImport.noColors')}</div></div>}
       {step === 'preview' && preview && (
         <PreviewStep target={target} preview={preview} options={options} setOption={setOption} busy={busy} filter={filter} setFilter={setFilter}
-          exclude={exclude} setExclude={setExclude} decisions={decisions} decide={decide} toImport={toImport} />
+          exclude={exclude} setExclude={setExclude} decisions={decisions} decide={decide} toImport={toImport} low={low} />
       )}
 
       {step === 'done' && result && <DoneStep target={target} result={result} options={options} />}
@@ -400,7 +421,7 @@ function ColumnsStep({ target, rows, headerRow, columns, setColumns, setHeaderRo
   );
 }
 
-function PreviewStep({ target, preview, options, setOption, busy, filter, setFilter, exclude, setExclude, decisions, decide, toImport }) {
+function PreviewStep({ target, preview, options, setOption, busy, filter, setFilter, exclude, setExclude, decisions, decide, toImport, low }) {
   const t = useT();
   const c = preview.counts;
   const shown = preview.rows.filter((r) => !filter || r.status === filter);
@@ -463,7 +484,8 @@ function PreviewStep({ target, preview, options, setOption, busy, filter, setFil
             ? <HouseRowCard key={r.key} row={r} busy={busy} excluded={exclude.has(r.key)} onToggle={() => toggle(r.key)} decision={decisions[r.key]} decide={(d) => decide(r.key, d)} />
             : target === 'availability'
             ? <AvailabilityRowCard key={r.key} row={r} busy={busy} excluded={exclude.has(r.key)} onToggle={() => toggle(r.key)} decision={decisions[r.key]} decide={(d) => decide(r.key, d)} />
-            : <RowCard key={r.key} target={target} row={r} busy={busy} excluded={exclude.has(r.key)} onToggle={() => toggle(r.key)} decision={decisions[r.key]} decide={(d) => decide(r.key, d)} />
+            : <RowCard key={r.key} target={target} row={r} busy={busy} excluded={exclude.has(r.key)} onToggle={() => toggle(r.key)} decision={decisions[r.key]} decide={(d) => decide(r.key, d)}
+              unsure={low?.size ? new Set(r.rows.flatMap((n) => low.get(n) || []).map((f) => FIELD_OF[f] || f)) : null} />
         ))}
       </div>
       {shown.length > MAX_SHOWN && <div className="help">{t('smartImport.showingFirst', { shown: MAX_SHOWN, count: shown.length })}</div>}
@@ -477,8 +499,12 @@ const shownValue = (t, v, field) => (v === true || v === 'true' ? t('smartImport
   : field === 'allergens' ? String(v).split(', ').map((a) => allergenLabel(a, t.lang)).join(', ')
   : field === 'dietary' ? String(v).split(', ').map((d) => dietaryLabel(d, t.lang)).join(', ') : String(v));
 
-function RowCard({ target, row: r, busy, excluded, onToggle, decision, decide }) {
+// A column's field → the field the preview shows it as (normalized names).
+const FIELD_OF = { ingredients: 'keyIngredients', selling: 'sellingNotes', recipe: 'recipeSteps', prep: 'prepNotes' };
+
+function RowCard({ target, row: r, busy, excluded, onToggle, decision, decide, unsure = null }) {
   const t = useT();
+  const mark = (f) => (unsure?.has(f) ? { className: 'si-after si-unsure', title: t('smartImport.aiUnsureField') } : { className: 'si-after' });
   const canToggle = r.status === 'new' || r.status === 'update';
   const deciding = !!(r.candidates || r.conflicts);
   const label = (f) => fieldLabel(t, target, f);
@@ -496,7 +522,7 @@ function RowCard({ target, row: r, busy, excluded, onToggle, decision, decide })
           {r.changes.map((ch, i) => (
             <li key={i}>
               <span className="si-field">{label(ch.field)}</span>
-              <span className="si-before">{shownValue(t, ch.before, ch.field)}</span><span aria-hidden="true"> → </span><span className="si-after">{shownValue(t, ch.after, ch.field)}</span>
+              <span className="si-before">{shownValue(t, ch.before, ch.field)}</span><span aria-hidden="true"> → </span><span {...mark(ch.field)}>{shownValue(t, ch.after, ch.field)}</span>
               {r.decision === 'update' && <button type="button" className="btn ghost sm" disabled={busy} onClick={() => decide({ action: 'update', id: r.match.id, keep: [...(decision?.keep || []), ch.field] })}>{t('smartImport.keepCurrent')}</button>}
             </li>
           ))}
@@ -510,7 +536,7 @@ function RowCard({ target, row: r, busy, excluded, onToggle, decision, decide })
           <div className="small muted">{t('smartImport.newRecord')}</div>
           <ul className="si-changes si-new">
             {Object.entries(r.incoming || {}).filter(([f, v]) => f !== 'name' && v !== '' && v != null).slice(0, 8).map(([f, v]) => (
-              <li key={f}><span className="si-field">{label(f)}</span><span className="si-after">{shownValue(t, v, f)}</span></li>
+              <li key={f}><span className="si-field">{label(f)}</span><span {...mark(f)}>{shownValue(t, v, f)}</span></li>
             ))}
           </ul>
         </>

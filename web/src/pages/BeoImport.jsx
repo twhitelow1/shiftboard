@@ -6,7 +6,8 @@
 // here by Tripleseat id, invoice # or an earlier import is updated; one that only looks like an event here is a
 // "possible duplicate" shown side by side, and Import stays off until each one is decided (update, skip, or new).
 // A PDF that isn't Tripleseat's layout can be read with AI (server/beo-ai-routes.js), into the same preview.
-import React, { useMemo, useState } from 'react';
+// Ask ShiftBoard opens it with the events it already read (initial: { events, fileName }), at the preview.
+import React, { useEffect, useMemo, useState } from 'react';
 import { useApp, Modal, Icon, money, JobDot } from '../ui.jsx';
 import { parseBeos, matchRooms, beoToEvent, beoText } from '../../../core/beo-import.js';
 import { dedupeBeos } from '../../../core/beo-match.js';
@@ -22,7 +23,7 @@ const LIVE = ['new', 'update']; // ticked by default; 'same', 'older' and 'inval
 const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
 const timeText = (a, b) => (a ? `${fmtTime(a)}${b ? `–${fmtTime(b)}` : ''}` : '');
 
-export default function BeoImport({ onClose }) {
+export default function BeoImport({ onClose, initial = null }) {
   const t = useT();
   const { call, settings, toast, jobs, isMgr } = useApp();
   const venue = useVenueRooms();
@@ -85,6 +86,12 @@ export default function BeoImport({ onClose }) {
     await check(list);
     setFound(list);
   };
+
+  useEffect(() => {
+    if (!initial?.events?.length) return;
+    reset(initial.fileName || '');
+    show(initial.events).catch((e) => toast(e.message, 'bad'));
+  }, [initial]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const reset = (name) => { setFileName(name); setFound(null); setVerdicts([]); setPicks({}); setOpen({}); setDone(null); setNoLayout(false); setItems(null); setAi({ busy: false, error: '' }); };
   const loadFile = async (f) => {

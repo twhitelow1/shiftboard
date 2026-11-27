@@ -12,12 +12,13 @@ const SAMPLE = `SERVER\tMONDAY\tTUESDAY\tWEDNESDAY\tTHURSDAY\tFRIDAY\tSATURDAY\t
 ALEX D\tOFF\t3:30PM BC\tOFF\t4PM\t4:30PM*\t3:30PM BC\tOFF
 STYVES\tOFF\t4PM LIB\t4PM\tOFF\t4PM\t4PM\tOFF`;
 
-export default function ImportDialog({ ws: initialWs, onClose }) {
+// Ask ShiftBoard opens it with the grid it found in a file (initialText, initialName).
+export default function ImportDialog({ ws: initialWs, onClose, initialText = '', initialName = '' }) {
   const t = useT();
   const { employees, jobCodes, settings, call, toast, me } = useApp();
-  const [text, setText] = useState('');
+  const [text, setText] = useState(initialText);
   const [pdfColors, setPdfColors] = useState({}); // banner text → cell color, read from the PDF
-  const [fileName, setFileName] = useState('');
+  const [fileName, setFileName] = useState(initialName);
   const [reading, setReading] = useState(false);
   const [ws, setWs] = useState(initialWs);
   const [jobMap, setJobMap] = useState({});     // section label -> job id | NEW | ''

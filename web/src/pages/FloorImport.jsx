@@ -5,6 +5,7 @@
 //    decision for anything ambiguous (skip by default: an import never makes a duplicate on its own).
 // 4. Apply (venue.importApply), audited on the server.
 // The rules are in core/floor-import.js; Toast's limits in docs/integrations/TOAST-FLOOR-PLAN.md.
+// Ask ShiftBoard opens it with what it read (initial: { read, picture?, roomName } for a picture, { incoming } for a CSV).
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp, Icon, Modal, Field } from '../ui.jsx';
 import { useT } from '../i18n/index.js';
@@ -28,7 +29,7 @@ export function downloadBlob(blob, filename) {
 }
 
 /** A picture or a PDF's first page, shrunk to a JPEG the server takes: { base64, dataUrl, mediaType, width, height }. */
-async function preparePicture(file) {
+export async function preparePicture(file) {
   let source;
   if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
     const { pdfFirstPageCanvas } = await import('../pdf.js');
@@ -59,7 +60,7 @@ async function preparePicture(file) {
   return null;
 }
 
-export default function FloorImport({ room, rooms, onClose, onDone }) {
+export default function FloorImport({ room, rooms, onClose, onDone, initial = null }) {
   const t = useT();
   const { call, toast } = useApp();
   const [status, setStatus] = useState(null);
@@ -79,6 +80,13 @@ export default function FloorImport({ room, rooms, onClose, onDone }) {
   const [positions, setPositions] = useState('keep');
   const fileName = picture?.name || csv?.name || (source === 'toast' ? 'Toast' : '');
 
+  useEffect(() => {
+    if (!initial) return;
+    if (initial.read?.items?.length && initial.picture) {
+      setSource('image'); setTarget('new'); setNewName(initial.roomName || ''); setPicture(initial.picture);
+      setRead({ ...initial.read, items: initial.read.items.map((i, k) => ({ ...i, id: `a${k}` })) }); setStep('adjust');
+    } else if (initial.incoming) { setSource(initial.read ? 'image' : 'csv'); showPreview(initial.incoming); }
+  }, [initial]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { importStatus().then(setStatus).catch(() => setStatus({ toast: { available: false, reason: 'error' }, ai: { available: false, reason: 'error' } })); }, []);
 
   const roomOpt = () => (target === 'new' || !room ? { roomName: newName.trim() } : { roomId: room.id, roomName: room.name });

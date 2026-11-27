@@ -36,6 +36,8 @@ export default {
     readWithAi: 'Leerlo con IA',
     readSimple: 'Probar el lector sencillo',
     readingPart: 'Leyendo la parte {n} de {total}…',
+    aiUnsure: 'La IA no estaba segura de algunos valores en {count} filas. Están resaltados: revísalos antes de importar.',
+    aiUnsureField: 'La IA no estaba segura de este valor. Revísalo.',
     aiNotSetUp: 'La lectura con IA no está configurada en este restaurante. Usa un archivo CSV o de Excel, o pega filas y relaciona las columnas.',
     aiCap: 'Ya se usó la asignación de IA de este mes, así que la lectura con IA está apagada hasta el día 1. Usa un archivo CSV o de Excel, o pega filas y relaciona las columnas.',
     aiBusy: 'La lectura con IA está ocupada en este momento. Inténtalo en un minuto o usa un CSV.',

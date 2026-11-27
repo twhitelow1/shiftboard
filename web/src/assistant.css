@@ -68,3 +68,24 @@ textarea.input.ask-input { min-height: 44px; max-height: 160px; height: 44px; re
 .ask-top { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
 .ask-top li { line-height: 1.35; }
 .ask-top-name { font-weight: 600; margin-right: 8px; overflow-wrap: anywhere; }
+
+/* Files attached in the chat: the paperclip, the file chip, the import card, the drop zone */
+.ask { position: relative; }
+.ask-attach { flex: none; width: 44px; height: 44px; border-radius: 12px; }
+.ask-file { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--border-strong); background: var(--surface-2, var(--surface)); color: var(--text); font-size: 13px; }
+.ask-file svg { flex: none; color: var(--brand); }
+.ask-file-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.ask-file .tiny { color: var(--text-3); white-space: nowrap; }
+.ask-import { border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); padding: 12px; display: flex; flex-direction: column; gap: 8px; width: min(460px, 100%); }
+.ask-import.ready { border-color: var(--brand); }
+.ask-import.done { border-color: var(--ok); }
+.ask-import-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ask-import-head svg { color: var(--brand); flex: none; }
+.ask-import-line { font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.ask-import-warn { display: flex; gap: 6px; align-items: flex-start; color: var(--warn); }
+.ask-import-warn svg { flex: none; margin-top: 2px; }
+.ask-import-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.ask-import-pick select { flex: 1 1 160px; min-width: 0; }
+.ask-dropzone { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border: 2px dashed var(--brand); border-radius: 16px; background: color-mix(in srgb, var(--bg) 88%, var(--brand)); color: var(--brand); pointer-events: none; }
+.ask-import .ask-action-buttons { grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); }
+.ask-import .ask-action-buttons .btn { min-width: 0; height: auto; min-height: 40px; white-space: normal; line-height: 1.2; }
