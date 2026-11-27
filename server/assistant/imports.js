@@ -113,9 +113,10 @@ export function mountAssistantImports(app, d) {
     const t = importTarget(imp.target);
     if (!t) return L(lang, `I’m not sure what “${imp.name}” is. Pick what to import it as:`, `No estoy seguro de qué es “${imp.name}”. Elige cómo importarlo:`);
     const lvl = LEVEL[imp.confidence]?.[lang === 'es' ? 1 : 0];
-    const what = L(lang, `This looks like ${/^[aeiou]/i.test(card.label) ? 'an' : 'a'} **${card.label.toLowerCase()}**${lvl ? ` (${lvl})` : ''}.`, `Esto parece: **${card.label}**${lvl ? ` (confianza ${lvl})` : ''}.`);
+    const phrase = t.phrase?.[lang === 'es' ? 'es' : 'en'] || card.label;
+    const what = L(lang, `This looks like **${phrase}**${lvl ? ` (${lvl})` : ''}.`, `Esto parece **${phrase}**${lvl ? ` (confianza ${lvl})` : ''}.`);
     if (card.refused) return `${what} ${card.refused}`;
-    if (imp.forced) return L(lang, `Reading it as ${card.label.toLowerCase()}, as you picked.`, `Lo leo como: ${card.label}, como elegiste.`);
+    if (imp.forced) return L(lang, `Reading it as ${phrase}, as you picked.`, `Lo leo como ${phrase}, como elegiste.`);
     return `${what} ${card.choices.length ? L(lang, 'Not right? Pick another type below.', '¿No es eso? Elige otro tipo abajo.') : ''}`.trim();
   }
 

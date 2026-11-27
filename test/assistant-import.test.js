@@ -418,7 +418,7 @@ test('Spanish: the reply, the summary card and the refusals', async () => {
   assert.equal(r.card.target, 'employees');
   assert.equal(r.card.label, 'Lista del equipo');
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.match(r.result.message.text, /^Esto parece: \*\*Lista del equipo\*\* \(confianza (alta|media)\)\. ¿No es eso\?/);
+  assert.match(r.result.message.text, /^Esto parece \*\*una lista del equipo\*\* \(confianza (alta|media)\)\. ¿No es eso\?/);
   assert.match(r.card.summary.line, /^Lista del equipo: 1 persona; 1 nuevo/, r.card.summary.line);
   assert.ok(r.card.choices.some((c) => c.label === 'Menú'), JSON.stringify(r.card.choices));
   const bad = await mgr.post('/api/assistant/files', { file: { name: 'x.exe', data: 'AAAA' } });

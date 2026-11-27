@@ -117,6 +117,7 @@ export function mountAssistant(app, d) {
     const limit = dailyLimitFor(tenant, env);
     res.json({ result: {
       available: !why, ...(why ? { reason: why, message: aiMessage(why, lang, params()) } : {}), model: MODEL,
+      files: !blocked(s.user), // attaching a file works without AI too (the structured readers): imports.js
       today: { messages: messagesToday(db.store, dayOf(now()), s.user.id), limit },
       conversations: H.listChats(db.store, s.user.id),
     } });

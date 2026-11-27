@@ -63,3 +63,6 @@
   .si-compare { grid-template-columns: 1fr; }
   .si-kv span { flex-basis: 42%; }
 }
+
+/* Ask ShiftBoard → Review & import: a value the AI wasn't sure of */
+.si-unsure { background: var(--warn-soft, #fff4d6); border-radius: 4px; padding: 0 4px; outline: 1px dashed var(--warn, #b7791f); }

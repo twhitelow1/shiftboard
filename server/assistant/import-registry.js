@@ -6,7 +6,7 @@
 //
 //   registerImportTarget({
 //     id, order,                       'menu', and where it's listed among the choices
-//     label: { en, es },               what it is ("Menu", "Menú")
+//     label: { en, es },               what it is ("Menu", "Menú"); phrase: { en, es } in a sentence ("a menu", "un menú")
 //     about,                           one line for the AI classifier ("a restaurant menu: dishes and drinks…")
 //     wizard,                          the web wizard "Review & import" opens: 'smartImport' | 'beo' | 'floor' | 'schedule' | 'guests'
 //     allowed(user, has),              the person may run it (role + plan + Roles & features)
@@ -70,7 +70,7 @@ const ROLE_FEATURE = { menu: 'training', employees: 'team', products: 'stock' };
 const PLAN_FEATURE = { menu: 'training', products: 'stock' };
 const SMART = {
   menu: {
-    label: { en: 'Menu', es: 'Menú' }, noun: [['dish', 'dishes'], ['platillo', 'platillos']], group: [['section', 'sections'], ['sección', 'secciones']], order: 10,
+    label: { en: 'Menu', es: 'Menú' }, phrase: { en: 'a menu', es: 'un menú' }, noun: [['dish', 'dishes'], ['platillo', 'platillos']], group: [['section', 'sections'], ['sección', 'secciones']], order: 10,
     about: 'menu items: dishes and drinks with descriptions, prices, allergens (a menu, a menu spreadsheet, a kitchen/FOH dish guide)',
     sheet: ['menu', 'food', 'drinks', 'cocktails', 'dinner', 'lunch', 'brunch', 'dessert', 'desserts', 'wine', 'carta', 'bebidas', 'comida', 'platillos'],
     words: ['appetizers', 'starters', 'entrees', 'mains', 'desserts', 'sides', 'cocktails', 'salads', 'menu', 'allergens', 'gluten free', 'vegan', 'entradas', 'postres', 'platos fuertes', 'bebidas'],
@@ -79,7 +79,7 @@ const SMART = {
     options: { createCategories: true },
   },
   employees: {
-    label: { en: 'Team roster', es: 'Lista del equipo' }, noun: [['person', 'people'], ['persona', 'personas']], group: [['position', 'positions'], ['puesto', 'puestos']], order: 20,
+    label: { en: 'Team roster', es: 'Lista del equipo' }, phrase: { en: 'a team roster', es: 'una lista del equipo' }, noun: [['person', 'people'], ['persona', 'personas']], group: [['position', 'positions'], ['puesto', 'puestos']], order: 20,
     about: 'an employee roster: people with names, emails, phone numbers, positions, hire dates',
     sheet: ['roster', 'team', 'staff', 'employees', 'crew', 'people', 'personal', 'equipo', 'empleados', 'plantilla'],
     words: ['employee', 'email', 'phone', 'hire date', 'position', 'server', 'bartender', 'cook', 'empleado', 'correo', 'telefono', 'puesto'],
@@ -88,7 +88,7 @@ const SMART = {
     options: { createPositions: false, invite: false },
   },
   products: {
-    label: { en: 'Products & stock', es: 'Productos y surtido' }, noun: [['product', 'products'], ['producto', 'productos']], group: [['category', 'categories'], ['categoría', 'categorías']], order: 30,
+    label: { en: 'Products & stock', es: 'Productos y surtido' }, phrase: { en: 'a product or stock list', es: 'una lista de productos o surtido' }, noun: [['product', 'products'], ['producto', 'productos']], group: [['category', 'categories'], ['categoría', 'categorías']], order: 30,
     about: 'a product or stock list: an order guide or inventory sheet (bottles, cases, supplies with units, sizes, pars, suppliers)',
     sheet: ['inventory', 'order guide', 'products', 'stock', 'par', 'pars', 'supplies', 'bar stock', 'inventario', 'pedido', 'productos', 'surtido'],
     words: ['par', 'case', 'bottle', 'supplier', 'vendor', 'inventory', 'order guide', 'proveedor', 'inventario'],
@@ -124,7 +124,7 @@ function smartTarget(id) {
   const h = SMART[id] || { label: { en: id[0].toUpperCase() + id.slice(1), es: id }, noun: [['row', 'rows'], ['fila', 'filas']], order: 60, about: `${id} records`, options: {} };
   const roleKey = ROLE_FEATURE[id] || 'team';
   return {
-    id, order: h.order, label: h.label, about: h.about, wizard: 'smartImport', importNow: true, kind: 'smart',
+    id, order: h.order, label: h.label, ...(h.phrase ? { phrase: h.phrase } : {}), about: h.about, wizard: 'smartImport', importNow: true, kind: 'smart',
     allowed: (user, has) => canManageSchedule(user) && (!PLAN_FEATURE[id] || has(PLAN_FEATURE[id])) && has(roleKey),
     detect(doc, { hint = '' } = {}) {
       const t = bestTable(doc, id, h);
@@ -205,7 +205,7 @@ for (const id of TARGETS) registerImportTarget(smartTarget(id));
 
 const BEO_WORDS = ['banquet event order', 'beo', 'event order', 'guest count', 'guaranteed', 'event date', 'arrival', 'timeline', 'room setup', 'banquet', 'catering', 'orden de evento', 'invitados'];
 registerImportTarget({
-  id: 'beo', order: 40, label: { en: 'BEO / event order', es: 'BEO / orden de evento' }, wizard: 'beo', importNow: true,
+  id: 'beo', order: 40, label: { en: 'BEO / event order', es: 'BEO / orden de evento' }, phrase: { en: 'a BEO (banquet event order)', es: 'un BEO (orden de evento)' }, wizard: 'beo', importNow: true,
   about: 'a banquet event order (BEO) for a private event: date, times, guest count, rooms, menu, timeline, bar',
   allowed: (user, has) => canManageEvents(user) && has('events'),
   detect(doc, { hint = '' } = {}) {
@@ -264,7 +264,7 @@ function toEventPayload(ev) {
 
 const FLOOR_HINT = ['floor plan', 'floor', 'layout', 'tables', 'seating', 'plano', 'mesas', 'distribucion', 'salon'];
 registerImportTarget({
-  id: 'floor', order: 50, label: { en: 'Floor plan', es: 'Plano del salón' }, wizard: 'floor', importNow: true,
+  id: 'floor', order: 50, label: { en: 'Floor plan', es: 'Plano del salón' }, phrase: { en: 'a floor plan', es: 'un plano del salón' }, wizard: 'floor', importNow: true,
   about: 'a restaurant floor plan or table layout (a POS table map screenshot, a drawn or printed plan, a photo of one, or a CSV of tables and seats)',
   allowed: (user, has) => canManageSchedule(user) && has('venue'),
   detect(doc, { hint = '' } = {}) {
@@ -322,7 +322,7 @@ function scheduleOf(doc) {
   return best;
 }
 registerImportTarget({
-  id: 'schedule', order: 60, label: { en: 'Schedule grid', es: 'Horario (cuadrícula)' }, wizard: 'schedule', importNow: false,
+  id: 'schedule', order: 60, label: { en: 'Schedule grid', es: 'Horario (cuadrícula)' }, phrase: { en: 'a schedule grid', es: 'un horario en cuadrícula' }, wizard: 'schedule', importNow: false,
   about: 'a weekly staff schedule grid: names down the side, days of the week across the top, shift times in the cells',
   allowed: (user, has) => canManageSchedule(user) && has('schedule'),
   detect(doc, { hint = '' } = {}) {
@@ -377,7 +377,7 @@ const otKindOf = (doc) => {
   return rev > res ? 'reviews' : 'reservations';
 };
 registerImportTarget({
-  id: 'opentable', order: 70, label: { en: 'OpenTable export', es: 'Exportación de OpenTable' }, wizard: 'guests', importNow: true,
+  id: 'opentable', order: 70, label: { en: 'OpenTable export', es: 'Exportación de OpenTable' }, phrase: { en: 'an OpenTable export', es: 'una exportación de OpenTable' }, wizard: 'guests', importNow: true,
   about: 'an OpenTable export: reservations (visit date, party size, guest, special requests) or OpenTable reviews (dined on, overall rating)',
   allowed: (user, has) => canManageSchedule(user) && has('opentable'),
   detect(doc, { hint = '' } = {}) {
@@ -438,7 +438,7 @@ const reviewSource = (doc, hint) => {
   return 'other';
 };
 registerImportTarget({
-  id: 'reviews', order: 80, label: { en: 'Review export', es: 'Exportación de reseñas' }, wizard: 'guests', importNow: true,
+  id: 'reviews', order: 80, label: { en: 'Review export', es: 'Exportación de reseñas' }, phrase: { en: 'a review export', es: 'una exportación de reseñas' }, wizard: 'guests', importNow: true,
   about: 'guest reviews exported from Google, Yelp, TripAdvisor or similar: reviewer, star rating, review text, date',
   allowed: (user, has) => canManageSchedule(user) && has('impact') && has('reviews'),
   detect(doc, { hint = '' } = {}) {

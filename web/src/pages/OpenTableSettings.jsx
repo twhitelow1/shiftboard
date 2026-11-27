@@ -125,7 +125,8 @@ const SOURCES = ['google', 'yelp', 'tripadvisor', 'facebook', 'other'];
  * kind: 'reservations' | 'reviews'. source: 'opentable' (then it's OpenTable's import, opentable.*) or a review
  * site (impact.*: reviews only). pickSource: let the manager choose the review site.
  */
-export function GuestImportDialog({ kind, source: initialSource = 'opentable', pickSource = false, onClose }) {
+// initialFile: { name, text } (Ask ShiftBoard): read at once, straight to its columns.
+export function GuestImportDialog({ kind, source: initialSource = 'opentable', pickSource = false, onClose, initialFile = null }) {
   const t = useT();
   const { call, toast, refresh } = useApp();
   const [source, setSource] = useState(initialSource);
@@ -144,6 +145,7 @@ export function GuestImportDialog({ kind, source: initialSource = 'opentable', p
     if (isOt) call('opentable.get').then((i) => setRemembered(i.columns?.[kind] || null)).catch(() => {});
   }, [source]);
 
+  useEffect(() => { if (initialFile?.text) load(initialFile.name, initialFile.text); }, [initialFile, remembered]); // eslint-disable-line react-hooks/exhaustive-deps
   const load = (name, text) => {
     setReadError('');
     try {
