@@ -169,7 +169,8 @@ test('follow-up by code: open it, read the reply, write back; a wrong code is re
   assert.equal(call(admin, 'feedback.inbox.get', { id }).thread.at(-1).text, 'Still sticks a little.');
   refused(() => call(emp, 'feedback.byCode.get', { code: 'ABCD-EFGH-JKLM-NPQR' }), 404, 'No entry has that code');
   refused(() => call(emp, 'feedback.byCode.get', { code: 'nope' }), 404, 'No entry has that code');
-  refused(() => call(emp, 'feedback.byCode.reply', { code: `${code.slice(0, -1)}2`.replace(/22$/, '23'), text: 'x' }), 404);
+  // One character off: change the last character to a different one (it used to become '2', which is no change when the code already ends in 2).
+  refused(() => call(emp, 'feedback.byCode.reply', { code: `${code.slice(0, -1)}${code.endsWith('2') ? '3' : '2'}`, text: 'x' }), 404);
   // The device's badge check: replies counted per code, unknown codes just "not found".
   const sum = call(emp, 'feedback.codes.summary', { codes: [code, 'ZZZZ-ZZZZ-ZZZZ-ZZZZ'] });
   assert.equal(sum[0].found, true);
