@@ -428,6 +428,7 @@ export function mountMcp(app, d) {
     const ctx = createToolContext({
       db, userId: auth.user.id, v: auth.grant.v || 0, has: d.has, scopes: auth.scopes, now, via: 'claude', client: auth.grant.clientName,
       serviceOpts: d.serviceOpts(req), onCommit: (changes) => d.onCommit(changes, req), invite: d.invite ? (ids, by) => d.invite(ids, by, req) : null,
+      calendar: d.calendar ? { read: (u, o) => d.calendar.read(u, { ...o, ai: false }) } : null, // the connector reads feeds and structured data only (no AI)
     });
     const settings = createService(db.store).settings();
     const tools = visibleTools(TOOLS, auth.user, { has: d.has, scopes: auth.scopes, settings });

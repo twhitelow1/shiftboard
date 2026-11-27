@@ -27,6 +27,7 @@ export default {
     // what it's doing while it looks things up
     looking: 'Looking it up…',
     tool_whoami: 'Checking who you are…',
+    tool_read_events_calendar: 'Reading the calendar page…',
     tool_get_my_shifts: 'Checking your shifts…',
     tool_get_schedule: 'Checking the schedule…',
     tool_get_open_shifts: 'Checking open shifts…',

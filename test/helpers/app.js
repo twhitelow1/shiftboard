@@ -29,8 +29,9 @@ export function fakeTwilio() {
  * @param {object} [o.tenant]  a platform tenant context (plan features), as server/platform/ passes it
  * @param {Function} [o.aiClient]  ({ apiKey }) => an Anthropic client (test/helpers/fake-anthropic.js)
  * @param {object} [o.reviewClients]  fake Google / Yelp / AI clients (server/app.js reviewClients)
+ * @param {object} [o.calendarReader] the calendar page reader's fake network (server/calendar/: { transport, lookup, allowHosts })
  */
-export async function startApp({ env = {}, email = true, sms = true, now, tenant, aiClient, reviewClients } = {}) {
+export async function startApp({ env = {}, email = true, sms = true, now, tenant, aiClient, reviewClients, calendarReader } = {}) {
   const conn = await openPglite();
   const db = new DocDb(conn);
   const resend = fakeResend();
@@ -38,7 +39,7 @@ export async function startApp({ env = {}, email = true, sms = true, now, tenant
   const fullEnv = { SEED_DEMO: 'true', EXPO_PUSH: 'off', ...(sms ? TWILIO_ENV : {}), ...env };
   const mailer = createMailer(email ? { RESEND_API_KEY: 're_test', EMAIL_FROM: 'ShiftBoard <schedule@rabbits.example>' } : {}, { fetchImpl: resend.fetchImpl });
   const texter = createTexter(fullEnv, { fetchImpl: twilio.fetchImpl });
-  const app = createApp({ db, env: fullEnv, mailer, texter, ...(now ? { now } : {}), ...(tenant ? { tenant } : {}), ...(aiClient ? { aiClient } : {}), ...(reviewClients ? { reviewClients } : {}) });
+  const app = createApp({ db, env: fullEnv, mailer, texter, ...(now ? { now } : {}), ...(tenant ? { tenant } : {}), ...(aiClient ? { aiClient } : {}), ...(reviewClients ? { reviewClients } : {}), ...(calendarReader ? { calendarReader } : {}) });
   await app.locals.ready();
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');

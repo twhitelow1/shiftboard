@@ -50,6 +50,7 @@ import { scheduleLogger, scheduleLogApi, shiftChanges } from './schedule-log.js'
 import { timeOffQueue, cleanRequestedAt, SOURCES as TIME_OFF_SOURCES } from './time-off.js';
 import { useCustomRoles } from './roles.js';
 import { programmingApi } from './programming.js';
+import { calendarImportApi } from './calendar-import.js';
 import { quickShiftApi, dayOffId } from './quick-shift.js';
 
 export class AppError extends Error {
@@ -1908,6 +1909,8 @@ export function createService(store, opts = {}) {
   Object.assign(api, importApi({ store, api, fail, needMgr, now, settings, availability, slog }));
   // Regular programming and staffing pars: programming.* (core/programming.js). New RPCs only: no existing answer changes.
   Object.assign(api, programmingApi({ store, settings, fail, needAuth, needMgr, isMgr, now, today, layouts, langOf: L, homeRoom: (job) => layouts.homeRoom(job) }));
+  // Import from a calendar page: programming.calendar.* (core/calendar-import.js; the page is read by server/calendar/).
+  Object.assign(api, calendarImportApi({ store, settings, fail, needAuth, now, layouts, api, langOf: L, logVia }));
   // Quick shifts from a schedule cell: shifts.move (same id, logged as a move) and days off (core/quick-shift.js). New RPCs only.
   Object.assign(api, quickShiftApi({ store, api, fail, needAuth, needMgr, isMgr, now, slog, saveShift, roleAllows, settings }));
   // Stock lists and the product catalog the 86 List shares (core/stock.js, core/products.js). Out → 86 goes through eightySix.report.

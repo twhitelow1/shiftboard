@@ -73,6 +73,8 @@ export async function clearHistory() {
   if (IS_DEMO) { demoChats.length = 0; return { cleared: 0 }; }
   return send('/api/assistant/clear', {});
 }
+/** Import now on a calendar page's card: the ticks and rooms → the message with its Confirm card. */
+export const proposeCalendar = (importId, conversationId, selections) => send(`/api/assistant/calendar/${encodeURIComponent(importId)}/propose`, { conversationId, selections });
 export const decide = (actionId, conversationId, decision) => send(`/api/assistant/actions/${encodeURIComponent(actionId)}`, { conversationId, decision });
 
 /**

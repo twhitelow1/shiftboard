@@ -23,6 +23,8 @@ import { langOf } from '../../core/i18n.js';
 import { uid } from '../../core/store.js';
 import { TOOLS, toolByName, visibleTools, runTool, createToolContext, READ, WRITE } from '../tools/index.js';
 import { todayOf } from '../tools/dates.js';
+import { dayName, fmtTime } from '../../core/time.js';
+import { translateError as translateMessage } from '../../core/errors.js';
 import { aiFor, AiUnavailable, aiMessage, dailyLimitFor, MODEL } from '../ai/index.js';
 import { dayOf, messagesToday } from '../ai/usage.js';
 import { runTurn } from './loop.js';
@@ -30,6 +32,10 @@ import { claudeTools, aboutToday, systemBlocks } from './prompt.js';
 import { describeAction } from './actions.js';
 import * as H from './history.js';
 import { mountAssistantImports, IMPORT_TOOL } from './imports.js';
+import { canImportCalendar } from '../../core/calendar-import.js';
+
+const CALENDAR_TOOL = 'import_programming_from_calendar';
+const L2 = (lang, en, es) => (lang === 'es' ? es : en);
 
 const CONFIG = 'assistantConfig';
 const MAX_MESSAGE = 2000;
@@ -91,6 +97,7 @@ export function mountAssistant(app, d) {
     const ctx = createToolContext({
       db, userId: user.id, v: user.sessionVersion || 0, has, scopes: write ? [READ, WRITE] : [READ], now, via: 'assistant', client: 'Ask ShiftBoard',
       serviceOpts: d.serviceOpts(req), onCommit: (changes) => d.onCommit(changes, req), invite: d.invite ? (ids, by) => d.invite(ids, by, req) : null,
+      calendar: d.calendar || null,
     });
     return { tools, ctx, settings };
   }
@@ -169,11 +176,14 @@ export function mountAssistant(app, d) {
     const send = (o) => { if (streaming && !res.writableEnded) res.write(`${JSON.stringify(o)}\n`); };
     send({ type: 'start', conversationId: chat.id, userMessage: { id: mine.id, role: 'user', text, at: mine.at } });
 
+    let cards = [];
     const finish = async ({ text: reply, proposals = [], notice = null }) => {
       const look = { today: todayOf(now()), weekStartDow: settingsOf().weekStartDow ?? 1, shift: shiftLook(user) };
-      const actions = proposals.map((p) => ({ tool: p.tool, args: p.args, ...describeAction(toolByName(p.tool), p.args, lang, look) }));
-      const msg = await db.run((st) => H.addReply(st, { userId: user.id, chatId: chat.id, text: reply, actions, notice, at: iso() }), { write: true });
-      const view = { id: msg.id, role: 'assistant', text: msg.text, at: msg.at, ...(notice ? { notice } : {}), ...(msg.actions ? { actions: msg.actions.map(H.actionView) } : {}) };
+      const actions = proposals.map((p) => ({ tool: p.tool, args: p.args, ...describeAction(toolByName(p.tool), p.args, lang, { ...look, calendarNames: calendarNamesFor(user, p.args?.importId) }) }));
+      const calId = cards.map((c) => c.calendarImportId).filter(Boolean).at(-1);
+      const calendar = calId ? calendarCard(user, calId) : null;
+      const msg = await db.run((st) => H.addReply(st, { userId: user.id, chatId: chat.id, text: reply, actions, notice, at: iso(), calendar }), { write: true });
+      const view = H.messageView(msg);
       out = { conversationId: chat.id, userMessage: { id: mine.id, role: 'user', text, at: mine.at }, message: view };
       send({ type: 'done', ...out });
     };
@@ -184,6 +194,7 @@ export function mountAssistant(app, d) {
       if (gate) throw new AiUnavailable(gate, { lang, params: params() });
       await a.admit({ user, lang }); // the daily limit and the per-minute limit; counts the message
       const { tools, ctx, settings } = toolsFor(req, user);
+      ctx.cards = cards; // read_events_calendar adds its card here (the reply carries it)
       const positions = (user.jobCodes || []).map((j) => db.store.get('jobCodes', j.jobCodeId)?.name).filter(Boolean);
       const system = systemBlocks(aboutToday({ user, restaurant: settings.restaurantName || '', lang, today: todayOf(now()), nowMs: now(), weekStartDow: settings.weekStartDow ?? 1, positions }));
       const turn = await runTurn({
@@ -244,8 +255,81 @@ export function mountAssistant(app, d) {
       const args = { ...claim.args, ...(tool && 'confirm' in tool.input ? { confirm: true } : {}) };
       r = tool ? await runTool(tool, args, ctx) : { ok: false, error: aiMessage('role', lang) };
     }
-    const action = await db.run((st) => H.settleAction(st, { userId: user.id, chatId, actionId: req.params.id, status: r.ok ? 'done' : 'failed', result: r.ok ? r.summary : r.error, at: iso() }), { write: true });
+    const action = await db.run((st) => {
+      if (claim.tool === CALENDAR_TOOL && r.ok) markCalendarDone(st, user.id, chatId, claim.args?.importId, r.summary);
+      return H.settleAction(st, { userId: user.id, chatId, actionId: req.params.id, status: r.ok ? 'done' : 'failed', result: r.ok ? r.summary : r.error, at: iso() });
+    }, { write: true });
     res.json({ result: { ok: r.ok, action } });
+  }));
+
+  // ---------- a calendar page's card (read_events_calendar; core/calendar-import.js) ----------
+  /** What the chat keeps on the message: a summary the phone app shows as is (the web card loads the full read). */
+  function calendarCard(user, id) {
+    try {
+      const v = createService(db.store).call(db.store.get('users', user.id), 'programming.calendar.get', { id }).import;
+      return {
+        id: v.id, url: v.url, source: v.source, events: v.events, from: v.from, to: v.to, status: 'ready',
+        recurring: v.recurring.map((r) => ({ key: r.key, name: r.name, room: r.room, days: r.days, start: r.start, end: r.end, from: r.from, to: r.to, repeat: r.repeat, count: r.count, duplicate: !!r.duplicateOf, include: r.include })),
+        oneOffs: v.oneOffs.length, oneOffList: v.oneOffs.slice(0, 12).map((o) => ({ name: o.name, date: o.date, start: o.start, room: o.room, duplicate: !!o.duplicateOf })),
+        unmatched: v.recurring.filter((r) => r.include && !r.room).length,
+      };
+    } catch (e) { console.error('Calendar card failed:', e.message); return null; }
+  }
+  /** Suggestion keys → names, for an action card. */
+  function calendarNamesFor(user, importId) {
+    if (!importId) return null;
+    return (keys) => {
+      try {
+        const v = createService(db.store).call(db.store.get('users', user.id), 'programming.calendar.get', { id: importId }).import;
+        const all = [...v.recurring, ...v.oneOffs];
+        return keys.map((k) => all.find((x) => x.key === k)?.name || k);
+      } catch { return keys; }
+    };
+  }
+  function markCalendarDone(st, userId, chatId, importId, result) {
+    const chat = H.chatOf(st, userId, chatId);
+    const m = chat?.messages.find((x) => x.calendar?.id === importId);
+    if (m) H.updateMessage(st, { userId, chatId, messageId: m.id, patch: { calendar: { ...m.calendar, status: 'done', result: String(result || '').slice(0, 300) } } });
+  }
+
+  // Import now on the card: the manager's ticks and room picks → the usual Confirm / Cancel card.
+  app.post('/api/assistant/calendar/:id/propose', wrap(async (req, res) => {
+    if (req.sbView) return res.status(403).json({ error: aiMessage('viewAs', 'en'), viewAs: true });
+    const s = await person(req, res);
+    if (!s) return;
+    const user = s.user;
+    const lang = langOf(user, settingsOf());
+    const why = blocked(user);
+    if (why) return res.status(403).json({ error: aiMessage(why, lang, params()), reason: why });
+    if (!canImportCalendar(user, settingsOf())) return res.status(403).json({ error: L2(lang, 'Your role doesn’t include this.', 'Tu rol no incluye esto.') });
+    const chatId = String(req.body?.conversationId || '');
+    const chat = H.chatOf(db.store, user.id, chatId);
+    const m = chat?.messages.find((x) => x.calendar?.id === req.params.id);
+    if (!m) return res.status(404).json({ error: 'Not found' });
+    const selections = req.body?.selections && typeof req.body.selections === 'object' ? req.body.selections : {};
+    let p;
+    try { p = createService(db.store).call(user, 'programming.calendar.apply', { id: req.params.id, selections, dryRun: true }); } catch (e) {
+      return res.status(e.status && e.status < 500 ? e.status : 500).json({ error: e.status && e.status < 500 ? translateMessage(e.message, lang) : 'Something went wrong' });
+    }
+    const keys = [...p.items, ...p.events].map((x) => x.key);
+    const recSel = selections.recurring || {};
+    const args = {
+      importId: req.params.id, include: keys,
+      rooms: [...p.items, ...p.events].filter((x) => x.room).map((x) => (x.room === '*' ? { key: x.key, wholeVenue: true } : { key: x.key, room: x.room })),
+      changes: p.items.filter((x) => recSel[x.key] && (recSel[x.key].name || recSel[x.key].from !== undefined || recSel[x.key].to !== undefined))
+        .map((x) => ({ key: x.key, ...(recSel[x.key].name ? { name: x.name } : {}), ...(recSel[x.key].from !== undefined ? { startDate: x.from || '' } : {}), ...(recSel[x.key].to !== undefined ? { endDate: x.to || '' } : {}) })),
+    };
+    if (!args.changes.length) delete args.changes;
+    const day = (d) => dayName(d, 'short', lang);
+    const details = [
+      [L2(lang, 'Page', 'Página'), m.calendar.url],
+      [L2(lang, 'What changes', 'Qué cambia'), p.line],
+      ...p.items.slice(0, 8).map((x) => [x.name, `${x.days.map(day).join(', ')} ${fmtTime(x.start, lang)}${x.end ? `–${fmtTime(x.end, lang)}` : ''} · ${x.room === '*' ? L2(lang, 'Whole venue', 'Todo el lugar') : x.room}`]),
+      ...(p.events.length ? [[L2(lang, 'Events', 'Eventos'), p.events.slice(0, 6).map((e) => e.name).join(', ') + (p.events.length > 6 ? '…' : '')]] : []),
+    ];
+    const msg = await db.run((st) => H.addAction(st, { userId: user.id, chatId, messageId: m.id, at: iso(),
+      action: { tool: CALENDAR_TOOL, args, title: L2(lang, 'Import programming from a calendar page', 'Importar programación de una página de calendario'), details } }), { write: true });
+    res.json({ result: { conversationId: chatId, message: H.messageView(msg) } });
   }));
 
   // ---------- Settings → Ask ShiftBoard (admins) ----------

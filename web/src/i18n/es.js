@@ -18,6 +18,7 @@ import floor from './es-floor.js'; // el editor de planos: paleta, secciones, Im
 import feedback, { roles as feedbackRoles } from './es-feedback.js'; // el buzón de sugerencias: escribir, Mis comentarios, la bandeja, Configuración → Buzón de sugerencias
 import stock, { roles as stockRoles, claude as stockClaude, smartImport as stockImport } from './es-stock.js';
 import availability, { roles as availabilityRoles, schedule as availabilitySchedule, smartImport as availabilityImport } from './es-availability.js'; // availability, Approves for, time off requests, the schedule log, Who works where, custom roles // Stock lists and the product catalog
+import calendarImport from './es-calendar.js'; // import from a calendar page (pages/CalendarImport.jsx)
 import programming, { roles as programmingRoles, claude as programmingClaude } from './es-programming.js'; // regular programming and staffing pars
 import quickShift, { scheduleLog as quickShiftLog } from './es-quickshift.js'; // the shift dialog's quick mode: copy a time, move a shift, day off
 const catalog = {
@@ -2321,6 +2322,7 @@ const catalog = {
   ...stock,
   ...availability,
   ...programming,
+  ...calendarImport,
   ...quickShift,
 };
 Object.assign(catalog.integrations, reviewIntegrations); // Settings → Integrations: the Google and Yelp cards

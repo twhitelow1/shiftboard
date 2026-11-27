@@ -9,11 +9,12 @@
 import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { useApp, Icon, Modal } from '../ui.jsx';
 import { IS_DEMO } from '../api.js';
-import { status as getStatus, conversation, ask, decide, clearHistory, assistantSettings, saveAssistantSettings, attachFile, importFor, proposeImport } from '../assistant-api.js';
+import { status as getStatus, conversation, ask, decide, clearHistory, assistantSettings, saveAssistantSettings, attachFile, importFor, proposeImport, proposeCalendar } from '../assistant-api.js';
 import { readAttachment, sheetCsv, ACCEPT } from '../assistant-files.js';
 import { parseSchedule } from '../../../core/importer.js';
 import { weekStart, todayStr } from '../../../core/time.js';
 import { Markdown } from './TrainingShared.jsx';
+import { CalendarCard, CalendarImportDialog } from './CalendarImport.jsx'; // a calendar page's suggestions (read_events_calendar)
 import { useT, stamp } from '../i18n/index.js';
 import '../assistant.css';
 
@@ -52,6 +53,7 @@ export default function Assistant() {
   const files = useRef(new Map()); // import id → the attached file as read here (kept in this tab only)
   const [dragging, setDragging] = useState(false);
   const [wizard, setWizard] = useState(null); // { wizard, target, data }
+  const [calendarReview, setCalendarReview] = useState(null); // a calendar read's id (Review & import)
 
   const load = () => getStatus().then(setInfo, (e) => toast(e.message, 'bad'));
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -61,6 +63,13 @@ export default function Assistant() {
     if (!m || IS_DEMO) return;
     location.hash = '#/ask';
     openChat(decodeURIComponent(m[2])).then(() => review({ id: decodeURIComponent(m[1]) }));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // From the phone app: #/ask/calendar/<import id>/<conversation id> opens that chat and the calendar's review.
+  useEffect(() => {
+    const m = location.hash.match(/^#\/ask\/calendar\/([^/?]+)\/([^/?]+)/);
+    if (!m || IS_DEMO) return;
+    location.hash = '#/ask';
+    openChat(decodeURIComponent(m[2])).then(() => setCalendarReview(decodeURIComponent(m[1])));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); }, [messages, live]);
 
@@ -164,6 +173,9 @@ export default function Assistant() {
     } catch (e) { toast(e.message, 'bad'); }
   };
   const closeWizard = () => { setWizard(null); app.refresh?.(); };
+  const calendarNow = async (card, selections) => {
+    try { putMessage((await proposeCalendar(card.id, chatId, selections)).message); } catch (e) { toast(e.message, 'bad'); }
+  };
   const onDrop = (e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer?.files?.[0]; if (f) attach(f); };
 
   const onDecide = async (msg, action, decision) => {
@@ -173,7 +185,7 @@ export default function Assistant() {
       const r = await decide(action.id, chatId, decision);
       mark(r.action);
       if (r.ok && decision === 'confirm') app.refresh();
-      if (action.tool === 'import_file' && chatId) conversation(chatId).then((c) => c && setMessages(c.messages)).catch(() => {}); // the card says it's done
+      if ((action.tool === 'import_file' || action.tool === 'import_programming_from_calendar') && chatId) conversation(chatId).then((c) => c && setMessages(c.messages)).catch(() => {}); // the card says it's done
     } catch (e) {
       if (e.action) mark(e.action); else { mark({ status: 'proposed' }); toast(e.message, 'bad'); }
     }
@@ -228,7 +240,7 @@ export default function Assistant() {
             )}
           </div>
         )}
-        {messages.map((m) => <Bubble key={m.id} m={m} me={me} onDecide={onDecide} busy={busy}
+        {messages.map((m) => <Bubble key={m.id} m={m} me={me} onDecide={onDecide} busy={busy} onCalendar={{ review: (card) => setCalendarReview(card.id), importNow: calendarNow }}
           onImport={{ retarget: (card, target) => retarget(m, card, target), importNow: (card) => importNow(m, card), review }} />)}
         {live && (
           <div className="ask-msg bot">
@@ -265,6 +277,8 @@ export default function Assistant() {
         </>
       )}
 
+      {calendarReview && <CalendarImportDialog importId={calendarReview} onClose={(c) => { setCalendarReview(null); if (c && chatId) conversation(chatId).then((x) => x && setMessages(x.messages)).catch(() => {}); }} />}
+
       {historyOpen && (
         <Modal title={t('assistant.history')} onClose={() => setHistoryOpen(false)}
           footer={<><button type="button" className="btn danger" disabled={!info?.conversations?.length} onClick={clear}><Icon name="trash" size={16} />{t('assistant.clear')}</button><span className="spacer" /><button type="button" className="btn primary" onClick={newChat}><Icon name="plus" size={16} />{t('assistant.newChat')}</button></>}>
@@ -284,7 +298,7 @@ export default function Assistant() {
   );
 }
 
-function Bubble({ m, onDecide, onImport, busy }) {
+function Bubble({ m, onDecide, onImport, onCalendar, busy }) {
   const mine = m.role === 'user';
   return (
     <div className={`ask-msg ${mine ? 'me' : 'bot'}`}>
@@ -295,6 +309,7 @@ function Bubble({ m, onDecide, onImport, busy }) {
         </div>
       )}
       {m.import && <ImportCard card={m.import} busy={busy} on={onImport} />}
+      {m.calendar && <CalendarCard card={m.calendar} busy={busy} onReview={onCalendar.review} onImportNow={onCalendar.importNow} />}
       {(m.actions || []).map((a) => <ActionCard key={a.id} a={a} onDecide={(d) => onDecide(m, a, d)} />)}
     </div>
   );

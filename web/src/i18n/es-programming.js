@@ -40,6 +40,7 @@ export default {
     log_override: '{by} cambió {name} el {date}',
     log_overrideCleared: '{by} regresó {name} a lo normal el {date}',
     log_eventPars: '{by} puso el par de {name}',
+    log_calendarImport: '{by} importó programación de una página de calendario',
     log_fillGaps: { one: '{by} creó {count} turno disponible para lo que falta', other: '{by} creó {count} turnos disponibles para lo que falta' },
     season_winter: 'Invierno',
     season_summer: 'Verano',

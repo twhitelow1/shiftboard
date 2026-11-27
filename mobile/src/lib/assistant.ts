@@ -20,6 +20,22 @@ export interface AskMessage {
   actions?: AskAction[];
   file?: { name: string; size?: number };
   import?: AskImport;
+  calendar?: AskCalendar;
+}
+/** A calendar page's suggestions (read_events_calendar): shown read-only on the phone, reviewed on the website. */
+export interface AskCalendar {
+  id: string;
+  url: string;
+  source: 'tribe' | 'ics' | 'jsonld' | 'ai';
+  events: number;
+  from: string;
+  to: string;
+  status: 'ready' | 'done';
+  recurring: { key: string; name: string; room: string; days: number[]; start: string; end: string; from: string; to: string; repeat: string; count: number; duplicate: boolean; include: boolean }[];
+  oneOffs: number;
+  oneOffList: { name: string; date: string; start: string; room: string; duplicate: boolean }[];
+  unmatched: number;
+  result?: string;
 }
 export interface AskStatus {
   available: boolean;

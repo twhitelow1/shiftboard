@@ -96,9 +96,10 @@ function auditArgs(args) {
  * @param o.serviceOpts  createService options (hashPassword, channels, request, legal), as server/app.js uses
  * @param o.onCommit     (changes) => void: notifications by email, web push, the phone app and texts
  * @param o.via, o.client  for the audit log: 'claude' and the client's name
+ * @param o.calendar     the calendar page reader (server/calendar/ createCalendarReading), for read_events_calendar
  * @param o.invite       (userIds, invitedBy) => Promise<{ sent, noEmail, failed }>: invitation emails for people an import made
  */
-export function createToolContext({ db, userId, v = 0, has = () => true, scopes = [READ], serviceOpts = {}, onCommit, via = 'claude', client = '', now = () => Date.now(), invite = null }) {
+export function createToolContext({ db, userId, v = 0, has = () => true, scopes = [READ], serviceOpts = {}, onCommit, via = 'claude', client = '', now = () => Date.now(), invite = null, calendar = null }) {
   const fresh = (store) => {
     const u = store.get('users', userId);
     if (!u || u.active === false || (u.sessionVersion || 0) !== v) throw new AppError(401, 'Please sign in');
@@ -114,6 +115,8 @@ export function createToolContext({ db, userId, v = 0, has = () => true, scopes 
     has, scopes, via, client, now,
     /** Send invitation emails to people an import made (after the save). Null where email can't go out (tests, no server). */
     invite: invite ? (ids) => invite(ids, fresh(db.store).name) : null,
+    /** Read a calendar page as this person (kept as their latest read): { source, rooms, import }. Null without a reader. */
+    readCalendar: calendar ? (url, o = {}) => calendar.read(fresh(db.store), { url, lang: ctx.lang(), ...o }) : null,
     get store() { return db.store; },
     /** The person as of now (after a sync). */
     user: () => fresh(db.store),
