@@ -8,6 +8,7 @@ import { TripleseatBadge, TripleseatEventCard, TripleseatEditorNote } from './Tr
 import BeoImport, { OtherDates } from './BeoImport.jsx';
 import BeoSections from './BeoSections.jsx';
 import { visibleSections } from '../../../core/beo-sections.js';
+import { EventParsChoice } from './ProgrammingParts.jsx'; // no staffing of its own: the regular pars, or set pars for it
 import { useT, dowShort, fmtTime, monthShort, prettyDate, stamp } from '../i18n/index.js';
 
 const STATUS_BADGE = { tentative: 'warn', confirmed: 'ok', completed: '', cancelled: 'bad' };
@@ -155,7 +156,7 @@ function EventDetail({ id }) {
               <h2 style={{ flex: 1 }}>{t('events.staffing')}</h2>
               {e.needed > 0 && <span className={`badge ${e.filled >= e.needed ? 'ok' : 'warn'}`}>{t('events.filledNeededFilled', { filled: e.filled, needed: e.needed })}</span>}
             </div>
-            {!e.staffing.length ? <div className="muted small">{t('events.noStaffingRequirementsListed')}</div> : (
+            {!e.staffing.length ? <><div className="muted small">{t('events.noStaffingRequirementsListed')}</div><EventParsChoice event={e} onChanged={load} /></> : (
               <div className="table-wrap"><table className="table">
                 <thead><tr><th>{t('common.position')}</th><th>{t('events.need')}</th><th>{t('events.callTime')}</th><th>{t('events.filled')}</th></tr></thead>
                 <tbody>

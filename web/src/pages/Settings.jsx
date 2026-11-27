@@ -12,6 +12,7 @@ import { TrainingSettingsCard } from './TrainingShared.jsx';
 import EightySixSettings from './EightySixSettings.jsx';
 import RoomsPositions from './RoomsPositions.jsx';
 import SeasonsCard from './SeasonsSettings.jsx'; // the seasons reports count by
+import Programming, { ProgrammingCard } from './Programming.jsx'; // Settings → Programming: regular programming and staffing pars
 import { AnnouncementSettingsCard } from './Announcements.jsx'; // texts per person per day, quiet hours
 import RolesEditor, { RolesCard } from './RolesEditor.jsx'; // Settings → Roles & features
 import { ImpactSettingsCard } from './ImpactShared.jsx'; // Positive impact: notifications, alerts, words that are never names
@@ -51,8 +52,9 @@ export default function Settings({ parts = [] }) {
   );
   // #/settings/products: the product catalog (managers and up, like Stock → Products).
   if (parts[1] === 'products' && isMgr) return <ProductsAdmin />;
+  if (parts[1] === 'programming' && isMgr) return <Programming />; // #/settings/programming (managers and up; editing per Roles & features)
   // Managers run the schedule's rooms and positions, and the products; the rest of Settings is for admins.
-  if (!isAdmin) return <div style={{ maxWidth: 820 }} className="col">{isMgr && rooms}{isMgr && <ProductsCard />}{passwordCard}</div>;
+  if (!isAdmin) return <div style={{ maxWidth: 820 }} className="col">{isMgr && rooms}{isMgr && <ProgrammingCard />}{isMgr && <ProductsCard />}{passwordCard}</div>;
   if (parts[1] === 'roles') return <RolesEditor />; // #/settings/roles (it saves on its own, like Rooms & positions)
   if (parts[1] === 'emails') return <EmailTemplates />; // #/settings/emails
   if (parts[1] === 'feedback') return <FeedbackSettings />; // #/settings/feedback
@@ -92,6 +94,8 @@ export default function Settings({ parts = [] }) {
       </div>
 
       {rooms}
+
+      <ProgrammingCard />
 
       <RolesCard />
 

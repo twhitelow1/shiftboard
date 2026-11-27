@@ -28,6 +28,10 @@ The words ShiftBoard uses in Spanish, so the phone app, the website and emails s
 | position / job code | puesto | |
 | room (a banner on the schedule: Restaurant, Moon Rabbit…) | salón | room names stay as entered; same word as the venue's rooms |
 | Rooms & positions (Settings) | Salones y puestos | |
+| regular programming (what normally runs each weekday) / Programming (Settings) | programación regular / Programación | item names ("Regular service", "DJ night") stay as typed |
+| staffing par(s) | par de personal · pares | "Bartender 2/3" = 2 scheduled of a par of 3; "par" is the same word as the stock lists' "nivel par" |
+| replaced by (an event) / full buyout | reemplazado por / renta completa del lugar | |
+| coverage (scheduled vs par) / short of par | cobertura / por debajo del par | |
 | hidden (position) / hide / show | oculto / ocultar / mostrar | "Ocultar en el horario" |
 | name on the sheet (a section's label) | nombre en el horario | |
 | hidden or unlisted section | sección oculta o fuera del horario | the schedule's notice for managers |
