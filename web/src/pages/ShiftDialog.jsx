@@ -5,6 +5,7 @@ import { shiftChoices, roomOfShift, findRoom, areaForRoom } from '../../../core/
 import { ShiftSectionCard } from './Sections.jsx';
 import { CallOutPanel } from './TrainingShared.jsx';
 import '../quick-shift.css';
+import { clipTime } from './ShiftPaste.jsx';
 import { useT, fmtTime, prettyDate, dowShort } from '../i18n/index.js';
 
 /**
@@ -15,12 +16,12 @@ import { useT, fmtTime, prettyDate, dowShort } from '../i18n/index.js';
  * position come from the row and only the times, tag and notes change, with one-tap times copied from the week
  * (weekShifts), a Day off action (daysOff: the week's days off) and "Move this shift" to unlock everything.
  */
-export default function ShiftDialog({ shift, onClose, warnings, events = [], startIn, quick = false, weekShifts = [], daysOff = [] }) {
+export default function ShiftDialog({ shift, onClose, warnings, events = [], startIn, quick = false, weekShifts = [], daysOff = [], clip = null, onPaste, onCopy }) {
   const { isMgr, me } = useApp();
   const mine = !!shift.id && shift.userId === me.id;
   const [editing, setEditing] = useState(isMgr && !mine);
-  if (editing) return <ShiftEditor shift={shift} onClose={onClose} warnings={warnings} events={events} quick={quick} weekShifts={weekShifts} daysOff={daysOff} />;
-  return <ShiftDetail shift={shift} onClose={onClose} events={events} startIn={startIn} onEdit={isMgr ? () => setEditing(true) : null} />;
+  if (editing) return <ShiftEditor shift={shift} onClose={onClose} warnings={warnings} events={events} quick={quick} weekShifts={weekShifts} daysOff={daysOff} clip={clip} onPaste={onPaste} onCopy={onCopy} />;
+  return <ShiftDetail shift={shift} onClose={onClose} events={events} startIn={startIn} onEdit={isMgr ? () => setEditing(true) : null} onCopy={isMgr ? onCopy : undefined} />;
 }
 
 /**
@@ -59,7 +60,7 @@ export function copyChoices({ weekShifts, userId, date, jobCodeId, shiftId }) {
  * Changing an existing shift's date, person, position or room moves it (shifts.move: the same shift).
  * A shift's floor room & tables are set on the Sections page, not here.
  */
-function ShiftEditor({ shift, onClose, warnings, events, quick, weekShifts, daysOff }) {
+function ShiftEditor({ shift, onClose, warnings, events, quick, weekShifts, daysOff, clip, onPaste, onCopy }) {
   const t = useT();
   const { employees, settings, jobs, call, toast, layout, people } = useApp();
   const [f, setF] = useState(() => {
@@ -202,11 +203,20 @@ function ShiftEditor({ shift, onClose, warnings, events, quick, weekShifts, days
       {quick && dayOff === origDayOff && <button type="button" className="btn sm" disabled={busy} onClick={undoOff}>{t('quickShift.undoDayOff')}</button>}</div>
   );
   const who = person || people?.[f.userId];
+  // Copy & paste (pages/ShiftPaste.jsx): with a shift copied, a cell's quick dialog offers pasting it here first (phones too).
+  const pasteOffer = quick && clip && onPaste && clip.id !== shift.id && (
+    <div className="paste-offer">
+      <button type="button" className="btn primary sm" onClick={onPaste} disabled={busy}><Icon name="copy" />{t('shiftPaste.pasteHere')}</button>
+      <span className="small">{clipTime(clip, t)}{jobs[clip.jobCodeId] ? ` · ${jobs[clip.jobCodeId].name}` : ''}{clip.tag ? ` · ${clip.tag}` : ''}</span>
+      <div className="help">{t('shiftPaste.pasteHereHelp')}</div>
+    </div>
+  );
 
   return (
     <Modal title={shift.id ? t('shiftDialog.editShift') : t('shiftDialog.addShift')} sub={`${prettyDate(f.date)}${shift.id && !shift.published ? t('shiftDialog.draftSuffix') : ''}`} onClose={() => onClose(false)}
       footer={<>
         {shift.id && <button className={`btn danger ${confirmDelete ? 'solid' : ''}`} onClick={del} disabled={busy}><Icon name="trash" />{confirmDelete ? t('shiftDialog.tapAgainToDelete') : t('common.delete')}</button>}
+        {quick && shift.id && onCopy && <button type="button" className="btn" onClick={() => { onCopy(shift); onClose(false); }} title={t('shiftPaste.copyTitle')}><Icon name="copy" />{t('shiftPaste.copy')}</button>}
         {quick && orig.userId && !moving && !origDayOff && (
           <button type="button" className={`btn quick-dayoff ${confirmOff ? 'danger solid' : ''}`} onClick={markOff} disabled={busy}><Icon name="sun" />{confirmOff ? t('quickShift.dayOffConfirm', { count: theirShiftsThatDay.length }) : t('quickShift.dayOff')}</button>
         )}
@@ -215,6 +225,7 @@ function ShiftEditor({ shift, onClose, warnings, events, quick, weekShifts, days
         <button className="btn primary" onClick={save} disabled={busy || !f.jobCodeId}>{moving ? <><Icon name="swap" />{t('quickShift.saveMove')}</> : shift.id ? t('common.save') : t('shiftDialog.addShift')}</button>
       </>}>
       <Warnings items={warnings} />
+      {pasteOffer}
       {locked ? <>
         <div className="quick-fixed">
           <Avatar user={who} size="sm" />
@@ -292,7 +303,7 @@ function ShiftEditor({ shift, onClose, warnings, events, quick, weekShifts, days
   );
 }
 
-function ShiftDetail({ shift, onClose, events, startIn, onEdit }) {
+function ShiftDetail({ shift, onClose, events, startIn, onEdit, onCopy }) {
   const t = useT();
   const { me, jobs, people, call, today, settings } = useApp();
   const [run, busy] = useAction();
@@ -358,7 +369,8 @@ function ShiftDetail({ shift, onClose, events, startIn, onEdit }) {
         <span className="spacer" />
         {mode === 'drop' && <button className="btn primary" disabled={busy} onClick={() => submit('drop')}><Icon name="send" />{t('shiftDialog.postForPickup')}</button>}
         {mode === 'swap' && <button className="btn primary" disabled={busy || !target} onClick={() => submit('swap')}><Icon name="swap" />{target ? (people[target.userId]?.name ? t('shiftDialog.sendTradeTo', { name: people[target.userId].name.split(' ')[0] }) : t('shiftDialog.sendTrade')) : t('shiftDialog.pickAShiftFirst')}</button>}
-      </> : onEdit ? <><button className="btn" onClick={onEdit}><Icon name="edit" />{t('shiftDialog.editShift')}</button><span className="spacer" /><button className="btn" onClick={() => onClose(false)}>{t('shiftDialog.close')}</button></> : null}>
+      </> : onEdit ? <><button className="btn" onClick={onEdit}><Icon name="edit" />{t('shiftDialog.editShift')}</button>
+        {onCopy && <button type="button" className="btn" onClick={() => { onCopy(shift); onClose(false); }} title={t('shiftPaste.copyTitle')}><Icon name="copy" />{t('shiftPaste.copy')}</button>}<span className="spacer" /><button className="btn" onClick={() => onClose(false)}>{t('shiftDialog.close')}</button></> : null}>
       {!mode && <>
         <div className="row">
           <Avatar user={people[shift.userId]} size="lg" />

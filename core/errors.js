@@ -183,6 +183,10 @@ export const ERRORS_ES = {
   'Pick a day': 'Elige un día',
   'Pick a different day': 'Elige otro día',
   'Pick a week': 'Elige una semana',
+  // Copy & paste a shift (core/shift-paste.js)
+  'Copy a shift first': 'Primero copia un turno',
+  'Pick a cell to paste into': 'Elige una celda donde pegar',
+  'That shift is no longer there': 'Ese turno ya no está',
   'Pick the weeks to copy': 'Elige las semanas que quieres copiar',
   'Pick a different week to copy into': 'Elige otra semana para copiar',
   'Pick a day to copy from': 'Elige el día del que quieres copiar',
@@ -577,6 +581,7 @@ export const ERROR_PATTERNS_ES = [
   [/^There's already a room called (.+) here$/, (m) => `Ya hay un salón llamado ${m[1]} aquí`],
   [/^There’s already a room called (.+)$/, (m) => `Ya hay un salón llamado ${m[1]}`],
   [/^Pick at most (\d+) days$/, (m) => `Elige ${m[1]} días como máximo`],
+  [/^Paste into at most (\d+) cells at a time$/, (m) => `Pega en ${m[1]} celdas como máximo a la vez`],
   [/^Import at most (\d+) rooms at a time$/, (m) => `Importa como máximo ${m[1]} salones a la vez`],
   [/^That table isn’t on the (.+) floor plan$/, (m) => `Esa mesa no está en el plano de ${m[1]}`],
   [/^(.+) is already matched to another Toast employee$/, (m) => `${m[1]} ya está vinculado a otro empleado de Toast`],

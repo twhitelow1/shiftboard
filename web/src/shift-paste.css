@@ -1,0 +1,38 @@
+/* Copy & paste a shift (pages/ShiftPaste.jsx): the Copied pill, the cells' Copy and Paste buttons, the selection, Undo. */
+.paste-pill { position: sticky; top: 8px; z-index: 30; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; padding: 6px 8px 6px 12px;
+  border: 1.5px solid var(--brand); border-radius: 999px; background: var(--surface); box-shadow: var(--shadow-lg, 0 4px 14px rgba(0,0,0,.12)); font-size: 13px; color: var(--text); }
+.paste-pill > svg { color: var(--brand); flex: none; }
+.paste-pill-main { flex: 1 1 auto; min-width: 0; }
+.paste-pill-hint { flex: 1 1 260px; }
+@media (max-width: 600px) { .paste-pill { border-radius: 12px; } }
+
+/* Cells: a selection outline, and Paste / Copy buttons on hover or focus (touch: the quick dialog instead). */
+.sheet td[data-pcell], .sched td[data-pcell] { position: relative; }
+td[data-pcell]:focus { outline: none; }
+td[data-pcell]:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+td[data-pcell].psel { outline: 2px solid var(--brand); outline-offset: -2px; background-color: color-mix(in srgb, var(--brand-soft) 70%, transparent); }
+.sheet td[data-pcell].psel { background-image: none; }
+.paste-btn { display: none; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 2; align-items: center; gap: 4px; white-space: nowrap;
+  padding: 2px 8px; border-radius: 999px; border: 1px solid var(--brand); background: var(--brand); color: #fff; font: 600 11px/1.4 inherit; cursor: pointer; letter-spacing: 0; text-transform: none; }
+td[data-pcell]:hover .paste-btn, td[data-pcell]:focus .paste-btn, td[data-pcell].psel .paste-btn { display: inline-flex; }
+td[data-pcell].psel .paste-btn.pm { display: none; }
+td[data-pcell]:hover .paste-btn.pm { display: inline-flex; }
+.sched td.cell.can-add:has(.paste-btn):hover::after, .sched td.cell:has(.chip-wrap:hover)::after { content: none; }
+.chip-wrap { position: relative; }
+.copy-btn { position: absolute; right: 2px; top: 2px; z-index: 2; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0;
+  border-radius: 5px; border: 1px solid var(--border-strong, #999); background: var(--surface); color: var(--text-2); cursor: pointer; opacity: 0; }
+.chip-wrap:hover .copy-btn, .chip-wrap:focus-within .copy-btn, .sheet td:hover .copy-btn, .copy-btn:focus-visible { opacity: 1; }
+.sheet .copy-btn { top: 50%; transform: translateY(-50%); width: 18px; height: 18px; color: #111; background: #fff; }
+.copy-btn:hover { color: var(--brand); border-color: var(--brand); }
+@media (hover: none) { .copy-btn, .paste-btn { display: none !important; } }
+
+/* Undo the last paste: above the toasts. */
+.paste-undo { position: fixed; left: 50%; transform: translateX(-50%); bottom: 72px; z-index: 210; display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px;
+  border-radius: 12px; background: #0f172a; color: #fff; box-shadow: var(--shadow-lg); font-weight: 500; max-width: 92vw; }
+.paste-undo .btn.ghost { color: #fff; }
+@media (max-width: 900px) { .paste-undo { bottom: calc(var(--bottomnav, 64px) + 64px + env(safe-area-inset-bottom)); } }
+
+/* The quick dialog's "Paste copied shift". */
+.paste-offer { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1.5px solid var(--brand); border-radius: 10px; background: var(--brand-soft); }
+.paste-offer .btn { align-self: flex-start; }
+.paste-ask-group { display: flex; flex-direction: column; gap: 4px; }

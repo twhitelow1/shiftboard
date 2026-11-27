@@ -31,7 +31,7 @@ export function sheetTime(s) {
 export const plural = (n) => (/man$/i.test(n) ? n.replace(/man$/i, 'men') : /(s|x|ch|sh)$/i.test(n) ? `${n}es` : /[^aeiou]y$/i.test(n) ? `${n.slice(0, -1)}ies` : `${n}s`);
 const usDate = (d) => { const x = parseDate(d); return `${x.getUTCMonth() + 1}/${x.getUTCDate()}/${x.getUTCFullYear()}`; };
 
-export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onOpen, onSaved, onEditSection, onArrange, className = '', programming = null, daysOff = [], onUndoDayOff }) {
+export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onOpen, onSaved, onEditSection, onArrange, className = '', programming = null, daysOff = [], onUndoDayOff, paste = null }) {
   const t = useT();
   const { isMgr, me, settings, people, today } = useApp();
   const [editNote, setEditNote] = useState(null); // { kind, date, text }
@@ -51,37 +51,45 @@ export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onO
   const covers = (d) => fc?.days?.find((x) => x.date === d)?.totalCovers;
 
   const { people: peopleById, jobs: jobsById } = useApp(); // light green: a shift outside their primary room (core/layout.js)
+  // A plain function (not a component), so cells keep their focus and the paste selection across renders.
+  // paste (pages/ShiftPaste.jsx, managers): each person's cell can be selected, copied from and pasted into.
+  paste?.begin('sheet');
   const Cell = ({ list, date, sec, user }) => {
     const shifts = [...list].sort((a, b) => a.start.localeCompare(b.start));
     const add = isMgr && sec?.job ? () => onAdd(date, sec.job.id, user?.id, sec.area) : undefined;
+    const pc = paste && user && sec ? paste.cell('sheet', `${sec.key}|${user.id}`, days.indexOf(date), isMgr && sec.job ? { userId: user.id, date, jobCodeId: sec.job.id, area: sec.area ?? '' } : null, shifts) : null;
+    const p = pc ? pc.props : {};
+    const sel = pc?.selected ? 'psel' : '';
+    const pasteBtn = pc?.pasteButton(!shifts.length);
     if (shifts.length) {
       return (
-        <td className={add ? 'can-add' : ''} onClick={add}>
+        <td key={date} {...p} className={`${add ? 'can-add' : ''} ${sel}`} onClick={add}>
           {shifts.map((s, i) => (
             <React.Fragment key={s.id}>
               {i > 0 && ' / '}
-              <span className={`sh-shift ${s.published ? '' : 'draft'} ${s.userId === me.id ? 'mine' : ''} ${s.userId && offPrimary(s, peopleById[s.userId], jobsById[s.jobCodeId]) ? 'elsewhere' : ''}`} title={[!s.published && t('scheduleSheet.draftNotPostedYet'), canTrade(s, me, today) && t('schedule.yourShiftTapToTrade'), ...(data.warnings?.[s.id] || []), s.notes].filter(Boolean).join('\n')}
+              <span data-shift-id={s.id} className={`sh-shift ${s.published ? '' : 'draft'} ${s.userId === me.id ? 'mine' : ''} ${s.userId && offPrimary(s, peopleById[s.userId], jobsById[s.jobCodeId]) ? 'elsewhere' : ''}`} title={[!s.published && t('scheduleSheet.draftNotPostedYet'), canTrade(s, me, today) && t('schedule.yourShiftTapToTrade'), ...(data.warnings?.[s.id] || []), s.notes].filter(Boolean).join('\n')}
                 onClick={(e) => { e.stopPropagation(); onOpen(s); }}>
                 {sheetTime(s)}{s.tag ? ` ${s.tag}` : ''}{data.warnings?.[s.id] && <sup className="sh-warn">!</sup>}{s.pending && <sup>⇄</sup>}
               </span>
+              {pc && s.userId && paste.copyButton(s, shifts.length - 1 - i)}
             </React.Fragment>
           ))}
         </td>
       );
     }
-    if (!user) return <td className={add ? 'can-add' : ''} onClick={add} />;
+    if (!user) return <td key={date} {...p} className={add ? 'can-add' : ''} onClick={add} />;
     // DAY OFF: a manager marked them off on purpose (core/quick-shift.js), unlike OFF (just not scheduled).
     if (daysOff.some((d) => d.userId === user.id && d.date === date)) {
       return (
-        <td className={`dayoff ${add ? 'can-add' : ''}`} onClick={add} title={t('quickShift.cellTitle')}>{t('quickShift.cell')}
-          {onUndoDayOff && <button type="button" className="dayoff-undo no-print" onClick={(e) => { e.stopPropagation(); onUndoDayOff(user.id, date); }}>{t('quickShift.undo')}</button>}</td>
+        <td key={date} {...p} className={`dayoff ${add ? 'can-add' : ''} ${sel}`} onClick={add} title={t('quickShift.cellTitle')}>{t('quickShift.cell')}
+          {onUndoDayOff && <button type="button" className="dayoff-undo no-print" onClick={(e) => { e.stopPropagation(); onUndoDayOff(user.id, date); }}>{t('quickShift.undo')}</button>}{pasteBtn}</td>
       );
     }
     const to = timeOffOn(user.id, date);
-    if (to) return <td className={`off ${add ? 'can-add' : ''}`} onClick={add} title={to.reason || ''}>{to.status === 'approved' ? t('scheduleSheet.requestOff') : t('scheduleSheet.reqPending')}</td>;
+    if (to) return <td key={date} {...p} className={`off ${add ? 'can-add' : ''} ${sel}`} onClick={add} title={to.reason || ''}>{to.status === 'approved' ? t('scheduleSheet.requestOff') : t('scheduleSheet.reqPending')}{pasteBtn}</td>;
     const other = workingElsewhere(user.id, date);
-    if (other) return <td className={`elsewhere ${add ? 'can-add' : ''}`} onClick={add} title={`${t('scheduleSheet.workingTime', { time: sheetTime(other) })}${other.area ? ` · ${other.area}` : ''}`} />;
-    return <td className={`off ${add ? 'can-add' : ''}`} onClick={add}>{t('scheduleSheet.off')}</td>;
+    if (other) return <td key={date} {...p} className={`elsewhere ${add ? 'can-add' : ''} ${sel}`} onClick={add} title={`${t('scheduleSheet.workingTime', { time: sheetTime(other) })}${other.area ? ` · ${other.area}` : ''}`}>{pasteBtn}</td>;
+    return <td key={date} {...p} className={`off ${add ? 'can-add' : ''} ${sel}`} onClick={add}>{t('scheduleSheet.off')}{pasteBtn}</td>;
   };
 
   return (
@@ -107,13 +115,13 @@ export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onO
                     {sec.rows.map(({ user, shifts }) => (
                       <tr key={user.id} className={user.id === me.id ? 'me' : ''}>
                         <td className="sh-name" title={user.sheetName ? user.name : undefined}>{user.sheetName || user.name}</td>
-                        {days.map((d) => <Cell key={d} date={d} sec={sec} user={user} list={shifts.filter((s) => s.date === d)} />)}
+                        {days.map((d) => Cell({ date: d, sec, user, list: shifts.filter((s) => s.date === d) }))}
                       </tr>
                     ))}
                     {sec.open.length > 0 && (
                       <tr className="sh-open">
                         <td className="sh-name">{t('scheduleSheet.open')}</td>
-                        {days.map((d) => <Cell key={d} date={d} sec={sec} list={sec.open.filter((s) => s.date === d)} />)}
+                        {days.map((d) => Cell({ date: d, sec, list: sec.open.filter((s) => s.date === d) }))}
                       </tr>
                     )}
                   </React.Fragment>

@@ -13,7 +13,7 @@ import { prettyDate, fmtTime, addDays } from './time.js';
 
 export const PREFIX = 'schedule.';
 export const VIAS = ['web', 'phone', 'import', 'connector', 'assistant', 'sync', 'cron'];
-export const GROUPS = { shift: ['shift.create', 'shift.edit', 'shift.move', 'shift.delete', 'shifts.bulk'], week: ['week.clear', 'week.copy', 'drafts.clear', 'week.publish', 'week.unpublish', 'schedule.import'],
+export const GROUPS = { shift: ['shift.create', 'shift.edit', 'shift.move', 'shift.delete', 'shifts.bulk', 'shift.paste', 'shift.pasteReplace'], week: ['week.clear', 'week.copy', 'drafts.clear', 'week.publish', 'week.unpublish', 'schedule.import'],
   request: ['request.create', 'request.accept', 'request.decline', 'request.approve', 'request.deny', 'request.cancel'],
   timeOff: ['timeOff.create', 'timeOff.add', 'timeOff.approve', 'timeOff.deny', 'timeOff.cancel', 'timeOff.standing'],
   availability: ['availability.change'], note: ['note.save'], mod: ['mod.set'], event: ['event.shifts'], layout: ['layout.move', 'rooms.change'], dayOff: ['dayOff.set', 'dayOff.clear'] };
@@ -57,6 +57,8 @@ const T = {
   en: {
     open: 'an open', their: (n) => `${n}’s`, shiftOf: (who, what) => `${who} ${what} shift`,
     'shift.create': (a, s) => `${a} added ${s}`, 'shift.edit': (a, s, ch) => `${a} changed ${s}${ch ? `: ${ch}` : ''}`, 'shift.move': (a, s, ch) => `${a} moved ${s}${ch ? `: ${ch}` : ''}`,
+    'shift.paste': (a, s, src) => `${a} added ${s}, pasted from ${src}`, 'shift.pasteReplace': (a, s, ch, src) => `${a} changed ${s}${ch ? `: ${ch}` : ''}, pasted from ${src}`,
+    pasteSrc: (who, d) => (who ? `${who}’s ${d} shift` : `an open shift on ${d}`),
     'dayOff.set': (a, p, d) => `${a} marked ${p} off on ${d} (day off)`, 'dayOff.clear': (a, p, d) => `${a} took back ${p} day off on ${d}`, 'shift.delete': (a, s) => `${a} deleted ${s}`,
     'shifts.bulk': (a, n) => `${a} added ${n} shifts`, 'week.clear': (a, n, w) => `${a} cleared the week of ${w} (${n} shifts)`, 'week.copy': (a, n, w) => `${a} copied ${n} shifts into the week of ${w}`,
     'drafts.clear': (a, n, w) => `${a} cleared ${n} draft shifts in the week of ${w}`, 'week.publish': (a, n, w) => `${a} published ${n} shifts (week of ${w})`,
@@ -73,6 +75,8 @@ const T = {
   es: {
     open: 'un', their: (n) => `de ${n}`, shiftOf: (who, what) => (who === 'un' ? `un turno disponible ${what}` : `el turno ${what} ${who}`),
     'shift.create': (a, s) => `${a} agregó ${s}`, 'shift.edit': (a, s, ch) => `${a} cambió ${s}${ch ? `: ${ch}` : ''}`, 'shift.move': (a, s, ch) => `${a} movió ${s}${ch ? `: ${ch}` : ''}`,
+    'shift.paste': (a, s, src) => `${a} agregó ${s}, pegado ${src}`, 'shift.pasteReplace': (a, s, ch, src) => `${a} cambió ${s}${ch ? `: ${ch}` : ''}, pegado ${src}`,
+    pasteSrc: (who, d) => (who ? `del turno de ${who} del ${d}` : `de un turno disponible del ${d}`),
     'dayOff.set': (a, p, d) => `${a} marcó a ${p} de descanso el ${d}`, 'dayOff.clear': (a, p, d) => `${a} quitó el día de descanso de ${p} del ${d}`, 'shift.delete': (a, s) => `${a} borró ${s}`,
     'shifts.bulk': (a, n) => `${a} agregó ${n} turnos`, 'week.clear': (a, n, w) => `${a} vació la semana del ${w} (${n} turnos)`, 'week.copy': (a, n, w) => `${a} copió ${n} turnos a la semana del ${w}`,
     'drafts.clear': (a, n, w) => `${a} quitó ${n} turnos en borrador de la semana del ${w}`, 'week.publish': (a, n, w) => `${a} publicó ${n} turnos (semana del ${w})`,
@@ -116,6 +120,8 @@ export function sentence(e, lang = 'en', names = {}) {
   switch (what) {
     case 'shift.create': case 'shift.delete': return fn(actor, shiftText(d.shift));
     case 'shift.edit': case 'shift.move': return fn(actor, shiftText(d.before || d.shift), changes);
+    case 'shift.paste': return fn(actor, shiftText(d.shift), t.pasteSrc(person(d.pastedFrom?.userId), day(d.pastedFrom?.date)));
+    case 'shift.pasteReplace': return fn(actor, shiftText(d.before || d.shift), changes, t.pasteSrc(person(d.pastedFrom?.userId), day(d.pastedFrom?.date)));
     case 'dayOff.set': case 'dayOff.clear': return fn(actor, lang === 'es' ? person(d.affected?.[0]) : (what === 'dayOff.set' ? person(d.affected?.[0]) : `${person(d.affected?.[0])}’s`), day(d.date));
     case 'shifts.bulk': case 'schedule.import': case 'layout.move': return fn(actor, d.count || 0);
     case 'week.clear': case 'week.copy': case 'drafts.clear': case 'week.publish': case 'week.unpublish': return fn(actor, d.count ?? d.unpublished ?? 0, week);

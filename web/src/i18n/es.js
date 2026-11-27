@@ -20,6 +20,7 @@ import stock, { roles as stockRoles, claude as stockClaude, smartImport as stock
 import availability, { roles as availabilityRoles, schedule as availabilitySchedule, smartImport as availabilityImport } from './es-availability.js'; // availability, Approves for, time off requests, the schedule log, Who works where, custom roles // Stock lists and the product catalog
 import programming, { roles as programmingRoles, claude as programmingClaude } from './es-programming.js'; // regular programming and staffing pars
 import quickShift, { scheduleLog as quickShiftLog } from './es-quickshift.js'; // the shift dialog's quick mode: copy a time, move a shift, day off
+import shiftPaste from './es-shiftpaste.js'; // copy & paste a shift on the schedule
 const catalog = {
   lang: {
     change: 'Cambiar idioma',
@@ -2322,6 +2323,7 @@ const catalog = {
   ...availability,
   ...programming,
   ...quickShift,
+  ...shiftPaste,
 };
 Object.assign(catalog.integrations, reviewIntegrations); // Settings → Integrations: the Google and Yelp cards
 Object.assign(catalog.roles, feedbackRoles); // Settings → Roles & features: the Feedback box's two rows
