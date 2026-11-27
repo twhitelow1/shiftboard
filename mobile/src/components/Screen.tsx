@@ -16,7 +16,7 @@ import { Icon } from './Icon';
 import { LanguageButton } from './LanguageButton';
 import { OfflineNote, Txt, useColors } from './ui';
 
-export function Screen({ title, back, bell = !back, children, onRefresh, scroll = true, bottomInset = false, contentStyle, backdrop = false }: {
+export function Screen({ title, back, bell = !back, children, onRefresh, scroll = true, bottomInset = false, contentStyle, backdrop = false, footer }: {
   title: string;
   /** Show a back button instead of the logo. */
   back?: boolean;
@@ -30,6 +30,8 @@ export function Screen({ title, back, bell = !back, children, onRefresh, scroll 
   contentStyle?: StyleProp<ViewStyle>;
   /** The sign-in backdrop (dark, with a glow of the restaurant's color) behind a see-through header. */
   backdrop?: boolean;
+  /** Stays at the bottom while the rest scrolls (a running total and its button), above the home indicator. */
+  footer?: ReactNode;
 }) {
   const c = useColors();
   const insets = useSafeAreaInsets();
@@ -84,6 +86,7 @@ export function Screen({ title, back, bell = !back, children, onRefresh, scroll 
             refreshControl={pull ? <RefreshControl refreshing={refreshing} onRefresh={pull} tintColor={c.brand} colors={[c.brand]} /> : undefined}>
             {body}
           </ScrollView>
+          {footer ? <View style={[styles.footer, { paddingBottom: 10 + insets.bottom, backgroundColor: c.surface, borderColor: c.border }]}>{footer}</View> : null}
         </KeyboardAvoidingView>
       ) : body}
     </View>
@@ -123,6 +126,7 @@ function LoginBackdrop() {
 }
 
 const styles = StyleSheet.create({
+  footer: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, paddingTop: 10 },
   root: { flex: 1 },
   header: { borderBottomWidth: StyleSheet.hairlineWidth },
   headerRow: { height: 56, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 6 },
