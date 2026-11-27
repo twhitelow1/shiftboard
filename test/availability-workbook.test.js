@@ -95,7 +95,9 @@ test('reading it: theme fills with tints, real dates and times, banners, section
   assert.deepEqual(h('JUNO').dated.map((x) => x.date), ['2027-01-08'], 'yellow REQ OFF on a week tab: that Friday only');
   assert.deepEqual(h('JUNO').otherRoom.map((x) => x.dow), [6], 'light green on a shift: another room');
   assert.deepEqual(h('JUNO').flags.map((f) => f.text), ['REQ OFF or'], 'never guessed');
-  assert.deepEqual(h('QUILL').flags.map((f) => [f.text, f.tab]), [['WOH', 'STANDING REQUESTS OFF'], ['WOH', '1.4.2027-1.10.2027']], 'flagged on each tab');
+  assert.deepEqual(h('QUILL').flags, [], 'an unknown code isn’t a flag to decide');
+  assert.deepEqual(h('QUILL').codes.map((c) => [c.code, c.dow]), [['WOH', 1]], 'an unknown code, once per day');
+  assert.equal(h('QUILL').mod, true, 'in the M.O.D. block');
   assert.deepEqual(h('ALEX').mismatch, [{ dow: 2, tab: '1.4.2027-1.10.2027', kind: 'extra' }], 'a week tab green the standing tab doesn’t have');
   assert.deepEqual(h('PIPER').mismatch, [], 'matches the standing tab');
   assert.deepEqual(houseColors(tabs).map((c) => c.family).sort(), ['green', 'lightGreen', 'yellow']);
@@ -121,7 +123,7 @@ test('the preview: standing days, dated requests off, removals asked, rooms offe
   assert.deepEqual(juno.roomSuggestions.map((x) => [x.position, x.room]), [['Server', 'Restaurant'], ['Bartender', 'Rabbit Hole']]);
   assert.throws(() => call(mgr, 'availability.importApply', { records }), (e) => e.status === 409);
   const decisions = { [juno.key]: { cells: { '1.0': 'ignore', wed: 'keep' }, primaryRoom: 'accept', requestedAt: '2026-12-20' },
-    [row('ALEX').key]: { action: 'skip' }, [row('QUILL').key]: { action: 'skip' } };
+    [row('ALEX').key]: { action: 'skip' } };
   const out = call(mgr, 'availability.importApply', { records, decisions, fileName: 'winter.xlsx' });
   assert.equal(out.created, 0);
   assert.equal(out.timeOffAdded, 1);
@@ -135,4 +137,31 @@ test('the preview: standing days, dated requests off, removals asked, rooms offe
   assert.deepEqual(Object.keys(user('usr_t_piper').availability), ['0'], 'Sunday standing; the shifts weren’t imported as availability');
   const again = call(mgr, 'availability.importApply', { records, decisions });
   assert.equal(again.timeOffAdded, 0, 'the same file again adds nothing');
+});
+
+test('unknown codes (WOH) and people who set their own schedule', () => {
+  const { store, mgr, call, user } = demo();
+  store.insert('users', { id: 'usr_t_quill', name: 'Quill Ardent', sheetName: 'QUILL', role: 'employee', active: true, availability: {}, jobCodes: [] });
+  const records = houseRecords(readWorkbook(workbook()).map(parseHouseTab));
+  const p = call(mgr, 'availability.importPreview', { records });
+  const quill = p.rows.find((r) => r.label === 'QUILL');
+  assert.deepEqual(p.codes, [{ code: 'WOH', cells: 1, choice: 'note' }], '“Codes we didn’t recognize”, with how many cells');
+  assert.deepEqual([quill.status, quill.skipReason, quill.ownScheduleDefault], ['skip', 'ownSchedule', true], 'the M.O.D. block sets their own schedule: skipped by default');
+  // Unticked: imported, WOH kept as the day's note and available that day (never unavailable by default).
+  const decisions = { [quill.key]: { ownSchedule: false } };
+  for (const r of p.rows) if (r.label === 'ALEX') decisions[r.key] = { action: 'skip' };
+  const exclude = p.rows.filter((r) => r.label === 'JUNO').map((r) => r.key); // left out this time
+  const p2 = call(mgr, 'availability.importPreview', { records, decisions });
+  const q2 = p2.rows.find((r) => r.label === 'QUILL');
+  assert.equal(q2.status, 'update');
+  assert.deepEqual(q2.days.map((d) => [d.day, d.after.available, d.after.note]), [[1, true, 'Sheet note: WOH']]);
+  // Per code: unavailable instead.
+  const p3 = call(mgr, 'availability.importPreview', { records, decisions, options: { codes: { WOH: 'off' } } });
+  assert.equal(p3.rows.find((r) => r.label === 'QUILL').days[0].after.available, false);
+  const out = call(mgr, 'availability.importApply', { records, decisions, exclude });
+  assert.deepEqual(user('usr_t_quill').availability, { 1: { available: true, note: 'Sheet note: WOH' } });
+  assert.equal(out.ownSchedule, 0);
+  // Managers and up are ticked by default too, and the summary counts them.
+  const again = call(mgr, 'availability.importApply', { records, decisions: { ...decisions, [quill.key]: {} }, exclude });
+  assert.equal(again.ownSchedule, 1);
 });

@@ -218,6 +218,15 @@ export const schedule = {
 };
 
 export const smartImport = {
+  codesTitle: 'Códigos que no reconocimos',
+  codesHelp: 'Palabras de la hoja que no son horas ni REQ OFF. De forma predeterminada, la persona queda disponible ese día y el código se guarda como nota.',
+  codeCells: { one: 'en {count} celda', other: 'en {count} celdas' },
+  code_note: 'Disponible, guardarlo como nota',
+  code_off: 'No disponible',
+  code_skip: 'Omitirlo',
+  ownSchedule: 'Hace su propio horario: omitir disponibilidad',
+  skippedOwnSchedule: 'Se omitió: hace su propio horario',
+  done_ownSchedule: { one: 'Se omitió {count} persona: hace su propio horario.', other: 'Se omitieron {count} personas: hacen su propio horario.' },
   importAvailability: 'Importar disponibilidad',
   titleAvailability: 'Importar disponibilidad',
   subAvailability: 'La disponibilidad semanal de cada persona desde una hoja (se buscan las personas, nunca se agregan)',

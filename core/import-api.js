@@ -27,7 +27,7 @@
 // platform's people and call the same preview/apply. core/adp.js matchWorkers keeps its own links (adpWorkers);
 // the employee ID it saves (users.adpId) is one of the IDs matched here.
 import { uid } from './store.js';
-import { roleOf, canManageUser, assignableRoles } from './roles.js';
+import { roleOf, canManageUser, assignableRoles, atLeast } from './roles.js';
 import { nameKey, legalNameOf } from './names.js';
 import { canonicalAllergen, DEFAULT_CATEGORIES } from './training.js';
 import {
@@ -62,6 +62,7 @@ function publicView(p) {
 }
 
 const LINKS = 'importLinks';
+const atLeastManager = (u) => atLeast(u, 'manager');
 const MAPPINGS = 'importMappings';
 const CHECK_LIMIT = 3; // candidates shown for a possible duplicate
 const clean = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
@@ -108,6 +109,8 @@ export function importApi({ store, api, fail, needMgr, now, settings = () => ({}
       otherRoom: arr(h.otherRoom).filter((x) => dow(x?.dow)).map((x) => ({ dow: x.dow, tab: str(x.tab) })),
       flags: arr(h.flags).filter((x) => dow(x?.dow)).map((x) => ({ id: str(x.id, 20), tab: str(x.tab), dow: x.dow, ...(date(x.date) ? { date: x.date } : {}), text: str(x.text, 120), color: str(x.color, 20), why: str(x.why, 20) })),
       mismatch: arr(h.mismatch).filter((x) => dow(x?.dow)).map((x) => ({ dow: x.dow, tab: str(x.tab), kind: str(x.kind, 10) })),
+      codes: arr(h.codes).filter((x) => dow(x?.dow) && x?.code).map((x) => ({ dow: x.dow, code: str(x.code, 60).toUpperCase(), tab: str(x.tab) })),
+      mod: h.mod === true,
     };
   }
   const linkId = (target, k) => `${target}|${k}`.slice(0, 200);
@@ -127,6 +130,7 @@ export function importApi({ store, api, fail, needMgr, now, settings = () => ({}
       values: d.values && typeof d.values === 'object' ? d.values : {},
       cells: d.cells && typeof d.cells === 'object' && !Array.isArray(d.cells) ? d.cells : {}, // availability: the manager's fix for a cell
       ...(d.primaryRoom === 'accept' ? { primaryRoom: 'accept' } : {}), // availability: take the room suggestions
+      ...(typeof d.ownSchedule === 'boolean' ? { ownSchedule: d.ownSchedule } : {}), // availability: sets their own schedule
       ...(typeof d.requestedAt === 'string' && d.requestedAt.length < 40 ? { requestedAt: d.requestedAt } : {}), // availability: when they asked
     };
   };
@@ -612,7 +616,7 @@ export function importApi({ store, api, fail, needMgr, now, settings = () => ({}
         return r;
       },
       finish(row, ctx) {
-        if (ctx.data.house) { houseFinish(row, ctx, { st, weekOffStatus, importAt }); return; }
+        if (ctx.data.house) { houseFinish(row, ctx, { st, weekOffStatus, importAt, codes: opts.codes && typeof opts.codes === 'object' ? opts.codes : {} }); return; }
         const { data, target: u, decision } = ctx;
         row.days = [];
         row.timeOff = [];
@@ -691,6 +695,14 @@ export function importApi({ store, api, fail, needMgr, now, settings = () => ({}
         row.plan = plan;
       },
     });
+    // "Sets own schedule": those rows are skipped (and say why).
+    for (const r of prev.rows) if (r.skipReason === 'ownSchedule') { r.status = 'skip'; delete r.needs; }
+    prev.counts = countsOf(prev.rows);
+    prev.checks = prev.rows.filter((r) => r.status === 'check').length;
+    // "Codes we didn't recognize": each code, how many cells, and what's done with it.
+    const codeCount = new Map();
+    for (const r of recs) for (const c of r.house?.codes || []) codeCount.set(c.code, (codeCount.get(c.code) || 0) + 1);
+    prev.codes = [...codeCount].map(([code, cells]) => ({ code, cells, choice: ['note', 'off', 'skip'].includes(opts.codes?.[code]) ? opts.codes[code] : 'note' }));
     prev.dayFields = DAY_FIELDS.filter((k) => recs.some((r) => k in (r.values || {})));
     prev.colorMap = colorMap;
     prev.weekOf = weekOf;
@@ -706,9 +718,13 @@ export function importApi({ store, api, fail, needMgr, now, settings = () => ({}
    * position from the sheet's sections (offered, applied only when ticked), and every flagged cell to decide.
    * decision.cells: { [flag id]: 'ignore' | 'standing' | 'weekOff' } for flags, { [day field]: 'remove' | 'keep' } for removals.
    */
-  function houseFinish(row, { data, target: u, decision }, { weekOffStatus, importAt }) {
+  function houseFinish(row, { data, target: u, decision }, { weekOffStatus, importAt, codes }) {
     const h = data.house;
     row.house = true;
+    // Sets their own schedule (managers and up, or the sheet's M.O.D. block): ticked by default, then not imported.
+    row.ownScheduleDefault = !!(u && atLeastManager(u)) || !!h.mod;
+    row.ownSchedule = typeof decision?.ownSchedule === 'boolean' ? decision.ownSchedule : row.ownScheduleDefault;
+    if (row.ownSchedule && u) { row.days = []; row.timeOff = []; row.flags = []; row.changes = []; row.plan = { availability: u.availability || {}, timeOff: [], primaryRooms: [] }; row.skipReason = 'ownSchedule'; return; }
     row.days = [];
     row.timeOff = [];
     if (!u) {
@@ -729,6 +745,21 @@ export function importApi({ store, api, fail, needMgr, now, settings = () => ({}
       if (choice === 'weekOff' && f.date) h.dated.push({ date: f.date, dow: f.dow, tab: f.tab, text: f.text, fromFlag: true });
       return { ...f, choice };
     });
+    // Unknown codes (WOH…): per code, available with the code as the day's note (default), unavailable, or skipped.
+    row.codes = [];
+    for (const c of h.codes || []) {
+      if (standing.has(c.dow)) continue;
+      const choice = ['note', 'off', 'skip'].includes(codes[c.code]) ? codes[c.code] : 'note';
+      row.codes.push({ ...c, choice });
+      if (choice === 'skip') continue;
+      const k = DAY_FIELDS[c.dow];
+      const was = cur[c.dow];
+      const after = { available: choice !== 'off', note: `Sheet note: ${c.code}`.slice(0, 200) };
+      if (sameDay(was, after)) continue;
+      next[c.dow] = after;
+      row.changes.push({ field: k, before: dayView(was), after: dayView(after) });
+      row.days.push({ day: c.dow, field: k, before: dayView(was), after: dayView(after), changed: true, code: c.code });
+    }
     for (const [d, k] of DAY_FIELDS.entries()) {
       const was = cur[d];
       const wasStanding = !!(was?.available === false && was?.standing);
@@ -820,7 +851,7 @@ export function importApi({ store, api, fail, needMgr, now, settings = () => ({}
       }
       return u.id;
     });
-    const out = { ...result, counts: preview.counts, effectiveFrom: /^\d{4}-\d{2}-\d{2}$/.test(opts.effectiveFrom || '') ? opts.effectiveFrom : null, notified: opts.notify === true ? result.updated : 0, timeOffAdded, primaryRooms, weekOf: preview.weekOf };
+    const out = { ...result, ownSchedule: preview.rows.filter((r) => r.skipReason === 'ownSchedule').length, counts: preview.counts, effectiveFrom: /^\d{4}-\d{2}-\d{2}$/.test(opts.effectiveFrom || '') ? opts.effectiveFrom : null, notified: opts.notify === true ? result.updated : 0, timeOffAdded, primaryRooms, weekOf: preview.weekOf };
     audit(actor, 'availability', out, args);
     return out;
   }
@@ -1015,7 +1046,7 @@ export function importApi({ store, api, fail, needMgr, now, settings = () => ({}
     'availability.importPreview': (actor, a = {}) => {
       needMgr(actor);
       const p = availabilityPreview(actor, a);
-      return { ...publicView(p), dayFields: p.dayFields, colorMap: p.colorMap, weekOf: p.weekOf, weekOffStatus: p.weekOffStatus, colorsFound: p.colorsFound };
+      return { ...publicView(p), dayFields: p.dayFields, colorMap: p.colorMap, weekOf: p.weekOf, weekOffStatus: p.weekOffStatus, colorsFound: p.colorsFound, codes: p.codes };
     },
     'availability.importApply': (actor, a = {}) => { needMgr(actor); return availabilityApply(actor, a); },
     'products.importMapping': mappingMethod('products'),
