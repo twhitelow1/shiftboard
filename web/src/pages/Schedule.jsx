@@ -69,6 +69,7 @@ export default function Schedule() {
   const { isMgr, employees, jobs, people, me, settings, call, version, today, layout } = app;
   const [ws, setWs] = useWeek();
   const [data, setData] = useState(null);
+  const [daysOff, setDaysOff] = useState([]); // days off a manager marked (core/quick-shift.js): DAY OFF on the sheet and grid
   const [fc, setFc] = useState(null);
   const [view, setViewState] = useState(initialView);
   const setView = (v) => { setViewState(v); try { localStorage.setItem(VIEW_KEY(), v); } catch { /* ignore */ } };
@@ -88,6 +89,7 @@ export default function Schedule() {
 
   const load = () => {
     call('shifts.list', { start: ws, end: addDays(ws, 6) }).then(setData).catch((e) => app.toast(e.message, 'bad'));
+    call('schedule.dayOff.list', { start: ws, end: addDays(ws, 6) }).then(setDaysOff).catch(() => setDaysOff([]));
     call(isMgr ? 'forecast.summary' : 'forecast.covers', { weekStart: ws }).then(setFc).catch(() => setFc(null));
   };
   useEffect(load, [ws, version]);
@@ -108,8 +110,12 @@ export default function Schedule() {
   const [editSection, setEditSection] = useState(null); // the section whose people a manager is editing
   const [arrange, setArrange] = useState(null); // the room whose positions a manager is arranging (Rooms & positions)
   const [strayOpen, setStrayOpen] = useState(false);
-  const openDialog = (shift, startIn) => setDialog({ shift, startIn, warnings: data?.warnings?.[shift.id] });
-  const addAt = (date, jobCodeId, userId, area = '') => isMgr && setDialog({ shift: { date, jobCodeId, userId, area, start: '16:00' } });
+  // A shift or a cell that belongs to one person and one day opens in quick mode (ShiftDialog.jsx): only the time,
+  // tag and notes change there. The toolbar's Add shift (no cell) opens the full form.
+  const openDialog = (shift, startIn) => setDialog({ shift, startIn, warnings: data?.warnings?.[shift.id], quick: isMgr && !!shift.userId });
+  const addAt = (date, jobCodeId, userId, area = '') => isMgr && setDialog({ shift: { date, jobCodeId, userId, area, start: '16:00' }, quick: !!userId });
+  const dayOffOn = (userId, date) => userId && daysOff.find((d) => d.userId === userId && d.date === date);
+  const undoDayOff = async (userId, date) => { const r = await run(() => call('schedule.dayOff.clear', { userId, date }), t('quickShift.dayOffCleared')); if (r) load(); };
   const closeDialog = (changed) => { setDialog(null); if (changed) load(); };
 
   // Sections like the house sheet, from Settings → Rooms & positions (core/layout.js): each room's
@@ -184,6 +190,7 @@ export default function Schedule() {
 
   const Cell = ({ date, userId, list, jobCodeId, area, roomOf }) => {
     const to = userId && timeOffOn(userId, date);
+    const off = dayOffOn(userId, date);
     const closed = isClosed(date);
     const canAdd = isMgr && !closed;
     return (
@@ -193,8 +200,10 @@ export default function Schedule() {
         addAt(date, jobCodeId || entry?.jobCodeId, userId, area ?? entry?.areas?.[0] ?? '');
       }}>
         {list.sort((a, b) => a.start.localeCompare(b.start)).map((s) => <ShiftChip key={s.id} s={s} showJob={groupBy === 'emp'} room={roomOf?.[s.id]} />)}
-        {!list.length && to && <span className="reqoff" title={to.reason || ''}>{to.status === 'approved' ? t('schedule.requestOff') : t('schedule.reqPending')}</span>}
-        {!list.length && !to && !closed && userId && <span className="off">{isMgr ? '' : t('schedule.off')}</span>}
+        {!list.length && off && <span className="dayoff" title={t('quickShift.cellTitle')}>{t('quickShift.cell')}
+          {isMgr && <button type="button" className="dayoff-undo no-print" disabled={busy} onClick={(e) => { e.stopPropagation(); undoDayOff(userId, date); }}>{t('quickShift.undo')}</button>}</span>}
+        {!list.length && !off && to && <span className="reqoff" title={to.reason || ''}>{to.status === 'approved' ? t('schedule.requestOff') : t('schedule.reqPending')}</span>}
+        {!list.length && !off && !to && !closed && userId && <span className="off">{isMgr ? '' : t('schedule.off')}</span>}
       </td>
     );
   };
@@ -261,7 +270,7 @@ export default function Schedule() {
           <TradeHint shifts={shifts} />
           {/* Like the house PDF. Print always uses this layout. */}
           <ScheduleSheet className={view === 'sheet' ? 'sheet-print' : 'sheet-print print-only'} sections={sheetSections} days={days} data={data} fc={fc} ws={ws} programming={prog.byDate}
-            onAdd={addAt} onOpen={openDialog} onSaved={load} onEditSection={isMgr ? (sec) => setEditSection(allSections.find((x) => x.key === sec.key) || sec) : undefined}
+            onAdd={addAt} onOpen={openDialog} onSaved={load} daysOff={daysOff} onUndoDayOff={isMgr ? undoDayOff : undefined} onEditSection={isMgr ? (sec) => setEditSection(allSections.find((x) => x.key === sec.key) || sec) : undefined}
             onArrange={isMgr ? setArrange : undefined} />
 
           {/* Desktop grid */}
@@ -347,7 +356,7 @@ export default function Schedule() {
 
           {/* The day list: phones (any view but the sheet), and desktops' Day view. */}
           {view !== 'sheet' && <div className={`${view === 'day' ? 'day-desk' : 'mobile-only'} no-print`}>
-            <MobileDay days={days} selDay={selDay} setSelDay={setSelDay} data={data} room={dept} mine={mine} setMine={setMine} openDialog={openDialog} isClosed={isClosed} fcDay={fcDay} addAt={addAt} prog={prog} />
+            <MobileDay days={days} selDay={selDay} setSelDay={setSelDay} data={data} daysOff={daysOff} room={dept} mine={mine} setMine={setMine} openDialog={openDialog} isClosed={isClosed} fcDay={fcDay} addAt={addAt} prog={prog} />
           </div>}
           {isMgr && view !== 'sheet' && <CoveragePanel days={days} byDate={prog.byDate} onChanged={reloadAll} />}
         </>
@@ -362,7 +371,8 @@ export default function Schedule() {
       )}
       {editSection && <SectionPeople section={editSection} ws={ws} sections={allSections} onClose={(changed) => { setEditSection(null); if (changed) load(); }} />}
 
-      {dialog && <ShiftDialog shift={dialog.shift} startIn={dialog.startIn} warnings={dialog.warnings} events={data?.events || []} onClose={closeDialog} />}
+      {dialog && <ShiftDialog shift={dialog.shift} startIn={dialog.startIn} warnings={dialog.warnings} events={data?.events || []} onClose={closeDialog}
+        quick={dialog.quick} weekShifts={shifts} daysOff={daysOff} />}
       {importOpen && <ImportDialog ws={ws} onClose={(changed) => { setImportOpen(false); if (changed) load(); }} />}
       {clearOpen && <ClearWeekDialog ws={ws} data={data} onClose={(changed) => { setClearOpen(false); if (changed) load(); }} />}
       {publishOpen && <PublishDialog ws={ws} label={weekLabel(ws)} drafts={drafts} onClose={(changed) => { setPublishOpen(false); if (changed) reloadAll(); }} />}
@@ -435,7 +445,7 @@ function StrayDialog({ stray, ws, onClose }) {
  * rooms, by start time or by name (core/day-list.js). The order is remembered on this device. Shifts in
  * hidden or unlisted sections never show; "Just me" and the room chips filter every order.
  */
-function MobileDay({ days, selDay, setSelDay, data, room, mine, setMine, openDialog, isClosed, fcDay, addAt, prog }) {
+function MobileDay({ days, selDay, setSelDay, data, daysOff = [], room, mine, setMine, openDialog, isClosed, fcDay, addAt, prog }) {
   const t = useT();
   const { jobs, people, me, isMgr, today, has, layout, settings } = useApp();
   // Room banners in the room's color (Settings → Rooms & positions), like the sheet, the PDF and the phone app.
@@ -510,6 +520,9 @@ function MobileDay({ days, selDay, setSelDay, data, room, mine, setMine, openDia
           })}
         </div>
       ))}
+      {!mine && daysOff.some((d) => d.date === selDay) && (
+        <div className="small muted" style={{ marginTop: 8 }}>{t('quickShift.dayOff')}:{' '}{daysOff.filter((d) => d.date === selDay).map((d) => people[d.userId]?.name).filter(Boolean).join(', ')}</div>
+      )}
       {!mine && offToday.length > 0 && (
         <div className="small muted" style={{ marginTop: 8 }}>{t('schedule.offRequested')}{' '}{offToday.map((t) => people[t.userId]?.name).filter(Boolean).join(', ')}</div>
       )}
