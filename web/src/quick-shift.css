@@ -10,9 +10,9 @@
 @media (max-width: 600px) { .quick-chip { min-height: 40px; } }
 
 /* DAY OFF: marked off on purpose, unlike OFF (just not scheduled). Light blue on the sheet so it reads apart from the yellow OFF. */
-.sheet td.dayoff { background: #bfdbfe; color: #1e3a8a; letter-spacing: .02em; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.sheet td.dayoff { background: #fecaca; color: #991b1b; letter-spacing: .02em; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .dayoff-undo { margin-left: 6px; font: inherit; font-size: 10px; font-weight: 600; text-transform: none; color: inherit; background: none; border: 0; padding: 0 2px; text-decoration: underline; cursor: pointer; }
-.sched .dayoff { font-size: 11px; font-weight: 700; color: var(--brand); background: var(--brand-soft); border-radius: 6px; padding: 5px 6px; display: block; text-align: center; letter-spacing: .02em; }
+.sched .dayoff { font-size: 11px; font-weight: 700; color: var(--bad); background: var(--bad-soft); border-radius: 6px; padding: 5px 6px; display: block; text-align: center; letter-spacing: .02em; }
 /* Quick mode's footer holds Delete, Day off, Cancel and Save: on phones the left ones take their own line. */
 @media (max-width: 600px) {
   .modal-foot:has(.quick-dayoff) { flex-wrap: wrap; }
