@@ -24,7 +24,7 @@ import { showTimeOffTab, timeOffRoute } from '@/navigation';
 
 export default function More() {
   const { t, tn, chosen, setLang, date } = useI18n();
-  const { me, boot, settings, server, client, signOut, accounts, openRestaurant, startAdding, colors, has, isLead, canApprove, version } = useApp();
+  const { me, boot, settings, server, client, signOut, accounts, openRestaurant, startAdding, colors, has, isLead, canApprove, version, isMgr } = useApp();
   const toast = useToast();
   const errorText = useErrorText();
   const [run, busy] = useAction();
@@ -125,6 +125,7 @@ export default function More() {
         {!showTimeOffTab(has) ? <ListRow icon="sun" title={t('more.timeOff')} onPress={() => router.push(timeOffRoute(has))}
           right={canApprove && approvals ? <Badge tone="warn" text={String(approvals)} /> : null} /> : null}
         <ListRow icon="clock" title={t('more.availability')} sub={t('more.availabilityHelp')} onPress={() => router.push('/availability')} />
+        <ListRow icon="clock" title={isMgr ? t('schedLog.title') : t('schedLog.mineTitle')} sub={t('schedLog.menuHelp')} onPress={() => router.push('/schedule-log')} />
       </Card>
 
       <Card style={{ gap: 4 }}>

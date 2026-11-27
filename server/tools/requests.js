@@ -2,7 +2,7 @@
 // swaps.*. Coworkers and managers are notified exactly as when it's done in the app.
 import { z } from 'zod';
 import { defineTool } from './registry.js';
-import { lookupOf, shiftOut, findPerson, dateArg, idArg } from './helpers.js';
+import { lookupOf, shiftOut, findPerson, dateArg, idArg, confirmArg } from './helpers.js';
 import { resolveDate } from './dates.js';
 import { canApprove, canManageSchedule } from '../../core/roles.js';
 import { DOW_LONG } from '../../core/time.js';
@@ -11,6 +11,8 @@ import { AppError } from '../../core/service.js';
 const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const TIME = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'a 24-hour time like 16:00');
 const approver = (user, info) => canApprove(user, info.settings);
+const dayOut = (name, a) => ({ day: name, ...(a?.available === false ? { available: false } : { available: true, ...(a?.from ? { from: a.from } : {}), ...(a?.to ? { to: a.to } : {}) }), ...(a?.note ? { note: a.note } : {}) });
+const dayText = (d) => (d.available === false ? 'unavailable' : d.from || d.to ? `${d.from || 'open'}–${d.to || 'close'}` : 'any time') + (d.note ? ` (${d.note})` : '');
 
 function requestOut(r, look) {
   return {
@@ -22,7 +24,18 @@ function requestOut(r, look) {
     createdAt: r.createdAt, ...(r.resolution ? { resolution: r.resolution } : {}),
   };
 }
-const timeOffOut = (t, look) => ({ id: t.id, person: look.people[t.userId]?.name || '', from: t.startDate, to: t.endDate, status: t.status, ...(t.reason ? { reason: t.reason } : {}), ...(t.note ? { note: t.note } : {}) });
+const ORD = (n) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th'}`;
+/** A time-off request for the tools: when it was requested and its place in line (core/time-off.js timeOff.queue). */
+const timeOffOut = (t, look, q = {}) => {
+  const i = q[t.id] || {};
+  return {
+    id: t.id, person: look.people[t.userId]?.name || '', from: t.startDate, to: t.endDate, status: t.status, ...(t.reason ? { reason: t.reason } : {}), ...(t.note ? { note: t.note } : {}),
+    ...(i.requestedAt ? { requestedAt: i.requestedAt, ...(i.approx ? { requestedAtApprox: true } : {}) } : {}), ...(i.source && i.source !== 'app' ? { cameIn: i.source } : {}),
+    ...(i.enteredByName ? { addedBy: i.enteredByName } : {}),
+    ...(i.place ? { order: `${ORD(i.place)} of ${i.of} for ${i.date}`, ...(i.others ? { othersInLine: i.others.map((o) => ({ person: o.name, requestedAt: o.requestedAt, place: o.place, status: o.status })) } : {}) } : {}),
+  };
+};
+const byRequested = (q) => (a, b) => String(q[a.id]?.requestedAt || '9').localeCompare(String(q[b.id]?.requestedAt || '9')) || a.id.localeCompare(b.id);
 
 export default [
   // ---------- time off ----------
@@ -33,8 +46,8 @@ export default [
     input: { everyone: z.boolean().optional().describe('Approvers only: everyone\'s requests, not just yours') },
     consent: 'read',
     async handler(user, args, ctx) {
-      const [look, rows] = await Promise.all([lookupOf(ctx), ctx.read('timeOff.list')]);
-      const list = rows.filter((t) => args.everyone || t.userId === user.id).map((t) => timeOffOut(t, look));
+      const [look, rows, q] = await Promise.all([lookupOf(ctx), ctx.read('timeOff.list'), ctx.read('timeOff.queue')]);
+      const list = rows.filter((t) => args.everyone || t.userId === user.id).map((t) => timeOffOut(t, look, q));
       return { summary: `${list.length} time-off request(s).`, data: { timeOff: list } };
     },
   }),
@@ -42,14 +55,33 @@ export default [
     name: 'request_time_off',
     title: 'Request time off',
     description: 'Ask for time off (one day, or from startDate to endDate). It goes to the managers for approval, like in the app. '
-      + 'Says how many of your shifts fall on those days (you still have to trade or give those away).',
-    input: { startDate: dateArg('First day off'), endDate: dateArg('Last day off (default: the same day)').optional(), reason: z.string().max(300).optional() },
+      + 'Says how many of your shifts fall on those days (you still have to trade or give those away). '
+      + 'Managers (and approvers for people they approve for) can add it for someone else with person: say how it came in (source) and when they asked '
+      + '(requestedAt, never in the future); it\'s approved unless status is "pending", and the person is notified. Tell the user exactly what will be added, ask, and call again with confirm: true.',
+    input: {
+      startDate: dateArg('First day off'), endDate: dateArg('Last day off (default: the same day)').optional(), reason: z.string().max(300).optional(),
+      person: z.string().max(80).optional().describe('Managers: who it\'s for (name or id). Leave out for your own.'),
+      source: z.enum(['email', 'text', 'phone', 'in_person', 'sheet', 'other']).optional().describe('For someone else: how the request came in'),
+      requestedAt: z.string().max(40).optional().describe('For someone else: when they asked (YYYY-MM-DD or an ISO time), not in the future'),
+      status: z.enum(['approved', 'pending']).optional().describe('For someone else: approved (default) or pending'),
+      confirm: confirmArg,
+    },
     write: true, consent: 'timeOff', idempotent: false,
     async handler(user, args, ctx) {
       const today = ctx.today();
       const startDate = resolveDate(args.startDate, today);
       const endDate = args.endDate ? resolveDate(args.endDate, today) : startDate;
       if (endDate < startDate) throw new AppError(400, 'The end date is before the start date');
+      if (args.person) {
+        const look = await lookupOf(ctx);
+        const who = findPerson(look, args.person);
+        if (who.id !== look.me.id) {
+          if (args.confirm !== true) throw new AppError(409, `Not done: adding time off for ${who.name} notifies them. Tell the user exactly what will be added, ask, and call again with confirm: true.`);
+          const t = await ctx.write('timeOff.create', { userId: who.id, startDate, endDate, reason: args.reason || '', source: args.source || 'other', ...(args.requestedAt ? { requestedAt: args.requestedAt } : {}), status: args.status || 'approved' });
+          return { summary: `Time off added for ${who.name}: ${startDate}${endDate !== startDate ? ` to ${endDate}` : ''} (${t.status}).${t.clashShifts?.length ? ` They have ${t.clashShifts.length} published shift(s) then: cover them or open them up; nothing was removed.` : ''}`,
+            data: { id: t.id, person: who.name, from: t.startDate, to: t.endDate, status: t.status, requestedAt: t.requestedAt, cameIn: t.source, shiftsOnThoseDays: t.clashShifts || [] } };
+        }
+      }
       if (startDate < today) throw new AppError(400, 'Pick a day from today on');
       const t = await ctx.write('timeOff.create', { startDate, endDate, reason: args.reason || '' });
       return { summary: `Time off requested for ${startDate}${endDate !== startDate ? ` to ${endDate}` : ''}: ${t.status}.${t.clashes ? ` You have ${t.clashes} shift(s) on those days.` : ''}`, data: { id: t.id, from: t.startDate, to: t.endDate, status: t.status, shiftsOnThoseDays: t.clashes } };
@@ -57,46 +89,81 @@ export default [
   }),
 
   // ---------- availability ----------
+  // Everyone reads and changes their own; managers (and whoever Roles & features lets edit staff availability) someone
+  // else's, with confirm: true. Every change is in that person's Availability history (via: connector or assistant),
+  // and they're notified when it wasn't them (core/availability-api.js).
   defineTool({
     name: 'get_availability',
     title: 'Availability',
-    description: 'Your weekly availability (days you can\'t work, or only between certain hours). Managers can ask for someone else\'s with person.',
+    description: 'Your weekly availability (days you can\'t work, or only between certain hours, with any note), your notes and limits. '
+      + 'Managers can ask for someone else\'s with person.',
     input: { person: z.string().max(80).optional().describe('Managers: whose availability (name)') },
     consent: 'read',
     async handler(user, args, ctx) {
       const look = await lookupOf(ctx);
       const who = args.person && canManageSchedule(user) ? findPerson(look, args.person) : look.me;
-      const av = (who.id === look.me.id ? look.me : look.people[who.id])?.availability || {};
-      const days = DOW_LONG.map((name, i) => {
-        const a = av[i];
-        return { day: name, ...(a?.available === false ? { available: false } : { available: true, ...(a?.from ? { from: a.from } : {}), ...(a?.to ? { to: a.to } : {}) }) };
-      });
-      return { summary: `Availability for ${who.name}.`, data: { person: who.name, days } };
+      const a = await ctx.read('availability.get', { userId: who.id });
+      const days = DOW_LONG.map((name, i) => dayOut(name, a.availability[i]));
+      return {
+        summary: `Availability for ${who.name}.`,
+        data: { person: who.name, days, ...(a.notes ? { notes: a.notes } : {}), ...(a.maxHours != null ? { maxHours: a.maxHours } : {}), ...(a.maxDays != null ? { maxDays: a.maxDays } : {}),
+          ...(a.effectiveFrom ? { effectiveFrom: a.effectiveFrom, before: DOW_LONG.map((name, i) => dayOut(name, a.previous?.[i])) } : {}) },
+      };
     },
   }),
   defineTool({
     name: 'set_availability',
-    title: 'Set my availability',
-    description: 'Change your own weekly availability for the days you list (other days stay as they are). For each day: available false (can\'t work), '
-      + 'or available true with optional from/to hours. Managers see it when they schedule.',
+    title: 'Set availability',
+    description: 'Change weekly availability for the days you list (other days stay as they are). For each day: available false (can\'t work), '
+      + 'or available true with optional from/to hours, and an optional note. Yours by default. Managers can change someone else\'s with person: '
+      + 'tell the user exactly what will change for whom, ask, and call again with confirm: true. That person is notified and the change is logged.',
     input: {
       days: z.array(z.object({
         day: z.enum(DAY_NAMES).describe('Weekday, lowercase English'), available: z.boolean(),
         from: TIME.optional().describe('Available from (24-hour)'), to: TIME.optional().describe('Available until (24-hour)'),
+        note: z.string().max(200).optional().describe('A note for that day (e.g. "school until 2")'),
       })).min(1).max(7),
+      person: z.string().max(80).optional().describe('Managers: whose availability (name or id). Leave out for your own.'),
+      confirm: confirmArg,
     },
     write: true, consent: 'availability', idempotent: true,
     async handler(user, args, ctx) {
       const look = await lookupOf(ctx);
-      const next = { ...(look.me.availability || {}) };
+      const who = args.person ? findPerson(look, args.person) : look.me;
+      const other = who.id !== look.me.id;
+      if (other && args.confirm !== true) {
+        throw new AppError(409, `Not done: changing ${who.name}'s availability notifies them. Tell the user exactly what will change, ask, and call again with confirm: true.`);
+      }
+      const cur = await ctx.read('availability.get', { userId: who.id });
+      const next = { ...(cur.availability || {}) };
       for (const d of args.days) {
         const i = DAY_NAMES.indexOf(d.day);
-        if (!d.available) next[i] = { available: false };
-        else if (d.from || d.to) next[i] = { available: true, ...(d.from ? { from: d.from } : {}), ...(d.to ? { to: d.to } : {}) };
+        const note = d.note ? { note: d.note } : {};
+        if (!d.available) next[i] = { available: false, ...note };
+        else if (d.from || d.to || d.note) next[i] = { available: true, ...(d.from ? { from: d.from } : {}), ...(d.to ? { to: d.to } : {}), ...note };
         else delete next[i];
       }
-      await ctx.write('employees.setAvailability', { availability: next });
-      return { summary: `Availability saved for ${args.days.map((d) => d.day).join(', ')}.`, data: { availability: next } };
+      await ctx.write('employees.setAvailability', { availability: next, ...(other ? { userId: who.id } : {}) });
+      return { summary: `Availability saved for ${other ? `${who.name}: ` : ''}${args.days.map((d) => d.day).join(', ')}.${other ? ` ${who.name} was notified.` : ''}`, data: { person: who.name, availability: next } };
+    },
+  }),
+  defineTool({
+    name: 'get_availability_history',
+    title: 'Availability history',
+    description: 'Every change to someone\'s weekly availability in the last 2 years: who changed it, when, how (app, import, connector, assistant) '
+      + 'and each day before → after. Yours by default; managers can ask for someone else\'s with person.',
+    input: { person: z.string().max(80).optional().describe('Managers: whose history (name)'), limit: z.number().int().min(1).max(100).optional() },
+    consent: 'read',
+    async handler(user, args, ctx) {
+      const look = await lookupOf(ctx);
+      const who = args.person && canManageSchedule(user) ? findPerson(look, args.person) : look.me;
+      const rows = await ctx.read('availability.history', { userId: who.id, limit: args.limit || 30 });
+      const changes = rows.map((e) => ({
+        at: e.at, by: e.actorName, via: e.via, ...(e.fileName ? { file: e.fileName } : {}),
+        days: e.days.map((d) => ({ day: DOW_LONG[d.day], before: dayText(d.before), after: dayText(d.after) })),
+        ...(e.fields.length ? { other: e.fields } : {}),
+      }));
+      return { summary: `${changes.length} change(s) to ${who.name}'s availability.`, data: { person: who.name, changes } };
     },
   }),
 
@@ -168,8 +235,9 @@ export default [
       + 'You can\'t approve your own.',
     role: 'supervisor', can: approver, consent: 'read',
     async handler(user, args, ctx) {
-      const [look, s, t] = await Promise.all([lookupOf(ctx), ctx.read('swaps.list'), ctx.read('timeOff.list')]);
-      const data = { trades: s.approvals.map((r) => requestOut(r, look)), timeOff: t.filter((x) => x.status === 'pending').map((x) => timeOffOut(x, look)) };
+      const [look, s, t, q] = await Promise.all([lookupOf(ctx), ctx.read('swaps.list'), ctx.read('timeOff.list'), ctx.read('timeOff.queue')]);
+      // Only what's in this person's "Approves for" scope (the app's "waiting on you"); time off oldest request first.
+      const data = { trades: s.approvals.map((r) => requestOut(r, look)), timeOff: t.filter((x) => x.status === 'pending' && !x.outOfScope).sort(byRequested(q)).map((x) => timeOffOut(x, look, q)) };
       return { summary: `${data.trades.length} trade/pickup request(s) and ${data.timeOff.length} time-off request(s) waiting.`, data };
     },
   }),

@@ -80,6 +80,7 @@ export default function MyShifts() {
         {has('timeOff') && <a className="btn" href="#/timeoff/new"><Icon name="sun" />{t('myShifts.requestTimeOff')}</a>}
         {canAsk && <a className="btn" href="#/swaps"><Icon name="swap" />{t('myShifts.tradeAShift')}</a>}
         {has('timeOff') && <a className="btn" href="#/timeoff/availability"><Icon name="clock" />{t('myShifts.myAvailability')}</a>}
+        <a className="btn" href="#/my-changes"><Icon name="clock" />{t('scheduleLog.mineTitle')}</a>
       </div>
 
       <div className="section">

@@ -277,6 +277,10 @@ table.sched { border-collapse: separate; border-spacing: 0; width: 100%; min-wid
 .shift.draft { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--jc) 10%, var(--surface)), color-mix(in srgb, var(--jc) 10%, var(--surface)) 5px, var(--surface) 5px, var(--surface) 10px); border-left-style: dashed; }
 .shift.open { background: var(--surface); outline: 1.5px dashed var(--jc); outline-offset: -1.5px; border-left: 0; }
 .shift.mine { box-shadow: 0 0 0 2px var(--brand); }
+/* Outside their primary room (Team → person → Positions): light green, like the house sheet (core/layout.js offPrimary). */
+.shift.elsewhere, .sh-shift.elsewhere { background: #dcfce7; color: #14532d; }
+.sched-legend { display: flex; align-items: center; gap: 6px; margin: 8px 0; }
+.sched-legend .swatch-elsewhere { display: inline-block; width: 22px; height: 14px; border-radius: 4px; background: #dcfce7; border: 1px solid #86efac; }
 .shift .warn-ico { color: var(--bad); font-weight: 800; margin-left: 3px; }
 .shift .pend { color: var(--warn); font-weight: 800; margin-left: 3px; }
 

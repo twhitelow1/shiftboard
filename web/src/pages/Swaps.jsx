@@ -5,6 +5,7 @@ import ShiftDialog from './ShiftDialog.jsx';
 import { TradeStatsLink } from './reports/TradeStats.jsx'; // managers: Trades & pickups by season
 import { tradesAllowed } from './TradeHint.jsx'; // Roles & features: may this role ask for trades
 import { useT, prettyDate, stamp } from '../i18n/index.js';
+import { MyApprovalScope } from './ApprovalScope.jsx'; // "You approve: Bar positions"
 
 // Catalog keys (web/src/i18n).
 const TYPE = { swap: 'swaps.typeSwap', drop: 'swaps.typeDrop', pickup: 'swaps.typePickup' };
@@ -42,6 +43,7 @@ export default function Swaps() {
         {tabs.map((t) => <button key={t.key} className={cur === t.key ? 'on' : ''} onClick={() => setTab(t.key)}>{t.label}{t.n > 0 && <span className="count" style={{ background: cur === t.key ? 'var(--brand)' : 'var(--text-3)' }}>{t.n}</span>}</button>)}
         <TradeStatsLink style={{ marginLeft: 'auto', alignSelf: 'center', flex: 'none' }} />
       </div>
+      {cur === 'approvals' && <MyApprovalScope kind="trades" />}
       {cur === 'offers' && <p className="small muted" style={{ marginTop: -4 }}>{t('swaps.shiftsCoworkersAreGivingAway')}{settings.requireSwapApproval ? t('swaps.aManagerApprovesBeforeIts') : ''}</p>}
       <div className="card">
         {!list.length && <Empty icon="swap" title={cur === 'approvals' ? t('swaps.nothingToApprove') : cur === 'offers' ? t('swaps.nothingUpForGrabsRight') : t('swaps.noRequests')}>
