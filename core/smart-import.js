@@ -588,6 +588,8 @@ const PRICE_TAIL = /(?:\s*[.·…_-]{2,}\s*|\s+[-–—]\s+|\s+)\$?\s?(\d{1,4}(?
  */
 export function menuFromText(text) {
   const lines = String(text ?? '').split(/\r?\n/).map(clean).filter(Boolean);
+  const labeled = menuFromLabeledText(lines);
+  if (labeled) return labeled;
   const hasPrices = lines.filter((l) => PRICE_TAIL.test(l)).length >= 2;
   const out = [];
   let category = '';
@@ -608,6 +610,95 @@ export function menuFromText(text) {
     if (cur) cur.values.description = [cur.values.description, l].filter(Boolean).join(' ');
   });
   return out.filter((r) => r.values.name && r.values.name.length <= 80).slice(0, MAX_ROWS);
+}
+
+// A menu written as labeled blocks, one dish after another (a common kitchen/FOH document):
+//   Dish name
+//   Menu Price: $20.00
+//   Description:            (the text on this line or the next ones)
+//   Allergens: Egg, Wheat, Milk
+//   Friendliness: Vegetarian, GF Possible
+// with section headings (a short line on its own) between them. Labels in English or Spanish; any order.
+const MENU_LABELS = [
+  ['price', /^(?:menu\s+)?(?:price|precio)(?:\s+del\s+men[uú])?$/i],
+  ['description', /^(?:description|descripci[oó]n|desc)$/i],
+  ['allergens', /^(?:(?:major\s+)?allerg(?:ens?|ies|y)|al[eé]rgenos?|alergias?)$/i],
+  ['dietary', /^(?:friendliness|dietary|diet|dieta|tags?)$/i],
+  ['ingredients', /^(?:ingredients?|ingredientes?|key ingredients)$/i],
+  ['recipe', /^(?:recipe|receta|build|spec|specs)$/i],
+  ['prep', /^(?:prep(?:aration)?(?:\s+notes)?|preparaci[oó]n|kitchen notes)$/i],
+  ['selling', /^(?:selling\s+notes?|server\s+notes?|notes?|notas?|talking points)$/i],
+  ['pairings', /^(?:pairings?|maridaje|pair with)$/i],
+  ['category', /^(?:category|section|course|categor[ií]a|secci[oó]n)$/i],
+];
+const labelOf = (line) => {
+  const m = line.match(/^([^:]{2,30}):\s*(.*)$/);
+  if (!m) return null;
+  const hit = MENU_LABELS.find(([, re]) => re.test(m[1].trim()));
+  return hit ? { field: hit[0], value: m[2].trim() } : null;
+};
+/** "GF Possible" / "DF possible" / "Treenut free possible": what a dish can be made, not what it is. */
+const POSSIBLE = /\bpossible\b|\bon request\b|\ba pedido\b|\bopci[oó]n\b/i;
+export function menuFromLabeledText(lines) {
+  const labels = lines.map(labelOf);
+  const count = labels.filter(Boolean).length;
+  if (count < 4 || labels.filter((l) => l && (l.field === 'price' || l.field === 'allergens' || l.field === 'description')).length < 2) return null;
+  // A dish starts at the line just before its first label (after a run of non-label lines).
+  const out = [];
+  let category = '';
+  let cur = null;
+  let last = null; // the field a following plain line continues (Description: then text below it)
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lab = labels[i];
+    if (lab) {
+      if (!cur) continue; // a label before any dish name
+      if (lab.field === 'category') { category = lab.value; cur.values.category = lab.value; last = null; continue; }
+      const value = /^n\/?a\.?$/i.test(lab.value) ? '' : lab.value;
+      cur.values[lab.field] = [cur.values[lab.field], value].filter(Boolean).join(' ');
+      if (!cur.present.includes(lab.field)) cur.present.push(lab.field);
+      last = lab.value ? null : lab.field; // "Description:" alone: its text is on the lines below
+      continue;
+    }
+    // A plain line: a new dish when the next line is a label, a section heading when the line after it starts a dish,
+    // otherwise more text for the label just above (Description:\n<text>).
+    const next = labels[i + 1];
+    // A new dish: the next line is a label and this isn't the text of an open label, or that label is already filled.
+    if (next && (!last || !cur || cur.present.includes(next.field))) {
+      cur = { row: i + 1, values: { name: line.replace(/[.·…_]+$/, '').trim(), category }, present: ['name', 'category'] };
+      out.push(cur);
+      last = null;
+      continue;
+    }
+    const startsDishNext = i + 2 < lines.length && !labels[i + 1] && !!labels[i + 2];
+    if (!last && (startsDishNext || !cur) && line.length <= 40 && line.split(' ').length <= 5) { category = titleCase(line.replace(/:$/, '')); cur = null; last = null; continue; }
+    if (cur && last) cur.values[last] = [cur.values[last], line].filter(Boolean).join(last === 'recipe' ? '\n' : ' ');
+  }
+  // "GF Possible" → not a dietary tag, but a selling note; allergen details in brackets → a note too.
+  for (const r of out) {
+    const notes = [];
+    if (r.values.allergens) r.values.allergens = r.values.allergens.replace(/\bsoy\s*beans?\b|\bsoybeans?\b/gi, 'soy').replace(/\btree\s*nuts?\b|\btreenuts?\b/gi, 'tree nuts');
+    if (r.values.dietary) {
+      const parts = splitList(r.values.dietary);
+      const sure = parts.filter((t) => !POSSIBLE.test(t) && !/^n\/?a$/i.test(t));
+      const maybe = parts.filter((t) => POSSIBLE.test(t)).map((t) => t.replace(POSSIBLE, '').trim()).filter(Boolean);
+      r.values.dietary = sure.map((t) => t.replace(/\s*\(.*\)\s*$/, '')).join(', ');
+      if (maybe.length) notes.push(`Can be made: ${parseDietary(maybe.join(', ')).join(', ') || maybe.join(', ')}`);
+      const asides = parts.map((t) => t.match(/\((.+)\)/)?.[1]).filter(Boolean);
+      if (asides.length) notes.push(`Dietary notes: ${asides.join('; ')}`);
+    }
+    if (r.values.allergens && /\(/.test(r.values.allergens)) {
+      const asides = [...r.values.allergens.matchAll(/\(([^)]*)\)?/g)].map((m) => clean(m[1])).filter(Boolean);
+      if (asides.length) notes.push(`Allergen notes: ${asides.join('; ')}`);
+      r.values.allergens = r.values.allergens.replace(/\([^)]*\)?/g, ', ');
+    }
+    if (notes.length) {
+      r.values.selling = [r.values.selling, ...notes].filter(Boolean).join('\n');
+      if (!r.present.includes('selling')) r.present.push('selling');
+    }
+  }
+  const rows = out.filter((r) => r.values.name && r.values.name.length <= 80);
+  return rows.length >= 2 ? rows.slice(0, MAX_ROWS) : null;
 }
 
 const EMAIL_IN = /[^\s@<>,;()]+@[^\s@<>,;()]+\.[a-z]{2,}/i;
