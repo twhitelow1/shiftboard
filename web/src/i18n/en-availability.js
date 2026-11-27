@@ -222,6 +222,15 @@ export const schedule = {
 
 /** Time off → Availability → Import: the availability import. */
 export const smartImport = {
+  codesTitle: 'Codes we didn’t recognize',
+  codesHelp: 'Words on the sheet that aren’t times or REQ OFF. By default the person is available that day with the code kept as a note.',
+  codeCells: { one: 'in {count} cell', other: 'in {count} cells' },
+  code_note: 'Available, keep it as a note',
+  code_off: 'Unavailable',
+  code_skip: 'Skip it',
+  ownSchedule: 'Sets own schedule: skip availability',
+  skippedOwnSchedule: 'Skipped: sets own schedule',
+  done_ownSchedule: { one: '{count} person skipped: sets own schedule.', other: '{count} people skipped: set their own schedule.' },
   importAvailability: 'Import availability',
   titleAvailability: 'Import availability',
   subAvailability: 'Each person’s weekly availability from a sheet (people are matched, never added)',

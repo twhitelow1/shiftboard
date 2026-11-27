@@ -10,7 +10,7 @@
 //   roles.custom.delete  { id, confirm? }            Admins and Super Admins; with people on it, first answers
 //                                                    { needsConfirm, people } — confirm: true moves them to the base level
 // Granting one (employees.save { customRole }) follows the base level: nobody grants a base level above their own.
-import { CUSTOM_BASES, customRolesOf } from './roles.js';
+import { CUSTOM_BASES, customRolesOf, useCustomRoles } from './roles.js';
 import { roleMatrix, cleanRoleFeatures } from './role-features.js';
 
 const text = (v, max) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -37,6 +37,7 @@ export function customRoleApi({ store, settings, putSettings, fail, needAuth, ne
       if (cur) {
         const next = roles.map((r) => (r.id === cur.id ? { ...r, name, nameEs, base: a.base } : r));
         putSettings({ customRoles: next });
+        useCustomRoles(next); // labels in this same call (notifications) use the new name
         if (cur.base !== a.base) for (const u of peopleOn(cur.id)) store.update('users', u.id, { role: a.base }); // its people follow the new level
         audit(actor, 'roles.custom.save', { id: cur.id, name, base: a.base, ...(cur.name !== name ? { renamedFrom: cur.name } : {}) });
         return list().find((r) => r.id === cur.id);
@@ -48,6 +49,7 @@ export function customRoleApi({ store, settings, putSettings, fail, needAuth, ne
       const next = [...roles, { id, name, nameEs, base: a.base }];
       const roleFeatures = cleanRoleFeatures({ ...(st.roleFeatures || {}), [id]: copy }, { ...st, customRoles: next });
       putSettings({ customRoles: next, roleFeatures });
+      useCustomRoles(next);
       audit(actor, 'roles.custom.create', { id, name, base: a.base });
       return list().find((r) => r.id === id);
     },

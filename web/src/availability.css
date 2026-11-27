@@ -42,3 +42,6 @@
 .ww-table td { text-align: center; }
 .ww-table td select { min-width: 120px; }
 .pp-primary { gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+/* Time off's toolbar: the tabs keep a full line; the buttons wrap under them on narrower screens. */
+.to-toolbar { flex-wrap: wrap; }
+.to-toolbar .tabs { flex: 1 1 420px !important; min-width: 0; overflow-x: auto; }

@@ -438,6 +438,22 @@ function PreviewStep({ target, preview, options, setOption, busy, filter, setFil
           <button key={s} className={`chip ${filter === s ? 'on' : ''} ${s === 'check' ? 'si-chip-check' : ''}`} onClick={() => setFilter(filter === s ? '' : s)}>{t(`smartImport.chip_${s}`, { count: c[s] })}</button>
         ))}
       </div>
+      {target === 'availability' && preview.codes?.length > 0 && (
+        <div className="card card-pad col av-codes" style={{ gap: 8 }}>
+          <b>{t('smartImport.codesTitle')}</b>
+          <div className="tiny faint">{t('smartImport.codesHelp')}</div>
+          {preview.codes.map((x) => (
+            <div key={x.code} className="row wrap" style={{ gap: 8 }}>
+              <b style={{ minWidth: 70 }}>{x.code}</b>
+              <span className="small muted" style={{ flex: '1 1 100px' }}>{t('smartImport.codeCells', { count: x.cells })}</span>
+              <select className="input sm" value={x.choice} disabled={busy} aria-label={x.code}
+                onChange={(e) => setOption('codes', { ...(options.codes || {}), [x.code]: e.target.value })}>
+                {['note', 'off', 'skip'].map((ch) => <option key={ch} value={ch}>{t(`smartImport.code_${ch}`)}</option>)}
+              </select>
+            </div>
+          ))}
+        </div>
+      )}
       {c.check > 0 && <div className="alert warn"><Icon name="alert" size={16} /><div>{t(target === 'availability' ? 'smartImport.decideCellsFirst' : 'smartImport.decideFirst', { count: c.check })}</div></div>}
       {!c.check && !toImport && <div className="alert info"><Icon name="check" size={16} />{t('smartImport.nothingToImport')}</div>}
 
@@ -587,6 +603,7 @@ function DoneStep({ target, result: r, options }) {
       </div>
       {r.positionsCreated?.length > 0 && <div className="small">{t('smartImport.done_positions', { names: r.positionsCreated.join(', ') })}</div>}
       {r.categoriesCreated?.length > 0 && <div className="small">{t('smartImport.done_categories', { names: r.categoriesCreated.join(', ') })}</div>}
+      {target === 'availability' && r.ownSchedule > 0 && <div className="small">{t('smartImport.done_ownSchedule', { count: r.ownSchedule })}</div>}
       {target === 'availability' && (r.timeOffAdded > 0 || r.primaryRooms > 0) && <div className="small">{t('smartImport.done_timeOff', { count: r.timeOffAdded || 0 })} {r.primaryRooms ? t('smartImport.done_rooms', { count: r.primaryRooms }) : ''}</div>}
       {target === 'availability' && <div className="small">{r.effectiveFrom ? t('smartImport.done_effective', { date: prettyDate(r.effectiveFrom) }) : t('smartImport.done_now')}{' '}{r.notified ? t('smartImport.done_notified', { count: r.notified }) : t('smartImport.done_notNotified')}</div>}
       {target === 'availability' && <div className="small muted">{t('smartImport.done_logged')}</div>}
@@ -687,6 +704,13 @@ function HouseRowCard({ row: r, busy, excluded, onToggle, decision, decide }) {
         <b className="si-row-name">{r.label || '—'}</b>
         {r.match && !r.candidates && <span className="small muted">{t('smartImport.matches', { name: r.match.name })} · {t(`smartImport.by_${r.match.by}`)}</span>}
       </div>
+      {r.match && (
+        <label className="check small">
+          <input type="checkbox" checked={!!r.ownSchedule} disabled={busy} onChange={(e) => decide({ ownSchedule: e.target.checked })} />
+          {t('smartImport.ownSchedule')}
+        </label>
+      )}
+      {r.skipReason === 'ownSchedule' && <div className="tiny faint">{t('smartImport.skippedOwnSchedule')}</div>}
       {r.problems.map((p, i) => <div key={`p${i}`} className="small si-problem"><Icon name="alert" size={14} />{t(`smartImport.p_${p.code}`, p.params)}</div>)}
       {r.problems.some((p) => p.code === 'notOnTeam' || p.code === 'noCreate') && <div className="tiny faint">{t('smartImport.willSkip')}</div>}
       {r.candidates && <Decide target="availability" row={r} busy={busy} decision={decision} decide={decide} />}
@@ -696,9 +720,10 @@ function HouseRowCard({ row: r, busy, excluded, onToggle, decision, decide }) {
             <div key={d.field} className={`av-import-day ${d.changed ? 'changed' : 'same'} ${d.removal && !d.choice ? 'review' : ''}`}>
               <span className="av-import-dow">{dowShort(d.day)}</span>
               <span className="av-import-vals">
-                {d.removal ? <span>{t('smartImport.standingGone')}</span> : <span className="av-standing">{t('smartImport.standing')}</span>}
+                {d.removal ? <span>{t('smartImport.standingGone')}</span> : d.code ? <span>{dayText(t, d.after)}</span> : <span className="av-standing">{t('smartImport.standing')}</span>}
                 {d.changed && !d.removal && <span className="tiny muted">{t('smartImport.newStanding')}</span>}
               </span>
+              {d.code && <span className="tiny muted">{t('smartImport.sheetSaid', { text: d.code })}</span>}
               {d.removal && r.match && (
                 <span className="row wrap av-import-fix">
                   <button type="button" className={`btn sm ${d.choice === 'remove' ? 'primary' : ''}`} disabled={busy} onClick={() => setCell(d.field, 'remove')}>{t('smartImport.removeIt')}</button>

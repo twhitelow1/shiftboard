@@ -14,8 +14,10 @@
 //   OFF (any colour), blank  not scheduled that day: nothing to import
 //   a time, light green      working that shift in another room than their primary one: a primary-room hint
 //   a time (4PM, 1-9PM*, 3:30PM TRAIN, 04:30)  the week's schedule: not availability
-//   anything else            REQ OFF with more words ("REQ OFF or", "REQ OFF if needed MONDAY"), WOH, notes: flagged
-//                            for the manager, never guessed
+//   REQ OFF with more words  ("REQ OFF or", "REQ OFF if needed MONDAY"): flagged for the manager, never guessed
+//   any other word or code   (WOH, "3 doormen if possible"): an unknown code. By default the person is available that day
+//                            with the code kept as the day's note ("Sheet note: WOH"); per code the manager can say
+//                            unavailable, or skip it (core/import-api.js options.codes)
 import { headerKey, COLOR_FAMILIES, colorFamily } from './smart-import.js';
 import { dayOfHeader } from './weekdays.js';
 import { nameKey } from './names.js';
@@ -102,12 +104,13 @@ export function parseHouseTab(sheet) {
       const day = { text, color };
       if (!text || OFF.test(text)) continue; // not scheduled: nothing to import
       if (REQ_OFF.test(text)) day.reqOff = true;
-      else if (REQ_OFF_MORE.test(text) || !(TIME.test(text) || c.time)) day.flag = true; // "REQ OFF or", WOH, a note
+      else if (REQ_OFF_MORE.test(text)) day.flag = true; // "REQ OFF or", "REQ OFF if needed MONDAY": asked, never guessed
+      else if (!(TIME.test(text) || c.time)) day.code = text.toUpperCase(); // WOH, a note: an unknown code
       else if (color !== 'none') day.shiftColor = true; // a shift in a colour (light green: another room)
       else continue; // a plain shift time: the schedule, not availability
       const cur = p.days[d];
       // Someone in two sections: one cell per day (a request off wins over a shift, a flag over nothing).
-      if (!cur || (day.reqOff && !cur.reqOff) || (day.flag && !cur.reqOff && !cur.flag)) p.days[d] = day;
+      if (!cur || (day.reqOff && !cur.reqOff) || ((day.flag || day.code) && !cur.reqOff && !cur.flag && !cur.code)) p.days[d] = day;
     }
   }
   return out;
@@ -129,7 +132,7 @@ export function houseRecords(tabs, colorMap = DEFAULT_HOUSE_COLORS) {
     for (const p of t.people) {
       let h = people.get(p.key);
       if (!h) {
-        h = { row: ++row, name: p.name, sections: [], standing: new Set(), weekGreens: [], dated: [], otherRoom: [], flags: [], mismatch: [], standingTab: !!standingTab };
+        h = { row: ++row, name: p.name, sections: [], standing: new Set(), weekGreens: [], dated: [], otherRoom: [], flags: [], codes: [], mismatch: [], standingTab: !!standingTab };
         people.set(p.key, h);
       }
       // Every room block they're listed in, how often, and whether the standing tab lists them there (their primary room).
@@ -142,6 +145,7 @@ export function houseRecords(tabs, colorMap = DEFAULT_HOUSE_COLORS) {
         const action = day.color === 'none' ? 'ignore' : map[day.color] || 'ignore';
         const flag = (why) => h.flags.push({ id: `${ti}.${d}`, tab: t.name, dow: d, ...(t.dates[d] ? { date: t.dates[d] } : {}), text: day.text, color: day.color, why });
         if (day.flag) { flag('text'); continue; }
+        if (day.code) { if (!h.codes.some((x) => x.dow === d && x.code === day.code)) h.codes.push({ dow: d, code: day.code, tab: t.name }); continue; }
         if (day.reqOff) {
           if (action === 'standing') { if (t.kind === 'standing' || !standingTab) h.standing.add(d); else h.weekGreens.push({ dow: d, tab: t.name }); continue; }
           if (action === 'weekOff' && t.kind === 'week' && t.dates[d]) { h.dated.push({ date: t.dates[d], dow: d, tab: t.name, text: day.text, color: day.color }); continue; }
@@ -161,7 +165,9 @@ export function houseRecords(tabs, colorMap = DEFAULT_HOUSE_COLORS) {
   }
   return [...people.values()].map((h) => ({
     row: h.row, values: { name: h.name }, present: ['name'],
-    house: { name: h.name, sections: h.sections, standing: [...h.standing].sort(), standingTab: h.standingTab, dated: h.dated, otherRoom: h.otherRoom, flags: h.flags, mismatch: h.mismatch },
+    house: { name: h.name, sections: h.sections, standing: [...h.standing].sort(), standingTab: h.standingTab, dated: h.dated, otherRoom: h.otherRoom, flags: h.flags, codes: h.codes, mismatch: h.mismatch,
+      // In the sheet's M.O.D. block (managers set their own schedules): offered as "Sets own schedule — skip availability".
+      mod: h.sections.some((s) => !s.room && s.position === 'M.O.D.') },
   }));
 }
 
