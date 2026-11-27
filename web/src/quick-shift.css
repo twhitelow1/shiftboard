@@ -1,0 +1,21 @@
+/* Quick mode in the shift dialog (pages/ShiftDialog.jsx) and DAY OFF cells on the sheet and grid (pages/Schedule*.jsx). */
+.quick-fixed { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); color: var(--text-2); }
+.quick-fixed > div { color: var(--text); }
+.quick-copy { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px dashed var(--border-strong); border-radius: 10px; }
+.quick-chip { min-height: 32px; }
+.quick-chip .quick-chip-x { font-weight: 500; opacity: .75; }
+.quick-chip:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.quick-kbd { font: 600 10.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 2px 4px; border-radius: 4px; border: 1px solid currentColor; opacity: .6; }
+.quick-move { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding-top: 4px; border-top: 1px solid var(--border); }
+@media (max-width: 600px) { .quick-chip { min-height: 40px; } }
+
+/* DAY OFF: marked off on purpose, unlike OFF (just not scheduled). Light blue on the sheet so it reads apart from the yellow OFF. */
+.sheet td.dayoff { background: #bfdbfe; color: #1e3a8a; letter-spacing: .02em; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.dayoff-undo { margin-left: 6px; font: inherit; font-size: 10px; font-weight: 600; text-transform: none; color: inherit; background: none; border: 0; padding: 0 2px; text-decoration: underline; cursor: pointer; }
+.sched .dayoff { font-size: 11px; font-weight: 700; color: var(--brand); background: var(--brand-soft); border-radius: 6px; padding: 5px 6px; display: block; text-align: center; letter-spacing: .02em; }
+/* Quick mode's footer holds Delete, Day off, Cancel and Save: on phones the left ones take their own line. */
+@media (max-width: 600px) {
+  .modal-foot:has(.quick-dayoff) { flex-wrap: wrap; }
+  .modal-foot:has(.quick-dayoff) > .spacer { flex-basis: 100%; height: 0; }
+  .modal-foot .quick-dayoff { flex: 1 1 0; min-width: 0; white-space: normal; text-align: left; line-height: 1.25; }
+}

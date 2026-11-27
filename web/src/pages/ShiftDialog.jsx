@@ -1,32 +1,67 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useApp, Modal, Field, Icon, Avatar, Warnings, shiftTime, startTimesOnly, useAction, JobDot } from '../ui.jsx';
-import { addDays } from '../../../core/time.js';
+import { addDays, dow } from '../../../core/time.js';
 import { shiftChoices, roomOfShift, findRoom, areaForRoom } from '../../../core/layout.js';
-import { ShiftSectionCard, useSectionField } from './Sections.jsx';
+import { ShiftSectionCard } from './Sections.jsx';
 import { CallOutPanel } from './TrainingShared.jsx';
-import { useT, fmtTime, prettyDate } from '../i18n/index.js';
+import '../quick-shift.css';
+import { useT, fmtTime, prettyDate, dowShort } from '../i18n/index.js';
 
 /**
  * Opens the right dialog for the viewer: managers edit other people's shifts; your own shift (any
  * role) opens its details with trade and give-away options, and managers can switch to editing it.
  * startIn opens straight into 'swap' or 'drop'.
+ * quick: opened from a person × day cell on the schedule (web/src/pages/Schedule.jsx): the person, date, room and
+ * position come from the row and only the times, tag and notes change, with one-tap times copied from the week
+ * (weekShifts), a Day off action (daysOff: the week's days off) and "Move this shift" to unlock everything.
  */
-export default function ShiftDialog({ shift, onClose, warnings, events = [], startIn }) {
+export default function ShiftDialog({ shift, onClose, warnings, events = [], startIn, quick = false, weekShifts = [], daysOff = [] }) {
   const { isMgr, me } = useApp();
   const mine = !!shift.id && shift.userId === me.id;
   const [editing, setEditing] = useState(isMgr && !mine);
-  if (editing) return <ShiftEditor shift={shift} onClose={onClose} warnings={warnings} events={events} />;
+  if (editing) return <ShiftEditor shift={shift} onClose={onClose} warnings={warnings} events={events} quick={quick} weekShifts={weekShifts} daysOff={daysOff} />;
   return <ShiftDetail shift={shift} onClose={onClose} events={events} startIn={startIn} onEdit={isMgr ? () => setEditing(true) : null} />;
+}
+
+/**
+ * The times to copy into a quick shift: this person's other days this week (same times and tag together:
+ * "4p–Close · BAR (Mon, Tue)"), then the times most used for the position this week. At most 9 (keys 1–9).
+ */
+export function copyChoices({ weekShifts, userId, date, jobCodeId, shiftId }) {
+  const mine = new Map();
+  for (const s of weekShifts) {
+    if (s.userId !== userId || s.date === date || s.id === shiftId) continue;
+    const k = `${s.start}|${s.end || ''}|${s.tag || ''}`;
+    const e = mine.get(k) || { key: `m:${k}`, start: s.start, end: s.end || null, tag: s.tag || '', days: [] };
+    if (!e.days.includes(s.date)) e.days.push(s.date);
+    mine.set(k, e);
+  }
+  const theirs = [...mine.values()].map((e) => ({ ...e, days: e.days.sort() })).sort((a, b) => a.days[0].localeCompare(b.days[0]) || a.start.localeCompare(b.start));
+  const taken = new Set(theirs.map((e) => `${e.start}|${e.end || ''}`));
+  const counts = new Map();
+  for (const s of weekShifts) {
+    if (s.jobCodeId !== jobCodeId || s.id === shiftId) continue;
+    const k = `${s.start}|${s.end || ''}`;
+    if (taken.has(k)) continue;
+    const e = counts.get(k) || { key: `c:${k}`, start: s.start, end: s.end || null, tag: '', count: 0 };
+    e.count++;
+    counts.set(k, e);
+  }
+  const mineShown = theirs.slice(0, 9);
+  const common = [...counts.values()].sort((a, b) => b.count - a.count || a.start.localeCompare(b.start)).slice(0, Math.min(4, 9 - mineShown.length));
+  return { mine: mineShown, common };
 }
 
 /**
  * Add or edit a shift: the room first, then that room's positions (Settings → Rooms & positions;
  * hidden ones aren't offered), then the person. People who work that position in that room come
  * first; "Show everyone" lists the rest, and picking one of them gives them the position there.
+ * Changing an existing shift's date, person, position or room moves it (shifts.move: the same shift).
+ * A shift's floor room & tables are set on the Sections page, not here.
  */
-function ShiftEditor({ shift, onClose, warnings, events }) {
+function ShiftEditor({ shift, onClose, warnings, events, quick, weekShifts, daysOff }) {
   const t = useT();
-  const { employees, settings, jobs, call, toast, layout } = useApp();
+  const { employees, settings, jobs, call, toast, layout, people } = useApp();
   const [f, setF] = useState(() => {
     // Where it starts: the shift's own room and position, else (a new shift with neither) the first room's first position.
     let jobCodeId = shift.jobCodeId && jobs[shift.jobCodeId] ? shift.jobCodeId : '';
@@ -46,10 +81,12 @@ function ShiftEditor({ shift, onClose, warnings, events }) {
       untilClose: shift.id ? !shift.end : true,
     };
   });
+  const [orig] = useState(() => ({ date: f.date, userId: f.userId, jobCodeId: f.jobCodeId, room: f.room }));
   const [run, busy] = useAction();
   const [publishNow, setPublishNow] = useState(!!shift.published);
   const [everyone, setEveryone] = useState(false);
-  const section = useSectionField(shift, f.date); // room & tables (server section)
+  const [unlocked, setUnlocked] = useState(false);
+  const [confirmOff, setConfirmOff] = useState(false);
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e?.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e }));
 
   const choices = shiftChoices({ layout, jobs, employees, room: f.room, jobCodeId: f.jobCodeId });
@@ -67,15 +104,37 @@ function ShiftEditor({ shift, onClose, warnings, events }) {
     setF((x) => ({ ...x, room, jobCodeId: positions.some((j) => j.id === x.jobCodeId) ? x.jobCodeId : positions[0]?.id || '' }));
   };
 
+  // Quick mode: the row decides who, when and where; it needs a person and a position to stay locked.
+  const locked = quick && !unlocked && !!orig.userId && !!orig.jobCodeId;
+  const moving = !!shift.id && (f.date !== orig.date || (f.userId || '') !== (orig.userId || '') || f.jobCodeId !== orig.jobCodeId || f.room !== orig.room);
+  const dayOff = (daysOff || []).find((d) => d.userId === f.userId && d.date === f.date);
+  const origDayOff = (daysOff || []).find((d) => d.userId === orig.userId && d.date === orig.date);
+  const theirShiftsThatDay = (weekShifts || []).filter((s) => s.userId === orig.userId && s.date === orig.date);
+  const copy = useMemo(() => (quick ? copyChoices({ weekShifts: weekShifts || [], userId: orig.userId, date: orig.date, jobCodeId: f.jobCodeId, shiftId: shift.id }) : { mine: [], common: [] }),
+    [quick, weekShifts, orig, f.jobCodeId, shift.id]);
+  const chips = [...copy.mine, ...copy.common];
+  const applyChip = (c) => setF((x) => ({ ...x, start: c.start, end: c.end || '', untilClose: !c.end, tag: c.tag || x.tag }));
+  const chipOn = (c) => f.start === c.start && (f.untilClose ? !c.end : f.end === c.end);
+  // Keys 1–9 pick a time (not while typing in a field).
+  useEffect(() => {
+    if (!locked || !chips.length) return undefined;
+    const onKey = (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName || '')) return;
+      const n = Number(e.key);
+      if (n >= 1 && n <= chips.length) { e.preventDefault(); applyChip(chips[n - 1]); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [locked, chips]);
+
   const save = async () => {
     const payload = { ...f, area: areaForRoom(f.room, job, settings), end: f.untilClose ? null : f.end, userId: f.userId || null, eventId: f.eventId || null,
       published: shift.id ? undefined : publishNow, listPerson: !!f.userId && !holder };
     delete payload.room;
-    const r = await run(() => call('shifts.save', payload));
+    const r = await run(() => call(moving ? 'shifts.move' : 'shifts.save', payload));
     if (r) {
-      await section.save(r.shift.id);
       if (r.warnings?.length) toast(t('shiftDialog.savedHeadsUpValue', { value: r.warnings[0] }), 'bad');
-      else toast(shift.id ? t('shiftDialog.shiftUpdated') : t('shiftDialog.shiftAdded'));
+      else toast(moving ? t('quickShift.moved') : shift.id ? t('shiftDialog.shiftUpdated') : t('shiftDialog.shiftAdded'));
       onClose(true);
     }
   };
@@ -85,79 +144,150 @@ function ShiftEditor({ shift, onClose, warnings, events }) {
     if (r) onClose(true);
   };
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const markOff = async () => {
+    if (theirShiftsThatDay.length && !confirmOff) return setConfirmOff(true);
+    const who = people?.[orig.userId]?.name || person?.name || '';
+    const r = await run(() => call('schedule.dayOff.set', { userId: orig.userId, date: orig.date, removeShifts: true }), t('quickShift.dayOffDone', { name: who, date: prettyDate(orig.date) }));
+    if (r) onClose(true);
+  };
+  const undoOff = async () => {
+    const r = await run(() => call('schedule.dayOff.clear', { userId: orig.userId, date: orig.date }), t('quickShift.dayOffCleared'));
+    if (r) onClose(true);
+  };
 
-  return (
-    <Modal title={shift.id ? t('shiftDialog.editShift') : t('shiftDialog.addShift')} sub={`${prettyDate(f.date)}${shift.id && !shift.published ? t('shiftDialog.draftSuffix') : ''}`} onClose={() => onClose(false)}
-      footer={<>
-        {shift.id && <button className={`btn danger ${confirmDelete ? 'solid' : ''}`} onClick={del} disabled={busy}><Icon name="trash" />{confirmDelete ? t('shiftDialog.tapAgainToDelete') : t('common.delete')}</button>}
-        <span className="spacer" />
-        <button className="btn" onClick={() => onClose(false)}>{t('common.cancel')}</button>
-        <button className="btn primary" onClick={save} disabled={busy || !f.jobCodeId}>{shift.id ? t('common.save') : t('shiftDialog.addShift')}</button>
-      </>}>
-      <Warnings items={warnings} />
-      {!choices.rooms.length && !f.room && <div className="alert info"><Icon name="alert" size={16} /><span>{t('shiftDialog.noRooms')}</span></div>}
-      <div className="grid2">
-        <Field label={t('shiftDialog.room')} help={t('shiftDialog.roomHelp')}>
-          <select className="input" value={f.room} onChange={pickRoom}>
-            {!roomListed && <option value={f.room}>{f.room ? t('shiftDialog.notOnSchedule', { name: f.room }) : '—'}</option>}
-            {choices.rooms.map((r) => <option key={r.room} value={r.room}>{r.room}</option>)}
-          </select>
-        </Field>
-        <Field label={t('common.position')}>
-          <select className="input" value={f.jobCodeId} onChange={set('jobCodeId')}>
-            {!posListed && <option value={f.jobCodeId}>{job ? t('shiftDialog.notOnSchedule', { name: job.name }) : '—'}</option>}
-            {choices.positions.map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}
-          </select>
-        </Field>
-      </div>
-      <Field label={t('shiftDialog.employee')}>
-        <select className="input" value={f.userId} onChange={set('userId')}>
-          <option value="">{t('shiftDialog.openShiftAnyoneCanPick')}</option>
-          {job && f.room && (
-            <optgroup label={t('shiftDialog.worksHere', { position: job.name, room: f.room })}>
-              {choices.holders.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </optgroup>
-          )}
-          {showOthers && (
-            <optgroup label={t('shiftDialog.everyoneElse')}>
-              {choices.others.filter((e) => everyone || e.id === f.userId).map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </optgroup>
-          )}
-        </select>
-        <label className="check small" style={{ marginTop: 2 }}><input type="checkbox" checked={everyone} onChange={(e) => setEveryone(e.target.checked)} />{t('shiftDialog.showEveryone')}</label>
-        {job && f.room && !choices.holders.length && !person && <div className="help">{t('shiftDialog.noOneHere', { position: job.name, room: f.room })}</div>}
-      </Field>
-      {person && !holder && job && f.room && (
-        <div className="alert warn"><Icon name="alert" size={16} /><span>{t('shiftDialog.willGetPosition', { name: person.name, position: job.name, room: f.room })}</span></div>
-      )}
-      <div className="grid3">
-        <Field label={t('common.date')}><input className="input" type="date" value={f.date} onChange={set('date')} /></Field>
-        <Field label={t('shiftDialog.start')}><input className="input" type="time" value={f.start} onChange={set('start')} step="900" /></Field>
-        <Field label={t('shiftDialog.end')}>
+  const timeFields = (
+    <>
+      <div className={locked ? 'grid2' : 'grid3'}>
+        {!locked && <Field label={t('common.date')}><input className="input" type="date" value={f.date} onChange={set('date')} /></Field>}
+        <Field label={locked ? t('quickShift.timeIn') : t('shiftDialog.start')}><input className="input" type="time" value={f.start} onChange={set('start')} step="900" /></Field>
+        <Field label={locked ? t('quickShift.timeOut') : t('shiftDialog.end')}>
           {f.untilClose
             ? <button type="button" className="input" style={{ textAlign: 'left', cursor: 'pointer' }} onClick={() => setF((x) => ({ ...x, untilClose: false, end: x.end || '22:00' }))}>{t('shiftDialog.untilClose')}{' '}<span className="faint small">{t('shiftDialog.setTime')}</span></button>
             : <input className="input" type="time" value={f.end} onChange={set('end')} step="900" />}
         </Field>
       </div>
       <label className="check"><input type="checkbox" checked={f.untilClose} onChange={set('untilClose')} />{t('shiftDialog.untilCloseNoSetEnd')}</label>
-      {section.field}
-      <Field label={t('shiftDialog.tagSection')} help={t('shiftDialog.showsOnTheScheduleNext')}>
-        <input className="input" value={f.tag} onChange={set('tag')} placeholder={t('shiftDialog.optional')} />
-        <div className="row wrap" style={{ marginTop: 4 }}>
-          {settings.tags.map((t) => <button type="button" key={t} className={`chip ${f.tag === t ? 'on' : ''}`} onClick={() => setF((x) => ({ ...x, tag: x.tag === t ? '' : t }))}>{t}</button>)}
-        </div>
-      </Field>
-      <div className="grid2">
-        <Field label={t('shiftDialog.linkedEvent')}>
-          <select className="input" value={f.eventId} onChange={set('eventId')}>
-            <option value="">{t('shiftDialog.none')}</option>
-            {dayEvents.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-          </select>
-        </Field>
-        <Field label={t('shiftDialog.unpaidBreakMin')}><input className="input" type="number" min="0" step="5" value={f.breakMin} onChange={set('breakMin')} /></Field>
+    </>
+  );
+  const tagField = (
+    <Field label={t('shiftDialog.tagSection')} help={t('shiftDialog.showsOnTheScheduleNext')}>
+      <input className="input" value={f.tag} onChange={set('tag')} placeholder={t('shiftDialog.optional')} />
+      <div className="row wrap" style={{ marginTop: 4 }}>
+        {settings.tags.map((tg) => <button type="button" key={tg} className={`chip ${f.tag === tg ? 'on' : ''}`} onClick={() => setF((x) => ({ ...x, tag: x.tag === tg ? '' : tg }))}>{tg}</button>)}
       </div>
-      <Field label={t('common.notes')}><textarea className="input" rows="2" value={f.notes} onChange={set('notes')} placeholder={t('shiftDialog.visibleToTheEmployee')} /></Field>
-      {!shift.id && <label className="check"><input type="checkbox" checked={publishNow} onChange={(e) => setPublishNow(e.target.checked)} />{t('shiftDialog.publishImmediatelyNotifyTheEmployee')}</label>}
+    </Field>
+  );
+  const notesField = <Field label={t('common.notes')}><textarea className="input" rows="2" value={f.notes} onChange={set('notes')} placeholder={t('shiftDialog.visibleToTheEmployee')} /></Field>;
+  const chipLabel = (c) => `${shiftTime(c)}${c.tag ? ` · ${c.tag}` : ''}`;
+  const chipButton = (c, n, extra) => (
+    <button type="button" key={c.key} className={`chip quick-chip ${chipOn(c) ? 'on' : ''}`} onClick={() => applyChip(c)} aria-keyshortcuts={locked ? String(n) : undefined}>
+      {locked && <kbd className="quick-kbd desktop-only">{n}</kbd>}{chipLabel(c)} <span className="quick-chip-x">{extra}</span>
+    </button>
+  );
+  const copyBlock = quick && (
+    <div className="quick-copy" role="group" aria-label={t('quickShift.copyTime')}>
+      <div className="row" style={{ justifyContent: 'space-between', gap: 8 }}>
+        <span className="small" style={{ fontWeight: 700 }}>{t('quickShift.copyTime')}</span>
+        {locked && chips.length > 0 && <span className="small faint desktop-only">{t('quickShift.keyHint')}</span>}
+      </div>
+      {!chips.length && <div className="small faint">{t('quickShift.noTimesYet')}</div>}
+      {copy.mine.length > 0 && <div className="small muted">{t('quickShift.theirWeek')}</div>}
+      {copy.mine.length > 0 && <div className="row wrap" style={{ gap: 6 }}>{copy.mine.map((c, i) => chipButton(c, i + 1, `(${c.days.map((d) => dowShort(dow(d))).join(', ')})`))}</div>}
+      {copy.common.length > 0 && <div className="small muted">{t('quickShift.commonFor', { position: job?.name || '' })}</div>}
+      {copy.common.length > 0 && <div className="row wrap" style={{ gap: 6 }}>{copy.common.map((c, i) => chipButton(c, copy.mine.length + i + 1, t('quickShift.timesCount', { count: c.count })))}</div>}
+    </div>
+  );
+  const dayOffNote = dayOff && (
+    <div className="alert warn"><Icon name="sun" size={16} /><span style={{ flex: 1 }}>{t('quickShift.isDayOff', { name: person?.name || '' })}</span>
+      {quick && dayOff === origDayOff && <button type="button" className="btn sm" disabled={busy} onClick={undoOff}>{t('quickShift.undoDayOff')}</button>}</div>
+  );
+  const who = person || people?.[f.userId];
+
+  return (
+    <Modal title={shift.id ? t('shiftDialog.editShift') : t('shiftDialog.addShift')} sub={`${prettyDate(f.date)}${shift.id && !shift.published ? t('shiftDialog.draftSuffix') : ''}`} onClose={() => onClose(false)}
+      footer={<>
+        {shift.id && <button className={`btn danger ${confirmDelete ? 'solid' : ''}`} onClick={del} disabled={busy}><Icon name="trash" />{confirmDelete ? t('shiftDialog.tapAgainToDelete') : t('common.delete')}</button>}
+        {quick && orig.userId && !moving && !origDayOff && (
+          <button type="button" className={`btn quick-dayoff ${confirmOff ? 'danger solid' : ''}`} onClick={markOff} disabled={busy}><Icon name="sun" />{confirmOff ? t('quickShift.dayOffConfirm', { count: theirShiftsThatDay.length }) : t('quickShift.dayOff')}</button>
+        )}
+        <span className="spacer" />
+        <button className="btn" onClick={() => onClose(false)}>{t('common.cancel')}</button>
+        <button className="btn primary" onClick={save} disabled={busy || !f.jobCodeId}>{moving ? <><Icon name="swap" />{t('quickShift.saveMove')}</> : shift.id ? t('common.save') : t('shiftDialog.addShift')}</button>
+      </>}>
+      <Warnings items={warnings} />
+      {locked ? <>
+        <div className="quick-fixed">
+          <Avatar user={who} size="sm" />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontWeight: 700 }}>{who?.name}</div>
+            <div className="small muted row wrap" style={{ gap: 6 }}><span>{prettyDate(f.date)}</span><span>·</span><JobDot job={job} /><span>{job?.name}</span>{f.room && <><span>·</span><span>{f.room}</span></>}</div>
+          </div>
+          <Icon name="lock" size={14} />
+        </div>
+        <div className="help" style={{ marginTop: -4 }}>{t('quickShift.fixedHelp')}</div>
+        {dayOffNote}
+        {copyBlock}
+        {timeFields}
+        {tagField}
+        {notesField}
+        {!shift.id && <label className="check"><input type="checkbox" checked={publishNow} onChange={(e) => setPublishNow(e.target.checked)} />{t('shiftDialog.publishImmediatelyNotifyTheEmployee')}</label>}
+        <div className="quick-move">
+          <button type="button" className="btn sm" onClick={() => setUnlocked(true)}><Icon name={shift.id ? 'swap' : 'edit'} />{shift.id ? t('quickShift.moveShift') : t('quickShift.changeAll')}</button>
+          {shift.id && <div className="help">{t('quickShift.moveHelp')}</div>}
+        </div>
+      </> : <>
+        {moving && <div className="alert info"><Icon name="swap" size={16} /><span>{t('quickShift.moving')}</span></div>}
+        {!choices.rooms.length && !f.room && <div className="alert info"><Icon name="alert" size={16} /><span>{t('shiftDialog.noRooms')}</span></div>}
+        <div className="grid2">
+          <Field label={t('shiftDialog.room')} help={t('shiftDialog.roomHelp')}>
+            <select className="input" value={f.room} onChange={pickRoom}>
+              {!roomListed && <option value={f.room}>{f.room ? t('shiftDialog.notOnSchedule', { name: f.room }) : '—'}</option>}
+              {choices.rooms.map((r) => <option key={r.room} value={r.room}>{r.room}</option>)}
+            </select>
+          </Field>
+          <Field label={t('common.position')}>
+            <select className="input" value={f.jobCodeId} onChange={set('jobCodeId')}>
+              {!posListed && <option value={f.jobCodeId}>{job ? t('shiftDialog.notOnSchedule', { name: job.name }) : '—'}</option>}
+              {choices.positions.map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}
+            </select>
+          </Field>
+        </div>
+        <Field label={t('shiftDialog.employee')}>
+          <select className="input" value={f.userId} onChange={set('userId')}>
+            <option value="">{t('shiftDialog.openShiftAnyoneCanPick')}</option>
+            {job && f.room && (
+              <optgroup label={t('shiftDialog.worksHere', { position: job.name, room: f.room })}>
+                {choices.holders.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </optgroup>
+            )}
+            {showOthers && (
+              <optgroup label={t('shiftDialog.everyoneElse')}>
+                {choices.others.filter((e) => everyone || e.id === f.userId).map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </optgroup>
+            )}
+          </select>
+          <label className="check small" style={{ marginTop: 2 }}><input type="checkbox" checked={everyone} onChange={(e) => setEveryone(e.target.checked)} />{t('shiftDialog.showEveryone')}</label>
+          {job && f.room && !choices.holders.length && !person && <div className="help">{t('shiftDialog.noOneHere', { position: job.name, room: f.room })}</div>}
+        </Field>
+        {person && !holder && job && f.room && (
+          <div className="alert warn"><Icon name="alert" size={16} /><span>{t('shiftDialog.willGetPosition', { name: person.name, position: job.name, room: f.room })}</span></div>
+        )}
+        {dayOffNote}
+        {copyBlock}
+        {timeFields}
+        {tagField}
+        <div className="grid2">
+          <Field label={t('shiftDialog.linkedEvent')}>
+            <select className="input" value={f.eventId} onChange={set('eventId')}>
+              <option value="">{t('shiftDialog.none')}</option>
+              {dayEvents.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+          </Field>
+          <Field label={t('shiftDialog.unpaidBreakMin')}><input className="input" type="number" min="0" step="5" value={f.breakMin} onChange={set('breakMin')} /></Field>
+        </div>
+        {notesField}
+        {!shift.id && <label className="check"><input type="checkbox" checked={publishNow} onChange={(e) => setPublishNow(e.target.checked)} />{t('shiftDialog.publishImmediatelyNotifyTheEmployee')}</label>}
+      </>}
     </Modal>
   );
 }

@@ -88,6 +88,7 @@ export const MSG = {
       availableFrom: (time) => `Available from ${time}`,
       availableUntil: (time) => `Available until ${time}`,
       overtime: (hrs) => `Overtime: ${hrs} hrs this week`,
+      dayOff: 'Marked as a day off',
     },
     // ----- phone notifications and texts (server/channels.js, core/notify-prefs.js) -----
     more: (n) => ` (+${n} more)`,
@@ -210,6 +211,7 @@ export const MSG = {
       availableFrom: (time) => `Disponible desde las ${time}`,
       availableUntil: (time) => `Disponible hasta las ${time}`,
       overtime: (hrs) => `Horas extra: ${hrs} h esta semana`,
+      dayOff: 'Marcado como día de descanso',
     },
     // ----- notificaciones al teléfono y mensajes de texto -----
     more: (n) => ` (+${n} más)`,

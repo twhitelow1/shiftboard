@@ -7,7 +7,7 @@ import { useT, stamp } from '../i18n/index.js';
 import { addDays } from '../../../core/time.js';
 import '../availability.css';
 
-const GROUPS = ['shift', 'week', 'request', 'timeOff', 'availability', 'note', 'mod', 'event', 'layout'];
+const GROUPS = ['shift', 'week', 'request', 'timeOff', 'availability', 'note', 'mod', 'event', 'layout', 'dayOff'];
 const VIAS = ['web', 'phone', 'import', 'connector', 'assistant', 'sync', 'cron'];
 
 function Rows({ rows, people, jobs }) {
