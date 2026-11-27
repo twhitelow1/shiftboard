@@ -448,6 +448,7 @@ export function createService(store, opts = {}) {
 
   // Weekly availability: who may change whose, the log and the person's notification (core/availability-api.js).
   const availability = availabilityApi({ store, now, today, fail, needAuth, settings, notify, say, userById, isMgr, via: opts.via || null, slog,
+    layout: (actor) => layouts.forViewer(isMgr(actor)),
     view: (actor, u) => legalNameFor(actor, u, PUBLIC_USER(u)) });
 
   // ---------- API ----------

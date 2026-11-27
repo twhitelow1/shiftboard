@@ -45,3 +45,62 @@
 /* Time off's toolbar: the tabs keep a full line; the buttons wrap under them on narrower screens. */
 .to-toolbar { flex-wrap: wrap; }
 .to-toolbar .tabs { flex: 1 1 420px !important; min-width: 0; overflow-x: auto; }
+/* Phones stack the toolbar in a column (styles.css): there the 420px basis would be a height, so the tabs size to themselves. */
+@media (max-width: 640px) { .to-toolbar .tabs { flex: none !important; } }
+
+/* Time Off → Availability → Team and Sheet (pages/TeamAvailability.jsx). */
+.av-views { flex-wrap: wrap; max-width: 100%; }
+.av-weekpick { gap: 6px; flex-wrap: nowrap; }
+.av-weekpick .input { width: 150px; }
+.av-check { gap: 6px; align-items: center; font-size: 13px; flex: 1 1 220px; min-height: 36px; }
+.av-team-wrap { overflow-x: auto; padding: 0; }
+table.av-team { width: 100%; border-collapse: collapse; font-size: 13px; }
+.av-team th, .av-team td { padding: 6px 6px; border-bottom: 1px solid var(--border); text-align: center; vertical-align: top; }
+.av-team th { font-size: 12px; color: var(--text-2); font-weight: 700; background: var(--surface-2); }
+.av-team .av-team-who { text-align: left; min-width: 170px; max-width: 260px; }
+.av-team tfoot td { font-weight: 700; background: var(--surface-2); border-bottom: 0; }
+.av-who-btn { background: none; border: 0; padding: 0; color: var(--brand); font: inherit; font-weight: 700; text-align: left; cursor: pointer; }
+.av-who-btn:hover { text-decoration: underline; }
+.av-team-notes { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.av-chip { display: inline-block; border-radius: 999px; padding: 1px 7px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+.av-team-day.open .av-chip { color: var(--text-3, #6b7280); font-weight: 600; }
+.av-team-day.standing .av-chip { background: #dcfce7; color: #166534; }
+.av-team-day.off .av-chip { background: var(--surface-3); color: var(--text); }
+.av-team-day.partial .av-chip { background: #e0e7ff; color: #3730a3; }
+.av-daynote { display: block; font-size: 11px; color: var(--text-2); margin-top: 2px; overflow-wrap: anywhere; }
+/* Phones: each person is a card; the week wraps into a 7-column strip under their name. */
+@media (max-width: 640px) {
+  .av-team-wrap { overflow-x: visible; }
+  table.av-team, .av-team tbody, .av-team tfoot { display: block; }
+  .av-team thead { display: none; }
+  .av-team tr { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-bottom: 1px solid var(--border); padding: 6px 4px; gap: 2px; }
+  .av-team td { border: 0; padding: 2px 1px; min-width: 0; }
+  .av-team .av-team-who { grid-column: 1 / -1; max-width: none; min-width: 0; padding-bottom: 4px; }
+  .av-team-day::before { content: attr(data-day); display: block; font-size: 10.5px; color: var(--text-2); font-weight: 700; }
+  .av-chip { padding: 1px 3px; font-size: 10.5px; white-space: normal; overflow-wrap: anywhere; }
+  .av-daynote { font-size: 10px; }
+}
+/* The sheet: the schedule sheet's look (styles.css .sheet), with availability's fills. */
+.av-sheet-wrap { max-width: 100%; }
+.sheet.av-sheet td.av-standing-cell, .av-key.av-standing-cell { background: #8ed973; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.sheet.av-sheet td.av-dated, .av-key.av-dated { background: #ffff00; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.sheet.av-sheet td.av-dated.pending { font-style: italic; }
+.sheet.av-sheet td.av-partial-cell { font-size: .92em; }
+.sheet.av-sheet td.av-sheet-name { cursor: pointer; }
+.sheet.av-sheet td.av-sheet-name:hover { text-decoration: underline; }
+.av-sheet-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 12.5px; }
+.av-sheet-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.av-key { display: inline-block; min-width: 56px; height: 20px; line-height: 18px; padding: 0 4px; border: 1px solid #000; font: 700 11px Calibri, Carlito, 'Segoe UI', Arial, sans-serif; color: #000; text-align: center; font-style: normal; background: #fff; }
+.av-print-title { font-weight: 800; font-size: 14px; margin-bottom: 4px; }
+/* Printing the sheet: one landscape page per sheet's worth. */
+@page avsheet { size: letter landscape; margin: 0.3in; }
+@media print {
+  .av-sheet-print { page: avsheet; border: 0; border-radius: 0; overflow: visible; }
+  .av-sheet-print table.sheet { min-width: 0; font-size: 8px; line-height: 1.05; }
+  .av-sheet-print .sheet td { height: 11px; padding: 0 2px; border-width: .5px; }
+  .av-sheet-print .sheet tr > td:first-child:not([colspan]) { position: static; box-shadow: none; }
+  .av-sheet-print .sheet .sh-banner td { font-size: 10px; height: 13px; padding: 0 4px; }
+  .av-sheet-print .sheet .sh-head td, .av-sheet-print .sheet .sh-dates td { font-size: 7.5px; }
+  .av-sheet-legend { font-size: 8px; gap: 2px 10px; margin-top: 4px; }
+  .av-sheet-legend .av-key { height: 12px; line-height: 10px; min-width: 40px; font-size: 7px; }
+}

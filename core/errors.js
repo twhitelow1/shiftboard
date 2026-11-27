@@ -135,6 +135,7 @@ export const ERRORS_ES = {
   'You can only edit your own availability': 'Solo puedes editar tu propia disponibilidad',
   // Availability (core/availability-api.js) and "Approves for" (core/approval-scope.js)
   'You can only see your own availability': 'Solo puedes ver tu propia disponibilidad',
+  'Only managers can see the team’s availability': 'Solo los gerentes pueden ver la disponibilidad del equipo',
   // Time off added by a manager (core/service.js, core/time-off.js) and custom roles (core/custom-roles.js)
   'Nothing to add': 'No hay nada que agregar',
   'Pick at least one day': 'Elige al menos un día',
