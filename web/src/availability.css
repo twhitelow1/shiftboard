@@ -1,0 +1,47 @@
+/* Weekly availability (pages/AvailabilityEditor.jsx), its import's preview (pages/SmartImport.jsx) and "Approves for"
+   (pages/ApprovalScope.jsx). Phone first: everything wraps at 360 px. */
+.av-day { flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+.av-dayname { width: 96px; font-weight: 700; flex: none; }
+.av-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; flex: 1 1 260px; min-width: 0; }
+.av-controls .seg { flex-wrap: wrap; max-width: 100%; }
+.av-times { gap: 6px; flex-wrap: wrap; }
+.av-times .input { width: 118px; }
+.av-note { flex: 1 1 160px; min-width: 0; }
+.av-controls.compact .av-note { flex-basis: 100%; }
+.av-standing { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 700; color: #166534; background: #dcfce7; border-radius: 999px; padding: 1px 8px; }
+.av-history .av-entry { gap: 6px; display: flex; flex-direction: column; }
+.av-changes { margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.av-changes li { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: baseline; }
+.av-changes .av-dayname { width: auto; min-width: 84px; }
+.av-import-days { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.av-import-day { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; padding: 4px 8px; border-radius: 8px; font-size: 13px; }
+.av-import-day.same { opacity: .55; }
+.av-import-day.review { background: var(--warn-soft, #fef3c7); outline: 1px solid var(--warn, #d97706); opacity: 1; }
+.av-import-day.fixed { background: var(--ok-soft, #dcfce7); opacity: 1; }
+.av-import-dow { font-weight: 700; width: 40px; flex: none; }
+.av-import-vals { flex: 1 1 180px; min-width: 0; display: flex; flex-wrap: wrap; gap: 2px 6px; align-items: baseline; }
+.av-raw { color: var(--text-2); font-style: italic; }
+.av-import-fix { gap: 6px; }
+.av-import-editor { flex-basis: 100%; display: flex; flex-direction: column; gap: 6px; padding: 6px 0 2px; }
+.av-swatch { display: inline-block; width: 26px; height: 18px; border-radius: 4px; border: 1px solid var(--border-strong); vertical-align: middle; flex: none; }
+.av-legend { display: flex; flex-direction: column; gap: 8px; }
+.av-legend-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px; border: 1px solid var(--border); border-radius: 10px; }
+.av-legend-row .input { flex: 1 1 200px; min-width: 0; }
+.approval-scope-note { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; padding: 8px 10px; border-radius: 10px; background: var(--brand-soft); }
+.approval-scope-note.muted { background: transparent; padding-left: 0; }
+.scope-modes { flex-wrap: wrap; }
+.si-date { gap: 6px; flex-wrap: wrap; }
+.av-swatch.fam-green { background: #8ed973; }
+.av-swatch.fam-lightGreen { background: #c2f1c8; }
+.av-swatch.fam-yellow { background: #ffff00; }
+.av-swatch.fam-red { background: #ff0000; }
+.av-swatch.fam-other { background: #b4c6e7; }
+.to-requested { margin-top: 2px; }
+.sl-filters { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; }
+.sl-filters .field { margin: 0; min-width: 130px; flex: 1 1 130px; }
+.ww-table td { text-align: center; }
+.ww-table td select { min-width: 120px; }
+.pp-primary { gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+/* Time off's toolbar: the tabs keep a full line; the buttons wrap under them on narrower screens. */
+.to-toolbar { flex-wrap: wrap; }
+.to-toolbar .tabs { flex: 1 1 420px !important; min-width: 0; overflow-x: auto; }

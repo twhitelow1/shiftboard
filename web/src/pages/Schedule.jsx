@@ -3,7 +3,7 @@ import { useApp, Icon, Avatar, Modal, Field, shiftTime, money, useAction, JobDot
 import { addDays, weekStart, range, dow, parseDate } from '../../../core/time.js';
 import { hoursOf } from '../../../core/forecast.js';
 import { sameArea, bannerColor, textOn } from '../../../core/areas.js';
-import { buildSections, shiftChoices } from '../../../core/layout.js';
+import { buildSections, shiftChoices, offPrimary } from '../../../core/layout.js';
 import { dayList, daySort, positionSections } from '../../../core/day-list.js';
 import ShiftDialog from './ShiftDialog.jsx';
 import ImportDialog from './ImportDialog.jsx';
@@ -168,7 +168,7 @@ export default function Schedule() {
     const j = jobs[s.jobCodeId];
     const w = data?.warnings?.[s.id];
     return (
-      <button className={`shift ${s.published ? '' : 'draft'} ${!s.userId ? 'open' : ''} ${s.userId === me.id ? 'mine' : ''}`} style={{ '--jc': j?.color || '#888' }}
+      <button className={`shift ${s.published ? '' : 'draft'} ${!s.userId ? 'open' : ''} ${s.userId === me.id ? 'mine' : ''} ${s.userId && offPrimary(s, people[s.userId], j) ? 'elsewhere' : ''}`} style={{ '--jc': j?.color || '#888' }}
         onClick={(e) => { e.stopPropagation(); openDialog(s); }} title={[...(w || []), canTrade(s, me, today) && t('schedule.yourShiftTapToTrade')].filter(Boolean).join('\n')}>
         <span className="t">{shiftTime(s)}</span>
         {s.tag && <span className="tag">{s.tag}</span>}
@@ -350,6 +350,10 @@ export default function Schedule() {
       {arrange != null && <RoomDialog room={arrange} onClose={(changed) => { setArrange(null); if (changed) load(); }} />}
       {strayOpen && <StrayDialog stray={stray} ws={ws} onClose={(changed) => { setStrayOpen(false); if (changed) load(); }} />}
 
+      {isMgr && employees.some((e) => (e.jobCodes || []).some((j) => j.primaryRoom)) && (
+        <div className="sched-legend small muted no-print"><span className="swatch-elsewhere" aria-hidden="true" />{t('schedule.elsewhereLegend')}
+          <a className="btn ghost sm" href="#/who-works-where" style={{ marginLeft: 'auto' }}><Icon name="users" />{t('whoWorks.open')}</a></div>
+      )}
       {editSection && <SectionPeople section={editSection} ws={ws} sections={allSections} onClose={(changed) => { setEditSection(null); if (changed) load(); }} />}
 
       {dialog && <ShiftDialog shift={dialog.shift} startIn={dialog.startIn} warnings={dialog.warnings} events={data?.events || []} onClose={closeDialog} />}

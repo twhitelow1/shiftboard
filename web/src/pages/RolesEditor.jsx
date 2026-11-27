@@ -8,6 +8,8 @@ import { roleLabel, roleOf } from '../../../core/roles.js';
 import { useT } from '../i18n/index.js';
 import { beginView } from './ViewAs.jsx';
 import { peekDraft, keepDraft } from '../view-as-api.js';
+import { RoleApprovalScopes } from './ApprovalScope.jsx'; // what managers and supervisors approve by default
+import { CustomRoles } from './CustomRoles.jsx'; // Bar Manager, Shift Lead… on a base level
 import { SelfPromotionSetting } from './SuperAdmin.jsx'; // "Admins can make themselves Super Admin" (core/super-admin.js)
 import '../view-as.css';
 
@@ -24,6 +26,7 @@ export default function RolesEditor() {
   const [values, setValues] = useState(null);
   const [busy, setBusy] = useState(false);
 
+  const [rev, setRev] = useState(0); // a custom role made or removed: its column comes and goes
   useEffect(() => {
     call('roleFeatures.get').then((d) => {
       setData(d);
@@ -35,7 +38,7 @@ export default function RolesEditor() {
       for (const r of d.editable) for (const [k, v] of Object.entries(kept.roleFeatures[r] || {})) if (typeof next[r]?.[k] === 'boolean' && typeof v === 'boolean') next[r][k] = v;
       setValues(next);
     }, (e) => toast(e.message, 'bad'));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rev]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dirty = useMemo(() => data && values && !same(switches(values, data.roles), switches(data.values, data.roles)), [data, values]);
   if (!data || !values) return <div className="empty">{t('common.loading')}</div>;
@@ -128,6 +131,8 @@ export default function RolesEditor() {
           <button className="btn primary" disabled={busy || !dirty || !!viewAs} onClick={save}><Icon name="check" />{t('roles.save')}</button>
         </div>
       </div>
+      <CustomRoles onChange={() => setRev(rev + 1)} />
+      <RoleApprovalScopes key={rev} />
       <SelfPromotionSetting />
     </div>
   );

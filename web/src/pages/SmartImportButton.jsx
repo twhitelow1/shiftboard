@@ -11,7 +11,7 @@ export function SmartImportButton({ target, className = 'btn sm' }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button className={className} onClick={() => setOpen(true)}><Icon name="upload" />{t(target === 'menu' ? 'smartImport.importMenu' : target === 'products' ? 'smartImport.importProducts' : 'smartImport.importTeam')}</button>
+      <button className={className} onClick={() => setOpen(true)}><Icon name="upload" />{t(target === 'menu' ? 'smartImport.importMenu' : target === 'products' ? 'smartImport.importProducts' : target === 'availability' ? 'smartImport.importAvailability' : 'smartImport.importTeam')}</button>
       {open && <Suspense fallback={null}><SmartImportDialog target={target} onClose={() => setOpen(false)} /></Suspense>}
     </>
   );

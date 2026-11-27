@@ -27,13 +27,16 @@
 // platform's people and call the same preview/apply. core/adp.js matchWorkers keeps its own links (adpWorkers);
 // the employee ID it saves (users.adpId) is one of the IDs matched here.
 import { uid } from './store.js';
-import { roleOf, canManageUser, assignableRoles } from './roles.js';
+import { roleOf, canManageUser, assignableRoles, atLeast } from './roles.js';
 import { nameKey, legalNameOf } from './names.js';
 import { canonicalAllergen, DEFAULT_CATEGORIES } from './training.js';
 import {
-  FIELDS, MAX_ROWS, normalizeEmployee, normalizeMenuItem, normalizeProduct, productLikeness, productLooseKey, groupRows, personLikeness, menuLikeness, POSSIBLE_AT,
-  normEmail, phoneKey, idKey, itemKey, looseItemKey, isEmptyValue, sameValue, confidenceOf, headerKey, isSensitiveHeader, isMajorAllergen,
+  FIELDS, MAX_ROWS, normalizeEmployee, normalizeAvailabilityRow, normalizeMenuItem, normalizeProduct, productLikeness, productLooseKey, groupRows, personLikeness, menuLikeness, POSSIBLE_AT,
+  normEmail, phoneKey, idKey, itemKey, looseItemKey, isEmptyValue, sameValue, confidenceOf, headerKey, isSensitiveHeader, isMajorAllergen, COLOR_FAMILIES, parseDay,
 } from './smart-import.js';
+import { DAY_FIELDS } from './weekdays.js';
+import { scheduleAreas, sameArea } from './areas.js';
+import { parseAvailabilityCell, cellDay, dayView, sameDay, parseLimit, storedDay } from './availability.js';
 
 /**
  * The profile fields an import brings that Team didn't have (employees.save keeps them; Team → a person shows them):
@@ -59,13 +62,14 @@ function publicView(p) {
 }
 
 const LINKS = 'importLinks';
+const atLeastManager = (u) => atLeast(u, 'manager');
 const MAPPINGS = 'importMappings';
 const CHECK_LIMIT = 3; // candidates shown for a possible duplicate
 const clean = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
 const asList = (v) => (Array.isArray(v) ? v : isEmptyValue(v) ? [] : [v]);
 const show = (v) => (Array.isArray(v) ? v.join(', ') : typeof v === 'boolean' ? v : v == null ? '' : String(v));
 
-export function importApi({ store, api, fail, needMgr, now }) {
+export function importApi({ store, api, fail, needMgr, now, settings = () => ({}), availability = null, slog = null }) {
   const iso = () => now().toISOString();
 
   // ---------------------------------------------------------------- shared
@@ -84,8 +88,30 @@ export function importApi({ store, api, fail, needMgr, now }) {
       const row = Number.isInteger(r?.row) && r.row > 0 && r.row < 1e6 ? r.row : i + 1;
       // id: the existing record this row is (a tool updating one item, a future platform sync that knows it).
       const id = typeof r?.id === 'string' && r.id.length < 80 ? r.id : null;
-      return { row, values, present: [...new Set([...present, ...Object.keys(values)])], ...(id ? { id } : {}) };
+      // The availability import: each day cell's colour family (an Excel sheet's fills) and the room section it's under.
+      const colors = target === 'availability' && r?.colors && typeof r.colors === 'object' ? Object.fromEntries(Object.entries(r.colors).filter(([k, v]) => DAY_FIELDS.includes(k) && COLOR_FAMILIES.includes(v))) : null;
+      const section = target === 'availability' && typeof r?.section === 'string' ? r.section.slice(0, 60) : null;
+      const house = target === 'availability' ? cleanHouse(r?.house) : null; // the house schedule workbook (core/house-grid.js)
+      return { row, values, present: [...new Set([...present, ...Object.keys(values)])], ...(id ? { id } : {}), ...(colors ? { colors } : {}), ...(section ? { section } : {}), ...(house ? { house } : {}) };
     });
+  }
+  /** A house-workbook record's part, checked (core/house-grid.js houseRecords). */
+  function cleanHouse(h) {
+    if (!h || typeof h !== 'object') return null;
+    const dow = (d) => Number.isInteger(d) && d >= 0 && d <= 6;
+    const date = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+    const str = (v, n = 80) => String(v ?? '').slice(0, n);
+    const arr = (v, max = 60) => (Array.isArray(v) ? v.slice(0, max) : []);
+    return {
+      sections: arr(h.sections, 24).map((s) => ({ room: s?.room ? str(s.room, 60) : null, position: s?.position ? str(s.position, 60) : null, count: Math.min(999, Number(s?.count) || 1), ...(s?.standing === true ? { standing: true } : {}) })),
+      standing: [...new Set(arr(h.standing, 7).filter(dow))], standingTab: h.standingTab === true,
+      dated: arr(h.dated).filter((x) => date(x?.date) && dow(x?.dow)).map((x) => ({ date: x.date, dow: x.dow, tab: str(x.tab), text: str(x.text) })),
+      otherRoom: arr(h.otherRoom).filter((x) => dow(x?.dow)).map((x) => ({ dow: x.dow, tab: str(x.tab) })),
+      flags: arr(h.flags).filter((x) => dow(x?.dow)).map((x) => ({ id: str(x.id, 20), tab: str(x.tab), dow: x.dow, ...(date(x.date) ? { date: x.date } : {}), text: str(x.text, 120), color: str(x.color, 20), why: str(x.why, 20) })),
+      mismatch: arr(h.mismatch).filter((x) => dow(x?.dow)).map((x) => ({ dow: x.dow, tab: str(x.tab), kind: str(x.kind, 10) })),
+      codes: arr(h.codes).filter((x) => dow(x?.dow) && x?.code).map((x) => ({ dow: x.dow, code: str(x.code, 60).toUpperCase(), tab: str(x.tab) })),
+      mod: h.mod === true,
+    };
   }
   const linkId = (target, k) => `${target}|${k}`.slice(0, 200);
   const linkOf = (target, k) => (k ? store.get(LINKS, linkId(target, k)) : null);
@@ -102,6 +128,10 @@ export function importApi({ store, api, fail, needMgr, now }) {
       action, id: typeof d.id === 'string' ? d.id : null,
       keep: Array.isArray(d.keep) ? d.keep.filter((k) => typeof k === 'string') : [],
       values: d.values && typeof d.values === 'object' ? d.values : {},
+      cells: d.cells && typeof d.cells === 'object' && !Array.isArray(d.cells) ? d.cells : {}, // availability: the manager's fix for a cell
+      ...(d.primaryRoom === 'accept' ? { primaryRoom: 'accept' } : {}), // availability: take the room suggestions
+      ...(typeof d.ownSchedule === 'boolean' ? { ownSchedule: d.ownSchedule } : {}), // availability: sets their own schedule
+      ...(typeof d.requestedAt === 'string' && d.requestedAt.length < 40 ? { requestedAt: d.requestedAt } : {}), // availability: when they asked
     };
   };
   function pickConflicts(group, dec, existing, getExisting) {
@@ -129,7 +159,8 @@ export function importApi({ store, api, fail, needMgr, now }) {
       details: { fileName: clean(args.fileName).slice(0, 120), source: clean(args.source).slice(0, 20), rows: result.counts.total,
         created: result.created, updated: result.updated, unchanged: result.unchanged, skipped: result.skipped, failed: result.failed.length,
         ...(result.positionsCreated ? { positionsCreated: result.positionsCreated.length } : {}), ...(result.categoriesCreated ? { categoriesCreated: result.categoriesCreated.length } : {}),
-        ...(target === 'employees' ? { invite: !!args.options?.invite } : {}) },
+        ...(target === 'employees' ? { invite: !!args.options?.invite } : {}),
+        ...(target === 'availability' ? { notify: args.options?.notify === true, effectiveFrom: result.effectiveFrom || null } : {}) },
     });
   }
   function mappingMethod(target) {
@@ -159,7 +190,7 @@ export function importApi({ store, api, fail, needMgr, now }) {
   function previewWith(target, actor, args, hooks) {
     const records = cleanRecords(target, args.records);
     const decisions = Object.fromEntries(Object.entries(args.decisions && typeof args.decisions === 'object' ? args.decisions : {}).map(([k, d]) => [k, cleanDecision(d)]).filter(([, d]) => d));
-    const normalized = records.map((r) => ({ ...r, ...hooks.normalize(r.values) }));
+    const normalized = records.map((r) => ({ ...r, ...hooks.normalize(r.values, r) }));
     const groups = groupRows(normalized, target);
     const taken = new Map(); // existing id → the row key that claimed it
     const rows = groups.map((g) => {
@@ -212,7 +243,9 @@ export function importApi({ store, api, fail, needMgr, now }) {
       if (target_ && taken.has(target_.id)) { row.problems.push({ code: 'sameRecordAs', params: { row: taken.get(target_.id) } }); row.status = 'problem'; return row; }
       if (target_) taken.set(target_.id, key);
       const keep = [...(effective?.keep || []), ...(row.keepFromLink || [])];
-      hooks.finish(row, { data, target: target_, keep, options: args.options || {}, actor });
+      hooks.finish(row, { data, target: target_, keep, options: args.options || {}, actor, decision: dec });
+      if (row.extraNeeds?.length) needs.push(...row.extraNeeds); // availability: cells the manager has to look at
+      delete row.extraNeeds;
       if (needs.length) { row.status = 'check'; row.needs = needs; row.why = row.why || needs[0]; return row; }
       if (row.problems.length) row.status = 'problem';
       else if (target_) row.status = row.changes.length ? 'update' : 'unchanged';
@@ -259,11 +292,13 @@ export function importApi({ store, api, fail, needMgr, now }) {
   // ---------------------------------------------------------------- employees
 
   const jobs = () => store.list('jobCodes').filter((j) => !j.archived);
+  /** A room by name (Rooms & positions, or the schedule's areas), in its saved spelling; null when there's none. */
+  const roomFor = (name) => [...(store.get('layout', 'layout')?.rooms || []).map((r) => r.room), ...scheduleAreas(settings())].find((r) => sameArea(r, name)) || null;
   const POSITION_WORDS = [
     ['server', 'waiter', 'waitress', 'waitstaff', 'mesero', 'mesera'], ['bartender', 'barman', 'barmaid', 'bar', 'cantinero', 'cantinera', 'barista de bar'],
     ['host', 'hostess', 'anfitrion', 'anfitriona', 'hostes'], ['busser', 'busboy', 'bus boy', 'busperson', 'garrotero', 'ayudante de mesero'],
     ['cook', 'line cook', 'cocinero', 'cocinera', 'linea'], ['dishwasher', 'dish', 'lavaplatos', 'lavalozas', 'steward'], ['barback', 'bar back', 'ayudante de bar'],
-    ['runner', 'food runner', 'corredor'], ['prep', 'prep cook', 'preparador'], ['manager', 'gerente'], ['chef', 'cocinero en jefe'], ['sous chef', 'sous'],
+    ['runner', 'food runner', 'corredor'], ['cocktail server', 'cocktail', 'cocktail waitress', 'coctelera'], ['doorman', 'door', 'security', 'bouncer', 'portero'], ['prep', 'prep cook', 'preparador'], ['manager', 'gerente'], ['chef', 'cocinero en jefe'], ['sous chef', 'sous'],
   ];
   /** A job code for a position name: its name or short name, or a word that means the same (Waiter = Server, Mesero = Server). */
   function jobFor(name, list = jobs()) {
@@ -292,14 +327,12 @@ export function importApi({ store, api, fail, needMgr, now }) {
     employeeId: (a, b) => idKey(a) === idKey(b), notes: (a, b) => clean(a) === clean(b),
   };
 
-  function employeePreview(actor, args) {
-    const users = store.list('users');
-    const settingsSuperAdmin = users.some((u) => roleOf(u) === 'super_admin' && u.active !== false);
-    const canAssign = assignableRoles(actor, { superAdminExists: settingsSuperAdmin });
-    const knownJobs = jobs();
-    const newPositions = new Map();
-    const prev = previewWith('employees', actor, args, {
-      normalize: normalizeEmployee,
+  /**
+   * Finding a person from a row: email, employee/payroll ID, phone, a decision made before, then the full or legal name
+   * (exact); else candidates by personLikeness ("Possible duplicate — check"). The team import and the availability
+   * import share it.
+   */
+  const personHooks = (users) => ({
       all: () => users,
       get: (id) => store.get('users', id),
       linkKey: (d) => nameKey(d.name),
@@ -327,6 +360,17 @@ export function importApi({ store, api, fail, needMgr, now }) {
         }
         return { hits: [], by: null };
       },
+  });
+
+  function employeePreview(actor, args) {
+    const users = store.list('users');
+    const settingsSuperAdmin = users.some((u) => roleOf(u) === 'super_admin' && u.active !== false);
+    const canAssign = assignableRoles(actor, { superAdminExists: settingsSuperAdmin });
+    const knownJobs = jobs();
+    const newPositions = new Map();
+    const prev = previewWith('employees', actor, args, {
+      normalize: normalizeEmployee,
+      ...personHooks(users),
       finish(row, { data, target: u, keep, options }) {
         row.linkKey = nameKey(data.name);
         const blank = options.blankClears === true;
@@ -364,7 +408,8 @@ export function importApi({ store, api, fail, needMgr, now }) {
         row.plan = { jobIds };
         const jobName = (id) => (id.startsWith('new:') ? newPositions.get(id.slice(4)) : store.get('jobCodes', id)?.name || '');
         if (!u) {
-          row.plan.doc = data;
+          if (data.primaryRoom && !roomFor(data.primaryRoom)) row.notes.push({ code: 'unknownRoom', params: { name: data.primaryRoom } });
+          row.plan.doc = { ...data, primaryRoom: data.primaryRoom ? roomFor(data.primaryRoom) : null, rooms: (data.rooms || []).map(roomFor).filter(Boolean) };
           return;
         }
         // Changes, field by field.
@@ -404,6 +449,34 @@ export function importApi({ store, api, fail, needMgr, now }) {
           on = on.filter((j) => Number(j.rate) !== data.payRate);
           for (const j of on) { change('payRate', `${jobName(j.jobCodeId)}: ${j.rate ?? ''}`, `${jobName(j.jobCodeId)}: ${data.payRate}`); j.rate = data.payRate; jobsChanged = true; }
         }
+        // Rooms they work and their primary room: on the row's positions (else all of theirs). A primary room always
+        // joins their rooms (a position without rooms keeps its department's room too); the schedule shows shifts
+        // outside it light green.
+        const onRow = () => (jobIds.length ? curJobs.filter((x) => jobIds.includes(x.jobCodeId)) : curJobs);
+        const roomsOf = (j) => (j.areas?.length ? j.areas : [store.get('jobCodes', j.jobCodeId)?.department].filter(Boolean));
+        if (data.rooms?.length && !skipField('rooms')) {
+          const known = data.rooms.map((r) => roomFor(r) || (row.notes.push({ code: 'unknownRoom', params: { name: r } }), null)).filter(Boolean);
+          for (const j of known.length ? onRow() : []) {
+            const next = [...new Set([...roomsOf(j), ...known])];
+            if (next.join('|') === (j.areas || []).join('|')) continue;
+            change('rooms', `${jobName(j.jobCodeId)}: ${(j.areas || []).join(', ')}`, `${jobName(j.jobCodeId)}: ${next.join(', ')}`);
+            j.areas = next;
+            jobsChanged = true;
+          }
+        }
+        if (data.primaryRoom && !skipField('primaryRoom')) {
+          const room = roomFor(data.primaryRoom);
+          if (!room) row.notes.push({ code: 'unknownRoom', params: { name: data.primaryRoom } });
+          else {
+            for (const j of onRow()) {
+              if (sameArea(j.primaryRoom, room)) continue;
+              change('primaryRoom', `${jobName(j.jobCodeId)}: ${j.primaryRoom || ''}`, `${jobName(j.jobCodeId)}: ${room}`);
+              if (!roomsOf(j).some((r) => sameArea(r, room))) j.areas = [...new Set([...roomsOf(j), room])];
+              j.primaryRoom = room;
+              jobsChanged = true;
+            }
+          }
+        }
         if (jobsChanged) patch.jobCodes = curJobs;
         if (row.changes.length && row.cantEdit) row.problems.push({ code: 'cantEdit', params: { name: u.name } });
         row.plan.patch = patch;
@@ -431,7 +504,8 @@ export function importApi({ store, api, fail, needMgr, now }) {
       const rate = row.plan.doc?.payRate ?? null;
       if (row.status === 'new') {
         const d = row.plan.doc;
-        const jobCodes = row.plan.jobIds.map((id, i) => ({ jobCodeId: jobId(id), rate, primary: i === 0 }));
+        const roomsFor = (id) => { const dept = store.get('jobCodes', id)?.department; const list = [...new Set([...(d.rooms || []), ...(d.primaryRoom ? [d.primaryRoom] : [])])]; return list.length ? [...new Set([...(d.rooms?.length ? [] : [dept].filter(Boolean)), ...list])] : []; };
+        const jobCodes = row.plan.jobIds.map((id, i) => ({ jobCodeId: jobId(id), rate, primary: i === 0, ...(roomsFor(jobId(id)).length ? { areas: roomsFor(jobId(id)) } : {}), ...(d.primaryRoom ? { primaryRoom: d.primaryRoom } : {}) }));
         const out = api['employees.save'](actor, {
           name: d.name, email: d.email || '', phone: d.phone || '', role: d.role || 'employee', jobCodes, active: d.active !== false,
           passwordless: true, // they sign in through an invitation (Team → Invite, or options.invite)
@@ -454,6 +528,343 @@ export function importApi({ store, api, fail, needMgr, now }) {
     const out = { ...result, counts: preview.counts, positionsCreated: [...made.keys()].map((k) => preview.newPositions.find((n) => nameKey(n) === k) || k), invite };
     audit(actor, 'employees', out, args);
     return out;
+  }
+
+  // ---------------------------------------------------------------- availability
+  // One row per person, a column per weekday (core/smart-import.js FIELDS.availability). People are matched exactly like
+  // the team import (personHooks) and never made: a name that isn't on the team is a problem row, skipped. Each day's
+  // cell is read by parseAvailabilityCell; a cell it doesn't fully understand keeps its text as the day's note and makes
+  // the row a "check" until the manager fixes it (decision.cells[day] = a day) or takes the reading as it is
+  // (decision.cells[day] = 'accept'). Days whose column isn't in the file stay as they are.
+  //
+  // Colours (an Excel sheet keeps its fills; records carry colors: { mon: 'green' | 'lightGreen' | 'yellow' | … }), each
+  // family mapped by the manager (options.colorMap, remembered per restaurant), the owner's sheet by default:
+  //   standing    green "REQ OFF": unavailable that weekday every week, marked standing, with when it was first asked
+  //   weekOff     yellow "REQ OFF": time off for that date of the sheet's week (options.weekOf) only, approved or pending
+  //               (options.weekOffStatus), requested at the import time unless the row says (requestedOn column, or
+  //               decision.requestedAt); never weekly availability
+  //   otherRoom   light green: working in another room than their primary one that day (not availability). With the
+  //               sheet's room sections ("BAR" rows), each person's section is offered as their primary room, applied
+  //               only when the manager ticks it (decision.primaryRoom: 'accept')
+  //   ignore
+  // options: { effectiveFrom, notify, colorMap, weekOf, weekOffStatus }. Apply saves through availability.setFor (each
+  // person's Availability history, via 'import'), adds the week's time off, and the accepted primary rooms.
+  const fixOf = (v) => (v === 'accept' ? 'accept' : v && typeof v === 'object' ? storedDay(v) || {} : undefined);
+  const COLOR_ACTIONS = ['standing', 'weekOff', 'otherRoom', 'ignore'];
+  /** The owner's sheet: green = standing request off, yellow = this week's request off, light green = another room. */
+  const DEFAULT_COLOR_MAP = { green: 'standing', yellow: 'weekOff', lightGreen: 'otherRoom', red: 'ignore', other: 'ignore' };
+  const colorMapOf = (raw) => {
+    const out = { ...DEFAULT_COLOR_MAP, ...(store.get(MAPPINGS, 'availability')?.colors || {}) };
+    for (const [k, v] of Object.entries(raw && typeof raw === 'object' ? raw : {})) if (COLOR_FAMILIES.includes(k) && k !== 'none' && COLOR_ACTIONS.includes(v)) out[k] = v;
+    return out;
+  };
+  /** The next schedule week's first day (the "Week of" default). */
+  const nextWeek = () => {
+    const today = now().toISOString().slice(0, 10);
+    const ws = settings().weekStartDow ?? 1;
+    const d = new Date(`${today}T12:00:00Z`);
+    const ahead = ((ws - d.getUTCDay() + 7) % 7) || 7;
+    d.setUTCDate(d.getUTCDate() + ahead);
+    return d.toISOString().slice(0, 10);
+  };
+  const dateOfDay = (weekOf, d) => {
+    const ws = settings().weekStartDow ?? 1;
+    const x = new Date(`${weekOf}T12:00:00Z`);
+    x.setUTCDate(x.getUTCDate() + ((d - ws + 7) % 7));
+    return x.toISOString().slice(0, 10);
+  };
+  /** Room section rows ("BAR" with no days): taken out, and the people under them get section = that room. */
+  function sections(records) {
+    let cur = null;
+    const out = [];
+    for (const r of records) {
+      const name = String(r.values?.name || '').trim();
+      const hasDays = DAY_FIELDS.some((k) => String(r.values?.[k] || '').trim());
+      const room = name && !hasDays ? roomFor(name) : null;
+      if (room) { cur = room; continue; }
+      out.push(cur ? { ...r, section: cur } : r);
+    }
+    return out;
+  }
+  function availabilityPreview(actor, args) {
+    actor_ = actor;
+    const users = store.list('users');
+    const st = settings();
+    const opts = args.options || {};
+    const colorMap = colorMapOf(opts.colorMap);
+    const weekOf = /^\d{4}-\d{2}-\d{2}$/.test(opts.weekOf || '') ? opts.weekOf : nextWeek();
+    const weekOffStatus = opts.weekOffStatus === 'pending' ? 'pending' : 'approved';
+    const importAt = now().toISOString();
+    const recs = sections(cleanRecords('availability', args.records));
+    const prev = previewWith('availability', actor, { ...args, records: recs }, {
+      normalize: (values, rec) => {
+        const n = normalizeAvailabilityRow(values);
+        if (rec?.colors) n.data.colors = rec.colors;
+        if (rec?.section) n.data.section = rec.section;
+        if (rec?.house) n.data.house = rec.house;
+        return n;
+      },
+      ...personHooks(users),
+      // Two people answer to the name ("ALEX"): the sheet's section (its position) picks one when only one holds it.
+      exact(d, link) {
+        const r = personHooks(users).exact(d, link);
+        if (r.hits.length > 1 && d.house?.sections?.length) {
+          const ids = d.house.sections.map((s) => jobFor(positionWord(s.position))?.id).filter(Boolean);
+          const narrowed = r.hits.filter((u) => (u.jobCodes || []).some((j) => ids.includes(j.jobCodeId)));
+          if (narrowed.length === 1) return { hits: narrowed, by: 'position' };
+        }
+        return r;
+      },
+      finish(row, ctx) {
+        if (ctx.data.house) { houseFinish(row, ctx, { st, weekOffStatus, importAt, codes: opts.codes && typeof opts.codes === 'object' ? opts.codes : {} }); return; }
+        const { data, target: u, decision } = ctx;
+        row.days = [];
+        row.timeOff = [];
+        if (!u) {
+          // Never a new person from an availability sheet.
+          if (!row.candidates || row.decision === 'new') row.problems.push({ code: row.decision === 'new' ? 'noCreate' : 'notOnTeam', params: { name: data.name || '' } });
+          if (row.decision === 'new') row.decision = null;
+        } else if (availability && !availability.canEditOf(actor, u)) {
+          row.problems.push({ code: 'cantEditAvailability', params: { name: u.name } });
+        }
+        const cur = u?.availability || {};
+        const next = { ...cur };
+        const flagged = [];
+        const requestedOn = parseDay(data.requestedOn || '');
+        const rowRequested = cleanIso(decision?.requestedAt) || (requestedOn ? `${requestedOn}T12:00:00.000Z` : null);
+        if (data.requestedOn && !requestedOn) row.notes.push({ code: 'badDate', params: { value: data.requestedOn } });
+        const lightGreen = [];
+        for (const [d, k] of DAY_FIELDS.entries()) {
+          if (!(k in data)) continue;
+          const family = data.colors?.[k] || 'none';
+          const action = family === 'none' ? 'ignore' : colorMap[family] || 'ignore';
+          const cell = parseAvailabilityCell(data[k], st);
+          const fix = fixOf(decision?.cells?.[k]);
+          const day = { day: d, field: k, raw: data[k], before: dayView(cur[d]), kind: cell.kind, ...(family !== 'none' ? { color: family, action } : {}) };
+          if (action === 'weekOff') {
+            // This week only: a time-off entry, the weekly availability stays as it is.
+            const date = dateOfDay(weekOf, d);
+            const exists = !!u && store.list('timeOff', (t) => t.userId === u.id && ['pending', 'approved'].includes(t.status) && t.startDate <= date && t.endDate >= date).length > 0;
+            row.timeOff.push({ field: k, day: d, date, raw: data[k], exists, requestedAt: rowRequested || importAt, fromImport: !rowRequested, status: weekOffStatus });
+            day.after = day.before;
+            day.changed = false;
+            day.weekOff = date;
+            row.days.push(day);
+            continue;
+          }
+          let after;
+          if (fix && fix !== 'accept') after = fix;
+          else if (action === 'standing') {
+            // Standing request off: unavailable every week, keeping the date they first asked if it was already standing.
+            const was = cur[d]?.standing ? cur[d].requestedAt : null;
+            after = { available: false, standing: true, requestedAt: was || rowRequested || importAt, source: 'sheet', ...(cell.kind !== 'off' || cell.note ? { note: (cell.note || data[k] || '').slice(0, 200) } : {}) };
+            if (cell.available && cell.kind !== 'blank' && !fix) { day.review = true; flagged.push(k); }
+          } else {
+            after = cellDay(cell);
+            if (cell.review && !fix) { day.review = true; flagged.push(k); }
+          }
+          if (action === 'otherRoom') { day.otherRoom = true; lightGreen.push(k); }
+          if (fix) day.fixed = fix === 'accept' ? 'accept' : 'edit';
+          day.after = dayView(after);
+          day.changed = !sameDay(cur[d], after) || (!!after?.standing !== !!cur[d]?.standing);
+          if (after) next[d] = after; else delete next[d];
+          row.days.push(day);
+          if (day.changed) row.changes.push({ field: k, before: day.before, after: day.after });
+        }
+        const plan = { availability: next };
+        const field = (f, before, after) => { row.changes.push({ field: f, before: show(before), after: show(after) }); };
+        if ('notes' in data && data.notes && data.notes !== (u?.availabilityNotes || '')) { plan.notes = data.notes; field('notes', u?.availabilityNotes || '', data.notes); }
+        for (const [f, max] of [['maxHours', 80], ['maxDays', 7]]) {
+          if (!(f in data) || !data[f]) continue;
+          const n = parseLimit(data[f], max);
+          if (Number.isNaN(n)) { row.notes.push({ code: 'badLimit', params: { field: f, value: data[f] } }); continue; }
+          if (n !== (u?.[f] ?? null)) { plan[f] = n; field(f, u?.[f] ?? '', n); }
+        }
+        if (/^\d{4}-\d{2}-\d{2}$/.test(opts.effectiveFrom || '')) plan.effectiveFrom = opts.effectiveFrom;
+        // The week's requests off: new ones count as a change (the row is imported for them).
+        plan.timeOff = row.timeOff.filter((t) => !t.exists);
+        if (plan.timeOff.length) row.changes.push({ field: 'timeOff', before: '', after: plan.timeOff.map((t) => t.date).join(', ') });
+        // A primary room to suggest: their section of the sheet, where it isn't their primary room yet. Light-green
+        // days are the days they work elsewhere. Applied only when the manager ticks it.
+        if (u && data.section && (u.jobCodes || []).some((j) => !sameArea(j.primaryRoom, data.section))) {
+          row.primaryRoom = { room: data.section, otherRoomDays: lightGreen, accepted: decision?.primaryRoom === 'accept' };
+          if (row.primaryRoom.accepted) { plan.primaryRoom = data.section; row.changes.push({ field: 'primaryRoom', before: '', after: data.section }); }
+        } else if (lightGreen.length) row.notes.push({ code: 'otherRoomDays', params: { days: lightGreen.join(', ') } });
+        if (!row.days.length && u) row.notes.push({ code: 'noDays' });
+        if (flagged.length && u && !row.problems.length) { row.extraNeeds = ['cells']; row.flagged = flagged; }
+        row.plan = plan;
+      },
+    });
+    // "Sets own schedule": those rows are skipped (and say why).
+    for (const r of prev.rows) if (r.skipReason === 'ownSchedule') { r.status = 'skip'; delete r.needs; }
+    prev.counts = countsOf(prev.rows);
+    prev.checks = prev.rows.filter((r) => r.status === 'check').length;
+    // "Codes we didn't recognize": each code, how many cells, and what's done with it.
+    const codeCount = new Map();
+    for (const r of recs) for (const c of r.house?.codes || []) codeCount.set(c.code, (codeCount.get(c.code) || 0) + 1);
+    prev.codes = [...codeCount].map(([code, cells]) => ({ code, cells, choice: ['note', 'off', 'skip'].includes(opts.codes?.[code]) ? opts.codes[code] : 'note' }));
+    prev.dayFields = DAY_FIELDS.filter((k) => recs.some((r) => k in (r.values || {})));
+    prev.colorMap = colorMap;
+    prev.weekOf = weekOf;
+    prev.weekOffStatus = weekOffStatus;
+    prev.colorsFound = [...new Set(recs.flatMap((r) => Object.values(r.colors || {})))].filter((c) => c !== 'none');
+    return prev;
+  }
+  /** "Servers" → "server", "Doormen" → "doorman": a position header as a position's name. */
+  const positionWord = (w) => String(w || '').trim().toLowerCase().replace(/men$/, 'man').replace(/(?<=[a-z]{3})s$/, '');
+  /**
+   * A person from the house schedule workbook: their standing requests off (the standing tab replaces the ones a sheet
+   * gave before: removals are shown and asked about), this week's requests off as dated time off, a primary room per
+   * position from the sheet's sections (offered, applied only when ticked), and every flagged cell to decide.
+   * decision.cells: { [flag id]: 'ignore' | 'standing' | 'weekOff' } for flags, { [day field]: 'remove' | 'keep' } for removals.
+   */
+  function houseFinish(row, { data, target: u, decision }, { weekOffStatus, importAt, codes }) {
+    const h = data.house;
+    row.house = true;
+    // Sets their own schedule (managers and up, or the sheet's M.O.D. block): ticked by default, then not imported.
+    row.ownScheduleDefault = !!(u && atLeastManager(u)) || !!h.mod;
+    row.ownSchedule = typeof decision?.ownSchedule === 'boolean' ? decision.ownSchedule : row.ownScheduleDefault;
+    if (row.ownSchedule && u) { row.days = []; row.timeOff = []; row.flags = []; row.changes = []; row.plan = { availability: u.availability || {}, timeOff: [], primaryRooms: [] }; row.skipReason = 'ownSchedule'; return; }
+    row.days = [];
+    row.timeOff = [];
+    if (!u) {
+      if (!row.candidates || row.decision === 'new') row.problems.push({ code: row.decision === 'new' ? 'noCreate' : 'notOnTeam', params: { name: data.name || '' } });
+      if (row.decision === 'new') row.decision = null;
+    } else if (availability && !availability.canEditOf(actor_, u)) row.problems.push({ code: 'cantEditAvailability', params: { name: u.name } });
+    const cur = u?.availability || {};
+    const next = { ...cur };
+    const cells = decision?.cells || {};
+    const requested = cleanIso(decision?.requestedAt);
+    const open = [];
+    const standing = new Set(h.standing);
+    // Flagged cells: never guessed. The manager ignores each, or says what it is.
+    row.flags = h.flags.map((f) => {
+      const choice = ['ignore', 'standing', 'weekOff'].includes(cells[f.id]) ? cells[f.id] : null;
+      if (!choice) open.push(f.id);
+      if (choice === 'standing') standing.add(f.dow);
+      if (choice === 'weekOff' && f.date) h.dated.push({ date: f.date, dow: f.dow, tab: f.tab, text: f.text, fromFlag: true });
+      return { ...f, choice };
+    });
+    // Unknown codes (WOH…): per code, available with the code as the day's note (default), unavailable, or skipped.
+    row.codes = [];
+    for (const c of h.codes || []) {
+      if (standing.has(c.dow)) continue;
+      const choice = ['note', 'off', 'skip'].includes(codes[c.code]) ? codes[c.code] : 'note';
+      row.codes.push({ ...c, choice });
+      if (choice === 'skip') continue;
+      const k = DAY_FIELDS[c.dow];
+      const was = cur[c.dow];
+      const after = { available: choice !== 'off', note: `Sheet note: ${c.code}`.slice(0, 200) };
+      if (sameDay(was, after)) continue;
+      next[c.dow] = after;
+      row.changes.push({ field: k, before: dayView(was), after: dayView(after) });
+      row.days.push({ day: c.dow, field: k, before: dayView(was), after: dayView(after), changed: true, code: c.code });
+    }
+    for (const [d, k] of DAY_FIELDS.entries()) {
+      const was = cur[d];
+      const wasStanding = !!(was?.available === false && was?.standing);
+      if (standing.has(d)) {
+        const after = wasStanding ? was : { available: false, standing: true, requestedAt: requested || importAt, source: 'sheet', note: 'REQ OFF' };
+        const day = { day: d, field: k, before: dayView(was), after: dayView(after), changed: !wasStanding, standing: true };
+        row.days.push(day);
+        if (day.changed) { next[d] = after; row.changes.push({ field: k, before: day.before, after: day.after }); }
+      } else if (h.standingTab && wasStanding && was.source === 'sheet') {
+        // The standing tab no longer has it: removed only when the manager says so.
+        const choice = cells[k] === 'remove' || cells[k] === 'keep' ? cells[k] : null;
+        if (!choice) open.push(k);
+        const day = { day: d, field: k, before: dayView(was), after: dayView(choice === 'remove' ? null : was), changed: choice === 'remove', removal: true, choice };
+        row.days.push(day);
+        if (choice === 'remove') { delete next[d]; row.changes.push({ field: k, before: day.before, after: day.after }); }
+      }
+    }
+    // This week's requests off: time off for each date (one per date), unless they already have it.
+    const dates = new Map();
+    for (const x of h.dated) if (!dates.has(x.date)) dates.set(x.date, x);
+    for (const x of dates.values()) {
+      const exists = !!u && store.list('timeOff', (t) => t.userId === u.id && ['pending', 'approved'].includes(t.status) && t.startDate <= x.date && t.endDate >= x.date).length > 0;
+      row.timeOff.push({ field: DAY_FIELDS[x.dow], day: x.dow, date: x.date, raw: x.text || 'REQ OFF', tab: x.tab, exists, requestedAt: requested || importAt, fromImport: !requested, status: weekOffStatus });
+    }
+    row.mismatch = h.mismatch;
+    row.otherRoomDays = h.otherRoom.length;
+    // Where they work, from the sheet's room blocks: per position they hold, every room block they're listed in (the
+    // rooms they work) and a primary room (the standing tab's block, else the one they're listed in most). Offered only.
+    row.roomSuggestions = [];
+    if (u) {
+      const byJob = new Map();
+      for (const s of h.sections) {
+        const room = s.room ? roomFor(s.room) : null;
+        const job = s.position ? jobFor(positionWord(s.position)) : null;
+        if (!room || !job || !(u.jobCodes || []).some((j) => j.jobCodeId === job.id)) continue;
+        const x = byJob.get(job.id) || { job, rooms: new Map() };
+        const cur = x.rooms.get(room) || { count: 0, standing: false };
+        x.rooms.set(room, { count: cur.count + (s.count || 1), standing: cur.standing || !!s.standing });
+        byJob.set(job.id, x);
+      }
+      for (const { job, rooms } of byJob.values()) {
+        const list = [...rooms.keys()];
+        const primary = [...rooms.entries()].sort((a, b) => Number(b[1].standing) - Number(a[1].standing) || b[1].count - a[1].count)[0][0];
+        const entry = u.jobCodes.find((j) => j.jobCodeId === job.id);
+        const have = entry.areas?.length ? entry.areas : [];
+        if (list.every((r) => have.some((x) => sameArea(x, r))) && sameArea(entry.primaryRoom, primary)) continue;
+        row.roomSuggestions.push({ jobCodeId: job.id, position: job.name, rooms: list, room: primary, current: entry.primaryRoom || '', currentRooms: have });
+      }
+    }
+    const accepted = decision?.primaryRoom === 'accept' ? row.roomSuggestions : [];
+    if (accepted.length) row.changes.push({ field: 'primaryRoom', before: '', after: accepted.map((x) => `${x.position}: ${x.room}`).join(', ') });
+    row.roomsAccepted = accepted.length > 0;
+    const plan = { availability: next, timeOff: row.timeOff.filter((t) => !t.exists), primaryRooms: accepted };
+    if (plan.timeOff.length) row.changes.push({ field: 'timeOff', before: '', after: plan.timeOff.map((t) => t.date).join(', ') });
+    if (open.length && u && !row.problems.length) { row.extraNeeds = ['cells']; row.flagged = open; }
+    row.plan = plan;
+  }
+  let actor_ = null;
+  const cleanIso = (v) => {
+    if (!v) return null;
+    const ms = Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? `${v}T12:00:00Z` : String(v));
+    return Number.isFinite(ms) && ms <= now().getTime() + 60_000 ? new Date(ms).toISOString() : null;
+  };
+  function availabilityApply(actor, args) {
+    if (!availability) fail(500, 'Something went wrong');
+    const preview = availabilityPreview(actor, args);
+    const opts = args.options || {};
+    let timeOffAdded = 0, primaryRooms = 0;
+    const result = applyWith('availability', actor, args, preview, (row) => {
+      const u = store.get('users', row.match.id);
+      const { timeOff, primaryRoom, primaryRooms: rooms, ...plan } = row.plan;
+      availability.setFor(actor, u, plan, { via: 'import', notify: opts.notify === true, fileName: args.fileName });
+      for (const t of timeOff || []) {
+        const at = now().toISOString();
+        const doc = store.insert('timeOff', { id: uid('tof'), userId: u.id, startDate: t.date, endDate: t.date, reason: t.raw || 'REQ OFF', status: t.status, createdAt: at,
+          requestedAt: t.requestedAt, source: 'import', enteredBy: actor.id, enteredAt: at, ...(t.status === 'approved' ? { decidedBy: actor.id, decidedAt: at } : {}) });
+        slog?.(actor, 'timeOff.add', { kind: 'timeOff', id: doc.id, date: t.date, affected: [u.id], via: 'import', extra: { endDate: t.date, status: t.status, source: 'import', requestedAt: t.requestedAt } });
+        timeOffAdded++;
+      }
+      if (primaryRoom || rooms?.length) {
+        const fresh = store.get('users', u.id);
+        const jobCodes = (fresh.jobCodes || []).map((j) => {
+          const sug = rooms?.find((x) => x.jobCodeId === j.jobCodeId);
+          if (sug) return { ...j, areas: [...new Set([...(j.areas || []), ...sug.rooms])], primaryRoom: sug.room }; // the sheet's rooms join theirs
+          return primaryRoom ? { ...j, primaryRoom, ...(j.areas?.length && !j.areas.some((a) => sameArea(a, primaryRoom)) ? { areas: [...j.areas, primaryRoom] } : {}) } : j;
+        });
+        store.update('users', u.id, { jobCodes });
+        primaryRooms++;
+      }
+      return u.id;
+    });
+    const out = { ...result, ownSchedule: preview.rows.filter((r) => r.skipReason === 'ownSchedule').length, counts: preview.counts, effectiveFrom: /^\d{4}-\d{2}-\d{2}$/.test(opts.effectiveFrom || '') ? opts.effectiveFrom : null, notified: opts.notify === true ? result.updated : 0, timeOffAdded, primaryRooms, weekOf: preview.weekOf };
+    audit(actor, 'availability', out, args);
+    return out;
+  }
+  /** availability.importMapping also remembers the colour legend: { columns?, colors? }. */
+  function availabilityMapping(actor, a = {}) {
+    const out = mappingMethod('availability')(actor, a);
+    if (a.colors && typeof a.colors === 'object' && !Array.isArray(a.colors)) {
+      const colors = {};
+      for (const [k, v] of Object.entries(a.colors)) if (COLOR_FAMILIES.includes(k) && k !== 'none' && COLOR_ACTIONS.includes(v)) colors[k] = v;
+      const cur = store.get(MAPPINGS, 'availability');
+      if (cur) store.update(MAPPINGS, 'availability', { colors }); else store.insert(MAPPINGS, { id: 'availability', columns: {}, colors });
+    }
+    return { ...out, colors: colorMapOf(null) };
   }
 
   // ---------------------------------------------------------------- menu
@@ -631,6 +1042,13 @@ export function importApi({ store, api, fail, needMgr, now }) {
   }
 
   return {
+    'availability.importMapping': (actor, a = {}) => availabilityMapping(actor, a),
+    'availability.importPreview': (actor, a = {}) => {
+      needMgr(actor);
+      const p = availabilityPreview(actor, a);
+      return { ...publicView(p), dayFields: p.dayFields, colorMap: p.colorMap, weekOf: p.weekOf, weekOffStatus: p.weekOffStatus, colorsFound: p.colorsFound, codes: p.codes };
+    },
+    'availability.importApply': (actor, a = {}) => { needMgr(actor); return availabilityApply(actor, a); },
     'products.importMapping': mappingMethod('products'),
     'products.importPreview': (actor, a = {}) => { needMgr(actor); return publicView(productPreview(actor, a)); },
     'products.importApply': (actor, a = {}) => { needMgr(actor); return productApply(actor, a); },

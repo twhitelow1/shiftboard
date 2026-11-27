@@ -1,3 +1,4 @@
+import { offPrimary } from '../../../core/layout.js';
 import React, { useState } from 'react';
 import { useApp, Modal, Field, Icon, useAction, startTimesOnly } from '../ui.jsx';
 import { canTrade } from './TradeHint.jsx';
@@ -48,6 +49,7 @@ export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onO
   const workingElsewhere = (userId, date) => data.shifts.find((s) => s.userId === userId && s.date === date);
   const covers = (d) => fc?.days?.find((x) => x.date === d)?.totalCovers;
 
+  const { people: peopleById, jobs: jobsById } = useApp(); // light green: a shift outside their primary room (core/layout.js)
   const Cell = ({ list, date, sec, user }) => {
     const shifts = [...list].sort((a, b) => a.start.localeCompare(b.start));
     const add = isMgr && sec?.job ? () => onAdd(date, sec.job.id, user?.id, sec.area) : undefined;
@@ -57,7 +59,7 @@ export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onO
           {shifts.map((s, i) => (
             <React.Fragment key={s.id}>
               {i > 0 && ' / '}
-              <span className={`sh-shift ${s.published ? '' : 'draft'} ${s.userId === me.id ? 'mine' : ''}`} title={[!s.published && t('scheduleSheet.draftNotPostedYet'), canTrade(s, me, today) && t('schedule.yourShiftTapToTrade'), ...(data.warnings?.[s.id] || []), s.notes].filter(Boolean).join('\n')}
+              <span className={`sh-shift ${s.published ? '' : 'draft'} ${s.userId === me.id ? 'mine' : ''} ${s.userId && offPrimary(s, peopleById[s.userId], jobsById[s.jobCodeId]) ? 'elsewhere' : ''}`} title={[!s.published && t('scheduleSheet.draftNotPostedYet'), canTrade(s, me, today) && t('schedule.yourShiftTapToTrade'), ...(data.warnings?.[s.id] || []), s.notes].filter(Boolean).join('\n')}
                 onClick={(e) => { e.stopPropagation(); onOpen(s); }}>
                 {sheetTime(s)}{s.tag ? ` ${s.tag}` : ''}{data.warnings?.[s.id] && <sup className="sh-warn">!</sup>}{s.pending && <sup>⇄</sup>}
               </span>

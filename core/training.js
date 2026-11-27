@@ -171,7 +171,7 @@ export function checkPhoto(dataUrl, fail) {
   return { mime, data, bytes };
 }
 
-export function trainingApi({ store, now, settings, notify, fail, random = Math.random, langOf: userLang = (u) => langOf(u, settings()) }) {
+export function trainingApi({ store, now, settings, notify, fail, random = Math.random, langOf: userLang = (u) => langOf(u, settings()), slog = () => {} }) {
   const today = () => todayStr(now());
   const isMgr = (a) => canManageSchedule(a);
   const needAuth = (a) => { if (!a) fail(401, 'Please sign in'); };
@@ -1134,11 +1134,13 @@ export function trainingApi({ store, now, settings, notify, fail, random = Math.
       needMgr(actor);
       const d = date || today();
       if (!DATE.test(d)) fail(400, 'Pick a date');
-      if (!userId) { store.remove('modOverrides', d); return api['mod.get'](actor, { date: d }); }
+      const was = store.get('modOverrides', d)?.userId || '';
+      if (!userId) { store.remove('modOverrides', d); if (was) slog(actor, 'mod.set', { kind: 'mod', id: d, date: d, changes: [{ field: 'userId', before: was, after: '' }] }); return api['mod.get'](actor, { date: d }); }
       const u = store.get('users', userId);
       if (!canBeMod(u)) fail(400, 'Pick a manager or supervisor');
       const doc = { id: d, date: d, userId, setBy: actor.id, at: now().toISOString() };
       if (store.get('modOverrides', d)) store.update('modOverrides', d, doc); else store.insert('modOverrides', doc);
+      if (was !== userId) slog(actor, 'mod.set', { kind: 'mod', id: d, date: d, affected: [userId], changes: [{ field: 'userId', before: was, after: userId }] }); // the schedule log
       return api['mod.get'](actor, { date: d });
     },
   };

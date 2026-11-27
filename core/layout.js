@@ -44,6 +44,18 @@ export function entryInRoom(entry, job, room) {
 /** Does this person hold the position in this room? */
 export const holdsIn = (person, job, room) => (person?.jobCodes || []).some((e) => entryInRoom(e, job, room));
 
+/**
+ * Is this shift in a room other than the person's primary room for its position (Team → person → Positions)? The
+ * schedule (grid, sheet, PDF) shows those light green, like the house sheet. False when no primary room is set.
+ */
+export function offPrimary(shift, person, job) {
+  const entry = (person?.jobCodes || []).find((e) => e.jobCodeId === shift?.jobCodeId);
+  const primary = cleanArea(entry?.primaryRoom);
+  const room = roomOfShift(shift, job);
+  return !!(primary && room && !sameArea(primary, room));
+}
+export const OFF_PRIMARY_COLOR = '#dcfce7'; // light green (the sheet's)
+
 /** A room of the layout, by name. */
 export const findRoom = (layout, name) => (layout?.rooms || []).find((r) => sameArea(r.room, name)) || null;
 /** A room's entry for a position, or null. */
@@ -290,7 +302,7 @@ export function shiftChoices({ layout, jobs = {}, employees = [], room = '', job
  * kept in step when positions merge or go away, and the manager API (layout.*).
  *   putSettings(patch)  writes settings
  */
-export function layoutService({ store, settings, putSettings, fail, needMgr, now, today }) {
+export function layoutService({ store, settings, putSettings, fail, needMgr, now, today, slog = () => {} }) {
   const stamp = () => now().toISOString();
   const jobsById = () => Object.fromEntries(store.list('jobCodes').map((j) => [j.id, j]));
   const jobOf = (id) => {
@@ -628,6 +640,41 @@ export function layoutService({ store, settings, putSettings, fail, needMgr, now
      * Move the shifts of one hidden or unlisted section, between two dates, to a section that shows
      * (the schedule's "shifts in hidden or unlisted sections" notice). The people on them get that position.
      */
+    // "Who works where" (Settings → Rooms & positions, and the schedule): one position, everyone who holds it × the
+    // rooms that list it, with each person's rooms and primary room. Saving sets them all at once (logged per person).
+    'layout.whoWorksWhere': (actor, { jobCodeId } = {}) => {
+      needMgr(actor);
+      const job = jobOf(jobCodeId);
+      const rooms = roomsForPosition(current(), job.id).map((r) => r.room);
+      const people = store.list('users', (u) => u.active !== false && (u.jobCodes || []).some((e) => e.jobCodeId === job.id))
+        .map((u) => { const e = u.jobCodes.find((x) => x.jobCodeId === job.id); return { id: u.id, name: u.name, rooms: entryRooms(e, job), explicit: !!e.areas?.length, primaryRoom: e.primaryRoom || '' }; })
+        .sort((a, b) => a.name.localeCompare(b.name));
+      return { jobCodeId: job.id, name: job.name, department: job.department || '', rooms, people };
+    },
+    'layout.saveWhoWorksWhere': (actor, { jobCodeId, people = [] } = {}) => {
+      needMgr(actor);
+      const job = jobOf(jobCodeId);
+      const known = [...roomsForPosition(current(), job.id).map((r) => r.room), cleanArea(job.department)].filter(Boolean);
+      let saved = 0;
+      for (const p of Array.isArray(people) ? people.slice(0, 500) : []) {
+        const u = store.get('users', p?.id);
+        const entry = u?.jobCodes?.find((e) => e.jobCodeId === job.id);
+        if (!entry) continue;
+        const rooms = uniqueAreas((Array.isArray(p.rooms) ? p.rooms : []).map((r) => known.find((k) => sameArea(k, r))).filter(Boolean));
+        if (!rooms.length) fail(400, `Pick at least one room for ${u.name}`);
+        const primary = p.primaryRoom ? rooms.find((r) => sameArea(r, p.primaryRoom)) : '';
+        if (p.primaryRoom && !primary) fail(400, 'The primary room has to be one of the rooms they work');
+        const before = `${entryRooms(entry, job).join(', ')}${entry.primaryRoom ? ` (${entry.primaryRoom})` : ''}`;
+        const after = `${rooms.join(', ')}${primary ? ` (${primary})` : ''}`;
+        if (before === after && entry.areas?.length) continue;
+        const jobCodes = u.jobCodes.map((e) => (e.jobCodeId === job.id ? { ...e, areas: rooms, ...(primary ? { primaryRoom: primary } : { primaryRoom: undefined }) } : e))
+          .map((e) => JSON.parse(JSON.stringify(e)));
+        store.update('users', u.id, { jobCodes });
+        if (before !== after) slog(actor, 'rooms.change', { kind: 'person', id: u.id, affected: [u.id], changes: [{ field: 'rooms', position: job.id, before, after }] });
+        saved++;
+      }
+      return { saved, ...api['layout.whoWorksWhere'](actor, { jobCodeId: job.id }) };
+    },
     'layout.moveShifts': (actor, { room = '', jobCodeId, start, end, to = {} } = {}) => {
       needMgr(actor);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(start || '') || !/^\d{4}-\d{2}-\d{2}$/.test(end || '')) fail(400, 'Pick a week');
@@ -639,6 +686,7 @@ export function layoutService({ store, settings, putSettings, fail, needMgr, now
       const toRoom = findRoom(cur, to.room).room;
       if (toJob.id === job.id && sameArea(toRoom, room)) fail(400, 'Pick a different position to move them to');
       const moved = moveSection({ room, job, toRoom, toJob, start, end, toArea: areaForRoom(toRoom, toJob, settings()) });
+      if (moved.shifts) slog(actor, 'layout.move', { kind: 'layout', date: start, weekStart: start, jobCodeId: job.id, extra: { count: moved.shifts, room, toRoom, toJobCodeId: toJob.id } });
       return { moved: moved.shifts };
     },
   };
