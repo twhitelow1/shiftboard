@@ -24,11 +24,20 @@ const TITLES = {
   import_employees: ['Import people to the team', 'Importar personas al equipo'],
   create_stock_list: ['Create a stock list', 'Crear una lista de surtido'],
   add_product: ['Add a product to the catalog', 'Agregar un producto al catálogo'],
+  set_programming: ['Set regular programming', 'Guardar la programación regular'],
+  override_programming_for_date: ['Change programming for one date', 'Cambiar la programación de un día'],
+  run_stock_list: ['Save a stock count', 'Guardar un conteo de surtido'],
+  share_stock_list: ['Share a stock list', 'Compartir una lista de surtido'],
 };
 // A label that means something else for one tool (a product's category isn't a menu section).
 const TOOL_LABELS = {
   add_product: { category: ['Category', 'Categoría'], createNew: ['Add even if it looks like a duplicate', 'Agregar aunque parezca duplicado'] },
   create_stock_list: { name: ['List', 'Lista'], template: ['Save as a template', 'Guardar como plantilla'] },
+  set_programming: { rooms: ['Rooms', 'Salones'], wholeVenue: ['Whole venue', 'Todo el lugar'], pars: ['Staffing pars', 'Personal par'], color: ['Color', 'Color'] },
+  override_programming_for_date: { programming: ['Programming', 'Programación'], action: ['Change', 'Cambio'], pars: ['Staffing pars', 'Personal par'] },
+  run_stock_list: { list: ['List', 'Lista'], position: ['Send to', 'Enviar a'], person: ['Send to', 'Enviar a'], out: ['Report out (86)', 'Reportar agotado (86)'] },
+  share_stock_list: { list: ['List', 'Lista'], person: ['Share with', 'Compartir con'], position: ['Share with', 'Compartir con'], role: ['Share with', 'Compartir con'],
+    room: ['Share with', 'Compartir con'], can: ['They can', 'Pueden'] },
 };
 
 const LABELS = {
@@ -45,6 +54,13 @@ const LABELS = {
   sendInvitations: ['Send invitations now', 'Enviar invitaciones ahora'], createNew: ['Add as a separate item', 'Agregar como platillo aparte'],
   products: ['Products', 'Productos'], due: ['Due', 'Para las'], unit: ['Unit', 'Unidad'], size: ['Size', 'Tamaño'], location: ['Kept in', 'Se guarda en'],
   supplier: ['Supplier', 'Proveedor'], source: ['Came in by', 'Llegó por'], requestedAt: ['Requested on', 'Pedido el'],
+  counts: ['On hand', 'Hay'], send: ['Then', 'Después'], unshare: ['Stop sharing', 'Dejar de compartir'],
+};
+const ROLE_WORDS = { employee: ['Employees', 'Empleados'], supervisor: ['Supervisors', 'Supervisores'], manager: ['Managers', 'Gerentes'], admin: ['Admins', 'Administradores'] };
+// A saved stock list's run and share: what happens next, and what they may do.
+const STOCK_VALUES = {
+  support: ['Send what’s needed to support', 'Mandar lo que falta al equipo de apoyo'], self: ['Assign it to me', 'Asignármela'], none: ['Only save the counts', 'Solo guardar el conteo'],
+  use: ['Use it', 'Usarla'], edit: ['Edit it', 'Editarla'],
 };
 const CATEGORY_VALUES = {
   spirits: ['Spirits', 'Licores'], beer: ['Beer', 'Cerveza'], wine: ['Wine', 'Vino'], mixers: ['Mixers', 'Mezcladores'], garnish: ['Garnish', 'Guarniciones'],
@@ -57,6 +73,8 @@ const VALUES = {
   approved: ['Approved', 'Aprobado'], pending: ['Pending', 'Pendiente'],
   tentative: ['Tentative', 'Tentativo'], confirmed: ['Confirmed', 'Confirmado'], cancelled: ['Cancelled', 'Cancelado'],
 };
+const PROGRAMMING_ACTIONS = { cancel: ['Cancel that day', 'Cancelar ese día'], retime: ['New times', 'Nuevo horario'], repar: ['New pars', 'Nuevo personal par'],
+  clear: ['Back to the regular programming', 'Volver a la programación regular'] };
 const OPEN = ['Open shift', 'Turno disponible'];
 const UNTIL_CLOSE = ['Until close', 'Hasta el cierre'];
 const WEEK_OF = ['Week of {date}', 'Semana del {date}'];
@@ -88,6 +106,10 @@ export function describeAction(tool, args = {}, lang = 'en', look = {}) {
     else if (k === 'week') {
       try { value = pick(WEEK_OF, lang).replace('{date}', prettyDate(resolveWeek(v, today, look.weekStartDow ?? 1), { lang })); } catch { value = clip(v); }
     } else if (k === 'start' || k === 'due') value = fmtTime(v, lang);
+    else if (k === 'counts' && Array.isArray(v)) value = clip(v.map((x) => `${x.product}: ${x.onHand}`).join(', '), 200); // a stock count's on-hand numbers
+    else if (k === 'out' && Array.isArray(v)) value = clip(v.join(', '), 160);
+    else if (k === 'role' && ROLE_WORDS[v]) value = pick(ROLE_WORDS[v], lang);
+    else if ((k === 'send' || k === 'can') && STOCK_VALUES[v]) value = pick(STOCK_VALUES[v], lang);
     else if (k === 'products' && Array.isArray(v)) value = clip(v.map((x) => `${x.qty ?? 1} × ${x.name}`).join(', '), 200); // a stock list's lines
     else if (k === 'category' && tool.name === 'add_product' && CATEGORY_VALUES[v]) value = pick(CATEGORY_VALUES[v], lang);
     else if (k === 'end') value = time(v);
@@ -95,7 +117,12 @@ export function describeAction(tool, args = {}, lang = 'en', look = {}) {
     else if ((k === 'shiftId' || k === 'tradeForShiftId') && look.shift?.(v)) {
       const s = look.shift(v);
       value = `${prettyDate(s.date, { lang })} ${fmtTime(s.start, lang)}${s.end ? `–${fmtTime(s.end, lang)}` : ''}${s.position ? ` · ${s.position}` : ''}`;
-    } else if (k === 'days' && Array.isArray(v)) {
+    } else if (k === 'days' && Array.isArray(v) && v.some((d) => typeof d !== 'object')) { // programming's weekdays
+      const idx = (d) => (typeof d === 'number' ? d : Object.entries(DAY_INDEX).find(([n]) => n.startsWith(String(d).toLowerCase().slice(0, 3)))?.[1]);
+      value = v.map((d) => (idx(d) != null ? dayName(idx(d), 'short', lang) : clip(d, 12))).join(', ');
+    } else if (k === 'pars' && Array.isArray(v)) value = clip(v.map((x) => `${x.position} ${x.count}${x.start ? ` (${fmtTime(x.start, lang)})` : ''}`).join(', '), 200);
+    else if (k === 'action' && PROGRAMMING_ACTIONS[v]) value = pick(PROGRAMMING_ACTIONS[v], lang);
+    else if (k === 'days' && Array.isArray(v)) {
       value = v.map((d) => `${dayName(DAY_INDEX[d.day] ?? 0, 'short', lang)}: ${d.available === false ? pick(UNAVAILABLE, lang) : d.from || d.to ? `${fmtTime(d.from || '00:00', lang)}–${d.to ? fmtTime(d.to, lang) : '…'}` : '✓'}`).join(', ');
     } else if (k === 'staffing' && Array.isArray(v)) value = v.map((x) => `${x.count} ${x.position}`).join(', ');
     else if ((k === 'items' || k === 'people') && Array.isArray(v)) { // an import: how many, and the first names

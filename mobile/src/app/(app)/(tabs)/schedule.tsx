@@ -9,6 +9,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { DaySortPicker } from '@/components/DaySortPicker';
 import { Icon } from '@/components/Icon';
+import { ProgrammingDay, type ProgDays } from '@/components/ProgrammingDay';
 import { Screen } from '@/components/Screen';
 import { useShiftTime } from '@/components/ShiftRow';
 import { WeekGrid } from '@/components/WeekGrid';
@@ -46,6 +47,9 @@ export default function Schedule() {
 
   const { data, error, reload, offline, updatedAt } = useRpc<ShiftsList>('shifts.list', { start: ws, end: addDays(ws, 6) }, [ws], true, { cache: `schedule-${ws}` });
   const coversQ = useRpc<CoversWeek>('forecast.covers', { weekStart: ws }, [ws], has('forecast'));
+  // What's on each day (regular programming, events replacing it, and with staffing pars: scheduled vs par).
+  const progQ = useRpc<ProgDays>('programming.days.list', { start: ws, end: addDays(ws, 6) }, [ws], true, { cache: `programming-${ws}` });
+  const progDay = progQ.data?.days.find((d) => d.date === day);
   const covers = useMemo(() => Object.fromEntries((coversQ.data?.days || []).filter((d) => d.totalCovers > 0).map((d) => [d.date, d.totalCovers])), [coversQ.data]);
   const weekShifts = useMemo(() => (data?.shifts || []).filter((s) => s.published && (mine === 'all' || s.userId === me.id)), [data, mine, me.id]);
   const shifts = useMemo(() => weekShifts.filter((s) => s.date === day), [weekShifts, day]);
@@ -62,7 +66,7 @@ export default function Schedule() {
   const thisWeek = weekStart(today, settings.weekStartDow);
 
   return (
-    <Screen title={t('schedule.title')} onRefresh={() => Promise.all([reload(), coversQ.reload()])}>
+    <Screen title={t('schedule.title')} onRefresh={() => Promise.all([reload(), coversQ.reload(), progQ.reload()])}>
       {offline && updatedAt && !offlineSince ? <OfflineNote text={t('common.offline', { when: stamp(updatedAt) })} /> : null}
       <Row>
         <Pressable onPress={() => setWs(addDays(ws, -7))} style={styles.arrow} accessibilityRole="button" accessibilityLabel={t('schedule.prevWeek')}><Icon name="left" color={c.text} /></Pressable>
@@ -124,6 +128,7 @@ export default function Schedule() {
             </Pressable>
           ))}
           {notes.map((n) => <Notice key={n.id} tone="brand" icon="alert" text={n.text} />)}
+          <ProgrammingDay day={progDay} />
           {data && !closed && shifts.length ? <DaySortPicker value={sort} onChange={setSort} /> : null}
           {data && closed ? <Card><Empty title={t('schedule.closed')} /></Card> : null}
           {data && !closed && !groups.length ? <Card><Empty title={mine === 'me' ? t('schedule.youreOff') : t('schedule.noShifts')} /></Card> : null}

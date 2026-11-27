@@ -93,6 +93,10 @@ h3 { font-size: 14px; font-weight: 700; }
 .nav-item svg { width: 18px; height: 18px; flex: none; opacity: .9; }
 .nav-item .count { margin-left: auto; }
 .nav-section { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #64748b; padding: 14px 10px 6px; }
+.sidebar-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0 -4px; padding: 0 4px; scrollbar-width: thin; }
+button.nav-section { display: flex; align-items: center; justify-content: space-between; width: 100%; border: 0; background: none; cursor: pointer; font-weight: 600; }
+button.nav-section:hover { color: var(--nav-text); }
+.sidebar-foot { flex: none; }
 .sidebar-foot { margin-top: auto; border-top: 1px solid rgba(255,255,255,.08); padding-top: 12px; }
 .main { flex: 1; margin-left: var(--sidebar); min-width: 0; }
 .topbar {

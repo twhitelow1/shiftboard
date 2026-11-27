@@ -50,6 +50,7 @@ _Working name "ShiftBoard"; a new product name is still to be chosen (see Busine
 - Writing helper (announcements, SMS-length, Spanish versions)
 - Training generator (quiz questions, flashcards, menu translations; manager approves)
 - AI BEO parsing for PDFs that aren't Tripleseat's format
+- Video training course maker: turn policies, procedures and the handbook into short video lessons (script → slides or voiceover → video) with quizzes, assigned by position, completion tracked in Training; EN/ES
 
 ## Planned: product and platform
 - Stripe billing (card, monthly) + self-serve sign-up with free trial (phase 2)

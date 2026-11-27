@@ -5,6 +5,7 @@ import { effectiveShift } from '../../../core/forecast.js';
 import ShiftDialog from './ShiftDialog.jsx';
 import TradeHint, { canTrade } from './TradeHint.jsx';
 import { useT, dowShort, fmtTime, dateText, prettyDate } from '../i18n/index.js';
+import { useProgrammingDays, ProgChips, DayProgramming } from './ProgrammingParts.jsx'; // regular programming (core/programming.js)
 
 export default function CalendarPage() {
   const t = useT();
@@ -22,6 +23,7 @@ export default function CalendarPage() {
 
   const load = () => call('shifts.list', { start: gridStart, end: days[41] }).then(setData);
   useEffect(() => { load(); }, [month, version]);
+  const prog = useProgrammingDays(gridStart, days[41]); // what's on each day, by room (everyone)
 
   const shiftMonth = (n) => {
     const d = parseDate(first);
@@ -67,6 +69,7 @@ export default function CalendarPage() {
             <div key={d} className={`md ${inMonth(d) ? '' : 'other'} ${d === today ? 'today' : ''} ${d === sel ? 'sel' : ''}`} onClick={() => setSel(d)}>
               <div className="n">{parseDate(d).getUTCDate()}</div>
               {evs.slice(0, 2).map((e) => <div key={e.id} className="ev" title={e.name}>{e.name}</div>)}
+              <ProgChips day={prog.byDate[d]} max={evs.length ? 2 : 3} />
               {scope === 'mine'
                 ? list.map((s) => <div key={s.id} className="ms" style={{ '--jc': jobs[s.jobCodeId]?.color }}>{fmtTime(s.start)} {jobs[s.jobCodeId]?.short}</div>)
                 : list.length > 0 && <div className="cnt">{t('calendar.filtercountOn', { filterCount: list.filter((s) => s.userId).length })}{list.some((s) => !s.userId) ? t('calendar.filtercountOpen', { filterCount: list.filter((s) => !s.userId).length }) : ''}</div>}
@@ -97,6 +100,7 @@ export default function CalendarPage() {
         );
       })()}
 
+      <DayProgramming day={prog.byDate[sel]} onChanged={prog.reload} />
       <DayTimeline date={sel} shifts={(data?.shifts || []).filter((s) => s.date === sel && (scope === 'all' || s.userId === me.id))} events={(data?.events || []).filter((e) => e.date === sel)} onOpen={(s) => setDialog(s)} />
       {dialog && <ShiftDialog shift={dialog} events={data?.events || []} warnings={data?.warnings?.[dialog.id]} onClose={(c) => { setDialog(null); if (c) load(); }} />}
     </div>

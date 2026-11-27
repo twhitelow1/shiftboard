@@ -6,6 +6,8 @@
 //
 // Spanish: neutral Latin American, "tú". See docs/i18n/GLOSSARY.md.
 
+import { PROGRAMMING_ERRORS_ES } from './programming-errors.js';
+
 const ROLES_ES = { 'Super Admin': 'superadministrador', Admin: 'administrador', Manager: 'gerente', Supervisor: 'supervisor', Employee: 'empleado' };
 const roleEs = (r) => ROLES_ES[r] || r;
 const TIP_LABELS_ES = { 'Card tips': 'Propinas con tarjeta', 'Cash tips': 'Propinas en efectivo', Sales: 'Ventas' };
@@ -13,6 +15,7 @@ const tipLabelEs = (l) => TIP_LABELS_ES[l] || (/^(.+) sales$/.test(l) ? `Ventas 
 
 /** Exact messages. Keys are the English text exactly as the code writes it. */
 export const ERRORS_ES = {
+  ...PROGRAMMING_ERRORS_ES, // Regular programming (core/programming.js)
   // Stock lists and the product catalog (core/stock.js, core/products.js)
   'A list can have up to 150 products': 'Una lista puede tener hasta 150 productos',
   'A par level is a number from 0 to 9999': 'El nivel par es un número del 0 al 9999',
@@ -38,6 +41,25 @@ export const ERRORS_ES = {
   'This list isn’t assigned to you': 'Esta lista no está asignada a ti',
   'Product not found': 'No se encontró el producto',
   'Template not found': 'No se encontró la plantilla',
+  // Saved lists (par lists) and the run-down (core/stock-saved.js)
+  'A list can be shared up to 60 times': 'Una lista se puede compartir hasta 60 veces',
+  'Ask the owner to change the par': 'Pídele al dueño de la lista que cambie el par',
+  'Count at least one product': 'Cuenta al menos un producto',
+  'It’s already on the list': 'Ya está en la lista',
+  'It’s already theirs': 'La lista ya es suya',
+  'Nothing is needed': 'No hace falta nada',
+  'On hand is a number from 0 to 99999': 'Lo que hay es un número del 0 al 99999',
+  'Only a product with none on hand can be marked out': 'Solo se puede marcar como agotado un producto del que no hay nada',
+  'Only managers make lists for a room or a position': 'Solo los gerentes hacen listas para un salón o un puesto',
+  'Only the owner or a manager can change who it’s for': 'Solo el dueño de la lista o un gerente puede cambiar para quién es',
+  'Only the owner or a manager can do that': 'Solo el dueño de la lista o un gerente puede hacer eso',
+  'Pick a role': 'Elige un rol',
+  'Pick who to share it with': 'Elige con quién compartirla',
+  'Send it to support, work it yourself, or just save the counts': 'Mándala al equipo de apoyo, trabájala tú o solo guarda el conteo',
+  'That request was already answered': 'Esa solicitud ya se respondió',
+  'That share isn’t on the list': 'La lista no está compartida así',
+  'That’s already the par': 'Ese ya es el par',
+  'You can’t change this list': 'No puedes cambiar esta lista',
   'That product isn’t on the list': 'Ese producto no está en la lista',
   'It was merged into another product': 'Se unió con otro producto',
   'Pick a different position': 'Elige otro puesto',

@@ -30,7 +30,7 @@ export function sheetTime(s) {
 export const plural = (n) => (/man$/i.test(n) ? n.replace(/man$/i, 'men') : /(s|x|ch|sh)$/i.test(n) ? `${n}es` : /[^aeiou]y$/i.test(n) ? `${n.slice(0, -1)}ies` : `${n}s`);
 const usDate = (d) => { const x = parseDate(d); return `${x.getUTCMonth() + 1}/${x.getUTCDate()}/${x.getUTCFullYear()}`; };
 
-export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onOpen, onSaved, onEditSection, onArrange, className = '' }) {
+export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onOpen, onSaved, onEditSection, onArrange, className = '', programming = null }) {
   const t = useT();
   const { isMgr, me, settings, people, today } = useApp();
   const [editNote, setEditNote] = useState(null); // { kind, date, text }
@@ -125,7 +125,7 @@ export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onO
                                 {[e.name, e.room, e.guestCount ? `${e.guestCount} PPL` : ''].filter(Boolean).join(' ')}
                               </a>
                             ))}
-                            {text && <div className="sh-daynote">{text}</div>}
+                            {text ? <div className="sh-daynote">{text}</div> : programming?.[d]?.autoNote ? <div className="sh-daynote auto">{programming[d].autoNote}</div> : null}{/* a manager's note wins over the programming's (core/programming.js) */}
                           </td>
                         );
                       })}

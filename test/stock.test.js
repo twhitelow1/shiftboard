@@ -143,7 +143,8 @@ test('merge moves list lines, templates, 86 reports and photos onto the kept pro
   assert.equal(m.product.photos.length, 1);
   assert.equal(store.get('products', dup.id).status, 'archived');
   assert.equal(store.get('products', dup.id).mergedInto, keep.id);
-  assert.deepEqual(store.get('stockLists', tpl.id).lines.map((x) => [x.productId, x.qty]), [[keep.id, 3]], 'one line per product on a template');
+  // Templates are saved lists now (core/stock-saved.js): one line per product, the pars add up.
+  assert.deepEqual(store.get('stockParLists', tpl.id).lines.map((x) => [x.productId, x.par]), [[keep.id, 3]], 'one line per product on a template');
   assert.equal(store.get('stockLists', list.id).lines[0].productId, keep.id);
   assert.equal(store.get('eightySixLog', r.item.id).productId, keep.id);
   assert.equal(store.get('eightySixLog', r.item.id).name, 'Bacardi Superior 1L', '86 history keeps what was reported');

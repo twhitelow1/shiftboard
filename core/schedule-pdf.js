@@ -70,7 +70,7 @@ const usDate = (d) => { const x = parseDate(d); return `${x.getUTCMonth() + 1}/$
  * @param {string[]} [o.rooms] only these rooms (banners); empty = the whole week
  * @param {boolean} [o.publishedOnly] leave out draft shifts (staff, the publish email)
  */
-export function sheetModel({ boot, week, covers = null, weekStart, lang = 'en', rooms = [], publishedOnly = false }) {
+export function sheetModel({ boot, week, covers = null, weekStart, lang = 'en', rooms = [], publishedOnly = false, programming = null }) {
   const W = words(lang);
   const st = boot.settings || {};
   const startOnly = !!st.startTimesOnly;
@@ -103,7 +103,8 @@ export function sheetModel({ boot, week, covers = null, weekStart, lang = 'en', 
     }));
 
   // The day's events and notes (REGULAR SERVICE, THANKSGIVING DINNER…), and Projected Covers.
-  const dayNote = (d) => (week.notes || []).find((n) => n.kind === 'day' && n.date === d)?.text || '';
+  // A manager's own note wins; otherwise the day's regular programming (programming.days.list: core/programming.js).
+  const dayNote = (d) => (week.notes || []).find((n) => n.kind === 'day' && n.date === d)?.text || programming?.days?.find((x) => x.date === d)?.autoNote || '';
   const events = days.map((d) => [
     ...(week.events || []).filter((e) => e.date === d && e.status !== 'cancelled')
       .map((e) => [e.name, e.room, e.guestCount ? `${e.guestCount} ${W.people}` : ''].filter(Boolean).join(' ')),
@@ -499,10 +500,11 @@ export function pdfFileName(model) {
  */
 export async function loadSheetModel(call, { weekStart, lang, rooms = [], publishedOnly = false, isMgr = false }) {
   const end = range(weekStart, 7)[6];
-  const [boot, week, covers] = await Promise.all([
+  const [boot, week, covers, programming] = await Promise.all([
     call('app.bootstrap', {}),
     call('shifts.list', { start: weekStart, end }),
     Promise.resolve().then(() => call('forecast.covers', { weekStart })).catch(() => null),
+    Promise.resolve().then(() => call('programming.days.list', { start: weekStart, end, lang })).catch(() => null),
   ]);
-  return sheetModel({ boot, week, covers, weekStart, lang, rooms, publishedOnly: publishedOnly || !isMgr });
+  return sheetModel({ boot, week, covers, weekStart, lang, rooms, publishedOnly: publishedOnly || !isMgr, programming });
 }

@@ -4,6 +4,7 @@ import { addDays, dow, parseDate, range } from '../../../core/time.js';
 import { useWeek, WeekNav } from './Schedule.jsx';
 import LaborReview from './LaborReview.jsx';
 import ActualHours from './ActualHours.jsx';
+import { ForecastPars } from './ProgrammingParts.jsx';
 import { useT, dowShort, dowLong, getLang, prettyDate, num, t as tr } from '../i18n/index.js';
 
 // Two tabs: the week ahead (forecast & scheduled labor), and Labor review of past weeks (#/forecast/labor).
@@ -141,6 +142,9 @@ function ForecastWeek() {
           <span className="faint">{t('forecast.scheduledRecommendedOnTheFloor', { peak: settings.dayparts.find((d) => d.name === dp)?.peak })}</span>
         </div>
       </div>
+
+      {/* The regular programming's pars next to the forecast's suggestion (core/programming.js); the forecast stays as it is. */}
+      <ForecastPars f={f} dp={dp} />
 
       {/* Staffing learned from clock-ins (ADP or Toast), next to the rules above. */}
       <ActualHours ws={ws} />

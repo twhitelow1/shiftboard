@@ -18,6 +18,7 @@ import floor from './es-floor.js'; // el editor de planos: paleta, secciones, Im
 import feedback, { roles as feedbackRoles } from './es-feedback.js'; // el buzón de sugerencias: escribir, Mis comentarios, la bandeja, Configuración → Buzón de sugerencias
 import stock, { roles as stockRoles, claude as stockClaude, smartImport as stockImport } from './es-stock.js';
 import availability, { roles as availabilityRoles, schedule as availabilitySchedule, smartImport as availabilityImport } from './es-availability.js'; // availability, Approves for, time off requests, the schedule log, Who works where, custom roles // Stock lists and the product catalog
+import programming, { roles as programmingRoles, claude as programmingClaude } from './es-programming.js'; // regular programming and staffing pars
 const catalog = {
   lang: {
     change: 'Cambiar idioma',
@@ -56,6 +57,9 @@ const catalog = {
     untilCloseShort: 'cierre',
   },
   main: {
+    navGroup_floor: 'Piso',
+    navGroup_people: 'Equipo',
+    navGroup_manage: 'Administrar',
     schedule: 'Horario',
     calendar: 'Calendario',
     myShifts: 'Mis turnos',
@@ -2315,10 +2319,13 @@ const catalog = {
   ...feedback,
   ...stock,
   ...availability,
+  ...programming,
 };
 Object.assign(catalog.integrations, reviewIntegrations); // Settings → Integrations: the Google and Yelp cards
 Object.assign(catalog.roles, feedbackRoles); // Settings → Roles & features: the Feedback box's two rows
 Object.assign(catalog.roles, stockRoles); // … and Stock lists' three rows
+Object.assign(catalog.roles, programmingRoles); // … Regular programming's two rows
+Object.assign(catalog.claude, programmingClaude); // the connector's consent line for the programming tools
 Object.assign(catalog.claude, stockClaude); // the connector's consent lines for the Stock lists tools
 Object.assign(catalog.smartImport, stockImport); // Stock → Products → Import
 Object.assign(catalog.roles, availabilityRoles); // Roles & features: Edit staff availability, custom roles

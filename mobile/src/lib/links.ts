@@ -59,6 +59,8 @@ export function routeForLink(link: string | undefined, has: (f: Feature) => bool
       // '#/stock/<list id>': a list assigned to me, an out on one I made, or one that's done (core/stock.js).
       if (!has('stock')) break;
       if (a === 'products') return { pathname: '/stock', params: { tab: 'products' } };
+      // '#/stock/saved/<id>': a saved list shared with me, or a par request on mine (core/stock-saved.js).
+      if (a === 'saved') return b && b !== 'new' ? { pathname: '/saved-list', params: { id: b } } : { pathname: '/stock', params: { tab: 'saved' } };
       return a && a !== 'new' && a !== 'edit' ? { pathname: '/stock-list', params: { id: a } } : '/stock';
     case 'feedback-inbox':
       if (!has('feedbackInbox')) break;
