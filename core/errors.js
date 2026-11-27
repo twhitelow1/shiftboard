@@ -7,6 +7,7 @@
 // Spanish: neutral Latin American, "tú". See docs/i18n/GLOSSARY.md.
 
 import { PROGRAMMING_ERRORS_ES } from './programming-errors.js';
+import { RATINGS_ERRORS_ES } from './ratings-errors.js';
 
 const ROLES_ES = { 'Super Admin': 'superadministrador', Admin: 'administrador', Manager: 'gerente', Supervisor: 'supervisor', Employee: 'empleado' };
 const roleEs = (r) => ROLES_ES[r] || r;
@@ -17,6 +18,7 @@ const tipLabelEs = (l) => TIP_LABELS_ES[l] || (/^(.+) sales$/.test(l) ? `Ventas 
 /** Exact messages. Keys are the English text exactly as the code writes it. */
 export const ERRORS_ES = {
   ...PROGRAMMING_ERRORS_ES, // Regular programming (core/programming.js)
+  ...RATINGS_ERRORS_ES, // Ratings and skill mix (core/ratings.js)
   // Stock lists and the product catalog (core/stock.js, core/products.js)
   'A list can have up to 150 products': 'Una lista puede tener hasta 150 productos',
   'A par level is a number from 0 to 9999': 'El nivel par es un número del 0 al 9999',

@@ -9,6 +9,7 @@
 //   true / false  a switch, with its default (the defaults are exactly how the app worked before this
 //                 existed: test/role-features.test.js proves it against a fingerprint of the old code)
 //   'on'          always on for that role (e.g. managers always see the schedule they build)
+//   'off'         never for that role, and not a switch (employees never see ratings)
 //   null          not something that role does (managers' tools for employees): the role's own permission
 //                 checks apply, and the feature isn't restricted for them
 //
@@ -69,6 +70,10 @@ export const ROLE_FEATURES = [
   // managers and up by default. Both are checked inside core/programming.js, not per RPC, so turning them off never refuses a method.
   { key: 'staffingPars', group: 'feature', plan: null, cells: { employee: false, supervisor: false, manager: true, admin: 'on' } },
   { key: 'programmingEdit', group: 'feature', plan: null, cells: { employee: false, supervisor: false, manager: true, admin: 'on' } },
+  // Ratings and skill mix (core/ratings.js): managers and up by default, supervisors when turned on, employees never
+  // ('off': not a switch for them). Checked inside core/ratings.js, not per RPC, so turning them off never refuses a method.
+  { key: 'ratingsView', group: 'feature', plan: null, cells: { employee: 'off', supervisor: false, manager: true, admin: 'on' } },
+  { key: 'ratingsEdit', group: 'capability', plan: null, cells: { employee: 'off', supervisor: false, manager: true, admin: 'on' } },
   { key: 'coworkerContacts', group: 'feature', plan: null, cells: { employee: false, supervisor: true, manager: 'on', admin: 'on' } },
   { key: 'tradeRequests', group: 'capability', plan: null, cells: ALL(true) },
   { key: 'approve', group: 'capability', plan: null, cells: { employee: null, supervisor: true, manager: 'on', admin: 'on' }, setting: 'supervisorsCanApprove' },
@@ -151,7 +156,7 @@ export function matrixRoles(settings = {}) {
 const defaultCell = (def, role) => {
   if (role === 'super_admin') return true;
   const c = def.cells[baseOf(role)];
-  return c === 'on' ? true : c;
+  return c === 'on' ? true : c === 'off' ? false : c;
 };
 const editableCell = (def, role) => EDITABLE.includes(baseOf(role)) && typeof def.cells[baseOf(role)] === 'boolean';
 
@@ -283,7 +288,7 @@ export function roleFeatureApi({ settings, putSettings, fail, needAdmin, plan = 
       roles,
       customRoles: customRolesOf(st), // names for the custom roles' columns
       features: ROLE_FEATURES.map(({ key, group, plan: p, cells }) => ({ key, group, plan: p, inPlan: inPlan(plan, p),
-        cells: Object.fromEntries(roles.map((r) => { const b = baseOf(r); return [r, r === 'super_admin' ? 'on' : cells[b] === 'on' ? 'on' : cells[b] === null ? null : 'switch']; })) })),
+        cells: Object.fromEntries(roles.map((r) => { const b = baseOf(r); return [r, r === 'super_admin' ? 'on' : cells[b] === 'on' ? 'on' : cells[b] === null || cells[b] === 'off' ? null : 'switch']; })) })),
       values: roleMatrix(st),
       defaults: defaultMatrix(st),
       editable: editableRoles(actor, st),

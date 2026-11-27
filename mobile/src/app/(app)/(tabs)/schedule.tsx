@@ -10,6 +10,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { DaySortPicker } from '@/components/DaySortPicker';
 import { Icon } from '@/components/Icon';
 import { ProgrammingDay, type ProgDays } from '@/components/ProgrammingDay';
+import { SkillMixDay } from '@/components/SkillMixDay';
 import { Screen } from '@/components/Screen';
 import { useShiftTime } from '@/components/ShiftRow';
 import { WeekGrid } from '@/components/WeekGrid';
@@ -132,6 +133,7 @@ export default function Schedule() {
           ))}
           {notes.map((n) => <Notice key={n.id} tone="brand" icon="alert" text={n.text} />)}
           <ProgrammingDay day={progDay} />
+          <SkillMixDay ws={ws} day={day} />
           {data && !closed && shifts.length ? <DaySortPicker value={sort} onChange={setSort} /> : null}
           {data && closed ? <Card><Empty title={t('schedule.closed')} /></Card> : null}
           {data && !closed && !groups.length ? <Card><Empty title={mine === 'me' ? t('schedule.youreOff') : t('schedule.noShifts')} /></Card> : null}

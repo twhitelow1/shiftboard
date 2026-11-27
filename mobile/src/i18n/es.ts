@@ -1144,6 +1144,17 @@ const es: Messages = {
     short: { one: 'falta {count}', other: 'faltan {count}' },
     shortOfPar: { one: 'falta {count} para el par', other: 'faltan {count} para el par' },
   },
+  skillMix: {
+    title: 'Mezcla de niveles',
+    allMet: 'Todas las reglas se cumplen',
+    failing: { one: '{count} regla no se cumple', other: '{count} reglas no se cumplen' },
+    atLeast: 'Al menos {count} con {rating}+',
+    atMost: 'Como máximo {count} con {rating} o menos',
+    minAvg: 'Promedio {avg}+',
+    haveNow: 'En el horario ahora: {have}',
+    avgNow: 'Promedio ahora: {avg}',
+    noneRated: 'Nadie en el horario tiene calificación todavía',
+  },
   stockSaved: {
     tab: 'Listas guardadas',
     title: 'Listas guardadas',

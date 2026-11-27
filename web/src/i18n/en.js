@@ -21,6 +21,7 @@ import stock, { roles as stockRoles, claude as stockClaude, smartImport as stock
 import availability, { roles as availabilityRoles, schedule as availabilitySchedule, smartImport as availabilityImport } from './en-availability.js'; // availability, Approves for, time off requests, the schedule log, Who works where, custom roles // Stock lists and the product catalog
 import calendarImport from './en-calendar.js'; // import from a calendar page (pages/CalendarImport.jsx)
 import programming, { roles as programmingRoles, claude as programmingClaude } from './en-programming.js'; // regular programming and staffing pars
+import ratings, { roles as ratingsRoles, claude as ratingsClaude } from './en-ratings.js'; // ratings and skill mix (managers only)
 import quickShift, { scheduleLog as quickShiftLog } from './en-quickshift.js'; // the shift dialog's quick mode: copy a time, move a shift, day off
 import shiftPaste from './en-shiftpaste.js'; // copy & paste a shift on the schedule
 import conflicts from './en-conflicts.js'; // blocked days on the schedule and the person panel
@@ -2329,6 +2330,7 @@ const catalog = {
   ...quickShift,
   ...shiftPaste,
   ...conflicts,
+  ...ratings,
 };
 Object.assign(catalog.integrations, reviewIntegrations); // Settings → Integrations: the Google and Yelp cards
 Object.assign(catalog.roles, feedbackRoles); // Settings → Roles & features: the Feedback box's two rows
@@ -2340,6 +2342,8 @@ Object.assign(catalog.smartImport, stockImport); // Stock → Products → Impor
 Object.assign(catalog.roles, availabilityRoles); // Roles & features: Edit staff availability, custom roles
 Object.assign(catalog.schedule, availabilitySchedule); // the light-green legend line
 Object.assign(catalog.smartImport, availabilityImport); // Time off → Availability → Import
+Object.assign(catalog.roles, ratingsRoles); // Roles & features: See ratings & skill mix, Change ratings & rules
+Object.assign(catalog.claude, ratingsClaude); // the connector's consent line for set_rating
 Object.assign(catalog.scheduleLog, quickShiftLog); // Schedule log: the Days off group
 
 export default catalog;
