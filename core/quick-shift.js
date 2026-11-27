@@ -24,6 +24,7 @@ export function quickShiftApi({ store, api, fail, needAuth, needMgr, isMgr, now,
       if (!cur) fail(404, 'Shift not found');
       const next = { ...cur, id: cur.id };
       for (const k of MOVE_FIELDS) if (k in a) next[k] = a[k];
+      if (a.overrideConflict === true) next.overrideConflict = true; // onto a blocked day, confirmed (core/schedule-conflicts.js)
       const r = saveShift(actor, next, { editAction: 'shift.move' });
       return { ...r, moved: true };
     },

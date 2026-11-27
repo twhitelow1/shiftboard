@@ -166,6 +166,8 @@ const en = {
     youreOff: 'You’re off',
     openShift: 'Open shift',
     off: 'Off: {names}',
+    conflict: 'Conflict',
+    conflictLabel: 'Scheduled over their availability or a request off',
     prevWeek: 'Previous week',
     nextWeek: 'Next week',
     covers: '~{count} covers',

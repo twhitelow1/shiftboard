@@ -1,0 +1,37 @@
+/* Blocked days on the schedule and the person panel (pages/ScheduleConflicts.jsx, pages/PersonPanel.jsx). */
+/* A blocked person × day: hatched grey with the reason. */
+.sheet td.cx-blocked, .sched td.cx-blocked {
+  background: repeating-linear-gradient(135deg, #e5e7eb 0 6px, #f3f4f6 6px 12px); color: #374151;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.sheet td.cx-blocked { font-size: 10px; font-weight: 700; letter-spacing: .02em; }
+.cx-label { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .02em; text-align: center; color: #374151; }
+.sched .cx-label { padding: 5px 4px; }
+.cx-label.cx-standing { color: #166534; }
+.cx-window { display: block; font-size: 10px; font-weight: 600; color: var(--text-3); text-align: center; text-transform: none; line-height: 1.2; }
+.sheet td .cx-window { color: #6b7280; }
+/* A shift over a blocked day: a red marker. */
+.cx-mark { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 3px; border-radius: 50%;
+  background: #dc2626; color: #fff; font: 800 10px/1 system-ui, sans-serif; vertical-align: middle; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.sched .shift.cx-over, .sheet .sh-shift.cx-over { box-shadow: inset 0 0 0 2px #dc2626; border-radius: 4px; }
+.cx-publish-list { margin: 4px 0; padding-left: 18px; font-size: 12.5px; }
+.cx-confirm b { display: block; }
+
+/* A person's name opens their panel (managers). */
+.pp-name { all: unset; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
+.pp-name:hover { color: var(--brand); }
+.pp-name:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 3px; }
+@media print { .pp-name { text-decoration: none; } }
+
+/* The person panel: a drawer on the right (full width on phones). */
+.pp-back { position: fixed; inset: 0; background: rgba(15, 23, 42, .35); z-index: 95; }
+/* Below dialogs (.overlay is 100), so Add time off and the confirm open on top of it. */
+.drawer.pp { width: min(560px, 100%); z-index: 96; }
+.pp-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px 8px; border-bottom: 1px solid var(--border); }
+.pp-head h2 { margin: 0; font-size: 18px; }
+.pp-tabs { padding: 0 16px; margin: 0; }
+.pp-body { flex: 1; overflow-y: auto; padding: 14px 16px 24px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.pp-shifts { display: flex; flex-direction: column; gap: 4px; }
+.pp-req { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pp-req > .grow { flex: 1 1 180px; min-width: 0; }
+.av-standing { display: flex; flex-direction: column; gap: 2px; }
