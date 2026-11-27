@@ -24,11 +24,15 @@ const TITLES = {
   import_employees: ['Import people to the team', 'Importar personas al equipo'],
   create_stock_list: ['Create a stock list', 'Crear una lista de surtido'],
   add_product: ['Add a product to the catalog', 'Agregar un producto al catálogo'],
+  set_programming: ['Set regular programming', 'Guardar la programación regular'],
+  override_programming_for_date: ['Change programming for one date', 'Cambiar la programación de un día'],
 };
 // A label that means something else for one tool (a product's category isn't a menu section).
 const TOOL_LABELS = {
   add_product: { category: ['Category', 'Categoría'], createNew: ['Add even if it looks like a duplicate', 'Agregar aunque parezca duplicado'] },
   create_stock_list: { name: ['List', 'Lista'], template: ['Save as a template', 'Guardar como plantilla'] },
+  set_programming: { rooms: ['Rooms', 'Salones'], wholeVenue: ['Whole venue', 'Todo el lugar'], pars: ['Staffing pars', 'Personal par'], color: ['Color', 'Color'] },
+  override_programming_for_date: { programming: ['Programming', 'Programación'], action: ['Change', 'Cambio'], pars: ['Staffing pars', 'Personal par'] },
 };
 
 const LABELS = {
@@ -55,6 +59,8 @@ const VALUES = {
   out: ['86’d (out)', 'Se acabó (86)'], low: ['Running low', 'Queda poco'], giveaway: ['Give away', 'Ceder'], trade: ['Trade', 'Intercambiar'],
   tentative: ['Tentative', 'Tentativo'], confirmed: ['Confirmed', 'Confirmado'], cancelled: ['Cancelled', 'Cancelado'],
 };
+const PROGRAMMING_ACTIONS = { cancel: ['Cancel that day', 'Cancelar ese día'], retime: ['New times', 'Nuevo horario'], repar: ['New pars', 'Nuevo personal par'],
+  clear: ['Back to the regular programming', 'Volver a la programación regular'] };
 const OPEN = ['Open shift', 'Turno disponible'];
 const UNTIL_CLOSE = ['Until close', 'Hasta el cierre'];
 const WEEK_OF = ['Week of {date}', 'Semana del {date}'];
@@ -93,7 +99,12 @@ export function describeAction(tool, args = {}, lang = 'en', look = {}) {
     else if ((k === 'shiftId' || k === 'tradeForShiftId') && look.shift?.(v)) {
       const s = look.shift(v);
       value = `${prettyDate(s.date, { lang })} ${fmtTime(s.start, lang)}${s.end ? `–${fmtTime(s.end, lang)}` : ''}${s.position ? ` · ${s.position}` : ''}`;
-    } else if (k === 'days' && Array.isArray(v)) {
+    } else if (k === 'days' && Array.isArray(v) && v.some((d) => typeof d !== 'object')) { // programming's weekdays
+      const idx = (d) => (typeof d === 'number' ? d : Object.entries(DAY_INDEX).find(([n]) => n.startsWith(String(d).toLowerCase().slice(0, 3)))?.[1]);
+      value = v.map((d) => (idx(d) != null ? dayName(idx(d), 'short', lang) : clip(d, 12))).join(', ');
+    } else if (k === 'pars' && Array.isArray(v)) value = clip(v.map((x) => `${x.position} ${x.count}${x.start ? ` (${fmtTime(x.start, lang)})` : ''}`).join(', '), 200);
+    else if (k === 'action' && PROGRAMMING_ACTIONS[v]) value = pick(PROGRAMMING_ACTIONS[v], lang);
+    else if (k === 'days' && Array.isArray(v)) {
       value = v.map((d) => `${dayName(DAY_INDEX[d.day] ?? 0, 'short', lang)}: ${d.available === false ? pick(UNAVAILABLE, lang) : d.from || d.to ? `${fmtTime(d.from || '00:00', lang)}–${d.to ? fmtTime(d.to, lang) : '…'}` : '✓'}`).join(', ');
     } else if (k === 'staffing' && Array.isArray(v)) value = v.map((x) => `${x.count} ${x.position}`).join(', ');
     else if ((k === 'items' || k === 'people') && Array.isArray(v)) { // an import: how many, and the first names

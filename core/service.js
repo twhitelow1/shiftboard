@@ -42,6 +42,7 @@ import { emailTemplateApi } from './email-templates.js';
 import { importApi, employeeExtrasPatch } from './import-api.js';
 import { superAdminApi } from './super-admin.js';
 import { feedbackApi, configOf as feedbackConfig, canRead as canReadFeedback } from './feedback.js';
+import { programmingApi } from './programming.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -1754,6 +1755,8 @@ export function createService(store, opts = {}) {
   const unpublish = unpublishApi({ store, api, fail, needMgr, notify, say, day, describe, settings, nameOf, jobName, isFuture, cancelRequestsForShift, now });
   // Smart import: employees.import*, menu.import* and products.import* (core/import-api.js, core/smart-import.js).
   Object.assign(api, importApi({ store, api, fail, needMgr, now }));
+  // Regular programming and staffing pars: programming.* (core/programming.js). New RPCs only: no existing answer changes.
+  Object.assign(api, programmingApi({ store, settings, fail, needAuth, needMgr, isMgr, now, today, layouts, langOf: L, homeRoom: (job) => layouts.homeRoom(job) }));
   // Stock lists and the product catalog the 86 List shares (core/stock.js, core/products.js). Out → 86 goes through eightySix.report.
   Object.assign(api, stockApi({ store, now, settings, notify, fail, api, langOf: L, planHas: (k) => !opts.planFeatures || opts.planFeatures[k] !== false }));
   // Positive impact (impact.*: review mentions, reservation requests, kudos) and OpenTable (opentable.*): core/impact.js, core/opentable.js.

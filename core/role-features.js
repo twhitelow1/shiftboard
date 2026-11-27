@@ -65,6 +65,10 @@ export const ROLE_FEATURES = [
   // product catalog). stockManage is checked inside core/stock.js, not per RPC, so turning it off never refuses a method.
   { key: 'stock', group: 'feature', plan: 'stock', cells: ALL(true) },
   { key: 'stockManage', group: 'feature', plan: 'stock', cells: { employee: false, supervisor: true, manager: true, admin: 'on' } },
+  // Regular programming (core/programming.js): everyone sees it on the calendar; pars and coverage, and editing it, are
+  // managers and up by default. Both are checked inside core/programming.js, not per RPC, so turning them off never refuses a method.
+  { key: 'staffingPars', group: 'feature', plan: null, cells: { employee: false, supervisor: false, manager: true, admin: 'on' } },
+  { key: 'programmingEdit', group: 'feature', plan: null, cells: { employee: false, supervisor: false, manager: true, admin: 'on' } },
   { key: 'coworkerContacts', group: 'feature', plan: null, cells: { employee: false, supervisor: true, manager: 'on', admin: 'on' } },
   { key: 'tradeRequests', group: 'capability', plan: null, cells: ALL(true) },
   { key: 'approve', group: 'capability', plan: null, cells: { employee: null, supervisor: true, manager: 'on', admin: 'on' }, setting: 'supervisorsCanApprove' },
