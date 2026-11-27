@@ -16,6 +16,7 @@ import UnpublishWeek from './UnpublishWeek.jsx';
 import PublishDialog from './PublishDialog.jsx';
 import SchedulePdfDialog from './SchedulePdf.jsx';
 import { useProgrammingDays, ParRow, CoveragePanel, DayProgramming } from './ProgrammingParts.jsx'; // regular programming, pars and coverage
+import SkillMixPanel from './SkillMix.jsx'; // skill-mix rules vs ratings, with suggestions (managers with ratingsView)
 import { IS_DEMO } from '../api.js';
 import { useT, dowShort, fmtTime, monthShort, prettyDate, num , getLang } from '../i18n/index.js';
 
@@ -359,6 +360,7 @@ export default function Schedule() {
             <MobileDay days={days} selDay={selDay} setSelDay={setSelDay} data={data} daysOff={daysOff} room={dept} mine={mine} setMine={setMine} openDialog={openDialog} isClosed={isClosed} fcDay={fcDay} addAt={addAt} prog={prog} />
           </div>}
           {isMgr && view !== 'sheet' && <CoveragePanel days={days} byDate={prog.byDate} onChanged={reloadAll} />}
+          {isMgr && <SkillMixPanel ws={ws} />}{/* every view, the sheet too (not printed) */}
         </>
       )}
 

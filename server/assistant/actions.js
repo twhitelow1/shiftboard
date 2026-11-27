@@ -29,6 +29,7 @@ const TITLES = {
   import_programming_from_calendar: ['Import programming from a calendar page', 'Importar programación de una página de calendario'],
   run_stock_list: ['Save a stock count', 'Guardar un conteo de surtido'],
   share_stock_list: ['Share a stock list', 'Compartir una lista de surtido'],
+  set_rating: ['Set a rating', 'Guardar una calificación'],
 };
 // A label that means something else for one tool (a product's category isn't a menu section).
 const TOOL_LABELS = {
@@ -38,6 +39,7 @@ const TOOL_LABELS = {
   override_programming_for_date: { programming: ['Programming', 'Programación'], action: ['Change', 'Cambio'], pars: ['Staffing pars', 'Personal par'] },
   import_programming_from_calendar: { url: ['Page', 'Página'], include: ['Import', 'Importar'], exclude: ['Leave out', 'Omitir'], rooms: ['Rooms', 'Salones'], changes: ['Changed', 'Cambios'] },
   run_stock_list: { list: ['List', 'Lista'], position: ['Send to', 'Enviar a'], person: ['Send to', 'Enviar a'], out: ['Report out (86)', 'Reportar agotado (86)'] },
+  set_rating: { rating: ['Rating', 'Calificación'] },
   share_stock_list: { list: ['List', 'Lista'], person: ['Share with', 'Compartir con'], position: ['Share with', 'Compartir con'], role: ['Share with', 'Compartir con'],
     room: ['Share with', 'Compartir con'], can: ['They can', 'Pueden'] },
 };

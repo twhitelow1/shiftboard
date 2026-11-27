@@ -16,12 +16,13 @@ import team from './team.js';
 import importTools from './import.js';
 import stock from './stock.js';
 import programming from './programming.js'; // regular programming and staffing pars (core/programming.js)
+import ratings from './ratings.js'; // ratings and skill mix, managers only (core/ratings.js)
 import calendar from './calendar.js'; // import from a calendar page (core/calendar-import.js, server/calendar/)
 
 // The Feedback box (core/feedback.js) has no tools, on purpose: people write to it anonymously, and its entries and
 // replies stay inside ShiftBoard's own screens. Neither the Claude connector nor Ask ShiftBoard reads, sends or
 // summarizes them (no AI processing of entries in this version). Don't add feedback tools without a privacy review.
-const FEATURE_TOOLS = [me, schedule, requests, eightySix, stock, training, events, programming, calendar, team, importTools];
+const FEATURE_TOOLS = [me, schedule, requests, eightySix, stock, training, events, programming, ratings, calendar, team, importTools];
 
 export const TOOLS = Object.freeze(FEATURE_TOOLS.flat());
 
