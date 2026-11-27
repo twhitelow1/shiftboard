@@ -32,6 +32,7 @@ export default function RoomsPositions({ focus }) {
     <div className="card card-pad col rooms-card" style={{ gap: 12 }} ref={ref} id="rooms">
       <h2>{t('rooms.title')}</h2>
       <div className="small muted" style={{ marginTop: -6 }}>{t('rooms.sub')}</div>
+      <div><a className="btn sm" href="#/who-works-where"><Icon name="users" />{t('whoWorks.open')}</a></div>
       {!lay ? <div className="empty small">{t('common.loading')}</div> : <RoomsEditor lay={lay} onChange={setLay} reload={reload} focus={focus || ''} />}
     </div>
   );

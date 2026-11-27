@@ -104,7 +104,7 @@ export async function runTripleseatSync({ db, env = process.env, client, cursor 
   async function apply(items) {
     if (!items.length) return;
     const r = await db.run((store) => {
-      const res = createService(store).tripleseat.applyBatch(items, { rules, timeZone, locationId: cfg.locationId, initial: cur.initial });
+      const res = createService(store, { logVia: 'sync' }).tripleseat.applyBatch(items, { rules, timeZone, locationId: cfg.locationId, initial: cur.initial });
       const i = integration(store);
       const run = i.run?.id === cur.runId ? i.run : { id: cur.runId, seen: [] };
       const seen = new Set(run.seen);
@@ -137,7 +137,7 @@ export async function runTripleseatSync({ db, env = process.env, client, cursor 
           const rooms = hasRooms ? [] : (await soft(() => client.rooms(), 'rooms')) || [];
           const menus = await soft(() => client.menus(), 'menus');
           await db.run((store) => {
-            createService(store).tripleseat.syncRooms({ locations: locations || [], rooms });
+            createService(store, { logVia: 'sync' }).tripleseat.syncRooms({ locations: locations || [], rooms });
             const pick = (list, id) => (list || []).find((x) => String(x?.id) === String(id)) || ((list || []).length === 1 ? list[0] : null);
             const site = pick(sites, cfg.siteId);
             const loc = pick(locations, cfg.locationId);
@@ -237,7 +237,7 @@ export async function syncOneEvent({ db, env = process.env, client, eventId, tri
       }
       item = { raw, menu, menuFor: menu ? ev?.updatedAt || stamp() : null };
     }
-    const r = await db.run((store) => createService(store).tripleseat.applyBatch([item], { rules, timeZone, locationId: client.config.locationId, initial: false }), { write: true, onCommit });
+    const r = await db.run((store) => createService(store, { logVia: 'sync' }).tripleseat.applyBatch([item], { rules, timeZone, locationId: client.config.locationId, initial: false }), { write: true, onCommit });
     out.action = r.results[0]?.action || null;
   } catch (e) {
     out.ok = false;

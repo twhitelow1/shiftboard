@@ -432,7 +432,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
       if (freshStep) { delete args.code; delete args.passkey; }
       if (sess.claims.sup && method === 'account.preferences') { delete args.emailConsent; delete args.emailNotifications; }
       // Consent records keep where the choice came from.
-      const request = { ip: req.ip, userAgent: req.get('user-agent') || null };
+      // phone: the phone app signs its requests with a bearer token (the schedule log's "via").
+      const request = { ip: req.ip, userAgent: req.get('user-agent') || null, ...(/^Bearer /i.test(req.get('authorization') || '') ? { phone: true } : {}) };
       const out = await db.run((store) => {
         const actor = userFromToken(store, token);
         if (!actor) throw new AppError(401, 'Please sign in');

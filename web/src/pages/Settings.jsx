@@ -107,6 +107,7 @@ export default function Settings({ parts = [] }) {
         <label className="check"><input type="checkbox" checked={s.requireSwapApproval} onChange={set('requireSwapApproval')} />{t('settings.managersMustApproveTradesGiveaways')}</label>
         <label className="check"><input type="checkbox" checked={s.requirePickupApproval} onChange={set('requirePickupApproval')} />{t('settings.managersMustApproveOpenShift')}</label>
         <a className="help" href="#/settings/roles">{t('roles.approveMoved')}</a>
+        <label className="check"><input type="checkbox" checked={s.notifyAvailabilityChanges !== false} onChange={(e) => setS({ ...s, notifyAvailabilityChanges: e.target.checked })} />{t('availability.settingNotify')}</label>
         <label className="check"><input type="checkbox" checked={!!s.startTimesOnly} onChange={set('startTimesOnly')} />
           <span>{t('settings.showStartTimesOnlyThe')}</span></label>
         <Field label={t('settings.shiftTagsCommaSeparated')} help={t('settings.quickPicksWhenAddingA')}><input className="input" {...listField('tags')} /></Field>
