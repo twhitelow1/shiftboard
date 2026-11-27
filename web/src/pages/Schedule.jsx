@@ -15,6 +15,7 @@ import { EightySixBanner } from './EightySix.jsx';
 import UnpublishWeek from './UnpublishWeek.jsx';
 import PublishDialog from './PublishDialog.jsx';
 import SchedulePdfDialog from './SchedulePdf.jsx';
+import { useProgrammingDays, ParRow, CoveragePanel, DayProgramming } from './ProgrammingParts.jsx'; // regular programming, pars and coverage
 import { IS_DEMO } from '../api.js';
 import { useT, dowShort, fmtTime, monthShort, prettyDate, num , getLang } from '../i18n/index.js';
 
@@ -90,6 +91,8 @@ export default function Schedule() {
     call(isMgr ? 'forecast.summary' : 'forecast.covers', { weekStart: ws }).then(setFc).catch(() => setFc(null));
   };
   useEffect(load, [ws, version]);
+  const prog = useProgrammingDays(ws, addDays(ws, 6)); // the day notes' programming and (managers) coverage vs par
+  const reloadAll = () => { load(); prog.reload(); };
   useEffect(() => { if (!(selDay >= ws && selDay <= addDays(ws, 6))) setSelDay(today >= ws && today <= addDays(ws, 6) ? today : days.find((d) => !settings.closedDays.includes(dow(d))) || ws); }, [ws]);
 
   const shifts = data?.shifts || [];
@@ -257,7 +260,7 @@ export default function Schedule() {
           )}
           <TradeHint shifts={shifts} />
           {/* Like the house PDF. Print always uses this layout. */}
-          <ScheduleSheet className={view === 'sheet' ? 'sheet-print' : 'sheet-print print-only'} sections={sheetSections} days={days} data={data} fc={fc} ws={ws}
+          <ScheduleSheet className={view === 'sheet' ? 'sheet-print' : 'sheet-print print-only'} sections={sheetSections} days={days} data={data} fc={fc} ws={ws} programming={prog.byDate}
             onAdd={addAt} onOpen={openDialog} onSaved={load} onEditSection={isMgr ? (sec) => setEditSection(allSections.find((x) => x.key === sec.key) || sec) : undefined}
             onArrange={isMgr ? setArrange : undefined} />
 
@@ -277,6 +280,7 @@ export default function Schedule() {
                         <div className="d1">{dowShort(dow(d))}</div>
                         <div className="d2">{parseDate(d).getUTCMonth() + 1}/{parseDate(d).getUTCDate()}</div>
                         {isClosed(d) ? <div className="meta">{t('common.closed')}</div> : f && <div className="meta num">{t('schedule.totalcoversCvrs', { totalCovers: f.totalCovers })}{isMgr ? ` · ${f.laborPct ?? '—'}%` : ''}</div>}
+                        {!isClosed(d) && prog.byDate[d]?.note && <div className="meta prog-autonote" title={prog.byDate[d].note}>{prog.byDate[d].note}</div>}
                         {evs.map((e) => <a key={e.id} className="evt-pill" href={`#/events/${e.id}`} title={t('schedule.nameTimeGuestcountGuests', { name: e.name, time: fmtTime(e.start), guestCount: e.guestCount })}>{fmtTime(e.start)} {e.name}{e.guestCount ? ` (${e.guestCount})` : ''}</a>)}
                       </th>
                     );
@@ -321,6 +325,7 @@ export default function Schedule() {
                         {days.map((d) => <Cell key={d} date={d} jobCodeId={sec.job?.id} area={sec.area} list={sec.open.filter((s) => s.date === d)} roomOf={sec.rooms?.length > 1 ? sec.roomOf : undefined} />)}
                       </tr>
                     )}
+                    {isMgr && groupBy === 'job' && sec.job && sec.banner && <ParRow banner={sec.banner} jobCodeId={sec.job.id} days={days} byDate={prog.byDate} />}
                   </React.Fragment>
                 ))}
                 {!sections.length && <tr><td colSpan={8}><Empty title={t('schedule.nothingScheduled')}>{isMgr ? t('schedule.clickAnyCellToAdd') : t('schedule.theScheduleForThisWeek')}</Empty></td></tr>}
@@ -342,8 +347,9 @@ export default function Schedule() {
 
           {/* The day list: phones (any view but the sheet), and desktops' Day view. */}
           {view !== 'sheet' && <div className={`${view === 'day' ? 'day-desk' : 'mobile-only'} no-print`}>
-            <MobileDay days={days} selDay={selDay} setSelDay={setSelDay} data={data} room={dept} mine={mine} setMine={setMine} openDialog={openDialog} isClosed={isClosed} fcDay={fcDay} addAt={addAt} />
+            <MobileDay days={days} selDay={selDay} setSelDay={setSelDay} data={data} room={dept} mine={mine} setMine={setMine} openDialog={openDialog} isClosed={isClosed} fcDay={fcDay} addAt={addAt} prog={prog} />
           </div>}
+          {isMgr && view !== 'sheet' && <CoveragePanel days={days} byDate={prog.byDate} onChanged={reloadAll} />}
         </>
       )}
 
@@ -355,7 +361,7 @@ export default function Schedule() {
       {dialog && <ShiftDialog shift={dialog.shift} startIn={dialog.startIn} warnings={dialog.warnings} events={data?.events || []} onClose={closeDialog} />}
       {importOpen && <ImportDialog ws={ws} onClose={(changed) => { setImportOpen(false); if (changed) load(); }} />}
       {clearOpen && <ClearWeekDialog ws={ws} data={data} onClose={(changed) => { setClearOpen(false); if (changed) load(); }} />}
-      {publishOpen && <PublishDialog ws={ws} label={weekLabel(ws)} drafts={drafts} onClose={(changed) => { setPublishOpen(false); if (changed) load(); }} />}
+      {publishOpen && <PublishDialog ws={ws} label={weekLabel(ws)} drafts={drafts} onClose={(changed) => { setPublishOpen(false); if (changed) reloadAll(); }} />}
       {pdfOpen && <SchedulePdfDialog ws={ws} banners={banners} drafts={drafts} onClose={() => setPdfOpen(false)} />}
       {copyOpen && <CopyWeekDialog ws={ws} onClose={(changed, goTo) => { setCopyOpen(false); if (goTo && goTo !== ws) setWs(goTo); else if (changed) load(); }} />}
     </div>
@@ -425,7 +431,7 @@ function StrayDialog({ stray, ws, onClose }) {
  * rooms, by start time or by name (core/day-list.js). The order is remembered on this device. Shifts in
  * hidden or unlisted sections never show; "Just me" and the room chips filter every order.
  */
-function MobileDay({ days, selDay, setSelDay, data, room, mine, setMine, openDialog, isClosed, fcDay, addAt }) {
+function MobileDay({ days, selDay, setSelDay, data, room, mine, setMine, openDialog, isClosed, fcDay, addAt, prog }) {
   const t = useT();
   const { jobs, people, me, isMgr, today, has, layout, settings } = useApp();
   // Room banners in the room's color (Settings → Rooms & positions), like the sheet, the PDF and the phone app.
@@ -477,6 +483,7 @@ function MobileDay({ days, selDay, setSelDay, data, room, mine, setMine, openDia
         </a>
       ))}
       {(data.notes || []).filter((n) => n.kind === 'day' && n.date === selDay).map((n) => <div key={n.id} className="alert info" style={{ marginBottom: 8 }}><Icon name="alert" size={16} /><b>{n.text}</b></div>)}
+      {prog && <DayProgramming day={prog.byDate[selDay]} onChanged={prog.reload} />}
       {isClosed(selDay) && <Empty title={t('common.closed')} />}
       {!isClosed(selDay) && !groups.length && <Empty title={mine ? t('schedule.youreOff') : t('schedule.noShifts')} />}
       {groups.map((g, i) => (

@@ -18,6 +18,7 @@ import superAdmin from './en-superadmin.js'; // an Admin making themselves Super
 import floor from './en-floor.js'; // the floor plan editor's palette, sections, Import (Toast, a picture, a CSV) and Export
 import feedback, { roles as feedbackRoles } from './en-feedback.js'; // the Feedback box: writing, My feedback, the inbox, Settings → Feedback box
 import stock, { roles as stockRoles, claude as stockClaude, smartImport as stockImport } from './en-stock.js'; // Stock lists and the product catalog
+import programming, { roles as programmingRoles, claude as programmingClaude } from './en-programming.js'; // regular programming and staffing pars
 const catalog = {
   lang: {
     change: 'Change language',
@@ -2314,10 +2315,13 @@ const catalog = {
   ...floor,
   ...feedback,
   ...stock,
+  ...programming,
 };
 Object.assign(catalog.integrations, reviewIntegrations); // Settings → Integrations: the Google and Yelp cards
 Object.assign(catalog.roles, feedbackRoles); // Settings → Roles & features: the Feedback box's two rows
 Object.assign(catalog.roles, stockRoles); // … and Stock lists' three rows
+Object.assign(catalog.roles, programmingRoles); // … Regular programming's two rows
+Object.assign(catalog.claude, programmingClaude); // the connector's consent line for the programming tools
 Object.assign(catalog.claude, stockClaude); // the connector's consent lines for the Stock lists tools
 Object.assign(catalog.smartImport, stockImport); // Stock → Products → Import
 

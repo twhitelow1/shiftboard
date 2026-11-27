@@ -1,0 +1,42 @@
+/* Regular programming (pages/Programming.jsx, pages/ProgrammingParts.jsx). --pc: the item's color. */
+.prog-chips { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; min-width: 0; }
+.prog-chip { font-size: 10.5px; line-height: 1.25; font-weight: 600; padding: 1px 4px; border-radius: 4px; border-left: 3px solid var(--pc, var(--brand));
+  background: color-mix(in srgb, var(--pc, var(--brand)) 14%, transparent); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prog-chip.off { text-decoration: line-through; opacity: .55; }
+
+.prog-item { align-items: flex-start; gap: 10px; }
+.prog-bar { width: 4px; align-self: stretch; border-radius: 3px; background: var(--pc, var(--brand)); flex: none; }
+.prog-event .prog-bar { background: var(--warn); }
+.prog-off b, .prog-off { text-decoration: line-through; color: var(--text-3); }
+.prog-note { color: var(--text-2); margin-top: 2px; }
+.prog-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--pc); vertical-align: middle; }
+
+.prog-grid-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+.prog-grid { border-collapse: collapse; width: 100%; min-width: 720px; table-layout: fixed; }
+.prog-grid th, .prog-grid td { border: 1px solid var(--border); padding: 6px; vertical-align: top; text-align: left; font-size: 12.5px; }
+.prog-grid thead th { background: var(--surface-2); text-align: center; }
+.prog-grid tbody th { width: 120px; background: var(--surface-2); font-weight: 700; }
+.prog-grid .closed { background: repeating-linear-gradient(135deg, var(--surface-2), var(--surface-2) 6px, transparent 6px, transparent 12px); color: var(--text-3); }
+.prog-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; text-align: left; margin-bottom: 4px; padding: 4px 6px; border-radius: 6px; cursor: pointer;
+  border: 0; border-left: 4px solid var(--pc); background: color-mix(in srgb, var(--pc) 14%, var(--surface)); color: var(--text); font: inherit; }
+.prog-cell:disabled { cursor: default; }
+.prog-cell b { font-size: 12px; }
+.prog-cell span { font-size: 11.5px; color: var(--text-2); }
+.prog-cell.inactive { opacity: .45; }
+.prog-swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
+.prog-swatch.on { border-color: var(--text); box-shadow: 0 0 0 2px var(--surface) inset; }
+
+.prog-par-row { display: grid; grid-template-columns: minmax(0, 2fr) 64px minmax(0, 1fr) minmax(0, 1.4fr) auto; gap: 6px; align-items: center; }
+@media (max-width: 560px) {
+  .prog-par-row { grid-template-columns: minmax(0, 1fr) 60px auto; }
+  .prog-par-row input[type="time"], .prog-par-row select:nth-of-type(2) { grid-column: span 1; }
+}
+
+.prog-cov-days { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; padding: 0 14px 12px; }
+.prog-cov-day { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.prog-cov-row { display: flex; flex-direction: column; gap: 3px; }
+.par-row td { padding-top: 2px; padding-bottom: 2px; }
+.par-row .gapcell { font-size: 11.5px; padding: 2px 0; }
+.prog-publish ul { margin: 6px 0; padding-left: 18px; }
+.sheet .sh-daynote.auto { opacity: .8; } /* from the programming: the same line the PDF prints */
+.prog-autonote { white-space: pre-line; }
