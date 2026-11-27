@@ -51,6 +51,7 @@ import { timeOffQueue, cleanRequestedAt, SOURCES as TIME_OFF_SOURCES } from './t
 import { useCustomRoles } from './roles.js';
 import { programmingApi } from './programming.js';
 import { calendarImportApi } from './calendar-import.js';
+import { quickShiftApi, dayOffId } from './quick-shift.js';
 
 export class AppError extends Error {
   constructor(status, message) {
@@ -252,6 +253,7 @@ export function createService(store, opts = {}) {
     const tos = store.list('timeOff', (t) => t.userId === userId && t.status !== 'denied' && t.status !== 'cancelled' &&
       t.startDate <= shift.date && t.endDate >= shift.date);
     for (const t of tos) add(t.status === 'approved' ? 'timeOffApproved' : 'timeOffPending');
+    if (store.get('daysOff', dayOffId(userId, shift.date))) add('dayOff'); // marked off that day on purpose (core/quick-shift.js): a warning, never a block
     const av = availabilityOn(user, shift.date)[dow(shift.date)]; // an import's later effective date: the old week before it
     if (av) {
       if (av.available === false) add('unavailable');
@@ -285,6 +287,38 @@ export function createService(store, opts = {}) {
       store.update('requests', r.id, { status: 'cancelled', resolvedAt: now().toISOString(), resolution: msg('en')[reason] });
       notify([r.requesterId, r.pickupUserId, r.targetUserId], say('requestCancelled', say(reason)), '#/swaps');
     }
+  }
+
+  /** shifts.save's work; shifts.move (core/quick-shift.js) logs its edit as 'shift.move'. */
+  function saveShift(actor, a, { editAction = 'shift.edit' } = {}) {
+    needMgr(actor);
+    validateShiftInput(a);
+    const doc = cleanShift(a);
+    if (doc.area) doc.area = rememberAreas([doc.area]).canon(doc.area);
+    // Scheduling someone outside their positions (the shift editor's "Show everyone") gives them
+    // the position in this room, so they're listed in the section from now on.
+    if (a.listPerson && doc.userId) {
+      const u = userById(doc.userId), job = jobById(doc.jobCodeId);
+      const room = roomOfShift(doc, job);
+      if (room && (u.id === actor.id || canManageUser(actor, u))) store.update('users', u.id, { jobCodes: addRoom(u.jobCodes, job, room) });
+    }
+    if (a.id) {
+      const cur = store.get('shifts', a.id);
+      if (!cur) fail(404, 'Shift not found');
+      if (cur.userId !== doc.userId || cur.date !== doc.date || cur.start !== doc.start) cancelRequestsForShift(a.id, 'reasonChanged');
+      const upd = store.update('shifts', a.id, doc);
+      const changed = shiftChanges(cur, upd);
+      if (changed.length) slog(actor, editAction, { shift: upd, affected: [cur.userId], changes: changed, extra: { before: { date: cur.date, start: cur.start, end: cur.end || null, jobCodeId: cur.jobCodeId, area: cur.area || '', userId: cur.userId || null }, published: !!cur.published } });
+      if (cur.published) {
+        if (cur.userId && cur.userId !== doc.userId) notify([cur.userId], say('removedFrom', desc(cur)), '#/my');
+        if (doc.userId) notify([doc.userId], cur.userId === doc.userId ? say('shiftChanged', desc(upd)) : say('addedTo', desc(upd)), '#/my');
+      }
+      return { shift: upd, warnings: doc.userId ? conflictsFor(doc.userId, upd, [], L(actor)) : [] };
+    }
+    const s = store.insert('shifts', { id: uid('shf'), ...doc, published: !!a.published, createdAt: now().toISOString(), createdBy: actor.id });
+    slog(actor, 'shift.create', { shift: s, extra: { published: !!s.published } });
+    if (s.published && s.userId) notify([s.userId], say('newShift', desc(s)), '#/my');
+    return { shift: s, warnings: s.userId ? conflictsFor(s.userId, s, [], L(actor)) : [] };
   }
 
   function validateShiftInput(a) {
@@ -815,36 +849,7 @@ export function createService(store, opts = {}) {
       const doc = { id, kind, date, text: body, updatedAt: now().toISOString(), updatedBy: actor.id };
       return store.get('notes', id) ? store.update('notes', id, doc) : store.insert('notes', doc);
     },
-    'shifts.save': (actor, a) => {
-      needMgr(actor);
-      validateShiftInput(a);
-      const doc = cleanShift(a);
-      if (doc.area) doc.area = rememberAreas([doc.area]).canon(doc.area);
-      // Scheduling someone outside their positions (the shift editor's "Show everyone") gives them
-      // the position in this room, so they're listed in the section from now on.
-      if (a.listPerson && doc.userId) {
-        const u = userById(doc.userId), job = jobById(doc.jobCodeId);
-        const room = roomOfShift(doc, job);
-        if (room && (u.id === actor.id || canManageUser(actor, u))) store.update('users', u.id, { jobCodes: addRoom(u.jobCodes, job, room) });
-      }
-      if (a.id) {
-        const cur = store.get('shifts', a.id);
-        if (!cur) fail(404, 'Shift not found');
-        if (cur.userId !== doc.userId || cur.date !== doc.date || cur.start !== doc.start) cancelRequestsForShift(a.id, 'reasonChanged');
-        const upd = store.update('shifts', a.id, doc);
-        const changed = shiftChanges(cur, upd);
-        if (changed.length) slog(actor, 'shift.edit', { shift: upd, affected: [cur.userId], changes: changed, extra: { before: { date: cur.date, start: cur.start, end: cur.end || null, jobCodeId: cur.jobCodeId, area: cur.area || '', userId: cur.userId || null }, published: !!cur.published } });
-        if (cur.published) {
-          if (cur.userId && cur.userId !== doc.userId) notify([cur.userId], say('removedFrom', desc(cur)), '#/my');
-          if (doc.userId) notify([doc.userId], cur.userId === doc.userId ? say('shiftChanged', desc(upd)) : say('addedTo', desc(upd)), '#/my');
-        }
-        return { shift: upd, warnings: doc.userId ? conflictsFor(doc.userId, upd, [], L(actor)) : [] };
-      }
-      const s = store.insert('shifts', { id: uid('shf'), ...doc, published: !!a.published, createdAt: now().toISOString(), createdBy: actor.id });
-      slog(actor, 'shift.create', { shift: s, extra: { published: !!s.published } });
-      if (s.published && s.userId) notify([s.userId], say('newShift', desc(s)), '#/my');
-      return { shift: s, warnings: s.userId ? conflictsFor(s.userId, s, [], L(actor)) : [] };
-    },
+    'shifts.save': (actor, a) => saveShift(actor, a),
     'shifts.delete': (actor, { id }) => {
       needMgr(actor);
       const s = store.get('shifts', id);
@@ -1906,6 +1911,8 @@ export function createService(store, opts = {}) {
   Object.assign(api, programmingApi({ store, settings, fail, needAuth, needMgr, isMgr, now, today, layouts, langOf: L, homeRoom: (job) => layouts.homeRoom(job) }));
   // Import from a calendar page: programming.calendar.* (core/calendar-import.js; the page is read by server/calendar/).
   Object.assign(api, calendarImportApi({ store, settings, fail, needAuth, now, layouts, api, langOf: L, logVia }));
+  // Quick shifts from a schedule cell: shifts.move (same id, logged as a move) and days off (core/quick-shift.js). New RPCs only.
+  Object.assign(api, quickShiftApi({ store, api, fail, needAuth, needMgr, isMgr, now, slog, saveShift, roleAllows, settings }));
   // Stock lists and the product catalog the 86 List shares (core/stock.js, core/products.js). Out → 86 goes through eightySix.report.
   Object.assign(api, stockApi({ store, now, settings, notify, fail, api, langOf: L, planHas: (k) => !opts.planFeatures || opts.planFeatures[k] !== false }));
   // Positive impact (impact.*: review mentions, reservation requests, kudos) and OpenTable (opentable.*): core/impact.js, core/opentable.js.

@@ -5,6 +5,7 @@ import { canTrade } from './TradeHint.jsx';
 import { dow, parseDate } from '../../../core/time.js';
 import { bannerColor, textOn } from '../../../core/areas.js';
 import { useT, prettyDate , dowLong } from '../i18n/index.js';
+import '../quick-shift.css';
 
 // The schedule drawn like the house spreadsheet (and its PDF): a colored banner per area, a
 // header row per position with the day names, names in capitals, yellow OFF cells, the dates and
@@ -30,7 +31,7 @@ export function sheetTime(s) {
 export const plural = (n) => (/man$/i.test(n) ? n.replace(/man$/i, 'men') : /(s|x|ch|sh)$/i.test(n) ? `${n}es` : /[^aeiou]y$/i.test(n) ? `${n.slice(0, -1)}ies` : `${n}s`);
 const usDate = (d) => { const x = parseDate(d); return `${x.getUTCMonth() + 1}/${x.getUTCDate()}/${x.getUTCFullYear()}`; };
 
-export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onOpen, onSaved, onEditSection, onArrange, className = '', programming = null }) {
+export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onOpen, onSaved, onEditSection, onArrange, className = '', programming = null, daysOff = [], onUndoDayOff }) {
   const t = useT();
   const { isMgr, me, settings, people, today } = useApp();
   const [editNote, setEditNote] = useState(null); // { kind, date, text }
@@ -69,6 +70,13 @@ export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onO
       );
     }
     if (!user) return <td className={add ? 'can-add' : ''} onClick={add} />;
+    // DAY OFF: a manager marked them off on purpose (core/quick-shift.js), unlike OFF (just not scheduled).
+    if (daysOff.some((d) => d.userId === user.id && d.date === date)) {
+      return (
+        <td className={`dayoff ${add ? 'can-add' : ''}`} onClick={add} title={t('quickShift.cellTitle')}>{t('quickShift.cell')}
+          {onUndoDayOff && <button type="button" className="dayoff-undo no-print" onClick={(e) => { e.stopPropagation(); onUndoDayOff(user.id, date); }}>{t('quickShift.undo')}</button>}</td>
+      );
+    }
     const to = timeOffOn(user.id, date);
     if (to) return <td className={`off ${add ? 'can-add' : ''}`} onClick={add} title={to.reason || ''}>{to.status === 'approved' ? t('scheduleSheet.requestOff') : t('scheduleSheet.reqPending')}</td>;
     const other = workingElsewhere(user.id, date);
