@@ -6,6 +6,7 @@
 import { uid } from './store.js';
 import { todayStr } from './time.js';
 import { ensureCatalog, newProduct, productKey } from './products.js';
+import { ensureSavedLists } from './stock-saved.js';
 
 // A bottle, a box, a glass or a bunch of fruit, in the product's colors, with "Sample photo" in the corner.
 function tile(shape, bg, a, b) {
@@ -126,4 +127,37 @@ export function seedStockDemo(store, { now = new Date() } = {}) {
     status: 'done', createdBy: mgr, createdAt: at(60 * 26), updatedAt: at(60 * 24 - 12), assignedBy: mgr, assignedAt: at(60 * 26), startedAt: at(60 * 24),
     doneAt: at(60 * 24 - 12), doneBy: luciano, toldDone: at(60 * 24 - 12), log: [{ at: at(60 * 26), by: mgr, what: 'created' }],
   });
+
+  // Saved lists (core/stock-saved.js). The templates become saved lists, like a real restaurant's the first time; the
+  // nightly one is the Rabbit Hole bar's, with pars, shared with the Barbacks, and run last night (it sent yesterday's
+  // list). A bartender's personal "My station", also shared with the Barbacks.
+  const areas = store.list('settings')[0]?.areas || [];
+  ensureSavedLists(store, { at: at(60 * 24 * 13), areas });
+  const bbk = store.get('jobCodes', 'job_bbk') ? 'job_bbk' : null;
+  const share = (to, by, mins) => ({ id: uid('sps'), to, can: 'use', by, at: at(mins) });
+  const nightly = store.list('stockParLists', (l) => l.templateId === 'stk_demo_nightly')[0];
+  if (nightly) {
+    const pars = { rum: 6, vodka: 6, gin: 4, tequila: 4, soda: 2, limes: 2, napkins: 6, rocks: 3 };
+    const lines = nightly.lines.map((x) => { const k = Object.keys(ids).find((key) => ids[key] === x.productId); return { ...x, par: pars[k] ?? x.par }; });
+    const run = {
+      id: 'spu_demo_last', at: at(60 * 26 + 10), by: mgr, send: 'support', listId: 'stk_demo_done', to: store.get('users', luciano)?.name || '', out: [],
+      counts: lines.map((x, i) => { const onHand = i === 6 ? null : Math.max(0, x.par - [2, 2, 1, 0, 1, 1, 0, 0][i]); return { lineId: x.id, productId: x.productId, par: x.par, onHand, need: onHand === null ? null : Math.max(0, x.par - onHand) }; }),
+    };
+    store.update('stockParLists', nightly.id, {
+      scope: { type: 'room', room: areas.includes('Rabbit Hole') ? 'Rabbit Hole' : '' }, lines, runs: [run],
+      shares: bbk ? [share({ type: 'position', jobCodeId: bbk }, mgr, 60 * 24 * 12)] : [],
+      log: [...nightly.log, { at: at(60 * 24 * 12), by: mgr, what: 'shared', to: 'Barback', can: 'use' }, { at: run.at, by: mgr, what: 'ran', runId: run.id, needs: 5, send: 'support' }],
+    });
+  }
+  const mak = user('Mak');
+  if (mak) {
+    const mine = [['rum', 2], ['vodka', 2], ['tequila', 1], ['syrup', 2], ['limes', 1], ['napkins', 2], ['bartowels', 3]];
+    store.insert('stockParLists', {
+      id: 'spl_demo_station', name: 'My station', notes: 'Well 2, left side. Back-ups go under the well.', scope: { type: 'personal' }, owner: mak,
+      lines: mine.filter(([k]) => ids[k]).map(([k, par]) => ({ id: uid('spn'), productId: ids[k], par, unit: '', note: '' })),
+      shares: bbk ? [share({ type: 'position', jobCodeId: bbk }, mak, 60 * 24 * 3)] : [], runs: [], requests: [], eightySixListId: bar, templateId: null,
+      createdBy: mak, createdAt: at(60 * 24 * 4), updatedBy: mak, updatedAt: at(60 * 24 * 3),
+      log: [{ at: at(60 * 24 * 4), by: mak, what: 'created' }, { at: at(60 * 24 * 3), by: mak, what: 'shared', to: 'Barback', can: 'use' }],
+    });
+  }
 }

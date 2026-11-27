@@ -24,11 +24,16 @@ const TITLES = {
   import_employees: ['Import people to the team', 'Importar personas al equipo'],
   create_stock_list: ['Create a stock list', 'Crear una lista de surtido'],
   add_product: ['Add a product to the catalog', 'Agregar un producto al catálogo'],
+  run_stock_list: ['Save a stock count', 'Guardar un conteo de surtido'],
+  share_stock_list: ['Share a stock list', 'Compartir una lista de surtido'],
 };
 // A label that means something else for one tool (a product's category isn't a menu section).
 const TOOL_LABELS = {
   add_product: { category: ['Category', 'Categoría'], createNew: ['Add even if it looks like a duplicate', 'Agregar aunque parezca duplicado'] },
   create_stock_list: { name: ['List', 'Lista'], template: ['Save as a template', 'Guardar como plantilla'] },
+  run_stock_list: { list: ['List', 'Lista'], position: ['Send to', 'Enviar a'], person: ['Send to', 'Enviar a'], out: ['Report out (86)', 'Reportar agotado (86)'] },
+  share_stock_list: { list: ['List', 'Lista'], person: ['Share with', 'Compartir con'], position: ['Share with', 'Compartir con'], role: ['Share with', 'Compartir con'],
+    room: ['Share with', 'Compartir con'], can: ['They can', 'Pueden'] },
 };
 
 const LABELS = {
@@ -45,6 +50,13 @@ const LABELS = {
   sendInvitations: ['Send invitations now', 'Enviar invitaciones ahora'], createNew: ['Add as a separate item', 'Agregar como platillo aparte'],
   products: ['Products', 'Productos'], due: ['Due', 'Para las'], unit: ['Unit', 'Unidad'], size: ['Size', 'Tamaño'], location: ['Kept in', 'Se guarda en'],
   supplier: ['Supplier', 'Proveedor'],
+  counts: ['On hand', 'Hay'], send: ['Then', 'Después'], unshare: ['Stop sharing', 'Dejar de compartir'],
+};
+const ROLE_WORDS = { employee: ['Employees', 'Empleados'], supervisor: ['Supervisors', 'Supervisores'], manager: ['Managers', 'Gerentes'], admin: ['Admins', 'Administradores'] };
+// A saved stock list's run and share: what happens next, and what they may do.
+const STOCK_VALUES = {
+  support: ['Send what’s needed to support', 'Mandar lo que falta al equipo de apoyo'], self: ['Assign it to me', 'Asignármela'], none: ['Only save the counts', 'Solo guardar el conteo'],
+  use: ['Use it', 'Usarla'], edit: ['Edit it', 'Editarla'],
 };
 const CATEGORY_VALUES = {
   spirits: ['Spirits', 'Licores'], beer: ['Beer', 'Cerveza'], wine: ['Wine', 'Vino'], mixers: ['Mixers', 'Mezcladores'], garnish: ['Garnish', 'Guarniciones'],
@@ -86,6 +98,10 @@ export function describeAction(tool, args = {}, lang = 'en', look = {}) {
     else if (k === 'week') {
       try { value = pick(WEEK_OF, lang).replace('{date}', prettyDate(resolveWeek(v, today, look.weekStartDow ?? 1), { lang })); } catch { value = clip(v); }
     } else if (k === 'start' || k === 'due') value = fmtTime(v, lang);
+    else if (k === 'counts' && Array.isArray(v)) value = clip(v.map((x) => `${x.product}: ${x.onHand}`).join(', '), 200); // a stock count's on-hand numbers
+    else if (k === 'out' && Array.isArray(v)) value = clip(v.join(', '), 160);
+    else if (k === 'role' && ROLE_WORDS[v]) value = pick(ROLE_WORDS[v], lang);
+    else if ((k === 'send' || k === 'can') && STOCK_VALUES[v]) value = pick(STOCK_VALUES[v], lang);
     else if (k === 'products' && Array.isArray(v)) value = clip(v.map((x) => `${x.qty ?? 1} × ${x.name}`).join(', '), 200); // a stock list's lines
     else if (k === 'category' && tool.name === 'add_product' && CATEGORY_VALUES[v]) value = pick(CATEGORY_VALUES[v], lang);
     else if (k === 'end') value = time(v);
