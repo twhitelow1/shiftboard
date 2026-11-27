@@ -278,7 +278,14 @@ export function createService(store, opts = {}) {
   /** Conflicts in words (the warnings managers and staff see), in the reader's language. */
   const conflictsFor = (userId, shift, ignoreIds = [], lang = 'en') => conflictList(userId, shift, ignoreIds).map((c) => conflictText(c, lang));
   // Blocked days (unavailable, standing request off, approved time off): confirm to schedule over them, told on publish (core/schedule-conflicts.js).
-  const conflicts = scheduleConflicts({ store, fail, needMgr, now, notify, say, desc });
+  // A pending request that day refuses the save until it's denied: who may deny it comes from "Approves for".
+  const decideInfo = (actor, t) => {
+    const person = userById(t.userId);
+    const entry = person?.jobCodes?.find((j) => j.primary && jobById(j.jobCodeId)) || person?.jobCodes?.find((j) => jobById(j.jobCodeId));
+    const canDeny = !!actor && isApprover(actor) && (isMgr(actor) || actor.id !== t.userId) && canDecide(actor, 'timeOff', t);
+    return { canDeny, deciders: canDeny ? [] : approversFor('timeOff', t).filter((u) => u.id !== actor?.id).sort((a, b) => canChangeSettings(a) - canChangeSettings(b)).map((u) => u.name).slice(0, 5), position: entry ? jobById(entry.jobCodeId)?.name || '' : '' };
+  };
+  const conflicts = scheduleConflicts({ store, fail, needMgr, now, notify, say, desc, decideInfo });
 
   function visibleShift(actor, s) {
     return isMgr(actor) || s.published;
@@ -1929,7 +1936,7 @@ export function createService(store, opts = {}) {
   Object.assign(api, calendarImportApi({ store, settings, fail, needAuth, now, layouts, api, langOf: L, logVia }));
   // Quick shifts from a schedule cell: shifts.move (same id, logged as a move) and days off (core/quick-shift.js). New RPCs only.
   Object.assign(api, quickShiftApi({ store, api, fail, needAuth, needMgr, isMgr, now, slog, saveShift, roleAllows, settings }));
-  Object.assign(api, shiftPasteApi({ store, fail, needMgr, saveShift, conflictList, canManageUser, settings })); // copy & paste a shift (core/shift-paste.js)
+  Object.assign(api, shiftPasteApi({ store, fail, needMgr, saveShift, conflictList, canManageUser, settings, pendingOf: conflicts.pendingOf })); // copy & paste a shift (core/shift-paste.js)
   Object.assign(api, conflicts.methods); // schedule.conflicts: blocked days and shifts over them (core/schedule-conflicts.js). New RPC only.
   // Stock lists and the product catalog the 86 List shares (core/stock.js, core/products.js). Out → 86 goes through eightySix.report.
   Object.assign(api, stockApi({ store, now, settings, notify, fail, api, langOf: L, planHas: (k) => !opts.planFeatures || opts.planFeatures[k] !== false }));

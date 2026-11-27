@@ -6,7 +6,7 @@ import { ShiftSectionCard } from './Sections.jsx';
 import { CallOutPanel } from './TrainingShared.jsx';
 import '../quick-shift.css';
 import { clipTime } from './ShiftPaste.jsx';
-import { useConflictConfirm } from './ScheduleConflicts.jsx'; // ask before scheduling over a blocked day
+import { useConflictConfirm, TimeOffApproved, PendingRequest } from './ScheduleConflicts.jsx'; // ask before scheduling over a blocked day; time off on the day
 import { useT, fmtTime, prettyDate, dowShort } from '../i18n/index.js';
 
 /**
@@ -90,6 +90,15 @@ function ShiftEditor({ shift, onClose, warnings, events, quick, weekShifts, days
   const [everyone, setEveryone] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
   const [confirmOff, setConfirmOff] = useState(false);
+  // The person's day (schedule.conflicts, managers): approved time off (who approved it) or a pending request (deny it first).
+  const [dayInfo, setDayInfo] = useState(null);
+  const [infoTick, setInfoTick] = useState(0);
+  useEffect(() => {
+    if (!f.userId || !/^\d{4}-\d{2}-\d{2}$/.test(f.date || '')) { setDayInfo(null); return undefined; }
+    let live = true;
+    call('schedule.conflicts', { start: f.date, end: f.date }).then((d) => live && setDayInfo(d?.cells?.find((c) => c.userId === f.userId && c.date === f.date) || null), () => live && setDayInfo(null));
+    return () => { live = false; };
+  }, [f.userId, f.date, infoTick]); // eslint-disable-line react-hooks/exhaustive-deps
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e?.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e }));
 
   const choices = shiftChoices({ layout, jobs, employees, room: f.room, jobCodeId: f.jobCodeId });
@@ -210,6 +219,12 @@ function ShiftEditor({ shift, onClose, warnings, events, quick, weekShifts, days
       {quick && dayOff === origDayOff && <button type="button" className="btn sm" disabled={busy} onClick={undoOff}>{t('quickShift.undoDayOff')}</button>}</div>
   );
   const who = person || people?.[f.userId];
+  // Up front, before the times: approved time off says who approved it; a pending request has to be denied first (only
+  // for a new shift or one moving onto that day: editing a shift in place never asks).
+  const timeOffNote = <>
+    {dayInfo?.block?.timeOff && <TimeOffApproved info={dayInfo.block.timeOff} />}
+    {dayInfo?.request && (!shift.id || moving) && <PendingRequest userId={f.userId} request={dayInfo.request} onDenied={() => setInfoTick((n) => n + 1)} />}
+  </>;
   // Copy & paste (pages/ShiftPaste.jsx): with a shift copied, a cell's quick dialog offers pasting it here first (phones too).
   const pasteOffer = quick && clip && onPaste && clip.id !== shift.id && (
     <div className="paste-offer">
@@ -244,6 +259,7 @@ function ShiftEditor({ shift, onClose, warnings, events, quick, weekShifts, days
         </div>
         <div className="help" style={{ marginTop: -4 }}>{t('quickShift.fixedHelp')}</div>
         {dayOffNote}
+        {timeOffNote}
         {copyBlock}
         {timeFields}
         {tagField}
@@ -291,6 +307,7 @@ function ShiftEditor({ shift, onClose, warnings, events, quick, weekShifts, days
           <div className="alert warn"><Icon name="alert" size={16} /><span>{t('shiftDialog.willGetPosition', { name: person.name, position: job.name, room: f.room })}</span></div>
         )}
         {dayOffNote}
+        {timeOffNote}
         {copyBlock}
         {timeFields}
         {tagField}
