@@ -135,7 +135,11 @@ function ShiftEditor({ shift, onClose, warnings, events, quick, weekShifts, days
       published: shift.id ? undefined : publishNow, listPerson: !!f.userId && !holder };
     delete payload.room;
     // Onto a blocked day (unavailable, standing request off, time off): asks first, then sends overrideConflict (ScheduleConflicts.jsx).
+    // A shift on a day the manager marked off replaces the day off: clear it first (no "marked as a day off" warning), put it back if the save fails.
+    const clearOff = dayOff && f.userId && !shift.id;
+    if (clearOff) await call('schedule.dayOff.clear', { userId: dayOff.userId, date: dayOff.date }).catch(() => {});
     const r = await run(() => conflict.save((x) => call(moving ? 'shifts.move' : 'shifts.save', { ...payload, ...x })));
+    if (!r && clearOff) await call('schedule.dayOff.set', { userId: dayOff.userId, date: dayOff.date, removeShifts: false }).catch(() => {});
     if (r) {
       if (r.warnings?.length) toast(t('shiftDialog.savedHeadsUpValue', { value: r.warnings[0] }), 'bad');
       else toast(moving ? t('quickShift.moved') : shift.id ? t('shiftDialog.shiftUpdated') : t('shiftDialog.shiftAdded'));

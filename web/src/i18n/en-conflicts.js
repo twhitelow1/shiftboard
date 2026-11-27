@@ -3,7 +3,7 @@
 export default {
   conflicts: {
     standing: 'REQ OFF (standing)',
-    unavailable: 'Unavailable',
+    unavailable: 'UNAVAILABLE',
     timeOff: 'Time off',
     pendingTitle: 'Time off requested, not approved yet: a warning, not a block',
     window: 'Avail. {from}–{to}',

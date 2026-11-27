@@ -25,6 +25,8 @@ export default {
     dayOffCleared: 'Día de descanso quitado',
     cell: 'DESCANSO',
     cellTitle: 'Marcado de descanso a propósito por un gerente',
+    plusShift: '+ Turno',
+    addShift: 'Agregar turno',
     undo: 'Deshacer',
   },
 };

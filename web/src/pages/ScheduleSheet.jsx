@@ -83,16 +83,20 @@ export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onO
     if (daysOff.some((d) => d.userId === user.id && d.date === date)) {
       return (
         <td key={date} {...p} className={`dayoff ${add ? 'can-add' : ''} ${sel}`} onClick={add} title={t('quickShift.cellTitle')}>{t('quickShift.cell')}
-          {onUndoDayOff && <button type="button" className="dayoff-undo no-print" onClick={(e) => { e.stopPropagation(); onUndoDayOff(user.id, date); }}>{t('quickShift.undo')}</button>}{pasteBtn}</td>
+          {add && <button type="button" className="dayoff-undo no-print" onClick={(e) => { e.stopPropagation(); add(); }}>{t('quickShift.addShift')}</button>}{pasteBtn}</td>
       );
     }
     const cx = conflicts?.cell(user.id, date); // blocked: unavailable, standing request off, approved time off (ScheduleConflicts.jsx)
-    if (cx?.block) return <td key={date} {...p} className={`cx-blocked ${add ? 'can-add' : ''} ${sel}`} onClick={add}><BlockedLabel block={cx.block} />{pasteBtn}</td>;
+    // Not available (or a standing request off / time off): the reason, and "+ Shift" for managers (asks before saving over it).
+    if (cx?.block) return <td key={date} {...p} className={`cx-blocked ${add ? 'can-add' : ''} ${sel}`} onClick={add}><BlockedLabel block={cx.block} />
+      {add && <button type="button" className="dayoff-undo no-print" onClick={(e) => { e.stopPropagation(); add(); }}>{t('quickShift.plusShift')}</button>}{pasteBtn}</td>;
     const to = timeOffOn(user.id, date);
     if (to) return <td key={date} {...p} className={`off ${add ? 'can-add' : ''} ${sel}`} onClick={add} title={to.reason || ''}>{to.status === 'approved' ? t('scheduleSheet.requestOff') : t('scheduleSheet.reqPending')}{pasteBtn}</td>;
     const other = workingElsewhere(user.id, date);
     if (other) return <td key={date} {...p} className={`elsewhere ${add ? 'can-add' : ''} ${sel}`} onClick={add} title={`${t('scheduleSheet.workingTime', { time: sheetTime(other) })}${other.area ? ` · ${other.area}` : ''}`}>{pasteBtn}</td>;
-    return <td key={date} {...p} className={`off ${add ? 'can-add' : ''} ${sel}`} onClick={add}>{t('scheduleSheet.off')}{cx?.window && <WindowNote w={cx.window} />}{pasteBtn}</td>;
+    // No shift that day: DAY OFF, and managers get "Add shift".
+    return <td key={date} {...p} className={`dayoff ${add ? 'can-add' : ''} ${sel}`} onClick={add}>{t('quickShift.cell')}{cx?.window && <WindowNote w={cx.window} />}
+      {add && <button type="button" className="dayoff-undo no-print" onClick={(e) => { e.stopPropagation(); add(); }}>{t('quickShift.addShift')}</button>}{pasteBtn}</td>;
   };
 
   return (
