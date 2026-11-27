@@ -8,6 +8,7 @@ import { useApp, Icon, Avatar, Field, Empty, useAction, Modal } from '../ui.jsx'
 import { addDays } from '../../../core/time.js';
 import { tx, useT, prettyDate, stamp, dowShort } from '../i18n/index.js';
 import { AvailabilityPage } from './AvailabilityEditor.jsx'; // the week, its history, and (for managers) anyone's
+import { TeamAvailabilityList, AvailabilitySheet } from './TeamAvailability.jsx'; // everyone's week (managers): a list and the house sheet
 import { MyApprovalScope } from './ApprovalScope.jsx'; // "You approve: Bar positions"
 import { SmartImportButton } from './SmartImportButton.jsx';
 import '../availability.css';
@@ -39,7 +40,10 @@ export function RequestedLine({ info, mine }) {
 
 export default function TimeOff({ parts = [] }) {
   const t = useT();
-  const { call, version, canApprove, isMgr, people, me, today } = useApp();
+  const { call, version, canApprove, isMgr, people, me, today, features } = useApp();
+  // Everyone's availability (Team, Sheet): managers and up; supervisors when "Edit staff availability" is on for them.
+  const canTeam = isMgr || (me.role === 'supervisor' && features?.editAvailability === true);
+  const [avView, setAvView] = useState(canTeam && ['team', 'sheet'].includes(parts[2]) ? parts[2] : 'person');
   const [list, setList] = useState(null);
   const [queue, setQueue] = useState({});
   const [tab, setTab] = useState(parts[1] === 'availability' ? 'availability' : canApprove ? 'pending' : 'mine');
@@ -49,8 +53,9 @@ export default function TimeOff({ parts = [] }) {
   useEffect(() => {
     if (parts[1] === 'new') setForm({});
     if (parts[1] === 'availability') setTab('availability');
+    if (parts[1] === 'availability' && canTeam && ['team', 'sheet'].includes(parts[2])) setAvView(parts[2]);
     if (parts[1]) history.replaceState(null, '', '#/timeoff');
-  }, [parts[1]]);
+  }, [parts[1], parts[2]]);
   const [run, busy] = useAction();
   useEffect(() => { call('timeOff.list').then(setList); call('timeOff.queue').then(setQueue, () => setQueue({})); }, [version]);
 
@@ -67,7 +72,7 @@ export default function TimeOff({ parts = [] }) {
   const elsewhere = list?.filter((x) => x.status === 'pending' && x.outOfScope).length || 0;
 
   return (
-    <div style={{ maxWidth: 860 }}>
+    <div style={{ maxWidth: tab === 'availability' && avView !== 'person' ? 1280 : 860, minWidth: 0 }}>
       <div className="toolbar to-toolbar">
         <div className="tabs" style={{ margin: 0, flex: 1, borderBottom: 0 }}>
           {tabs.map((x) => <button key={x.key} className={tab === x.key ? 'on' : ''} onClick={() => setTab(x.key)}>{x.label}{x.key === 'pending' && pendingCount > 0 && <span className="count">{pendingCount}</span>}</button>)}
@@ -80,8 +85,20 @@ export default function TimeOff({ parts = [] }) {
       {tab === 'pending' && <MyApprovalScope kind="timeOff" />}
       {tab === 'pending' && rows.length > 1 && <div className="tiny faint" style={{ marginBottom: 6 }}>{t('timeOffQueue.oldestFirst')}</div>}
       {tab === 'pending' && elsewhere > 0 && <div className="small muted" style={{ marginBottom: 8 }}>{t('approvals.elsewhere', { count: elsewhere })}</div>}
-      {tab === 'availability' && isMgr && <div className="row" style={{ marginBottom: 8 }}><span className="spacer" /><SmartImportButton target="availability" /></div>}
-      {tab === 'availability' ? <AvailabilityPage /> : (
+      {tab === 'availability' && (canTeam || isMgr) && (
+        <div className="row wrap no-print" style={{ marginBottom: 8, gap: 8 }}>
+          {canTeam && (
+            <div className="seg av-views" role="tablist" aria-label={t('teamAv.viewsLabel')}>
+              {[['person', 'teamAv.viewPerson'], ['team', 'teamAv.viewTeam'], ['sheet', 'teamAv.viewSheet']].map(([k, label]) => (
+                <button key={k} type="button" role="tab" aria-selected={avView === k} className={avView === k ? 'on' : ''} onClick={() => setAvView(k)}>{t(label)}</button>
+              ))}
+            </div>
+          )}
+          <span className="spacer" />
+          {isMgr && <SmartImportButton target="availability" />}
+        </div>
+      )}
+      {tab === 'availability' ? (avView === 'team' && canTeam ? <TeamAvailabilityList /> : avView === 'sheet' && canTeam ? <AvailabilitySheet /> : <AvailabilityPage />) : (
         <div className="card list">
           {!list && <div className="empty">{t('common.loading')}</div>}
           {list && !rows.length && <Empty icon="sun" title={tab === 'pending' ? t('timeOff.noRequestsWaiting') : t('timeOff.noTimeOff')} />}

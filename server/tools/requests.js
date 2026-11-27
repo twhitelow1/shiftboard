@@ -5,7 +5,8 @@ import { defineTool } from './registry.js';
 import { lookupOf, shiftOut, findPerson, dateArg, idArg, confirmArg } from './helpers.js';
 import { resolveDate } from './dates.js';
 import { canApprove, canManageSchedule } from '../../core/roles.js';
-import { DOW_LONG } from '../../core/time.js';
+import { DOW_LONG, dow as dowOf } from '../../core/time.js';
+import { roleAllows } from '../../core/role-features.js';
 import { AppError } from '../../core/service.js';
 
 const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -164,6 +165,47 @@ export default [
         ...(e.fields.length ? { other: e.fields } : {}),
       }));
       return { summary: `${changes.length} change(s) to ${who.name}'s availability.`, data: { person: who.name, changes } };
+    },
+  }),
+
+  defineTool({
+    name: 'get_team_availability',
+    title: 'Team availability',
+    description: 'Managers: everyone\'s weekly availability for one week, side by side: standing requests off, days they can\'t work, partial hours and day notes, '
+      + 'plus dated time off (approved or pending) in that week, and how many people have a standing request off each day. Read only. '
+      + 'Filter with room, position or only_standing.',
+    input: {
+      week_of: dateArg('Any date in the week (default: next week)').optional(),
+      room: z.string().max(60).optional().describe('Only people whose primary room is this (e.g. "Restaurant")'),
+      position: z.string().max(60).optional().describe('Only people with this position (e.g. "Server")'),
+      only_standing: z.boolean().optional().describe('Only people with at least one standing request off'),
+    },
+    role: 'supervisor',
+    can: (user, info) => canManageSchedule(user) || roleAllows(user, info.settings || {}).editAvailability === true,
+    consent: 'read',
+    async handler(user, args, ctx) {
+      const weekStart = args.week_of ? resolveDate(args.week_of, ctx.today()) : undefined;
+      const r = await ctx.read('availability.team.get', weekStart ? { weekStart } : {});
+      const key = (s) => String(s || '').trim().toLowerCase();
+      const people = r.people.filter((p) => (!args.room || key(p.room) === key(args.room))
+        && (!args.position || p.positions.some((x) => key(x.name) === key(args.position) || key(x.name).startsWith(key(args.position))))
+        && (!args.only_standing || p.days.some((d) => d.status === 'standing')));
+      const dayLine = (d) => {
+        const main = d.status === 'standing' ? 'standing request off' : d.status === 'off' ? 'unavailable' : d.status === 'partial' ? `${d.from || 'open'}–${d.to || 'close'}` : 'available';
+        return `${main}${d.note ? ` (${d.note})` : ''}${d.timeOff ? ` · time off ${d.timeOff.status}` : ''}`;
+      };
+      return {
+        summary: `Availability for ${people.length} people, week of ${r.weekStart}.`,
+        data: {
+          weekStart: r.weekStart, weekEnd: r.weekEnd,
+          standingOffPerDay: Object.fromEntries(r.dates.map((d, i) => [`${DOW_LONG[dowOf(d)]} ${d}`, r.counts.standing[i]])),
+          people: people.map((p) => ({
+            name: p.name, room: p.room, positions: p.positions.map((x) => x.name),
+            days: Object.fromEntries(p.days.map((d) => [`${DOW_LONG[d.dow]} ${d.date}`, dayLine(d)])),
+            ...(p.notes ? { notes: p.notes } : {}),
+          })),
+        },
+      };
     },
   }),
 

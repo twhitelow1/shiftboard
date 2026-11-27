@@ -26,7 +26,9 @@ const dayName = (dow: number) => addDays('2023-01-01', dow);
 export default function Availability() {
   const { t, date } = useI18n();
   const c = useColors();
-  const { me, settings, client } = useApp();
+  const { me, settings, client, isMgr, features } = useApp();
+  // Everyone's week (read only): managers, and supervisors when "Edit staff availability" is on for them.
+  const canTeam = isMgr || (me.role === 'supervisor' && features?.editAvailability === true);
   const params = useLocalSearchParams<{ userId?: string }>();
   const [who, setWho] = useState<string>(params.userId || me.id);
   const people = useRpc<{ id: string; name: string }[]>('availability.people');
@@ -58,6 +60,7 @@ export default function Availability() {
 
   return (
     <Screen title={mine ? t('availability.title') : t('availEdit.titleFor', { name: got.data?.name || '' })} back bottomInset>
+      {canTeam ? <Button icon="users" title={t('teamAvail.link')} onPress={() => router.push('/team-availability')} /> : null}
       {people.data && people.data.length > 1 ? (
         <Card style={{ gap: 6 }}>
           <Txt v="small" tone="muted" bold>{t('availEdit.person')}</Txt>
