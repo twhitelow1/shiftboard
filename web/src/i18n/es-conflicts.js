@@ -2,7 +2,7 @@
 export default {
   conflicts: {
     standing: 'DESCANSO FIJO',
-    unavailable: 'No disponible',
+    unavailable: 'NO DISPONIBLE',
     timeOff: 'Días libres',
     pendingTitle: 'Pidió días libres, aún sin aprobar: un aviso, no un bloqueo',
     window: 'Disp. {from}–{to}',

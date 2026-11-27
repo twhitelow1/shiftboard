@@ -87,7 +87,9 @@ export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onO
       );
     }
     const cx = conflicts?.cell(user.id, date); // blocked: unavailable, standing request off, approved time off (ScheduleConflicts.jsx)
-    if (cx?.block) return <td key={date} {...p} className={`cx-blocked ${add ? 'can-add' : ''} ${sel}`} onClick={add}><BlockedLabel block={cx.block} />{pasteBtn}</td>;
+    // Not available (or a standing request off / time off): the reason, and "+ Shift" for managers (asks before saving over it).
+    if (cx?.block) return <td key={date} {...p} className={`cx-blocked ${add ? 'can-add' : ''} ${sel}`} onClick={add}><BlockedLabel block={cx.block} />
+      {add && <button type="button" className="dayoff-undo no-print" onClick={(e) => { e.stopPropagation(); add(); }}>{t('quickShift.plusShift')}</button>}{pasteBtn}</td>;
     const to = timeOffOn(user.id, date);
     if (to) return <td key={date} {...p} className={`off ${add ? 'can-add' : ''} ${sel}`} onClick={add} title={to.reason || ''}>{to.status === 'approved' ? t('scheduleSheet.requestOff') : t('scheduleSheet.reqPending')}{pasteBtn}</td>;
     const other = workingElsewhere(user.id, date);
