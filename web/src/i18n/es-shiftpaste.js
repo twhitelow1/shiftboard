@@ -32,6 +32,7 @@ export default {
     timeOffApproved: '{name} tiene días libres aprobados el {date}.',
     unavailable: '{name} no está disponible el {date}.',
     pasteAnyway: 'Pegar de todos modos',
+    skippedPending: '{name}: no se pegó el {date}. Pidió libre (pendiente): rechaza la solicitud primero.',
     skipped: '{name}: no se pegó. No puedes darle el puesto de {position}.',
   },
 };

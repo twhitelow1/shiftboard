@@ -32,6 +32,7 @@ export default {
     timeOffApproved: '{name} has approved time off on {date}.',
     unavailable: '{name} is unavailable on {date}.',
     pasteAnyway: 'Paste anyway',
+    skippedPending: '{name}: not pasted on {date}. They requested off (pending): deny the request first.',
     skipped: '{name}: not pasted. You can’t give them the {position} position.',
   },
 };

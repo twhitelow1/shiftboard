@@ -19,6 +19,11 @@ function writeClip(v) { try { if (v) sessionStorage.setItem(KEY, JSON.stringify(
 /** "4:00 PM – Close" */
 export const clipTime = (c, t) => `${fmtTime(c.start)} – ${c.end ? fmtTime(c.end) : t('shiftPaste.close')}`;
 
+/** Why a cell wasn't pasted: a position they can't get, or a pending time off request (deny it first). */
+const skippedText = (t, x, nameOf, jobName) => (x.reason === 'pending_request'
+  ? t('shiftPaste.skippedPending', { name: nameOf(x.userId), date: prettyDate(x.date) })
+  : t('shiftPaste.skipped', { name: nameOf(x.userId), position: jobName(x.jobCodeId) }));
+
 const inRange = (sel, scope, row, col) => {
   if (!sel || sel.scope !== scope) return false;
   const { a, b } = sel;
@@ -51,7 +56,7 @@ export function useShiftPaste({ enabled }) {
   const findShift = (id) => Object.values(reg.current).flatMap((r) => [...r.cells.values()].flatMap((c) => c.shifts || [])).find((s) => s.id === id);
 
   const finish = (r) => {
-    if (r.skipped?.length) for (const x of r.skipped) toast(t('shiftPaste.skipped', { name: nameOf(x.userId), position: jobName(x.jobCodeId) }), 'bad');
+    if (r.skipped?.length) for (const x of r.skipped) toast(skippedText(t, x, nameOf, jobName), 'bad');
     if (r.items?.length) setUndo({ items: r.items, created: r.created, replaced: r.replaced, at: Date.now() });
     setSel(null);
   };
@@ -221,7 +226,7 @@ function PasteAsk({ ask, busy, nameOf, jobName, onClose, onGo }) {
       )}
       {position.map((p) => <div key={`p${p.userId}|${p.date}`} className="alert warn"><Icon name="alert" size={16} /><span>{t('shiftPaste.position', { name: nameOf(p.userId), position: jobName(p.jobCodeId), room: p.room || '—' })}</span></div>)}
       {off.map((o) => <div key={`o${o.userId}|${o.date}`} className="alert warn"><Icon name="sun" size={16} /><span>{o.codes.map((c) => t(`shiftPaste.${c}`, { name: nameOf(o.userId), date: day(o.date) })).join(' ')}</span></div>)}
-      {ask.skipped.map((x) => <div key={`s${x.userId}|${x.date}`} className="small faint">{t('shiftPaste.skipped', { name: nameOf(x.userId), position: jobName(x.jobCodeId) })}</div>)}
+      {ask.skipped.map((x) => <div key={`s${x.userId}|${x.date}`} className="small faint">{skippedText(t, x, nameOf, jobName)}</div>)}
     </Modal>
   );
 }
