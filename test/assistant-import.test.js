@@ -405,6 +405,7 @@ test('permissions: Roles & features turn an import off for a role (managers with
   const r = await mgr.attach(file('dishes.docx', { data: docx(LABELED_MENU) }));
   assert.equal(r.card.target, 'menu');
   assert.equal(r.card.status, 'refused');
+  assert.match(r.card.refused, /role or your restaurant’s plan/);
   assert.ok(!r.card.choices.some((c) => c.id === 'menu'));
   assert.ok(r.card.choices.some((c) => c.id === 'employees'), 'the rest of a manager’s imports are still offered');
   assert.equal((await admin.post('/api/rpc/roleFeatures.save', { roleFeatures: { manager: { training: true } } })).status, 200);

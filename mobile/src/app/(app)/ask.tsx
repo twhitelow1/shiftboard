@@ -256,6 +256,7 @@ function ImportCard({ card, busy, onPick, onImportNow, onReview }: { card: AskIm
   const { t } = useI18n();
   const c = useColors();
   const reading = card.status === 'reading';
+  const [picking, setPicking] = useState(!card.target); // the other kinds, on a tap (all of them when it's not sure)
   const canReview = !!card.wizard && !card.needsFile && ['ready', 'empty', 'failed'].includes(card.status); // a file the website must read itself can't come from the phone
   return (
     <Card style={[styles.action, { borderColor: card.status === 'done' ? c.ok : c.brand }]}>
@@ -276,12 +277,14 @@ function ImportCard({ card, busy, onPick, onImportNow, onReview }: { card: AskIm
       {card.refused ? <Txt v="small" tone="warn">{card.refused}</Txt> : null}
       {card.result ? <Txt v="small">{card.result}</Txt> : null}
       {!reading && card.status !== 'done' && card.choices.length ? (
-        <View style={{ gap: 6 }}>
-          <Txt v="tiny" tone="faint">{card.target ? t('ask.notRight') : t('ask.pickType')}</Txt>
-          <View style={styles.attachRow}>
-            {card.choices.map((x) => <Button key={x.id} small title={x.label} disabled={busy} onPress={() => onPick(x.id)} />)}
+        picking ? (
+          <View style={{ gap: 6 }}>
+            <Txt v="tiny" tone="faint">{card.target ? t('ask.notRight') : t('ask.pickType')}</Txt>
+            <View style={styles.attachRow}>
+              {card.choices.map((x) => <Button key={x.id} small title={x.label} disabled={busy} onPress={() => onPick(x.id)} />)}
+            </View>
           </View>
-        </View>
+        ) : <Button small kind="ghost" title={t('ask.notRight')} onPress={() => setPicking(true)} style={{ alignSelf: 'flex-start' }} />
       ) : null}
       {(canReview || card.canImportNow) && card.status !== 'done' ? (
         <View style={styles.actionButtons}>
@@ -297,7 +300,7 @@ function ImportCard({ card, busy, onPick, onImportNow, onReview }: { card: AskIm
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  bar: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingBottom: 6 },
+  bar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, paddingBottom: 6 },
   thread: { gap: 12, paddingBottom: 12 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9 },

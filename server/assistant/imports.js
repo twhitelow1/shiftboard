@@ -17,6 +17,7 @@
 // and Review & import work without sending it again. Classification: local signals first (the registry's detect),
 // a short AI call only when they aren't sure (server/assistant/import-ai.js), all metered like any AI call.
 import { uid } from '../../core/store.js';
+import { canManageSchedule } from '../../core/roles.js';
 import { extractDocument, levelOf } from '../../core/import-detect.js';
 import { importTargets, importTarget } from './import-registry.js';
 import { classifyWithAi } from './import-ai.js';
@@ -43,6 +44,10 @@ const AI_NOTE = {
 };
 
 /** What a target is called, in the person's language. */
+/** Why someone can't run an import: staff aren't managers; a manager's role or plan may not include it. */
+const refusal = (user, lang) => (canManageSchedule(user)
+  ? L(lang, 'Your role or your restaurant’s plan doesn’t include this import.', 'Tu rol o el plan de tu restaurante no incluye esta importación.')
+  : L(lang, 'Only managers can import this.', 'Solo los gerentes pueden importar esto.'));
 const labelOf = (t, lang) => (t ? t.label[lang === 'es' ? 'es' : 'en'] || t.label.en : '');
 
 /**
@@ -103,7 +108,7 @@ export function mountAssistantImports(app, d) {
       ...(p && (p.checks || p.problems) ? { needsReview: true } : {}),
       ...(imp.lowConfidence ? { lowConfidence: imp.lowConfidence } : {}),
       notes: imp.notes || [], ...(imp.result ? { result: imp.result } : {}),
-      ...(t && !may ? { refused: L(lang, 'Only managers can import this.', 'Solo los gerentes pueden importar esto.') } : {}),
+      ...(t && !may ? { refused: refusal(user, lang) } : {}),
       ...(imp.source ? { source: imp.source } : {}),
     };
   }
@@ -150,7 +155,7 @@ export function mountAssistantImports(app, d) {
       if (body.importId && !imp) return res.status(404).json({ error: L(lang, 'That import is gone. Attach the file again.', 'Esa importación ya no está. Adjunta el archivo de nuevo.') });
       if (imp && imp.fingerprint !== fingerprint) return res.status(409).json({ error: L(lang, 'That’s a different file. Attach it as a new message.', 'Ese es otro archivo. Adjúntalo en un mensaje nuevo.') });
       const forced = typeof body.target === 'string' && body.target ? importTarget(body.target) : null;
-      if (body.target && (!forced || !forced.allowed(user, has))) return res.status(403).json({ error: L(lang, 'Only managers can import this.', 'Solo los gerentes pueden importar esto.') });
+      if (body.target && (!forced || !forced.allowed(user, has))) return res.status(403).json({ error: refusal(user, lang) });
       let first = null;
       if (!imp) {
         const mayAny = importTargets().some((t) => t.allowed(user, has));
@@ -222,7 +227,7 @@ export function mountAssistantImports(app, d) {
     const imp = importOf(db.store, s.user.id, req.params.id);
     const t = imp && importTarget(imp.target);
     if (!imp || !t) return res.status(404).json({ error: 'Not found' });
-    if (!t.allowed(s.user, d.hasFor(s.user))) return res.status(403).json({ error: L(d.langFor(s.user), 'Only managers can import this.', 'Solo los gerentes pueden importar esto.') });
+    if (!t.allowed(s.user, d.hasFor(s.user))) return res.status(403).json({ error: refusal(s.user, d.langFor(s.user)) });
     res.set('Cache-Control', 'no-store').json({ result: { id: imp.id, target: t.id, wizard: t.wizard, needsFile: !!t.needsFile, fileName: imp.name, kind: imp.kind, source: imp.source || 'file', status: imp.status, payload: imp.payload || {} } });
   });
 
@@ -240,7 +245,7 @@ export function mountAssistantImports(app, d) {
       const t = imp && importTarget(imp.target);
       if (!imp || !t) return res.status(404).json({ error: 'Not found' });
       const has = d.hasFor(user);
-      if (!t.allowed(user, has)) return res.status(403).json({ error: L(lang, 'Only managers can import this.', 'Solo los gerentes pueden importar esto.') });
+      if (!t.allowed(user, has)) return res.status(403).json({ error: refusal(user, lang) });
       if (imp.status !== 'ready' || !t.importNow) return res.status(409).json({ error: L(lang, 'This one needs Review & import.', 'Este necesita Revisar e importar.') });
       const x = contextFor(req, user, lang, { fileName: imp.name });
       x.target = t.id;
@@ -273,7 +278,7 @@ export function mountAssistantImports(app, d) {
     const t = imp && importTarget(imp.target);
     if (!imp || !t || !t.apply) return { ok: false, error: L(lang, 'That import is gone. Attach the file again.', 'Esa importación ya no está. Adjunta el archivo de nuevo.') };
     const has = d.hasFor(user);
-    if (!t.allowed(user, has)) return { ok: false, error: L(lang, 'Only managers can import this.', 'Solo los gerentes pueden importar esto.') };
+    if (!t.allowed(user, has)) return { ok: false, error: refusal(user, lang) };
     if (imp.status === 'done') return { ok: false, error: L(lang, 'Already imported.', 'Ya se importó.') };
     const x = contextFor(req, user, lang, { write: true, fileName: imp.name });
     x.target = t.id;
