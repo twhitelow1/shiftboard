@@ -14,6 +14,8 @@
 //     confirmOff: true     paste anyway on a day off, approved time off or a day they're unavailable (a blocked day's
 //                          shift is marked conflictOverride and logged like any override: core/schedule-conflicts.js)
 //   Done: { done: true, items: [{ userId, date, status: 'created' | 'replaced', shift, before?, warnings }], created, replaced }
+//   A cell whose person has a pending time off request that day is skipped (skipped: { reason: 'pending_request',
+//   request }): the request has to be denied first (core/schedule-conflicts.js), confirmOff doesn't change that.
 //   Each one is logged in the schedule log as 'shift.paste' (or 'shift.pasteReplace') "pasted from <person>'s <day> shift".
 // New RPC only: no existing answer changes. Managers only (needMgr), like shifts.save.
 import { holdsIn, roomOfShift, areaForRoom } from './layout.js';
@@ -41,7 +43,7 @@ export function pastePosition({ person, src, row, jobs }) {
   return { jobCodeId: src.jobCodeId, room: srcRoom }; // holds nothing: the copied position, which they'd get (asked first)
 }
 
-export function shiftPasteApi({ store, fail, needMgr, saveShift, conflictList, canManageUser, settings }) {
+export function shiftPasteApi({ store, fail, needMgr, saveShift, conflictList, canManageUser, settings, pendingOf = () => null }) {
   const jobsMap = () => Object.fromEntries(store.list('jobCodes').map((j) => [j.id, j]));
   return {
     'shifts.pasteMany': (actor, a = {}) => {
@@ -68,6 +70,8 @@ export function shiftPasteApi({ store, fail, needMgr, saveShift, conflictList, c
         const there = store.list('shifts', (s) => s.userId === t.userId && s.date === t.date);
         const replace = t.replaceId ? there.find((s) => s.id === t.replaceId) : null;
         if (t.replaceId && !replace) fail(400, 'That shift is no longer there');
+        const pend = !replace && pendingOf(actor, t.userId, t.date); // deny the request first (never pasted over)
+        if (pend) { skipped.push({ ...where, reason: 'pending_request', request: pend }); continue; }
         const pos = replace ? { jobCodeId: replace.jobCodeId, room: roomOfShift(replace, jobs[replace.jobCodeId]) } : pastePosition({ person, src, row: t.jobCodeId ? { jobCodeId: t.jobCodeId, area: t.area } : null, jobs });
         const job = jobs[pos.jobCodeId];
         if (!job) fail(400, 'Choose a job code');

@@ -573,6 +573,7 @@ export const ERROR_PATTERNS_ES = [
   // Scheduling over a blocked day (core/schedule-conflicts.js)
   [/^(.+) has a standing request off on (\w+)\. Schedule anyway\?$/, (m) => `${m[1]} tiene un descanso fijo los ${WEEKDAY_ES[m[2]] || m[2]}. ¿Programar de todos modos?`],
   [/^(.+) is unavailable on (\w+)\. Schedule anyway\?$/, (m) => `${m[1]} no está disponible los ${WEEKDAY_ES[m[2]] || m[2]}. ¿Programar de todos modos?`],
+  [/^(.+) requested off (\d{4}-\d{2}-\d{2})(?: to (\d{4}-\d{2}-\d{2}))?(?: \(requested (\d{4}-\d{2}-\d{2})\))?\. Deny the request before scheduling them\.$/, (m) => `${m[1]} pidió libre ${m[3] ? `del ${m[2]} al ${m[3]}` : `el ${m[2]}`}${m[4] ? ` (lo pidió el ${m[4]})` : ''}. Rechaza la solicitud antes de programarle.`],
   [/^(.+) has approved time off on (\d{4}-\d{2}-\d{2})\. Schedule anyway\?$/, (m) => `${m[1]} tiene días libres aprobados el ${m[2]}. ¿Programar de todos modos?`],
   [/^Pick at least one room for (.+)$/, (m) => `Elige al menos un salón para ${m[1]}`],
   [/^You can’t give someone the (.+) role$/, (m) => `No puedes darle a nadie el rol de ${roleEs(m[1])}`],

@@ -91,7 +91,7 @@ export default function ScheduleSheet({ sections, days, data, fc, ws, onAdd, onO
     if (cx?.block) return <td key={date} {...p} className={`cx-blocked ${add ? 'can-add' : ''} ${sel}`} onClick={add}><BlockedLabel block={cx.block} />
       {add && <button type="button" className="dayoff-undo no-print" onClick={(e) => { e.stopPropagation(); add(); }}>{t('quickShift.plusShift')}</button>}{pasteBtn}</td>;
     const to = timeOffOn(user.id, date);
-    if (to) return <td key={date} {...p} className={`off ${add ? 'can-add' : ''} ${sel}`} onClick={add} title={to.reason || ''}>{to.status === 'approved' ? t('scheduleSheet.requestOff') : t('scheduleSheet.reqPending')}{pasteBtn}</td>;
+    if (to) return <td key={date} {...p} className={`off ${add ? 'can-add' : ''} ${sel}`} onClick={add} title={[to.status !== 'approved' && isMgr && t('conflicts.pendingHint'), to.reason].filter(Boolean).join('\n')}>{to.status === 'approved' ? t('scheduleSheet.requestOff') : t('scheduleSheet.reqPending')}{pasteBtn}</td>;
     const other = workingElsewhere(user.id, date);
     if (other) return <td key={date} {...p} className={`elsewhere ${add ? 'can-add' : ''} ${sel}`} onClick={add} title={`${t('scheduleSheet.workingTime', { time: sheetTime(other) })}${other.area ? ` · ${other.area}` : ''}`}>{pasteBtn}</td>;
     // No shift that day: DAY OFF, and managers get "Add shift".
