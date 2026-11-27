@@ -8,6 +8,8 @@
 //                                               with stream: false (the phone app)
 //   POST /api/assistant/actions/:id             { conversationId, decision: 'confirm' | 'cancel' }: a proposed
 //                                               change runs only here, on the person's tap (audited)
+//   POST /api/assistant/files                   a file attached in the chat → what it is and its import's preview
+//                                               (server/assistant/imports.js: "Review & import" / "Import now")
 //   POST /api/assistant/clear                   forget my conversations
 //   GET/POST /api/assistant/settings            Settings → Ask ShiftBoard (admins): on/off, staff on/off, usage
 //
@@ -27,6 +29,7 @@ import { runTurn } from './loop.js';
 import { claudeTools, aboutToday, systemBlocks } from './prompt.js';
 import { describeAction } from './actions.js';
 import * as H from './history.js';
+import { mountAssistantImports, IMPORT_TOOL } from './imports.js';
 
 const CONFIG = 'assistantConfig';
 const MAX_MESSAGE = 2000;
@@ -92,6 +95,13 @@ export function mountAssistant(app, d) {
     return { tools, ctx, settings };
   }
 
+  // ---------- files attached in the chat (imports) ----------
+  const imports = mountAssistantImports(app, {
+    db, now, iso, person, blocked, toolsFor, hasFor, ai, viewAsMessage: aiMessage('viewAs', 'en'),
+    langFor: (user) => langOf(user, settingsOf()),
+    refuse: (res, why, lang) => res.status(403).json({ error: aiMessage(why, lang, params()), reason: why }),
+  });
+
   // ---------- status and history ----------
   app.get('/api/assistant', wrap(async (req, res) => {
     await db.sync();
@@ -107,6 +117,7 @@ export function mountAssistant(app, d) {
     const limit = dailyLimitFor(tenant, env);
     res.json({ result: {
       available: !why, ...(why ? { reason: why, message: aiMessage(why, lang, params()) } : {}), model: MODEL,
+      files: !blocked(s.user), // attaching a file works without AI too (the structured readers): imports.js
       today: { messages: messagesToday(db.store, dayOf(now()), s.user.id), limit },
       conversations: H.listChats(db.store, s.user.id),
     } });
@@ -225,10 +236,14 @@ export function mountAssistant(app, d) {
     if (claim.status === 404) return res.status(404).json({ error: 'Not found' });
     if (claim.status !== 202) return res.status(claim.status === 200 ? 200 : claim.status).json(claim.status === 200 ? { result: { action: claim.action } } : { error: claim.status === 410 ? 'expired' : 'already', action: claim.action });
 
-    const tool = toolByName(claim.tool);
-    const { ctx } = toolsFor(req, user, { write: true });
-    const args = { ...claim.args, ...(tool && 'confirm' in tool.input ? { confirm: true } : {}) };
-    const r = tool ? await runTool(tool, args, ctx) : { ok: false, error: aiMessage('role', lang) };
+    let r;
+    if (claim.tool === IMPORT_TOOL) r = await imports.applyImport(req, user, claim.args); // "Import now" (imports.js)
+    else {
+      const tool = toolByName(claim.tool);
+      const { ctx } = toolsFor(req, user, { write: true });
+      const args = { ...claim.args, ...(tool && 'confirm' in tool.input ? { confirm: true } : {}) };
+      r = tool ? await runTool(tool, args, ctx) : { ok: false, error: aiMessage('role', lang) };
+    }
     const action = await db.run((st) => H.settleAction(st, { userId: user.id, chatId, actionId: req.params.id, status: r.ok ? 'done' : 'failed', result: r.ok ? r.summary : r.error, at: iso() }), { write: true });
     res.json({ result: { ok: r.ok, action } });
   }));

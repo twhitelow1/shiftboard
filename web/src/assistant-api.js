@@ -4,6 +4,8 @@
 import { ApiError, IS_DEMO, call, nowDate } from './api.js';
 import { getLang, t } from './i18n/index.js';
 import { addDays, weekStart, prettyDate, fmtTime, todayStr, shiftHours } from '../../core/time.js';
+import { extractDocument } from '../../core/import-detect.js';
+import { findHeaderRow, autoMap, rowsToRecords, menuFromText, rosterFromText } from '../../core/smart-import.js';
 
 const headers = () => ({ 'Content-Type': 'application/json', 'X-ShiftBoard-Language': getLang() });
 async function send(path, body, { method = 'POST' } = {}) {
@@ -122,6 +124,64 @@ export async function ask({ message, conversationId }, on = {}, signal) {
   handle(buf);
   if (!final) throw new ApiError(502, t('assistant.failed'));
   return final;
+}
+
+// ---------- files: what it is, and its import's preview (server/assistant/imports.js) ----------
+/** Attach a file (assistant-files.js readAttachment payload). opts: { message, conversationId, importId, target, part }. */
+export async function attachFile(file, opts = {}) {
+  if (IS_DEMO) return demoAttach(file, opts);
+  return send('/api/assistant/files', { file, ...opts });
+}
+/** What "Review & import" pre-loads: { target, wizard, fileName, source, payload }. */
+export const importFor = (id) => (IS_DEMO ? Promise.resolve(demoImports.get(id) || null) : send(`/api/assistant/imports/${encodeURIComponent(id)}`, null, { method: 'GET' }));
+/** "Import now": the message with a Confirm / Cancel card. */
+export const proposeImport = (id, conversationId) => send(`/api/assistant/imports/${encodeURIComponent(id)}/propose`, { conversationId });
+
+// The demo never calls Claude: a rule-based guess (menu, team or products, from the headers and the file's name) and
+// the demo's own preview (the same import preview, in the browser). Invented sample rows when it can't read the file.
+const demoImports = new Map();
+const DEMO_WORDS = { employees: /roster|team|staff|employee|equipo|personal/i, products: /inventory|order|product|stock|supplies|inventario|producto/i, menu: /menu|men[uú]|dish|food|drink|carta/i };
+const DEMO_SAMPLE = {
+  menu: [['Charred Leek Toast', 'Small Plates', '12'], ['Saffron Clam Stew', 'Large Plates', '29'], ['Burnt Honey Tart', 'Desserts', '10']].map(([name, category, price], i) => ({ row: i + 1, values: { name, category, price }, present: ['name', 'category', 'price'] })),
+  employees: [['Wren Castellano', 'wren.c@invented.test'], ['Orrin Paley', 'orrin.p@invented.test']].map(([name, email], i) => ({ row: i + 1, values: { name, email }, present: ['name', 'email'] })),
+  products: [['Invented Agave Reposado', 'spirits', 'bottle'], ['Cocktail Napkins', 'paper', 'case']].map(([name, category, unit], i) => ({ row: i + 1, values: { name, category, unit }, present: ['name', 'category', 'unit'] })),
+};
+async function demoAttach(file, { message = '', conversationId, importId, target: picked }) {
+  let doc = null;
+  try { doc = extractDocument(file); } catch { doc = { name: file.name, kind: 'pdf', sheets: [], text: '' }; }
+  const scored = ['menu', 'employees', 'products'].map((target) => {
+    const sheet = (doc.sheets || []).map((s) => ({ s, h: findHeaderRow(s.rows, target, { min: 2 }) })).find((x) => x.h >= 0);
+    const named = DEMO_WORDS[target].test(`${message} ${doc.name}`);
+    return { target, sheet, score: (sheet ? 60 : 0) + (named ? 30 : 0) };
+  }).sort((a, b) => b.score - a.score);
+  const best = picked ? scored.find((x) => x.target === picked) || { target: picked, score: 100 } : scored[0].score ? scored[0] : { target: 'menu', score: 50 };
+  const target = best.target;
+  let records = [];
+  if (best.sheet) records = rowsToRecords(best.sheet.s.rows, best.sheet.h, autoMap(best.sheet.s.rows[best.sheet.h], target));
+  else if (doc.text && target === 'menu') records = menuFromText(doc.text);
+  else if (doc.text && target === 'employees') records = rosterFromText(doc.text);
+  if (!records.length) records = DEMO_SAMPLE[target];
+  const p = await call(`${target}.importPreview`, { records, options: target === 'menu' ? { createCategories: true } : {}, decisions: {} });
+  const c = p.counts;
+  const label = t(`assistant.imp_${target}`);
+  const id = `demo_imp_${Date.now()}`;
+  demoImports.set(id, { id, target, wizard: 'smartImport', fileName: doc.name, source: 'file', payload: { records } });
+  let chat = demoChats.find((x) => x.id === conversationId);
+  const at = new Date().toISOString();
+  if (!chat) demoChats.unshift(chat = { id: `demo_${Date.now()}`, title: doc.name, updatedAt: at, messages: [] });
+  const userMessage = { id: `u_${Date.now()}`, role: 'user', text: message, at, file: { name: doc.name, kind: doc.kind, size: file.size || 0 } };
+  const card = {
+    id, fileName: doc.name, kind: doc.kind, status: 'ready', target, label, confidence: best.score >= 80 ? 'high' : 'medium', how: 'demo',
+    choices: ['menu', 'employees', 'products'].filter((x) => x !== target).map((x) => ({ id: x, label: t(`assistant.imp_${x}`) })),
+    summary: { line: t('assistant.demoImportLine', { label, total: c.total, new: c.new, update: c.update, check: c.check }), details: [], counts: c },
+    wizard: 'smartImport', canImportNow: false, ...(c.check || c.problem ? { needsReview: true } : {}), notes: [t('assistant.demoImportNote')],
+  };
+  const message_ = { id: `a_${Date.now()}`, role: 'assistant', text: t('assistant.demoLooksLike', { label }), at, import: card, demo: true };
+  const old = importId ? chat.messages.findIndex((m) => m.import?.id === importId) : -1;
+  if (old >= 0) { chat.messages[old] = { ...message_, id: chat.messages[old].id, text: t('assistant.demoPicked', { label }) }; return { conversationId: chat.id, message: chat.messages[old] }; }
+  chat.messages.push(userMessage, message_);
+  chat.updatedAt = at;
+  return { conversationId: chat.id, userMessage, message: message_ };
 }
 
 // ---------- Settings → Ask ShiftBoard (admins) ----------

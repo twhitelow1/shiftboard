@@ -5,6 +5,8 @@
 //   employees.setAvailability { userId?, availability?, notes?, maxHours?, maxDays?, notify? }   (core/service.js)
 //   availability.get          { userId? }  → the week, notes, limits, the effective date, and whether you can edit it
 //   availability.history      { userId?, limit? } → the log, newest first (2 years)
+//   availability.team.get     { weekStart? } → everyone's week side by side (core/availability-team.js): managers and up,
+//                             and supervisors (for employees) when "Edit staff availability" is on for them. Others: 403.
 //
 // Who changes whose: everyone their own. Someone else's: managers and up (as before), and supervisors for employees
 // when Settings → Roles & features turns on "Edit staff availability" (editAvailability) for them. Turning it off for
@@ -13,11 +15,12 @@
 // notifies only when the manager ticks it).
 import { roleOf, rankOf } from './roles.js';
 import { roleAllows } from './role-features.js';
+import { teamAvailability, onTeamList } from './availability-team.js';
 import { cleanAvailability, weekChanges, logChange, historyOf, viaOf, dayView, NOTE_MAX } from './availability.js';
 
 const limit = (v, max) => (v === '' || v == null ? null : Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= max ? Number(v) : undefined);
 
-export function availabilityApi({ store, now, today, fail, needAuth, settings, notify, say, userById, isMgr, via, view, slog = () => {} }) {
+export function availabilityApi({ store, now, today, fail, needAuth, settings, notify, say, userById, isMgr, via, view, layout = () => ({ rooms: [] }), slog = () => {} }) {
   /** May `actor` change `target`'s availability? */
   function canEditOf(actor, target) {
     if (!actor || !target) return false;
@@ -108,6 +111,19 @@ export function availabilityApi({ store, now, today, fail, needAuth, settings, n
       'availability.people': (actor) => {
         needAuth(actor);
         return store.list('users', (u) => u.active !== false && canEditOf(actor, u)).map((u) => ({ id: u.id, name: u.name })).sort((a, b) => a.name.localeCompare(b.name));
+      },
+      /** Everyone's week side by side, with dated time off in it (core/availability-team.js). Read only. */
+      'availability.team.get': (actor, { weekStart } = {}) => {
+        needAuth(actor);
+        const st = settings();
+        const allows = roleAllows(actor, st);
+        const sup = roleOf(actor) === 'supervisor' && allows.editAvailability === true;
+        if (!isMgr(actor) && !sup) fail(403, 'Only managers can see the team’s availability');
+        const people = store.list('users', (u) => onTeamList(u) && canSee(actor, u));
+        const ids = new Set(people.map((u) => u.id));
+        const jobs = Object.fromEntries(store.list('jobCodes').map((j) => [j.id, j]));
+        const timeOff = allows.timeOff === false ? null : store.list('timeOff', (t) => ids.has(t.userId));
+        return teamAvailability({ actor, people, jobs, layout: layout(actor), timeOff, settings: st, today: today(), weekStart, canEdit: (u) => canEditOf(actor, u) });
       },
     },
     /** employees.setAvailability (core/service.js). */

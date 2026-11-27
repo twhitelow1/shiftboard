@@ -36,6 +36,8 @@ export default {
     readWithAi: 'Read it with AI',
     readSimple: 'Try the simple reader',
     readingPart: 'Reading part {n} of {total}…',
+    aiUnsure: 'The AI wasn’t sure of some values in {count} rows. They’re highlighted: check them before you import.',
+    aiUnsureField: 'The AI wasn’t sure of this value. Check it.',
     aiNotSetUp: 'AI reading isn’t set up for this restaurant. Use a CSV or Excel file, or paste rows and match the columns.',
     aiCap: 'This month’s AI allowance is used up, so AI reading is off until the 1st. Use a CSV or Excel file, or paste rows and match the columns.',
     aiBusy: 'AI reading is busy right now. Try again in a minute, or use a CSV.',
