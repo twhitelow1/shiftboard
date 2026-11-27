@@ -15,8 +15,11 @@ import TradeHint, { canTrade } from './TradeHint.jsx';
 import { EightySixBanner } from './EightySix.jsx';
 import UnpublishWeek from './UnpublishWeek.jsx';
 import PublishDialog from './PublishDialog.jsx';
+import { useScheduleConflicts, BlockedLabel, WindowNote, ConflictMark } from './ScheduleConflicts.jsx'; // blocked days (managers)
+import PersonPanel from './PersonPanel.jsx'; // a name opens the person's panel (managers)
 import SchedulePdfDialog from './SchedulePdf.jsx';
 import { useProgrammingDays, ParRow, CoveragePanel, DayProgramming } from './ProgrammingParts.jsx'; // regular programming, pars and coverage
+import SkillMixPanel from './SkillMix.jsx'; // skill-mix rules vs ratings, with suggestions (managers with ratingsView)
 import { IS_DEMO } from '../api.js';
 import { useT, dowShort, fmtTime, monthShort, prettyDate, num , getLang } from '../i18n/index.js';
 
@@ -87,11 +90,14 @@ export default function Schedule() {
   const [pdfOpen, setPdfOpen] = useState(false); // Download PDF (everyone: staff get the published week)
   const [run, busy] = useAction();
   const days = range(ws, 7);
+  const cx = useScheduleConflicts(ws, isMgr); // blocked days and shifts over them (ScheduleConflicts.jsx)
+  const [personId, setPersonId] = useState(null); // the person panel (PersonPanel.jsx)
 
   const load = () => {
     call('shifts.list', { start: ws, end: addDays(ws, 6) }).then(setData).catch((e) => app.toast(e.message, 'bad'));
     call('schedule.dayOff.list', { start: ws, end: addDays(ws, 6) }).then(setDaysOff).catch(() => setDaysOff([]));
     call(isMgr ? 'forecast.summary' : 'forecast.covers', { weekStart: ws }).then(setFc).catch(() => setFc(null));
+    cx.reload();
   };
   useEffect(load, [ws, version]);
   const prog = useProgrammingDays(ws, addDays(ws, 6)); // the day notes' programming and (managers) coverage vs par
@@ -188,7 +194,7 @@ export default function Schedule() {
         onClick={(e) => { e.stopPropagation(); openDialog(s); }} title={[...(w || []), canTrade(s, me, today) && t('schedule.yourShiftTapToTrade')].filter(Boolean).join('\n')}>
         <span className="t">{shiftTime(s)}</span>
         {s.tag && <span className="tag">{s.tag}</span>}
-        {w && <span className="warn-ico">!</span>}
+        {w && <span className="warn-ico">!</span>}<ConflictMark info={cx.shift(s.id)} />
         {s.pending && <span className="pend" title={t('schedule.swapPending')}>⇄</span>}
         {(showJob || room || !s.userId) && <div className="sub">{[!s.userId && t('common.open'), showJob && `${j?.name || ''}${s.area ? ` · ${s.area}` : ''}`, room].filter(Boolean).join(' · ')}</div>}
       </button>
@@ -200,6 +206,7 @@ export default function Schedule() {
   const cell = ({ date, userId, list, jobCodeId, area, roomOf, rowKey }) => {
     const to = userId && timeOffOn(userId, date);
     const off = dayOffOn(userId, date);
+    const cxc = cx.cell(userId, date); // blocked (hatched) or the window they're available in
     const closed = isClosed(date);
     const canAdd = isMgr && !closed;
     const sorted = [...list].sort((a, b) => a.start.localeCompare(b.start));
@@ -207,7 +214,7 @@ export default function Schedule() {
     const target = userId && canAdd ? { userId, date, ...(jobCodeId ? { jobCodeId, area: area ?? '' } : {}) } : null;
     const pc = rowKey ? paste.cell('grid', rowKey, days.indexOf(date), target, sorted) : null;
     return (
-      <td key={date} {...(pc?.props || {})} className={`cell ${date === today ? 'today' : ''} ${closed && !list.length ? 'closed' : ''} ${canAdd ? 'can-add' : ''} ${pc?.selected ? 'psel' : ''}`} onClick={() => {
+      <td key={date} {...(pc?.props || {})} className={`cell ${date === today ? 'today' : ''} ${closed && !list.length ? 'closed' : ''} ${cxc?.block && !list.length ? 'cx-blocked' : ''} ${canAdd ? 'can-add' : ''} ${pc?.selected ? 'psel' : ''}`} onClick={() => {
         if (!canAdd) return;
         const entry = jobCodeId ? null : people[userId]?.jobCodes?.find((x) => x.primary) || people[userId]?.jobCodes?.[0];
         addAt(date, jobCodeId || entry?.jobCodeId, userId, area ?? entry?.areas?.[0] ?? '', target);
@@ -216,8 +223,10 @@ export default function Schedule() {
         {pc?.pasteButton(!list.length)}
         {!list.length && off && <span className="dayoff" title={t('quickShift.cellTitle')}>{t('quickShift.cell')}
           {isMgr && <button type="button" className="dayoff-undo no-print" disabled={busy} onClick={(e) => { e.stopPropagation(); undoDayOff(userId, date); }}>{t('quickShift.undo')}</button>}</span>}
-        {!list.length && !off && to && <span className="reqoff" title={to.reason || ''}>{to.status === 'approved' ? t('schedule.requestOff') : t('schedule.reqPending')}</span>}
-        {!list.length && !off && !to && !closed && userId && <span className="off">{isMgr ? '' : t('schedule.off')}</span>}
+        {!list.length && !off && cxc?.block && <BlockedLabel block={cxc.block} />}
+        {!list.length && !off && !cxc?.block && cxc?.window && <WindowNote w={cxc.window} />}
+        {!list.length && !off && !cxc?.block && to && <span className="reqoff" title={to.reason || ''}>{to.status === 'approved' ? t('schedule.requestOff') : t('schedule.reqPending')}</span>}
+        {!list.length && !off && !to && !cxc && !closed && userId && <span className="off">{isMgr ? '' : t('schedule.off')}</span>}
       </td>
     );
   };
@@ -286,7 +295,7 @@ export default function Schedule() {
           {/* Like the house PDF. Print always uses this layout. */}
           <ScheduleSheet className={view === 'sheet' ? 'sheet-print' : 'sheet-print print-only'} sections={sheetSections} days={days} data={data} fc={fc} ws={ws} programming={prog.byDate}
             onAdd={addAt} onOpen={openDialog} onSaved={load} daysOff={daysOff} onUndoDayOff={isMgr ? undoDayOff : undefined} onEditSection={isMgr ? (sec) => setEditSection(allSections.find((x) => x.key === sec.key) || sec) : undefined}
-            onArrange={isMgr ? setArrange : undefined} paste={view === 'sheet' ? paste : null} />
+            onArrange={isMgr ? setArrange : undefined} paste={view === 'sheet' ? paste : null} conflicts={isMgr ? cx : null} onPerson={isMgr ? setPersonId : undefined} />
 
           {/* Desktop grid */}
           {view !== 'sheet' && view !== 'day' && <div className="sched-wrap desktop-only no-print">
@@ -334,7 +343,7 @@ export default function Schedule() {
                             <div className="emp">
                               <Avatar user={user} size="sm" />
                               <div style={{ minWidth: 0 }}>
-                                <div className="emp-name">{user.name}</div>
+                                <div className="emp-name">{isMgr ? <button type="button" className="pp-name" onClick={() => setPersonId(user.id)} title={t('personPanel.open', { name: user.name })}>{user.name}</button> : user.name}</div>
                                 {(isMgr || user.id === me.id) && <div className={`emp-hrs ${hrs > settings.overtimeHours ? 'ot' : ''}`}>{hrs ? t('schedule.hrsHrs', { hrs: hrs.toFixed(1) }) : '—'}</div>}
                               </div>
                             </div>
@@ -375,6 +384,7 @@ export default function Schedule() {
             <MobileDay days={days} selDay={selDay} setSelDay={setSelDay} data={data} daysOff={daysOff} room={dept} mine={mine} setMine={setMine} openDialog={openDialog} isClosed={isClosed} fcDay={fcDay} addAt={addAt} prog={prog} />
           </div>}
           {isMgr && view !== 'sheet' && <CoveragePanel days={days} byDate={prog.byDate} onChanged={reloadAll} />}
+          {isMgr && <SkillMixPanel ws={ws} />}{/* every view, the sheet too (not printed) */}
         </>
       )}
 
@@ -392,6 +402,7 @@ export default function Schedule() {
         clip={paste.clip} onCopy={isMgr ? paste.copy : undefined}
         onPaste={paste.clip && dialog.target ? () => { const tg = dialog.target; setDialog(null); paste.pasteInto([tg]); } : undefined} />}
       {paste.overlays}
+      {personId && <PersonPanel userId={personId} weekShifts={shifts} onClose={() => setPersonId(null)} />}
       {importOpen && <ImportDialog ws={ws} onClose={(changed) => { setImportOpen(false); if (changed) load(); }} />}
       {clearOpen && <ClearWeekDialog ws={ws} data={data} onClose={(changed) => { setClearOpen(false); if (changed) load(); }} />}
       {publishOpen && <PublishDialog ws={ws} label={weekLabel(ws)} drafts={drafts} onClose={(changed) => { setPublishOpen(false); if (changed) reloadAll(); }} />}

@@ -20,6 +20,7 @@ import { uid } from '../core/store.js';
 import { createService, AppError } from '../core/service.js';
 import { seedDemo } from '../core/seed.js';
 import { seedStockDemo } from '../core/stock-seed.js';
+import { seedRatingsDemo } from '../core/ratings.js';
 import { effectiveShift } from '../core/forecast.js';
 import { addDays } from '../core/time.js';
 import { langOf, isLang } from '../core/i18n.js';
@@ -127,6 +128,7 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
     if (env.SEED_DEMO === 'true') {
       seedDemo(store, { hashPassword, password: env.DEMO_PASSWORD || 'demo1234' });
       seedStockDemo(store); // Stock lists: the catalog, templates, today's lists and staff-added products to review
+      seedRatingsDemo(store); // Ratings: a few servers and bartenders rated, and one skill-mix rule (core/ratings.js)
       console.log('Seeded demo data. Sign in as moe@demo.shiftboard / demo1234');
       return;
     }
@@ -280,7 +282,8 @@ export function createApp({ db, env = process.env, staticDir, mailer = createMai
   const sendError = (res, e, label) => {
     const status = e instanceof AppError ? e.status : 500;
     if (status === 500) console.error(label, e);
-    res.status(status).json({ error: status === 500 ? 'Something went wrong' : e.message });
+    // A blocked day (core/schedule-conflicts.js): the 409 says which, so the app can ask and send overrideConflict.
+    res.status(status).json({ error: status === 500 ? 'Something went wrong' : e.message, ...(status === 409 && e.conflict ? { conflict: e.conflict } : {}) });
   };
 
   // ---------- app ----------

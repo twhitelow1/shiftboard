@@ -4,6 +4,8 @@ import { useT } from '../i18n/index.js';
 import { addDays } from '../../../core/time.js';
 import { PUBLISH_PDF_DEFAULT } from '../../../core/publish-notify.js';
 import { StaffingCheck } from './ProgrammingParts.jsx'; // understaffed days vs par: a warning, never a block
+import { PublishSummary } from './ScheduleConflicts.jsx'; // shifts over a blocked day: a warning, never a block
+import { SkillMixCheck } from './SkillMix.jsx'; // failing skill-mix rules: a warning, never a block
 
 // Publish the week: notify staff or publish silently, and (with notify on) email the week's schedule as a PDF
 // attachment with the paper options. The PDF choice is remembered for the restaurant (settings.publishPdf);
@@ -32,6 +34,8 @@ export default function PublishDialog({ ws, label, drafts, onClose }) {
       </>}>
       <div className="col" style={{ gap: 14 }}>
         <StaffingCheck start={ws} end={addDays(ws, 6)} />
+        <PublishSummary ws={ws} notify={notify} />
+        <SkillMixCheck ws={ws} />
         <div>
           <label className="check"><input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} />{t('publish.notify')}</label>
           <div className="help">{notify ? t('publish.notifyHelp') : t('publish.silentHelp')}</div>

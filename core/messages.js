@@ -19,6 +19,11 @@ export const MSG = {
     shiftRemoved: (shift) => `Shift removed: ${shift}`,
     weekCleared: (date) => `Your shifts for the week of ${date} were taken off the schedule. A new schedule is coming.`,
     schedulePosted: (from, to) => `The schedule for ${from} – ${to} is posted. Check your shifts.`,
+    // A shift scheduled over a blocked day (core/schedule-conflicts.js), told when it's posted.
+    scheduledOverConflict: (by, shift, reason) => `${by || 'A manager'} scheduled you for ${shift}, over your ${reason}. If you can’t work it, talk to them or offer the shift.`,
+    overReason_standing: 'standing request off',
+    overReason_unavailable: 'availability (you’re unavailable that day)',
+    overReason_timeOff: 'approved time off',
     eventShiftsPosted: (event) => `Event shifts posted for ${event}. Check your shifts.`,
     openShiftsPosted: (n) => `${n} open shift${s(n, '', 's')} available to pick up.`,
     // ----- unpublish (core/unpublish.js) -----
@@ -142,6 +147,10 @@ export const MSG = {
     shiftRemoved: (shift) => `Se quitó un turno: ${shift}`,
     weekCleared: (date) => `Tus turnos de la semana del ${date} se quitaron del horario. Pronto saldrá un horario nuevo.`,
     schedulePosted: (from, to) => `Ya se publicó el horario del ${from} al ${to}. Revisa tus turnos.`,
+    scheduledOverConflict: (by, shift, reason) => `${by || 'Un gerente'} te programó ${shift}, aunque tienes ${reason}. Si no puedes trabajarlo, habla con tu gerente u ofrece el turno.`,
+    overReason_standing: 'un descanso fijo ese día',
+    overReason_unavailable: 'marcado que no estás disponible ese día',
+    overReason_timeOff: 'días libres aprobados',
     eventShiftsPosted: (event) => `Ya se publicaron los turnos del evento ${event}. Revisa tus turnos.`,
     openShiftsPosted: (n) => (n === 1 ? 'Hay 1 turno disponible para recoger.' : `Hay ${n} turnos disponibles para recoger.`),
     // ----- volver a borrador (core/unpublish.js) -----

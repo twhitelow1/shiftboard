@@ -41,6 +41,11 @@ export function DayControls({ value, onChange, compact = false }) {
           <input className="input sm" type="time" value={v.to} onChange={(e) => set({ to: e.target.value })} aria-label={t('availability.until')} />
         </div>
       )}
+      {mode === 'off' && (
+        <label className="check small av-standing" title={t('conflicts.standingHelp')}>
+          <span><input type="checkbox" checked={!!v.standing} onChange={(e) => set(e.target.checked ? { standing: true, requestedAt: v.requestedAt || new Date().toISOString(), source: v.source || 'in_person' } : { standing: undefined, requestedAt: undefined, source: undefined })} />{' '}{t('conflicts.standingCheck')}</span>
+        </label>
+      )}
       <input className="input sm av-note" value={v.note} maxLength={200} placeholder={t('availability.notePlaceholder')} onChange={(e) => set({ note: e.target.value })} aria-label={t('availability.note')} />
     </div>
   );

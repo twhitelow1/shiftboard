@@ -166,6 +166,8 @@ const en = {
     youreOff: 'You’re off',
     openShift: 'Open shift',
     off: 'Off: {names}',
+    conflict: 'Conflict',
+    conflictLabel: 'Scheduled over their availability or a request off',
     prevWeek: 'Previous week',
     nextWeek: 'Next week',
     covers: '~{count} covers',
@@ -1142,6 +1144,18 @@ const en = {
     guests: { one: '{count} guest', other: '{count} guests' },
     short: { one: '{count} short', other: '{count} short' },
     shortOfPar: { one: '{count} short of par', other: '{count} short of par' },
+  },
+  // The day view's Skill mix card (managers only; components/SkillMixDay.tsx). Ratings are never shown on the phone.
+  skillMix: {
+    title: 'Skill mix',
+    allMet: 'All rules met',
+    failing: { one: '{count} rule failing', other: '{count} rules failing' },
+    atLeast: 'At least {count} rated {rating}+',
+    atMost: 'At most {count} rated {rating} or lower',
+    minAvg: 'Average {avg}+',
+    haveNow: 'Scheduled now: {have}',
+    avgNow: 'Average now: {avg}',
+    noneRated: 'Nobody scheduled is rated yet',
   },
   stockSaved: {
     tab: 'Saved lists',

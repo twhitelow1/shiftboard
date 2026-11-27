@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useApp, Icon, Avatar, Modal, Field, useAction, JobDot, Empty } from '../ui.jsx';
 import { AvailabilitySummary } from './AvailabilityEditor.jsx'; // their week, editable with its history (logged)
 import { ApprovesFor } from './ApprovalScope.jsx'; // which positions they approve trades and time off for
@@ -11,6 +11,7 @@ import { sendSignInLink, inviteAll, IS_DEMO } from '../api.js';
 import { t, useT, stampDay } from '../i18n/index.js';
 import { AddEmployeeDialog, PersonBadges, SignInHelp, PreviewOnboardingLink } from './TeamInvite.jsx'; // invitations, status, sign-in help
 import { LegalNameFields, LegalNameNote } from './LegalName.jsx'; // legal name for payroll (core/names.js)
+import { PersonRatings } from './Ratings.jsx'; // their rating per position (managers only, never the person)
 import { nameMatches, canSeeLegalName } from '../../../core/names.js';
 import { SmartImportButton } from './SmartImportButton.jsx'; // Import people from a file (smart import)
 
@@ -27,9 +28,9 @@ export function signInStatus(e) {
   return { label: t('team.notInvited'), cls: 'warn' };
 }
 
-export default function Team() {
+export default function Team({ parts = [] }) {
   const t = useT();
-  const { employees, jobCodes, jobs, me, emailEnabled, refresh, toast } = useApp();
+  const { employees, jobCodes, jobs, me, emailEnabled, refresh, toast, has } = useApp();
   const [tab, setTab] = useState('people');
   const [q, setQ] = useState('');
   const [job, setJob] = useState('');
@@ -39,6 +40,11 @@ export default function Team() {
   const [showInactive, setShowInactive] = useState(false);
   const [adding, setAdding] = useState(false);
   const [run, busy] = useAction();
+  // #/team/<id> (the schedule's person panel → Full Team profile) opens that person.
+  useEffect(() => {
+    const e = parts[1] && employees.find((x) => x.id === parts[1]);
+    if (e) { setEdit(e); history.replaceState(null, '', '#/team'); }
+  }, [parts[1]]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const list = employees.filter((e) => (showInactive || e.active !== false) && nameMatches(e, q)
     && (!job || e.jobCodes?.some((j) => j.jobCodeId === job)) && (!role || roleOf(e) === role));
@@ -59,6 +65,7 @@ export default function Team() {
         <button className={tab === 'roles' ? 'on' : ''} onClick={() => setTab('roles')}>{t('team.roles')}</button>
         <button className={tab === 'jobs' ? 'on' : ''} onClick={() => setTab('jobs')}>{t('team.jobCodes')}{' '}<span className="badge">{jobCodes.filter((j) => !j.archived).length}</span></button>
         <button onClick={() => { location.hash = '#/trade-stats'; }}><Icon name="chart" size={14} />{t('tradeStats.title')}</button>
+        {has('ratingsView') && <button onClick={() => { location.hash = '#/settings/ratings'; }}><Icon name="star" size={14} />{t('ratings.title')}</button>}
       </div>
 
       {tab === 'people' && <>
@@ -305,6 +312,7 @@ function EmployeeDialog({ emp, onClose }) {
       {emp.id && <AvailabilitySummary person={emp} />}
       {emp.id && <ApprovesFor person={emp} />}
       {emp.id && <AddTimeOffButton person={emp} />}
+      {emp.id && <PersonRatings person={emp} />}
 
       {emp.id && editable && !self && roleOf(emp) !== 'super_admin' && <MergePerson emp={emp} onDone={() => onClose(true)} />}
 

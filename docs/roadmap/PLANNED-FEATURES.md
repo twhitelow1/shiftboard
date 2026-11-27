@@ -37,6 +37,7 @@ _Working name "ShiftBoard"; a new product name is still to be chosen (see Busine
 | Feature | Notes |
 |---|---|
 | Employee sync from other platforms | later (after the import) |
+| Ratings & skill mix (phase 1) | ratings per person per position (custom scale, default 1–5, named levels, history; managers only, never staff), skill-mix rules, schedule alerts with suggestions, publish warning, `get_skill_mix` / `set_rating` tools |
 
 ## Next
 | Feature | Notes |
@@ -44,7 +45,7 @@ _Working name "ShiftBoard"; a new product name is still to be chosen (see Busine
 | Push notifications in the /app browser version | the website already has them |
 
 ## Planned: AI
-- Schedule drafting for managers (draft → review → publish)
+- Schedule drafting for managers (draft → review → publish). It will use ratings per position and the skill-mix rules (`skillMix.week` with `includeRatings`, the `get_skill_mix` tool), forecast covers and sales, staffing pars, history (who worked what before) and availability, time off and days off; drafts only, a manager reviews and publishes. Later inputs to a suggested rating (reviews, write-ups, Training quiz scores, attendance, kudos) go in `ratingSignals` (core/ratings.js).
 - Monday digest (labor vs forecast, 86 trends, trades, kudos, upcoming events)
 - Review insights (themes, sentiment) on top of review matching
 - Writing helper (announcements, SMS-length, Spanish versions)

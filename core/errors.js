@@ -7,15 +7,18 @@
 // Spanish: neutral Latin American, "tú". See docs/i18n/GLOSSARY.md.
 
 import { PROGRAMMING_ERRORS_ES } from './programming-errors.js';
+import { RATINGS_ERRORS_ES } from './ratings-errors.js';
 
 const ROLES_ES = { 'Super Admin': 'superadministrador', Admin: 'administrador', Manager: 'gerente', Supervisor: 'supervisor', Employee: 'empleado' };
 const roleEs = (r) => ROLES_ES[r] || r;
+const WEEKDAY_ES = { Sundays: 'domingos', Mondays: 'lunes', Tuesdays: 'martes', Wednesdays: 'miércoles', Thursdays: 'jueves', Fridays: 'viernes', Saturdays: 'sábados' };
 const TIP_LABELS_ES = { 'Card tips': 'Propinas con tarjeta', 'Cash tips': 'Propinas en efectivo', Sales: 'Ventas' };
 const tipLabelEs = (l) => TIP_LABELS_ES[l] || (/^(.+) sales$/.test(l) ? `Ventas de ${l.replace(/ sales$/, '')}` : l.replace(/: sales$/, ': ventas'));
 
 /** Exact messages. Keys are the English text exactly as the code writes it. */
 export const ERRORS_ES = {
   ...PROGRAMMING_ERRORS_ES, // Regular programming (core/programming.js)
+  ...RATINGS_ERRORS_ES, // Ratings and skill mix (core/ratings.js)
   // Stock lists and the product catalog (core/stock.js, core/products.js)
   'A list can have up to 150 products': 'Una lista puede tener hasta 150 productos',
   'A par level is a number from 0 to 9999': 'El nivel par es un número del 0 al 9999',
@@ -567,6 +570,10 @@ export const ERRORS_ES = {
 export const ERROR_PATTERNS_ES = [
   [/^Request failed \((\d+)\)$/, (m) => `La solicitud falló (${m[1]})`],
   [/^Unknown method (.+)$/, (m) => `Método desconocido: ${m[1]}`],
+  // Scheduling over a blocked day (core/schedule-conflicts.js)
+  [/^(.+) has a standing request off on (\w+)\. Schedule anyway\?$/, (m) => `${m[1]} tiene un descanso fijo los ${WEEKDAY_ES[m[2]] || m[2]}. ¿Programar de todos modos?`],
+  [/^(.+) is unavailable on (\w+)\. Schedule anyway\?$/, (m) => `${m[1]} no está disponible los ${WEEKDAY_ES[m[2]] || m[2]}. ¿Programar de todos modos?`],
+  [/^(.+) has approved time off on (\d{4}-\d{2}-\d{2})\. Schedule anyway\?$/, (m) => `${m[1]} tiene días libres aprobados el ${m[2]}. ¿Programar de todos modos?`],
   [/^Pick at least one room for (.+)$/, (m) => `Elige al menos un salón para ${m[1]}`],
   [/^You can’t give someone the (.+) role$/, (m) => `No puedes darle a nadie el rol de ${roleEs(m[1])}`],
   [/^Only a higher role can edit an? (.+)$/, (m) => `Solo alguien con un rol más alto puede editar a un ${roleEs(m[1])}`],

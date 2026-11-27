@@ -6,6 +6,7 @@ import { ShiftSectionCard } from './Sections.jsx';
 import { CallOutPanel } from './TrainingShared.jsx';
 import '../quick-shift.css';
 import { clipTime } from './ShiftPaste.jsx';
+import { useConflictConfirm } from './ScheduleConflicts.jsx'; // ask before scheduling over a blocked day
 import { useT, fmtTime, prettyDate, dowShort } from '../i18n/index.js';
 
 /**
@@ -84,6 +85,7 @@ function ShiftEditor({ shift, onClose, warnings, events, quick, weekShifts, days
   });
   const [orig] = useState(() => ({ date: f.date, userId: f.userId, jobCodeId: f.jobCodeId, room: f.room }));
   const [run, busy] = useAction();
+  const conflict = useConflictConfirm();
   const [publishNow, setPublishNow] = useState(!!shift.published);
   const [everyone, setEveryone] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
@@ -132,7 +134,8 @@ function ShiftEditor({ shift, onClose, warnings, events, quick, weekShifts, days
     const payload = { ...f, area: areaForRoom(f.room, job, settings), end: f.untilClose ? null : f.end, userId: f.userId || null, eventId: f.eventId || null,
       published: shift.id ? undefined : publishNow, listPerson: !!f.userId && !holder };
     delete payload.room;
-    const r = await run(() => call(moving ? 'shifts.move' : 'shifts.save', payload));
+    // Onto a blocked day (unavailable, standing request off, time off): asks first, then sends overrideConflict (ScheduleConflicts.jsx).
+    const r = await run(() => conflict.save((x) => call(moving ? 'shifts.move' : 'shifts.save', { ...payload, ...x })));
     if (r) {
       if (r.warnings?.length) toast(t('shiftDialog.savedHeadsUpValue', { value: r.warnings[0] }), 'bad');
       else toast(moving ? t('quickShift.moved') : shift.id ? t('shiftDialog.shiftUpdated') : t('shiftDialog.shiftAdded'));
@@ -299,6 +302,7 @@ function ShiftEditor({ shift, onClose, warnings, events, quick, weekShifts, days
         {notesField}
         {!shift.id && <label className="check"><input type="checkbox" checked={publishNow} onChange={(e) => setPublishNow(e.target.checked)} />{t('shiftDialog.publishImmediatelyNotifyTheEmployee')}</label>}
       </>}
+      {conflict.element}
     </Modal>
   );
 }
